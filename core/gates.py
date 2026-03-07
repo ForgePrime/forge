@@ -322,6 +322,11 @@ def cmd_scan_secrets(args):
 
     if not findings:
         print("No secrets detected.")
+        print()
+        print("**Note**: This scanner uses regex patterns and covers common secret formats")
+        print("(AWS, GitHub, Slack, Azure, Google, JWT, private keys). It does NOT detect")
+        print("encoded secrets, secrets passed via env vars, or novel token formats.")
+        print("For comprehensive scanning, complement with tools like git-secrets or trufflehog.")
         return True
 
     print(f"FINDINGS: {len(findings)} potential secrets detected!")

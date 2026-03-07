@@ -198,7 +198,7 @@ python -m core.pipeline add-tasks {project} --data '[...]'
 
 ---
 
-### Step 5b — Configure Project
+### Step 6 — Configure Project
 
 Set up project configuration for gates and git:
 
@@ -216,7 +216,7 @@ create an OPEN decision asking the user.
 
 ---
 
-### Step 6 — Present and Confirm
+### Step 7 — Present and Confirm
 
 Show the plan:
 ```bash

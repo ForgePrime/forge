@@ -772,6 +772,20 @@ def print_task_detail(task: dict):
 
 # -- Context & Config Commands --
 
+def _estimate_context_size(project: str, task_ids: set) -> int:
+    """Estimate context size in characters for the given dependency tasks."""
+    total = 0
+    for fname in ("changes.json", "decisions.json", "lessons.json"):
+        fpath = Path("forge_output") / project / fname
+        if fpath.exists():
+            data = json.loads(fpath.read_text(encoding="utf-8"))
+            key = fname.replace(".json", "")
+            for entry in data.get(key, []):
+                if entry.get("task_id") in task_ids:
+                    total += len(json.dumps(entry))
+    return total
+
+
 def cmd_context(args):
     """Show aggregated context for a task: dependency outputs, decisions, changes."""
     tracker = load_tracker(args.project)
@@ -858,6 +872,16 @@ def cmd_context(args):
             for l in lessons:
                 print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
             print()
+
+    # Context budget estimate
+    all_task_ids = set(deps) | {args.task_id}
+    ctx_chars = _estimate_context_size(args.project, all_task_ids)
+    ctx_kb = ctx_chars / 1024
+    print(f"### Context Budget")
+    print(f"Estimated context from dependencies: {ctx_kb:.1f} KB ({ctx_chars} chars)")
+    if ctx_kb > 50:
+        print(f"**WARNING**: Large context. Consider summarizing older dependency outputs.")
+    print()
 
 
 def cmd_config(args):

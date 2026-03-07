@@ -7,3 +7,6 @@ forge_output/
 # User-specific config (template is tracked, actual file is not)
 .claude/forge.local.md
 .mcp.json
+
+# Plugin registry (per-machine paths, rebuilt by scan)
+forge_plugins.json

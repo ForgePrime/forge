@@ -75,6 +75,16 @@ python -m core.git_ops commit {project} {task_id} -m "..."      Commit with meta
 python -m core.git_ops status                                   Show git state
 ```
 
+### Plugins (external skills)
+```
+python -m core.plugins add-path {path}                          Add external skill pack
+python -m core.plugins scan                                     Discover skills from paths
+python -m core.plugins list                                     List available plugins
+python -m core.plugins show {skill-name}                        Show skill details + SKILL.md path
+python -m core.plugins paths                                    Show configured scan paths
+python -m core.plugins remove-path {path}                       Remove scan path
+```
+
 ## Slash Commands
 
 | Command | Description |
@@ -88,6 +98,7 @@ python -m core.git_ops status                                   Show git state
 | `/log` | Show full audit trail (changes + decisions) |
 | `/compound` | Extract lessons learned from project execution |
 | `/onboard` | Import brownfield project knowledge into Forge (see `skills/onboard/SKILL.md`) |
+| `/process [skill]` | Execute external plugin skill: `/process` = list, `/process deep-verify` = execute |
 
 ## Task Properties
 

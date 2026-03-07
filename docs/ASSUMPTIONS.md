@@ -13,17 +13,15 @@ Updated as assumptions are validated or invalidated.
 - **Risk**: Low — can extend later without breaking core
 - **Deferred to**: v2 (multi-agent support)
 
-### A-002: Git is always available
-- **Assumed**: The working directory is a git repository
-- **Why**: Change tracking relies on git diff, git log, branch management
-- **Risk**: Medium — some users might use Forge without git
-- **Mitigation**: Gate that checks git availability at project creation
+### A-002: ~~Git is always available~~ RESOLVED
+- **Decision**: Git is recommended but optional. Forge works without git (with warnings).
+- **Why resolved**: `core/git_ops.py` implements graceful degradation — all git operations are optional. `changes diff` requires git, but `changes record` works without it.
+- **Resolved in**: v1.0, `core/git_ops.py`
 
-### A-003: Python 3.10+ available
-- **Assumed**: Target runtime is Python 3.10 or later
-- **Why**: Using match/case, type hints, pathlib features
+### A-003: Python 3.8+ available
+- **Assumed**: Target runtime is Python 3.8 or later
+- **Why**: Using type hints, pathlib, f-strings. No match/case used anywhere.
 - **Risk**: Low — Claude Code environments typically have modern Python
-- **Update**: Need to verify. If 3.9 is common, avoid match/case.
 
 ### A-004: Claude Code is the primary (but not only) consumer
 - **Assumed**: SKILL.md files are read by Claude Code, but core/ tools work standalone
@@ -40,7 +38,7 @@ Updated as assumptions are validated or invalidated.
 - **Assumed**: A skill is a directory with SKILL.md + optional Python tools
 - **Why**: Matches Skill_v1 pattern. Easy to read, copy, customize.
 - **Risk**: Doesn't scale to hundreds of skills
-- **Mitigation**: Can add a skill registry later if needed
+- **Mitigation**: `core/plugins.py` provides a skill registry with auto-discovery for external skill packs
 
 ### A-007: Output format is JSON for machines, Markdown for LLM
 - **Assumed**: Python CLI commands output Markdown (for LLM consumption), internal state is JSON
@@ -77,10 +75,10 @@ Updated as assumptions are validated or invalidated.
 - **Approach**: `core/gates.py` runs configured commands, stores results on task. Required gate failure prints warning but doesn't mechanically block `pipeline complete` — the skill procedure (`skills/next/SKILL.md`) instructs the LLM to fix before completing. This keeps Python as pure I/O, LLM as judge.
 - **Resolved in**: v1.0, `core/gates.py`
 
-### DD-005: Skill discovery and registration
-- **Options**: (a) Skills are hardcoded in config, (b) Auto-discovered from skills/ directory
-- **Leaning toward**: (b) auto-discovery with convention (directory must have SKILL.md)
-- **Decide when**: When implementing the plan skill (which creates task graph)
+### DD-005: ~~Skill discovery and registration~~ RESOLVED
+- **Decision**: Auto-discovery from configured scan paths via `core/plugins.py`
+- **Approach**: `plugins add-path` registers external skill pack directories. `plugins scan` discovers all `*/SKILL.md` subdirectories, parses YAML frontmatter, persists registry in `forge_plugins.json`. `/process {name}` executes discovered skills.
+- **Resolved in**: v1.0, `core/plugins.py`
 
 ### DD-006: How to handle context window limits
 - **Options**: (a) Rely on Claude Code's built-in compaction, (b) Forge-level context management
@@ -119,4 +117,7 @@ Updated as assumptions are validated or invalidated.
 
 ## Invalidated Assumptions (moved from Active)
 
-(None yet — project just started)
+### ~~A-002: Git is always available~~
+- **Was**: Assumed git is required
+- **Reality**: Git is optional. `core/git_ops.py` provides graceful degradation.
+- **Moved**: A-002 now marked RESOLVED in Active section above
