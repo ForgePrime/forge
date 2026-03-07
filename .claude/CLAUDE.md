@@ -18,10 +18,13 @@ You do NOT just write code. You:
 ```
 python -m core.pipeline init {project} --goal "..."      Create project
 python -m core.pipeline add-tasks {project} --data '...' Add tasks
+python -m core.pipeline update-task {project} --data '{...}' Update existing task
+python -m core.pipeline remove-task {project} {task_id}  Remove TODO task
 python -m core.pipeline next {project} [--agent name]    Get next task (two-phase claim)
 python -m core.pipeline complete {project} {task_id}     Mark done
 python -m core.pipeline contract add-tasks               Show task contract
-python -m core.pipeline status {project}                 Dashboard
+python -m core.pipeline contract update-task             Show update contract
+python -m core.pipeline status {project}                 Dashboard + DAG
 python -m core.pipeline context {project} {task_id}      Context from dependencies
 python -m core.pipeline config {project} --data '{...}'  Set project config
 ```
@@ -104,10 +107,14 @@ python -m core.plugins remove-path {path}                       Remove scan path
 
 When adding tasks, each task supports:
 - `id`, `name`, `description`, `instruction` — basic info
+- `acceptance_criteria` — list of concrete conditions that must be true when DONE
 - `depends_on` — list of task IDs that must complete first
 - `parallel` — `true` if this task can run alongside others (multi-agent)
 - `conflicts_with` — list of task IDs that modify same files (cannot run in parallel)
 - `skill` — path to SKILL.md for structured execution
+
+Tasks can be modified after creation with `update-task` (only TODO/FAILED tasks).
+Tasks can be removed with `remove-task` (only TODO, and only if no other tasks depend on them).
 
 ## Workflow
 

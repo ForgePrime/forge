@@ -142,12 +142,13 @@ CONTRACTS = {
     "add-tasks": {
         "required": ["id", "name"],
         "optional": ["description", "instruction", "depends_on", "parallel",
-                      "conflicts_with", "skill"],
+                      "conflicts_with", "skill", "acceptance_criteria"],
         "enums": {},
         "types": {
             "depends_on": list,
             "conflicts_with": list,
             "parallel": bool,
+            "acceptance_criteria": list,
         },
         "invariant_texts": [
             "id: unique task identifier (e.g., T-001)",
@@ -157,6 +158,7 @@ CONTRACTS = {
             "depends_on: list of prerequisite task IDs (must exist)",
             "parallel: true if this task can run alongside others",
             "conflicts_with: list of task IDs that modify same files",
+            "acceptance_criteria: list of concrete conditions that must be true when task is DONE",
         ],
         "example": [
             {
@@ -166,6 +168,10 @@ CONTRACTS = {
                 "instruction": "Create migrations/001_auth.sql with users and sessions tables. Follow existing migration patterns.",
                 "depends_on": [],
                 "parallel": False,
+                "acceptance_criteria": [
+                    "migrations/001_auth.sql exists with users and sessions tables",
+                    "Migration runs without errors on empty database",
+                ],
             },
             {
                 "id": "T-002",
@@ -175,6 +181,36 @@ CONTRACTS = {
                 "depends_on": ["T-001"],
                 "parallel": False,
                 "conflicts_with": ["T-003"],
+                "acceptance_criteria": [
+                    "Middleware rejects requests without valid JWT",
+                    "Middleware passes req.user to downstream handlers",
+                ],
+            },
+        ],
+    },
+    "update-task": {
+        "required": ["id"],
+        "optional": ["name", "description", "instruction", "depends_on",
+                      "conflicts_with", "skill", "acceptance_criteria"],
+        "enums": {},
+        "types": {
+            "depends_on": list,
+            "conflicts_with": list,
+            "acceptance_criteria": list,
+        },
+        "invariant_texts": [
+            "id: existing task ID to update",
+            "Only provided fields are updated — omitted fields stay unchanged",
+            "Cannot update tasks that are IN_PROGRESS or DONE",
+        ],
+        "example": [
+            {
+                "id": "T-002",
+                "acceptance_criteria": [
+                    "Middleware rejects expired tokens",
+                    "Returns 401 with error body on failure",
+                ],
+                "depends_on": ["T-001", "T-003"],
             },
         ],
     },
@@ -272,6 +308,7 @@ def cmd_add_tasks(args):
             "conflicts_with": t.get("conflicts_with", []),
             "skill": t.get("skill"),
             "instruction": t.get("instruction", ""),
+            "acceptance_criteria": t.get("acceptance_criteria", []),
             "status": "TODO",
             "started_at": None,
             "completed_at": None,
@@ -540,6 +577,88 @@ def cmd_reset(args):
     print_task_list(tracker)
 
 
+def cmd_update_task(args):
+    """Update fields of an existing task."""
+    tracker = load_tracker(args.project)
+
+    try:
+        updates = json.loads(args.data)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(updates, dict):
+        print("ERROR: --data must be a JSON object", file=sys.stderr)
+        sys.exit(1)
+
+    errors = validate_contract(CONTRACTS["update-task"], [updates])
+    if errors:
+        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
+        for e in errors[:10]:
+            print(f"  {e}", file=sys.stderr)
+        sys.exit(1)
+
+    task = find_task(tracker, updates["id"])
+
+    if task["status"] in ("IN_PROGRESS", "DONE"):
+        print(f"ERROR: Cannot update task {updates['id']} — status is {task['status']}. "
+              f"Reset it first.", file=sys.stderr)
+        sys.exit(1)
+
+    # Apply updates (only provided fields)
+    updatable = ["name", "description", "instruction", "depends_on",
+                 "conflicts_with", "skill", "acceptance_criteria"]
+    changed = []
+    for field in updatable:
+        if field in updates:
+            old = task.get(field)
+            task[field] = updates[field]
+            if old != updates[field]:
+                changed.append(field)
+
+    if not changed:
+        print(f"No changes to task {updates['id']}.")
+        return
+
+    # Re-validate DAG if dependencies changed
+    if "depends_on" in updates:
+        dag_errors = validate_dag(tracker["tasks"])
+        if dag_errors:
+            print(f"ERROR: Updated dependencies create invalid graph:", file=sys.stderr)
+            for e in dag_errors:
+                print(f"  {e}", file=sys.stderr)
+            sys.exit(1)
+
+    save_tracker(args.project, tracker)
+    print(f"Updated task {updates['id']}: {', '.join(changed)}")
+    print_task_detail(task)
+
+
+def cmd_remove_task(args):
+    """Remove a TODO task from the graph."""
+    tracker = load_tracker(args.project)
+    task = find_task(tracker, args.task_id)
+
+    if task["status"] != "TODO":
+        print(f"ERROR: Can only remove TODO tasks. {args.task_id} is {task['status']}.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    # Check if other tasks depend on this one
+    dependents = [t["id"] for t in tracker["tasks"]
+                  if args.task_id in t.get("depends_on", [])]
+    if dependents:
+        print(f"ERROR: Cannot remove {args.task_id} — these tasks depend on it: "
+              f"{', '.join(dependents)}", file=sys.stderr)
+        print(f"Update their depends_on first, or remove them.", file=sys.stderr)
+        sys.exit(1)
+
+    tracker["tasks"] = [t for t in tracker["tasks"] if t["id"] != args.task_id]
+    save_tracker(args.project, tracker)
+    print(f"Removed task {args.task_id} ({task['name']})")
+    print_task_list(tracker)
+
+
 # -- Subtask Commands --
 
 def _next_subtask(project: str, tracker: dict, task: dict):
@@ -739,6 +858,56 @@ def print_status(project: str, tracker: dict):
             line += f" -- {task.get('failed_reason', '')}"
         print(line)
 
+    # DAG visualization
+    print()
+    print_dag(tasks)
+
+
+def print_dag(tasks: list):
+    """Print ASCII dependency graph."""
+    if not tasks:
+        return
+
+    task_map = {t["id"]: t for t in tasks}
+    # Find root tasks (no dependencies)
+    roots = [t["id"] for t in tasks if not t.get("depends_on")]
+    # Find children for each task
+    children = {}
+    for t in tasks:
+        for dep in t.get("depends_on", []):
+            children.setdefault(dep, []).append(t["id"])
+
+    if not roots and tasks:
+        # All tasks have deps — show flat
+        roots = [tasks[0]["id"]]
+
+    printed = set()
+
+    def _render(tid, prefix="", is_last=True):
+        if tid in printed:
+            return
+        printed.add(tid)
+        t = task_map.get(tid)
+        if not t:
+            return
+        icon = STATUS_ICONS.get(t["status"], "?")
+        connector = "└── " if is_last else "├── "
+        print(f"  {prefix}{connector}{icon} {tid} {t['name']}")
+        kids = children.get(tid, [])
+        child_prefix = prefix + ("    " if is_last else "│   ")
+        for i, kid in enumerate(kids):
+            _render(kid, child_prefix, i == len(kids) - 1)
+
+    print("```")
+    print(f"  {task_map.get(roots[0], {}).get('name', 'project') if roots else 'project'}")
+    for i, root in enumerate(roots):
+        _render(root, "", i == len(roots) - 1)
+    # Show orphans (tasks not reached from roots)
+    for t in tasks:
+        if t["id"] not in printed:
+            _render(t["id"], "", True)
+    print("```")
+
 
 def print_task_list(tracker: dict):
     """Print all tasks as MD table."""
@@ -766,6 +935,14 @@ def print_task_detail(task: dict):
     print(f"")
     if task["depends_on"]:
         print(f"**Dependencies**: {', '.join(task['depends_on'])}")
+
+    ac = task.get("acceptance_criteria", [])
+    if ac:
+        print(f"")
+        print(f"**Acceptance Criteria**:")
+        for criterion in ac:
+            print(f"  - [ ] {criterion}")
+
     print(f"")
     print(f"When done: `python -m core.pipeline complete {{project}} {task['id']}`")
 
@@ -972,6 +1149,14 @@ def main():
     p.add_argument("project")
     p.add_argument("--from", dest="from_task", required=True)
 
+    p = sub.add_parser("update-task", help="Update an existing task")
+    p.add_argument("project")
+    p.add_argument("--data", required=True, help="JSON object with id + fields to update")
+
+    p = sub.add_parser("remove-task", help="Remove a TODO task")
+    p.add_argument("project")
+    p.add_argument("task_id")
+
     p = sub.add_parser("context", help="Aggregated context for a task")
     p.add_argument("project")
     p.add_argument("task_id")
@@ -1008,6 +1193,8 @@ def main():
         "status": cmd_status,
         "list": cmd_list,
         "reset": cmd_reset,
+        "update-task": cmd_update_task,
+        "remove-task": cmd_remove_task,
         "context": cmd_context,
         "config": cmd_config,
         "contract": lambda args: print(render_contract(args.name, CONTRACTS[args.name])),
