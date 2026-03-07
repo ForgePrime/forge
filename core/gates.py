@@ -27,12 +27,39 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from contracts import render_contract, validate_contract
+
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8")
+
+
+# -- Contracts --
+
+CONTRACTS = {
+    "config": {
+        "required": ["name", "command"],
+        "optional": ["required"],
+        "enums": {},
+        "types": {
+            "required": bool,
+        },
+        "invariant_texts": [
+            "name: short identifier for the gate (e.g., 'test', 'lint', 'typecheck')",
+            "command: shell command to execute (e.g., 'pytest', 'ruff check .')",
+            "required: if true (default), gate failure blocks task completion",
+        ],
+        "example": [
+            {"name": "test", "command": "pytest", "required": True},
+            {"name": "lint", "command": "ruff check .", "required": True},
+            {"name": "typecheck", "command": "mypy src/", "required": False},
+        ],
+    },
+}
 
 
 # -- Paths --
@@ -78,10 +105,12 @@ def cmd_config(args):
         print("ERROR: --data must be a JSON array of gate objects", file=sys.stderr)
         sys.exit(1)
 
-    for g in gates:
-        if "name" not in g or "command" not in g:
-            print("ERROR: Each gate must have 'name' and 'command'", file=sys.stderr)
-            sys.exit(1)
+    errors = validate_contract(CONTRACTS["config"], gates)
+    if errors:
+        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
+        for e in errors[:10]:
+            print(f"  {e}", file=sys.stderr)
+        sys.exit(1)
 
     tracker["gates"] = gates
     save_tracker(args.project, tracker)
@@ -329,6 +358,9 @@ def main():
     p = sub.add_parser("scan-secrets", help="Scan for leaked secrets")
     p.add_argument("project")
 
+    p = sub.add_parser("contract", help="Print contract spec")
+    p.add_argument("name", choices=sorted(CONTRACTS.keys()))
+
     args = parser.parse_args()
 
     commands = {
@@ -336,6 +368,7 @@ def main():
         "show": cmd_show,
         "check": cmd_check,
         "scan-secrets": cmd_scan_secrets,
+        "contract": lambda a: print(render_contract(a.name, CONTRACTS[a.name])),
     }
 
     commands[args.command](args)

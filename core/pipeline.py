@@ -178,6 +178,26 @@ CONTRACTS = {
             },
         ],
     },
+    "config": {
+        "required": [],
+        "optional": ["test_cmd", "lint_cmd", "typecheck_cmd", "branch_prefix"],
+        "enums": {},
+        "types": {},
+        "invariant_texts": [
+            "test_cmd: shell command to run tests (e.g., 'pytest', 'npm test')",
+            "lint_cmd: shell command to run linter (e.g., 'ruff check .', 'npm run lint')",
+            "typecheck_cmd: shell command for type checking (e.g., 'mypy src/', 'npx tsc --noEmit')",
+            "branch_prefix: prefix for git branches (e.g., 'forge/')",
+            "Config is a flat JSON object, not an array",
+        ],
+        "example": [
+            {
+                "test_cmd": "pytest",
+                "lint_cmd": "ruff check .",
+                "branch_prefix": "forge/",
+            },
+        ],
+    },
 }
 
 
@@ -850,6 +870,15 @@ def cmd_config(args):
         except json.JSONDecodeError as e:
             print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
             sys.exit(1)
+
+        if not isinstance(config, dict):
+            print("ERROR: --data must be a JSON object", file=sys.stderr)
+            sys.exit(1)
+
+        known_keys = set(CONTRACTS["config"]["optional"])
+        unknown = set(config.keys()) - known_keys
+        if unknown:
+            print(f"WARNING: Unknown config keys: {', '.join(sorted(unknown))}", file=sys.stderr)
 
         existing = tracker.get("config", {})
         existing.update(config)

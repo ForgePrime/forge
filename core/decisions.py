@@ -81,10 +81,11 @@ CONTRACTS = {
                       "decided_by", "file", "scope"],
         "enums": {
             "type": {"architecture", "implementation", "dependency", "security",
-                     "performance", "testing", "naming", "other"},
+                     "performance", "testing", "naming", "convention", "constraint",
+                     "other"},
             "confidence": {"HIGH", "MEDIUM", "LOW"},
             "status": {"OPEN", "CLOSED", "DEFERRED"},
-            "decided_by": {"claude", "user"},
+            "decided_by": {"claude", "user", "imported"},
         },
         "types": {
             "alternatives": list,
@@ -165,9 +166,11 @@ def cmd_add(args):
     if tracker_file.exists():
         tracker = json.loads(tracker_file.read_text(encoding="utf-8"))
         valid_task_ids = {t["id"] for t in tracker.get("tasks", [])}
+        # Special task IDs used by skills for pre-task decisions
+        special_ids = {"PLANNING", "ONBOARDING", "REVIEW"}
         for d in new_decisions:
             tid = d.get("task_id", "")
-            if tid and tid not in valid_task_ids:
+            if tid and tid not in valid_task_ids and tid not in special_ids:
                 print(f"WARNING: task_id '{tid}' not found in pipeline. Decision will be saved but may be orphaned.", file=sys.stderr)
 
     data = load_or_create(args.project)

@@ -58,6 +58,7 @@ python -m core.gates config {project} --data '[...]'   Configure test/lint gates
 python -m core.gates show {project}                    Show configured gates
 python -m core.gates check {project} --task {task_id}  Run all gates
 python -m core.gates scan-secrets {project}            Scan for leaked credentials
+python -m core.gates contract config                   Show gate contract
 ```
 
 ### Recipes (task graph templates)
@@ -85,6 +86,7 @@ python -m core.git_ops status                                   Show git state
 | `/review {task_id}` | Structured code review (see `skills/review/SKILL.md`) |
 | `/log` | Show full audit trail (changes + decisions) |
 | `/compound` | Extract lessons learned from project execution |
+| `/onboard` | Import brownfield project knowledge into Forge (see `skills/onboard/SKILL.md`) |
 
 ## Task Properties
 
@@ -96,6 +98,10 @@ When adding tasks, each task supports:
 - `skill` — path to SKILL.md for structured execution
 
 ## Workflow
+
+For brownfield projects (existing codebase):
+1. Run `/onboard` — discover project, import decisions/conventions, configure gates
+2. Then continue with `/plan {goal}` for specific work
 
 When user gives a goal:
 1. Run `/plan {goal}` — creates project, decomposes into tasks
