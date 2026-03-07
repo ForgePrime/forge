@@ -6,6 +6,7 @@
     {
       "id": "T-001",
       "name": "investigate-{affected_area}",
+      "type": "investigation",
       "description": "Investigate root cause of: {bug_description}",
       "instruction": "Read the code in {affected_area}. Reproduce the bug. Identify the root cause. Record findings as a decision with reasoning.",
       "depends_on": []
@@ -13,6 +14,7 @@
     {
       "id": "T-002",
       "name": "fix-{affected_area}",
+      "type": "bug",
       "description": "Apply fix for: {bug_description}",
       "instruction": "Fix the root cause identified in T-001. Make the minimal change needed. Do not refactor surrounding code unless directly related to the fix.",
       "depends_on": ["T-001"]
@@ -20,6 +22,7 @@
     {
       "id": "T-003",
       "name": "regression-test-{affected_area}",
+      "type": "chore",
       "description": "Add regression test for: {bug_description}",
       "instruction": "Write a test that would have caught this bug. The test should fail without the fix and pass with it. Add to existing test suite.",
       "depends_on": ["T-002"]

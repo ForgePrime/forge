@@ -142,13 +142,17 @@ CONTRACTS = {
     "add-tasks": {
         "required": ["id", "name"],
         "optional": ["description", "instruction", "depends_on", "parallel",
-                      "conflicts_with", "skill", "acceptance_criteria"],
-        "enums": {},
+                      "conflicts_with", "skill", "acceptance_criteria",
+                      "type", "blocked_by_decisions"],
+        "enums": {
+            "type": {"feature", "bug", "chore", "investigation"},
+        },
         "types": {
             "depends_on": list,
             "conflicts_with": list,
             "parallel": bool,
             "acceptance_criteria": list,
+            "blocked_by_decisions": list,
         },
         "invariant_texts": [
             "id: unique task identifier (e.g., T-001)",
@@ -159,6 +163,8 @@ CONTRACTS = {
             "parallel: true if this task can run alongside others",
             "conflicts_with: list of task IDs that modify same files",
             "acceptance_criteria: list of concrete conditions that must be true when task is DONE",
+            "type: task category — feature (default), bug, chore, or investigation",
+            "blocked_by_decisions: list of decision IDs (D-001, etc.) that must be CLOSED before this task can start",
         ],
         "example": [
             {
@@ -168,6 +174,7 @@ CONTRACTS = {
                 "instruction": "Create migrations/001_auth.sql with users and sessions tables. Follow existing migration patterns.",
                 "depends_on": [],
                 "parallel": False,
+                "type": "feature",
                 "acceptance_criteria": [
                     "migrations/001_auth.sql exists with users and sessions tables",
                     "Migration runs without errors on empty database",
@@ -181,6 +188,8 @@ CONTRACTS = {
                 "depends_on": ["T-001"],
                 "parallel": False,
                 "conflicts_with": ["T-003"],
+                "blocked_by_decisions": ["D-001"],
+                "type": "feature",
                 "acceptance_criteria": [
                     "Middleware rejects requests without valid JWT",
                     "Middleware passes req.user to downstream handlers",
@@ -191,12 +200,16 @@ CONTRACTS = {
     "update-task": {
         "required": ["id"],
         "optional": ["name", "description", "instruction", "depends_on",
-                      "conflicts_with", "skill", "acceptance_criteria"],
-        "enums": {},
+                      "conflicts_with", "skill", "acceptance_criteria",
+                      "type", "blocked_by_decisions"],
+        "enums": {
+            "type": {"feature", "bug", "chore", "investigation"},
+        },
         "types": {
             "depends_on": list,
             "conflicts_with": list,
             "acceptance_criteria": list,
+            "blocked_by_decisions": list,
         },
         "invariant_texts": [
             "id: existing task ID to update",
@@ -309,6 +322,8 @@ def cmd_add_tasks(args):
             "skill": t.get("skill"),
             "instruction": t.get("instruction", ""),
             "acceptance_criteria": t.get("acceptance_criteria", []),
+            "type": t.get("type", "feature"),
+            "blocked_by_decisions": t.get("blocked_by_decisions", []),
             "status": "TODO",
             "started_at": None,
             "completed_at": None,
@@ -342,6 +357,23 @@ def _has_conflict(task: dict, active_ids: set) -> bool:
     """Check if task conflicts with any active task."""
     conflicts = set(task.get("conflicts_with", []))
     return bool(conflicts & active_ids)
+
+
+def _load_open_decision_ids(project: str) -> set:
+    """Load set of OPEN decision IDs from decisions.json."""
+    dpath = Path("forge_output") / project / "decisions.json"
+    if not dpath.exists():
+        return set()
+    data = json.loads(dpath.read_text(encoding="utf-8"))
+    return {d["id"] for d in data.get("decisions", []) if d.get("status") == "OPEN"}
+
+
+def _blocked_by_open_decisions(task: dict, open_decision_ids: set) -> list:
+    """Return list of OPEN decision IDs that block this task."""
+    required = set(task.get("blocked_by_decisions", []))
+    if not required:
+        return []
+    return sorted(required & open_decision_ids)
 
 
 def cmd_next(args):
@@ -392,8 +424,10 @@ def cmd_next(args):
             print_task_detail(task)
             return
 
-    # Find next TODO with deps met and no conflicts with active tasks
+    # Find next TODO with deps met, no conflicts, and no blocking decisions
+    open_decisions = _load_open_decision_ids(args.project)
     candidate = None
+    blocked_by_dec_tasks = []
     for task in tracker["tasks"]:
         if task["status"] != "TODO":
             continue
@@ -401,6 +435,10 @@ def cmd_next(args):
         if not deps_met:
             continue
         if _has_conflict(task, active_ids):
+            continue
+        blocking_decs = _blocked_by_open_decisions(task, open_decisions)
+        if blocking_decs:
+            blocked_by_dec_tasks.append((task, blocking_decs))
             continue
         candidate = task
         break
@@ -426,6 +464,13 @@ def cmd_next(args):
                 print()
                 for t in failed:
                     print(f"  FAILED: {t['id']} {t['name']}: {t['failed_reason']}")
+            elif blocked_by_dec_tasks:
+                print(f"## Tasks blocked by OPEN decisions")
+                print()
+                for t, decs in blocked_by_dec_tasks:
+                    print(f"  {t['id']} {t['name']} — blocked by: {', '.join(decs)}")
+                print()
+                print(f"Resolve with `/decide` or: python -m core.decisions update {args.project} --data '[...]'")
             elif blocked_by_conflict:
                 print(f"## All available tasks conflict with active tasks")
                 print(f"Agent: {agent}")
@@ -607,7 +652,8 @@ def cmd_update_task(args):
 
     # Apply updates (only provided fields)
     updatable = ["name", "description", "instruction", "depends_on",
-                 "conflicts_with", "skill", "acceptance_criteria"]
+                 "conflicts_with", "skill", "acceptance_criteria",
+                 "type", "blocked_by_decisions"]
     changed = []
     for field in updatable:
         if field in updates:
@@ -833,6 +879,15 @@ def print_status(project: str, tracker: dict):
     if in_progress:
         parts.append(f"Current: {in_progress[0]['id']}")
     print(f"  {' | '.join(parts)}")
+
+    # Type breakdown (only if any non-default types exist)
+    type_counts = {}
+    for t in tasks:
+        ttype = t.get("type", "feature")
+        type_counts[ttype] = type_counts.get(ttype, 0) + 1
+    if len(type_counts) > 1 or "feature" not in type_counts:
+        type_parts = [f"{k}: {v}" for k, v in sorted(type_counts.items())]
+        print(f"  Types: {' | '.join(type_parts)}")
     print(f"")
 
     # Progress bar
@@ -845,7 +900,9 @@ def print_status(project: str, tracker: dict):
 
     for task in tasks:
         icon = STATUS_ICONS.get(task["status"], "?")
-        line = f"  {icon} {task['id']} {task['name']}"
+        ttype = task.get("type", "feature")
+        type_label = f" [{ttype}]" if ttype != "feature" else ""
+        line = f"  {icon} {task['id']} {task['name']}{type_label}"
         agent_label = f" ({task['agent']})" if task.get("agent") else ""
         if task["status"] == "IN_PROGRESS":
             if task.get("has_subtasks"):
@@ -911,17 +968,22 @@ def print_dag(tasks: list):
 
 def print_task_list(tracker: dict):
     """Print all tasks as MD table."""
-    print("| # | ID | Name | Status | Depends On | Skill |")
-    print("|---|-----|------|--------|------------|-------|")
+    print("| # | ID | Name | Type | Status | Depends On | Blocked By |")
+    print("|---|-----|------|------|--------|------------|------------|")
     for i, task in enumerate(tracker["tasks"], 1):
         deps = ", ".join(task["depends_on"]) if task["depends_on"] else "--"
-        skill = task.get("skill", "--") or "--"
+        ttype = task.get("type", "feature")
+        blocked = ", ".join(task.get("blocked_by_decisions", [])) or "--"
         icon = STATUS_ICONS.get(task["status"], "?")
-        print(f"| {i} | {task['id']} | {task['name']} | {icon} {task['status']} | {deps} | {skill} |")
+        print(f"| {i} | {task['id']} | {task['name']} | {ttype} | {icon} {task['status']} | {deps} | {blocked} |")
 
 
 def print_task_detail(task: dict):
     """Print full task detail."""
+    ttype = task.get("type", "feature")
+    if ttype != "feature":
+        print(f"**Type**: {ttype}")
+
     if task.get("description"):
         print(f"**Description**: {task['description']}")
         print(f"")
@@ -935,6 +997,10 @@ def print_task_detail(task: dict):
     print(f"")
     if task["depends_on"]:
         print(f"**Dependencies**: {', '.join(task['depends_on'])}")
+
+    blocked = task.get("blocked_by_decisions", [])
+    if blocked:
+        print(f"**Blocked by decisions**: {', '.join(blocked)}")
 
     ac = task.get("acceptance_criteria", [])
     if ac:
