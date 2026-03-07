@@ -6,6 +6,8 @@ Evolved from Skill_v1's forge_pipeline.py. Key differences:
 - Dynamic task graph — tasks are added by the plan skill, not hardcoded
 - No domain-specific logic — pure state machine
 - Tasks form a DAG with explicit dependencies
+- Tasks support `parallel` and `conflicts_with` metadata (stored, not enforced
+  in single-agent mode — designed for future multi-agent orchestration)
 
 State machine per task: TODO -> IN_PROGRESS -> DONE | FAILED | SKIPPED
 Subtasks: a task can have child subtasks for batch processing.

@@ -34,7 +34,8 @@ python -m core.decisions contract add                   See expected format
 
 ### Changes (what was modified)
 ```
-python -m core.changes record {project} --data '...'   Record file changes
+python -m core.changes diff {project} {task_id}         Auto-detect changes from git
+python -m core.changes record {project} --data '...'    Record file changes
 python -m core.changes read {project}                   View change log
 python -m core.changes summary {project}                Statistics
 python -m core.changes contract                         See expected format

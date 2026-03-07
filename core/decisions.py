@@ -160,6 +160,16 @@ def cmd_add(args):
             print(f"  {e}", file=sys.stderr)
         sys.exit(1)
 
+    # Cross-validate: check task_ids exist in pipeline
+    tracker_file = Path("forge_output") / args.project / "tracker.json"
+    if tracker_file.exists():
+        tracker = json.loads(tracker_file.read_text(encoding="utf-8"))
+        valid_task_ids = {t["id"] for t in tracker.get("tasks", [])}
+        for d in new_decisions:
+            tid = d.get("task_id", "")
+            if tid and tid not in valid_task_ids:
+                print(f"WARNING: task_id '{tid}' not found in pipeline. Decision will be saved but may be orphaned.", file=sys.stderr)
+
     data = load_or_create(args.project)
     timestamp = now_iso()
 

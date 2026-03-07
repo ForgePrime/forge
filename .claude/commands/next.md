@@ -27,9 +27,14 @@ python -m core.pipeline next {project}
       ```bash
       python -m core.decisions add {project} --data '[{...}]'
       ```
-   f. After making code changes, record them:
+   f. After making code changes, use `changes diff` to auto-detect what changed:
       ```bash
-      python -m core.changes record {project} --data '[{...}]'
+      python -m core.changes diff {project} {task_id}
+      ```
+      Review the suggested change records, enrich with `reasoning_trace` and `decision_ids`,
+      then record:
+      ```bash
+      python -m core.changes record {project} --data '[{...enriched records...}]'
       ```
    g. Run relevant tests/lint to validate
    h. Mark complete:

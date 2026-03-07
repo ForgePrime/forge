@@ -143,6 +143,26 @@ def cmd_record(args):
             print(f"  {e}", file=sys.stderr)
         sys.exit(1)
 
+    # Cross-validate: check task_ids and decision_ids exist
+    tracker_file = Path("forge_output") / args.project / "tracker.json"
+    decisions_file = Path("forge_output") / args.project / "decisions.json"
+    valid_task_ids = set()
+    valid_decision_ids = set()
+    if tracker_file.exists():
+        tracker = json.loads(tracker_file.read_text(encoding="utf-8"))
+        valid_task_ids = {t["id"] for t in tracker.get("tasks", [])}
+    if decisions_file.exists():
+        dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
+        valid_decision_ids = {d["id"] for d in dec_data.get("decisions", [])}
+
+    for c in new_changes:
+        tid = c.get("task_id", "")
+        if valid_task_ids and tid not in valid_task_ids:
+            print(f"WARNING: task_id '{tid}' not found in pipeline.", file=sys.stderr)
+        for did in c.get("decision_ids", []):
+            if valid_decision_ids and did not in valid_decision_ids:
+                print(f"WARNING: decision_id '{did}' not found in decisions.json.", file=sys.stderr)
+
     data = load_or_create(args.project)
     timestamp = now_iso()
 
@@ -254,6 +274,102 @@ def cmd_summary(args):
         print(f"  {task}: {count}")
 
 
+def cmd_diff(args):
+    """Show git changes as Forge-ready output for the LLM to review and record.
+
+    This is a LOW-FRICTION alternative to manual `record`:
+    1. Run `changes diff {project} {task_id}` — shows git diff formatted for LLM
+    2. LLM reviews, adds reasoning_trace and decision_ids
+    3. LLM calls `changes record` with enriched data
+
+    This solves the friction problem: instead of making the LLM remember to
+    record changes, the workflow explicitly asks "what changed?" at task completion.
+    """
+    import subprocess
+
+    task_id = args.task_id
+
+    # Get staged + unstaged changes
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--stat", "HEAD"],
+            capture_output=True, text=True, encoding="utf-8"
+        )
+        diff_stat = result.stdout.strip()
+    except FileNotFoundError:
+        print("WARNING: git not available. Use manual `record` instead.", file=sys.stderr)
+        return
+
+    if not diff_stat:
+        # Try staged only
+        result = subprocess.run(
+            ["git", "diff", "--stat", "--cached"],
+            capture_output=True, text=True, encoding="utf-8"
+        )
+        diff_stat = result.stdout.strip()
+
+    if not diff_stat:
+        print("No git changes detected. Nothing to record.")
+        return
+
+    # Parse diff stat into file entries
+    print(f"## Git changes for task {task_id}")
+    print()
+    print(f"```")
+    print(diff_stat)
+    print(f"```")
+    print()
+
+    # Parse individual files from diff --numstat
+    result = subprocess.run(
+        ["git", "diff", "--numstat", "HEAD"],
+        capture_output=True, text=True, encoding="utf-8"
+    )
+    if not result.stdout.strip():
+        result = subprocess.run(
+            ["git", "diff", "--numstat", "--cached"],
+            capture_output=True, text=True, encoding="utf-8"
+        )
+
+    entries = []
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) == 3:
+            added, removed, filepath = parts
+            added = int(added) if added != "-" else 0
+            removed = int(removed) if removed != "-" else 0
+
+            # Detect action
+            action = "edit"
+            check_new = subprocess.run(
+                ["git", "diff", "--diff-filter=A", "--name-only", "HEAD", "--", filepath],
+                capture_output=True, text=True, encoding="utf-8"
+            )
+            if filepath in check_new.stdout:
+                action = "create"
+
+            entries.append({
+                "task_id": task_id,
+                "file": filepath,
+                "action": action,
+                "summary": f"(add reasoning: what and why)",
+                "lines_added": added,
+                "lines_removed": removed,
+            })
+
+    if entries:
+        print("Suggested change records (add reasoning_trace and decision_ids):")
+        print()
+        print("```json")
+        print(json.dumps(entries, indent=2, ensure_ascii=False))
+        print("```")
+        print()
+        print("Record with:")
+        print(f"  python -m core.changes record {args.project} --data '...'")
+
+
 def cmd_contract(args):
     """Print contract spec."""
     print(render_contract("record", CONTRACTS["record"]))
@@ -269,6 +385,10 @@ def main():
     p.add_argument("project")
     p.add_argument("--data", required=True)
 
+    p = sub.add_parser("diff", help="Show git changes for a task (low-friction recording)")
+    p.add_argument("project")
+    p.add_argument("task_id", help="Task ID to associate changes with")
+
     p = sub.add_parser("read", help="Read change log")
     p.add_argument("project")
     p.add_argument("--task", help="Filter by task_id")
@@ -282,6 +402,7 @@ def main():
 
     commands = {
         "record": cmd_record,
+        "diff": cmd_diff,
         "read": cmd_read,
         "summary": cmd_summary,
         "contract": cmd_contract,
