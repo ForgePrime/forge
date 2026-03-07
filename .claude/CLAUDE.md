@@ -82,6 +82,7 @@ python -m core.git_ops status                                   Show git state
 | `/plan {goal}` | Decompose a goal into a tracked task graph |
 | `/status` | Show current project status |
 | `/next` | Get and start the next task (see `skills/next/SKILL.md`) |
+| `/run [tasks]` | Execute tasks continuously: `/run`, `/run 3`, `/run T-003`, `/run T-003..T-007`, `/run T-003,T-005` |
 | `/decide` | Review and resolve open decisions |
 | `/review {task_id}` | Structured code review (see `skills/review/SKILL.md`) |
 | `/log` | Show full audit trail (changes + decisions) |
