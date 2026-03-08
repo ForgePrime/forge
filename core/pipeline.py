@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
+from contracts import render_contract, validate_contract, atomic_write_json
 
 CLAIM_WAIT_SECONDS = 1.5
 
@@ -78,12 +78,8 @@ def load_tracker(project: str) -> dict:
 
 def save_tracker(project: str, tracker: dict):
     path = tracker_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
     tracker["updated"] = now_iso()
-    path.write_text(
-        json.dumps(tracker, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    atomic_write_json(path, tracker)
 
 
 def find_task(tracker: dict, task_id: str) -> dict:

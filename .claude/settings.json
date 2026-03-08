@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'if echo \"$TOOL_INPUT\" | grep -q \"core.pipeline complete \"; then echo \"Task completed. Run /status to verify pipeline state. Remember to record any unlogged changes or decisions.\"; fi'"
+            "command": "bash -c 'if echo \"$TOOL_INPUT\" | grep -q \"core.pipeline complete \"; then TASK_ID=$(echo \"$TOOL_INPUT\" | grep -oP \"complete \\S+ \\K\\S+\"); PROJECT=$(echo \"$TOOL_INPUT\" | grep -oP \"complete \\K\\S+\"); CHANGES_FILE=\"forge_output/$PROJECT/changes.json\"; if [ -f \"$CHANGES_FILE\" ]; then COUNT=$(python -c \"import json,sys; d=json.load(open(sys.argv[1],encoding=\\\"utf-8\\\")); print(sum(1 for c in d.get(\\\"changes\\\",[]) if c.get(\\\"task_id\\\")==sys.argv[2]))\" \"$CHANGES_FILE\" \"$TASK_ID\" 2>/dev/null); if [ \"$COUNT\" = \"0\" ] || [ -z \"$COUNT\" ]; then echo \"WARNING: No changes recorded for $TASK_ID. Run changes diff + changes record before completing.\"; else echo \"Task $TASK_ID completed. $COUNT change(s) recorded.\"; fi; else echo \"WARNING: No changes.json found. Run changes record for $TASK_ID.\"; fi; fi'"
           }
         ]
       }

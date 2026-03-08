@@ -25,7 +25,30 @@ Usage:
 """
 
 import json
+import os
+import tempfile
+from pathlib import Path
 from typing import Any
+
+
+def atomic_write_json(path: Path, data: dict):
+    """Write JSON atomically: write to temp file, then os.replace().
+
+    Prevents corruption from partial writes (crash, kill, power loss).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def render_contract(name: str, spec: dict) -> str:

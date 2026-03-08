@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
+from contracts import render_contract, validate_contract, atomic_write_json
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -64,9 +64,8 @@ def load_or_create(project: str) -> dict:
 
 def save_json(project: str, data: dict):
     path = lessons_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
     data["updated"] = now_iso()
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    atomic_write_json(path, data)
 
 
 # -- Contract --

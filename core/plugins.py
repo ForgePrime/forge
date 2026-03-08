@@ -28,6 +28,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from contracts import atomic_write_json
+
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     if hasattr(sys.stdout, "reconfigure"):
@@ -50,10 +53,7 @@ def load_config() -> dict:
 
 
 def save_config(data: dict):
-    config_path().write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(config_path(), data)
 
 
 def now_iso() -> str:
