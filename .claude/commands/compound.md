@@ -23,6 +23,19 @@ python -m core.changes read {project}
    - **architecture-lesson**: Structural insights
    - **process-improvement**: Better workflow approaches
 
+### Guidelines effectiveness
+
+Analyze which guidelines were actually checked during execution:
+```bash
+python -m core.changes read {project}
+python -m core.guidelines read {project} --status ACTIVE
+```
+
+Cross-reference `guidelines_checked` in change records against active guidelines:
+- Which guidelines were checked most/least?
+- Were any must-guidelines never checked? (potential gap)
+- Include findings in lessons.
+
 3. For each lesson, load the contract first:
 ```bash
 python -m core.lessons contract

@@ -50,6 +50,7 @@ description: "Decompose a high-level goal into a tracked, dependency-aware task 
 - Dependencies form a valid DAG (no cycles, validated by pipeline)
 - No task has more than 3 dependencies (symptom of poor decomposition)
 - User has reviewed and approved the plan before execution
+- Must-guidelines respected in task design (no task violates a must-guideline without a recorded decision)
 
 ## References
 
@@ -90,7 +91,7 @@ Read the existing codebase to understand what exists:
 
 Check lessons from past projects for relevant patterns:
 ```bash
-python -m core.lessons read-all
+python -m core.lessons read-all --severity critical --limit 15
 ```
 
 Check project guidelines (if project exists or will be created from existing one):
@@ -101,6 +102,17 @@ python -m core.guidelines read {project} --weight must
 Note any lessons and `must` guidelines that apply to the current goal. Guidelines inform decomposition — e.g., if a guideline says "every endpoint needs rate limiting", that affects task structure.
 
 When decomposing (Step 5), assign `scopes` to each task based on which guidelines apply.
+
+If planning from an idea (`/plan I-001`), load the idea's scopes and use them to filter guidelines:
+```bash
+python -m core.ideas show {project} {idea_id}
+python -m core.guidelines context {project} --scopes "{idea_scopes}"
+```
+
+**Must-guidelines are non-negotiable during decomposition:**
+- If a must-guideline says "all endpoints need rate limiting" → include a rate limiting task or subtask
+- If a must-guideline says "use PostgreSQL" → do NOT plan tasks with MongoDB
+- Record a decision if a must-guideline conflicts with the goal (don't silently ignore)
 
 ---
 
@@ -184,6 +196,7 @@ For each task, specify:
 - `depends_on`: list of prerequisite task IDs
 - `parallel`: true if this task can run alongside siblings
 - `conflicts_with`: list of task IDs modifying same files
+- `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). Inherit from idea scopes where applicable. `general` is always included automatically during execution.
 
 Store as draft plan for review (W2):
 ```bash

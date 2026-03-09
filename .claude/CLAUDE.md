@@ -75,7 +75,7 @@ python -m core.lessons contract                         See expected format
 
 ### Ideas (staging area — hierarchical, with relations)
 ```
-python -m core.ideas add {project} --data '[...]'                      Add ideas (supports parent_id, relations)
+python -m core.ideas add {project} --data '[...]'                      Add ideas (supports parent_id, relations, scopes)
 python -m core.ideas read {project} [--status X] [--category X] [--parent X]  Read ideas (--parent root for top-level)
 python -m core.ideas show {project} {idea_id}                          Show full details (hierarchy, explorations, risks, decisions)
 python -m core.ideas update {project} --data '[...]'                   Update status/fields (relations append-merged)

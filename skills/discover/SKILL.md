@@ -29,6 +29,7 @@ description: "Discovery phase — explore options, assess feasibility, analyze r
 | R8 | `python -m core.decisions read {project} --status OPEN` | Open decisions (if project exists) | Step 3 — context |
 | R9 | `ls forge_output/ 2>/dev/null` | Existing projects | Step 3 — context |
 | R10 | `python -m core.pipeline status {project}` | Current pipeline state | Step 3 — context (if project exists) |
+| R11 | `python -m core.guidelines context {project} --scopes "{idea_scopes}"` | Applicable guidelines (constraints for analysis) | Step 3 — context |
 
 ## Write Commands
 
@@ -126,6 +127,15 @@ Also read the codebase if it's a brownfield project:
 - Key config files
 - Existing architecture patterns
 
+**Load applicable guidelines as constraints:**
+```bash
+python -m core.guidelines context {project} --scopes "{idea_scopes_or_general}"
+```
+
+Guidelines with weight `must` are **hard constraints** — deep-* skills MUST NOT propose options that violate them. Guidelines with weight `should` are **soft constraints** — deep-* skills may propose alternatives but must note the deviation.
+
+Pass these constraints as context when executing each deep-* skill in Step 4.
+
 Compile this as context input for the orchestrator.
 
 ---
@@ -221,7 +231,8 @@ python -m core.decisions add {project} --data '[{
   "confidence": "HIGH|MEDIUM|LOW",
   "decided_by": "claude",
   "status": "OPEN",
-  "evidence_refs": ["research/{skill-name}-{slug}.md"]
+  "evidence_refs": ["research/{skill-name}-{slug}.md"],
+  "scope": "{exploration scope matching guidelines}"
 }]'
 ```
 

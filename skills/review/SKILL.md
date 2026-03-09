@@ -80,7 +80,7 @@ For each changed file, read the actual file to see the current state.
 
 ### Step 2 — Multi-Perspective Review
 
-Review each changed file through **5 independent perspectives**.
+Review each changed file through **6 independent perspectives**.
 For each perspective, produce a mini-verdict: PASS / CONCERN / FAIL.
 
 ---
@@ -156,6 +156,38 @@ Mini-verdict: `Decisions: {PASS|CONCERN|FAIL} — {1-line summary}`
 
 ---
 
+#### 2F — Guidelines Compliance
+
+Focus: Were project guidelines followed?
+
+```bash
+python -m core.guidelines context {project} --scopes "{task_scopes}"
+python -m core.changes read {project} --task {task_id}
+```
+
+For each `must` guideline:
+- Check if the code changes comply
+- Check if `guidelines_checked` in change records includes this guideline
+- If violated: FAIL with specific guideline ID and violation
+
+For each `should` guideline:
+- Check compliance; note deviations as CONCERN (not FAIL)
+
+Record any findings:
+```bash
+python -m core.decisions add {project} --data '[{
+  "task_id": "{task_id}",
+  "type": "convention",
+  "issue": "Guideline {G-NNN} compliance: {title}",
+  "recommendation": "{compliant|violated|partially}",
+  "reasoning": "{what was checked and found}"
+}]'
+```
+
+Mini-verdict: `Guidelines: {PASS|CONCERN|FAIL} — {1-line summary}`
+
+---
+
 For each CONCERN or FAIL, record a finding as a decision:
 
 ```bash
@@ -216,6 +248,7 @@ Present review results with per-perspective verdicts:
 | Architecture | PASS/CONCERN/FAIL | {1-line} |
 | Testing | PASS/CONCERN/FAIL | {1-line} |
 | Decisions | PASS/CONCERN/FAIL | {1-line} |
+| Guidelines | PASS/CONCERN/FAIL | {1-line} |
 
 ### Files Reviewed
 - file1.py — OK

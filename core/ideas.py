@@ -107,7 +107,7 @@ CONTRACTS = {
     "add": {
         "required": ["title", "description"],
         "optional": ["category", "priority", "tags", "related_ideas",
-                      "guidelines", "parent_id", "relations"],
+                      "guidelines", "parent_id", "relations", "scopes"],
         "enums": {
             "category": {"feature", "improvement", "experiment",
                          "migration", "refactor", "infrastructure",
@@ -119,6 +119,7 @@ CONTRACTS = {
             "related_ideas": list,
             "guidelines": list,
             "relations": list,
+            "scopes": list,
         },
         "invariant_texts": [
             "title: concise name for the idea (e.g., 'Add Redis caching to API')",
@@ -130,6 +131,7 @@ CONTRACTS = {
             "guidelines: list of guideline IDs that apply to this idea (e.g., ['G-001'])",
             "parent_id: parent idea ID for hierarchy (e.g., 'I-001'). Null/omitted for root ideas.",
             "relations: typed edges to other ideas. Each: {type: 'depends_on|related_to|supersedes|duplicates', target_id: 'I-NNN'}",
+            "scopes: list of guideline scopes this idea relates to (e.g., ['backend', 'database']). Used to load applicable guidelines during /discover and /plan.",
         ],
         "example": [
             {
@@ -138,6 +140,7 @@ CONTRACTS = {
                 "category": "feature",
                 "priority": "HIGH",
                 "tags": ["trading", "platform"],
+                "scopes": ["trading", "backend"],
             },
             {
                 "title": "Signal Generation Module",
@@ -156,7 +159,8 @@ CONTRACTS = {
         "optional": ["title", "description", "status", "category",
                       "priority", "rejection_reason", "merged_into",
                       "tags", "related_ideas", "guidelines",
-                      "exploration_notes", "parent_id", "relations"],
+                      "exploration_notes", "parent_id", "relations",
+                      "scopes"],
         "enums": {
             "status": {"DRAFT", "EXPLORING", "APPROVED",
                         "REJECTED"},
@@ -170,6 +174,7 @@ CONTRACTS = {
             "related_ideas": list,
             "guidelines": list,
             "relations": list,
+            "scopes": list,
         },
         "invariant_texts": [
             "id: existing idea ID (I-001, etc.)",
@@ -283,6 +288,7 @@ def cmd_add(args):
             "guidelines": item.get("guidelines", []),
             "parent_id": parent_id,
             "relations": validated_relations,
+            "scopes": item.get("scopes", []),
             "status": "DRAFT",
             "rejection_reason": "",
             "merged_into": "",
@@ -380,6 +386,8 @@ def cmd_show(args):
     print(f"- **Updated**: {idea.get('updated', '')}")
     if idea.get("tags"):
         print(f"- **Tags**: {', '.join(idea['tags'])}")
+    if idea.get("scopes"):
+        print(f"- **Scopes**: {', '.join(idea['scopes'])}")
     if idea.get("related_ideas"):
         print(f"- **Related (legacy)**: {', '.join(idea['related_ideas'])}")
     if idea.get("guidelines"):
@@ -551,7 +559,7 @@ def cmd_update(args):
         # Apply updates
         updatable = ["title", "description", "status", "category", "priority",
                      "rejection_reason", "merged_into", "tags", "related_ideas",
-                     "guidelines", "parent_id"]
+                     "guidelines", "parent_id", "scopes"]
         for field in updatable:
             if field in u:
                 idea[field] = u[field]
