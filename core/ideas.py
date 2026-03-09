@@ -103,7 +103,8 @@ CONTRACTS = {
                       "guidelines", "parent_id", "relations"],
         "enums": {
             "category": {"feature", "improvement", "experiment",
-                         "migration", "refactor", "infrastructure"},
+                         "migration", "refactor", "infrastructure",
+                         "business-opportunity", "research"},
             "priority": {"HIGH", "MEDIUM", "LOW"},
         },
         "types": {
@@ -115,7 +116,7 @@ CONTRACTS = {
         "invariant_texts": [
             "title: concise name for the idea (e.g., 'Add Redis caching to API')",
             "description: what you want to achieve and why — enough for exploration to begin",
-            "category: what kind of work this is (feature, improvement, experiment, migration, refactor, infrastructure)",
+            "category: what kind of work this is (feature, improvement, experiment, migration, refactor, infrastructure, business-opportunity, research)",
             "priority: HIGH (urgent/blocking), MEDIUM (planned), LOW (nice-to-have)",
             "tags: searchable keywords",
             "related_ideas: (legacy) list of idea IDs — prefer 'relations' for new ideas",
@@ -153,7 +154,8 @@ CONTRACTS = {
             "status": {"DRAFT", "EXPLORING", "READY", "APPROVED",
                         "REJECTED", "PARKED"},
             "category": {"feature", "improvement", "experiment",
-                         "migration", "refactor", "infrastructure"},
+                         "migration", "refactor", "infrastructure",
+                         "business-opportunity", "research"},
             "priority": {"HIGH", "MEDIUM", "LOW"},
         },
         "types": {

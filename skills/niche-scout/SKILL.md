@@ -453,7 +453,7 @@ When running inside Forge pipeline:
 python -m core.ideas add {project} --data '[{
   "title": "{opportunity name}",
   "category": "business-opportunity",
-  "description": "{1-para summary}",
+  "description": "{1-para summary with niche_score, demand_evidence, competition_status, moat_type, ai_absorption_risk, adjacent_pivot_risk, validation_status, market_size_y1 embedded}",
   "source": "niche-scout analysis",
   "priority": "HIGH|MEDIUM|LOW",
   "metadata": {
@@ -461,10 +461,14 @@ python -m core.ideas add {project} --data '[{
     "demand_evidence": "{key signal}",
     "competition_status": "vacuum|weak|emerging",
     "moat_type": "{primary moat}",
+    "ai_absorption_risk": "NEVER|LOW|MEDIUM|HIGH",
+    "adjacent_pivot_risk": "LOW|MEDIUM|HIGH",
+    "adjacent_threats": "{top 1-2 companies that could pivot}",
     "validation_status": "unvalidated"
   }
 }]'
 ```
+Note: `business-opportunity` and `research` are valid idea categories in Forge.
 
 **Record risks:**
 ```bash
@@ -483,7 +487,7 @@ python -m core.risks add {project} --data '[{
 ```bash
 python -m core.decisions add {project} --data '[{
   "task_id": "DISCOVERY",
-  "type": "business",
+  "type": "strategy",
   "issue": "Which opportunity to pursue",
   "recommendation": "{#1 pick}",
   "reasoning": "{from scoring + deep dive}",
@@ -508,6 +512,7 @@ python -m core.explorations add {project} --data '[{
 ```
 
 **Record lessons:**
+Note: valid lesson categories are: `pattern-discovered`, `mistake-avoided`, `decision-validated`, `decision-reversed`, `tool-insight`, `architecture-lesson`, `process-improvement`, `market-insight`.
 ```bash
 python -m core.lessons add {project} --data '[{
   "category": "market-insight",

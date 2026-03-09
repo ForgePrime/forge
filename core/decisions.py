@@ -81,7 +81,7 @@ CONTRACTS = {
         "enums": {
             "type": {"architecture", "implementation", "dependency", "security",
                      "performance", "testing", "naming", "convention", "constraint",
-                     "other"},
+                     "business", "strategy", "other"},
             "confidence": {"HIGH", "MEDIUM", "LOW"},
             "status": {"OPEN", "CLOSED", "DEFERRED"},
             "decided_by": {"claude", "user", "imported"},

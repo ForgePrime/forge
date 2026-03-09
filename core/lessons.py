@@ -83,6 +83,7 @@ CONTRACTS = {
                 "tool-insight",         # Better way to use a tool/library
                 "architecture-lesson",  # Structural insight
                 "process-improvement",  # Better workflow
+                "market-insight",       # Business/market pattern discovered
             },
             "severity": {"critical", "important", "minor"},
         },
