@@ -378,6 +378,134 @@ def cmd_add_tasks(args):
     print(f"\nRun `next {args.project}` to start.")
 
 
+def _get_current_commit() -> str:
+    """Get current HEAD commit hash, or empty string if not a git repo."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, encoding="utf-8"
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except FileNotFoundError:
+        return ""
+
+
+def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning: str) -> int:
+    """Auto-detect git changes since base_commit and record unrecorded ones.
+
+    Returns number of new changes recorded.
+    """
+    import subprocess
+
+    if not base_commit:
+        return 0
+
+    # Get files changed between base_commit and HEAD (committed changes)
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--numstat", base_commit, "HEAD"],
+            capture_output=True, text=True, encoding="utf-8"
+        )
+        committed = result.stdout.strip()
+    except FileNotFoundError:
+        return 0
+
+    # Also get uncommitted changes
+    result2 = subprocess.run(
+        ["git", "diff", "--numstat", "HEAD"],
+        capture_output=True, text=True, encoding="utf-8"
+    )
+    uncommitted = result2.stdout.strip()
+
+    # Merge both (committed takes priority for stats)
+    file_stats = {}
+    for source in [committed, uncommitted]:
+        if not source:
+            continue
+        for line in source.split("\n"):
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            added, removed, filepath = parts
+            if filepath not in file_stats:
+                added = int(added) if added != "-" else 0
+                removed = int(removed) if removed != "-" else 0
+                file_stats[filepath] = (added, removed)
+
+    if not file_stats:
+        return 0
+
+    # Load existing changes — skip already recorded files for this task
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    changes_path = Path("forge_output") / project / "changes.json"
+    if changes_path.exists():
+        ch_data = json.loads(changes_path.read_text(encoding="utf-8"))
+    else:
+        ch_data = {"project": project, "updated": now_iso(), "changes": []}
+
+    existing_files = {c["file"] for c in ch_data.get("changes", [])
+                      if c.get("task_id") == task_id}
+
+    # Find next C-NNN ID
+    existing_ids = [
+        int(c["id"].split("-")[1]) for c in ch_data.get("changes", [])
+        if c.get("id", "").startswith("C-")
+    ]
+    next_id = max(existing_ids, default=0) + 1
+
+    timestamp = now_iso()
+    new_changes = []
+
+    for filepath, (added, removed) in sorted(file_stats.items()):
+        if filepath in existing_files:
+            continue
+
+        # Detect action from committed diff
+        action = "edit"
+        if added > 0 and removed == 0:
+            check = subprocess.run(
+                ["git", "diff", "--diff-filter=A", "--name-only", base_commit, "HEAD", "--", filepath],
+                capture_output=True, text=True, encoding="utf-8"
+            )
+            if filepath in check.stdout:
+                action = "create"
+        elif added == 0 and removed > 0:
+            check = subprocess.run(
+                ["git", "diff", "--diff-filter=D", "--name-only", base_commit, "HEAD", "--", filepath],
+                capture_output=True, text=True, encoding="utf-8"
+            )
+            if filepath in check.stdout:
+                action = "delete"
+
+        change = {
+            "id": f"C-{next_id:03d}",
+            "task_id": task_id,
+            "file": filepath,
+            "action": action,
+            "summary": reasoning or "(auto-recorded at completion)",
+            "reasoning_trace": [{"step": "auto-complete", "detail": reasoning}] if reasoning else [],
+            "decision_ids": [],
+            "lines_added": added,
+            "lines_removed": removed,
+            "group_id": task_id,
+            "guidelines_checked": [],
+            "timestamp": timestamp,
+        }
+        new_changes.append(change)
+        next_id += 1
+
+    if new_changes:
+        ch_data["changes"].extend(new_changes)
+        ch_data["updated"] = timestamp
+        from contracts import atomic_write_json
+        atomic_write_json(changes_path, ch_data)
+
+    return len(new_changes)
+
+
 def _get_active_ids(tracker: dict) -> set:
     """IDs of tasks that are CLAIMING or IN_PROGRESS."""
     return {t["id"] for t in tracker["tasks"]
@@ -430,6 +558,7 @@ def _claim_with_retry(args, candidate, agent, max_retries=5):
             # Claim won — promote to IN_PROGRESS
             task["status"] = "IN_PROGRESS"
             task["started_at"] = now_iso()
+            task["started_at_commit"] = _get_current_commit()
             save_tracker(args.project, tracker)
 
             print(f"## Next task: {task['id']} — {task['name']}")
@@ -586,6 +715,7 @@ def cmd_next(args):
         candidate["status"] = "IN_PROGRESS"
         candidate["agent"] = agent
         candidate["started_at"] = now_iso()
+        candidate["started_at_commit"] = _get_current_commit()
         save_tracker(args.project, tracker)
 
         print(f"## Next task: {candidate['id']} — {candidate['name']}")
@@ -604,11 +734,19 @@ def cmd_complete(args):
     task = find_task(tracker, args.task_id)
     agent = getattr(args, "agent", None)
     force = getattr(args, "force", False)
+    reasoning = getattr(args, "reasoning", None) or ""
 
     # Verify agent ownership if task was claimed
     if task.get("agent") and agent and task["agent"] != agent:
         print(f"WARNING: Task {args.task_id} is owned by agent '{task['agent']}', "
               f"not '{agent}'. Completing anyway.", file=sys.stderr)
+
+    # Auto-record changes from git before checking
+    base_commit = task.get("started_at_commit", "")
+    if base_commit:
+        auto_count = _auto_record_changes(args.project, args.task_id, base_commit, reasoning)
+        if auto_count:
+            print(f"  Auto-recorded {auto_count} change(s) from git.")
 
     # Check that changes were recorded for this task
     if not force:
@@ -1033,6 +1171,53 @@ def print_status(project: str, tracker: dict):
             line += f" -- {task.get('failed_reason', '')}"
         print(line)
 
+    # "Where was I?" — show resumption context for IN_PROGRESS or next TODO task
+    active = in_progress[0] if in_progress else None
+    if not active:
+        # Find next TODO task (same logic as cmd_next)
+        done_ids = {t["id"] for t in tasks if t["status"] in ("DONE", "SKIPPED")}
+        for t in tasks:
+            if t["status"] == "TODO":
+                deps = set(t.get("depends_on", []))
+                if deps.issubset(done_ids):
+                    active = t
+                    break
+
+    if active:
+        print()
+        label = "Current task" if active["status"] == "IN_PROGRESS" else "Next task"
+        print(f"  ### {label}: {active['id']} — {active['name']}")
+        if active.get("description"):
+            print(f"  {active['description'][:120]}")
+
+        # Show acceptance criteria with change-based progress
+        ac = active.get("acceptance_criteria", [])
+        if ac:
+            # Load changes to check what's recorded for this task
+            changes_file = Path("forge_output") / project / "changes.json"
+            recorded_files = set()
+            if changes_file.exists():
+                ch_data = json.loads(changes_file.read_text(encoding="utf-8"))
+                recorded_files = {
+                    c.get("summary", "").lower()
+                    for c in ch_data.get("changes", [])
+                    if c.get("task_id") == active["id"]
+                }
+
+            print(f"  Acceptance criteria ({len(ac)}):")
+            for criterion in ac:
+                # Simple heuristic: if changes recorded, show progress
+                print(f"    - {criterion}")
+
+        # Show recorded changes count
+        changes_file = Path("forge_output") / project / "changes.json"
+        if changes_file.exists():
+            ch_data = json.loads(changes_file.read_text(encoding="utf-8"))
+            task_changes = [c for c in ch_data.get("changes", [])
+                           if c.get("task_id") == active["id"]]
+            if task_changes:
+                print(f"  Changes recorded: {len(task_changes)} files")
+
     # DAG visualization
     print()
     print_dag(tasks)
@@ -1132,6 +1317,18 @@ def print_task_detail(task: dict):
 
 
 # -- Context & Config Commands --
+
+def _objective_kr_pct(baseline, target, current) -> int:
+    """Calculate KR progress percentage (0-100)."""
+    try:
+        baseline, target, current = float(baseline), float(target), float(current)
+    except (TypeError, ValueError):
+        return 0
+    total_delta = target - baseline
+    if total_delta == 0:
+        return 100 if current == target else 0
+    return max(0, min(100, int((current - baseline) / total_delta * 100)))
+
 
 def _estimate_context_size(project: str, task_ids: set) -> int:
     """Estimate context size in characters for the given dependency tasks."""
@@ -1237,17 +1434,64 @@ def cmd_context(args):
             print()
 
     # Guidelines context (uses shared renderer from guidelines module)
+    # Load global guidelines (bypass scope filter) and project guidelines (scope-filtered)
+    global_guidelines = []
+    if args.project != "_global":
+        global_guidelines_file = Path("forge_output") / "_global" / "guidelines.json"
+        if global_guidelines_file.exists():
+            g_global = json.loads(global_guidelines_file.read_text(encoding="utf-8"))
+            global_guidelines = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
+
+    project_guidelines = []
     guidelines_file = Path("forge_output") / args.project / "guidelines.json"
     if guidelines_file.exists():
         g_data = json.loads(guidelines_file.read_text(encoding="utf-8"))
-        active_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
+        project_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
-        if active_guidelines:
-            task_scopes = set(task.get("scopes", []))
-            from guidelines import render_guidelines_context
-            lines = render_guidelines_context(active_guidelines, task_scopes, args.project)
-            for line in lines:
-                print(line)
+    if global_guidelines or project_guidelines:
+        task_scopes = set(task.get("scopes", []))
+        from guidelines import render_guidelines_context
+        lines = render_guidelines_context(project_guidelines, task_scopes, args.project,
+                                           global_guidelines=global_guidelines)
+        for line in lines:
+            print(line)
+
+    # Business context: trace task → origin idea → objective (F-001: graceful degradation)
+    if task.get("origin") and task["origin"].startswith("I-"):
+        ideas_file = Path("forge_output") / args.project / "ideas.json"
+        objectives_file = Path("forge_output") / args.project / "objectives.json"
+        if ideas_file.exists() and objectives_file.exists():
+            ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
+            obj_data = json.loads(objectives_file.read_text(encoding="utf-8"))
+            # Find origin idea
+            origin_idea = None
+            for idea in ideas_data.get("ideas", []):
+                if idea["id"] == task["origin"]:
+                    origin_idea = idea
+                    break
+            if origin_idea and origin_idea.get("advances_key_results"):
+                # Find linked objectives
+                obj_ids = {kr_ref.split("/")[0] for kr_ref in origin_idea["advances_key_results"]
+                           if "/" in kr_ref}
+                linked_objs = [o for o in obj_data.get("objectives", []) if o["id"] in obj_ids]
+                if linked_objs:
+                    print("### Business Context")
+                    print()
+                    for obj in linked_objs:
+                        print(f"**{obj['id']}**: {obj['title']} [{obj['status']}]")
+                        # Show only relevant KRs
+                        relevant_kr_ids = {kr_ref.split("/")[1] for kr_ref in origin_idea["advances_key_results"]
+                                           if kr_ref.startswith(obj["id"] + "/")}
+                        for kr in obj.get("key_results", []):
+                            if kr["id"] in relevant_kr_ids:
+                                baseline = kr.get("baseline", 0)
+                                target = kr["target"]
+                                current = kr.get("current", baseline)
+                                pct = _objective_kr_pct(baseline, target, current)
+                                direction = "↓" if target < baseline else "↑"
+                                print(f"  {kr['id']}: {kr['metric']} — {current}/{target} ({pct}%)")
+                    print(f"  Via idea: {origin_idea['id']} \"{origin_idea['title']}\"")
+                    print()
 
     # Risks (type=risk decisions) linked to this task or origin idea
     if decisions_file.exists():
@@ -1542,6 +1786,7 @@ def main():
     p.add_argument("task_id")
     p.add_argument("--agent", default=None, help="Agent name (verified against claim)")
     p.add_argument("--force", action="store_true", help="Complete even without changes or with failed gates")
+    p.add_argument("--reasoning", default=None, help="Why these changes were made (used for auto-recorded changes)")
 
     p = sub.add_parser("fail", help="Mark task FAILED")
     p.add_argument("project")

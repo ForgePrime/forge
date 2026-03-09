@@ -6,11 +6,81 @@ Every code change you make must be **planned, tracked, reasoned about, and audit
 ## Core Principle
 
 You do NOT just write code. You:
-1. **Plan** — decompose the goal into tasks with dependencies
-2. **Track** — every task has a status in the pipeline
-3. **Decide** — record architectural and implementation decisions with reasoning
-4. **Execute** — make changes, recording what you changed and why
-5. **Validate** — run tests/checks before marking complete
+1. **Align** — build shared understanding before execution (deep-align)
+2. **Plan** — decompose the goal into tasks with dependencies
+3. **Track** — every task has a status in the pipeline
+4. **Decide** — record architectural and implementation decisions with reasoning
+5. **Execute** — make changes, recording what you changed and why
+6. **Validate** — run tests/checks before marking complete
+
+## Information Flow
+
+```
+Objective O-001 "Reduce API response time"         ← NORTH STAR (why)
+│  key_results: [KR-1: p95 < 200ms, KR-2: 0 timeouts]
+│  scopes: [backend, performance]
+│  derived_guidelines: [G-010]
+│
+├──derives──→ Guideline G-010 "Latency benchmarks"  ← STANDARDS (how to work)
+│               derived_from: O-001                    loaded into task context via scopes
+│               scope: performance, weight: must
+│
+├──advances──→ Idea I-001 "Redis caching"           ← PROPOSALS (what to build)
+│  │             advances_key_results: [O-001/KR-1]
+│  │             scopes: [backend, performance]  ← inherited from O-001
+│  │
+│  ├──explored by──→ Decision D-001 (exploration)   ← REASONING (why this way)
+│  ├──risk──→ Decision D-002 (risk)                   linked via task_id: I-001
+│  │
+│  └──committed to──→ Task T-001 "setup-redis"      ← EXECUTION (do it)
+│     │                 origin: I-001
+│     │                 scopes: [backend]
+│     │
+│     ├──context loads──→ Guidelines (by scopes)
+│     │                   Business Context (O-001 + KR progress)
+│     │                   Dependency outputs
+│     │                   Active risks from I-001
+│     │
+│     ├──produces──→ Changes (auto-recorded on complete)
+│     ├──records──→ Decisions (implementation choices)
+│     └──validated by──→ Gates (tests, lint, secrets)
+│
+└──measured by──→ KR-1 current: 320/200 (61%)       ← OUTCOMES (did it work?)
+                  KR-2 current: 5/0 (89%)
+                  updated manually via /objectives update
+
+Post-project:
+  /compound ──→ Lessons (cross-project learning)
+```
+
+### Data flow at task execution (`pipeline context`)
+
+```
+Task T-001
+  │
+  ├─ task.scopes ──→ load Guidelines matching scopes
+  │                  + global guidelines (always)
+  │
+  ├─ task.origin ──→ Idea I-001
+  │   └─ idea.advances_key_results ──→ Objective O-001
+  │       └─ show: title, KR progress, status (Business Context)
+  │
+  ├─ task.depends_on ──→ completed tasks
+  │   ├─ their Changes (files modified)
+  │   └─ their Decisions (choices made)
+  │
+  ├─ task.origin (I-*) ──→ active Risk decisions
+  │
+  └─ task.blocked_by_decisions ──→ must be CLOSED before start
+```
+
+### Coverage tracking (3 levels)
+
+```
+Planning:   KRs with ≥1 linked Idea  →  "2/3 KRs covered"
+Execution:  DONE tasks / total tasks  →  "5/8 tasks done (62%)"
+Outcome:    KR current vs target      →  "KR-1: 61%, KR-2: 89%"
+```
 
 ## How It Works
 
@@ -24,7 +94,7 @@ python -m core.pipeline approve-plan {project}           Approve draft → mater
 python -m core.pipeline update-task {project} --data '{...}' Update existing task
 python -m core.pipeline remove-task {project} {task_id}  Remove TODO task
 python -m core.pipeline next {project} [--agent name]    Get next task
-python -m core.pipeline complete {project} {task_id} [--force]  Mark done (checks changes + gates)
+python -m core.pipeline complete {project} {task_id} [--force] [--reasoning "..."]  Mark done (auto-records git changes + checks gates)
 python -m core.pipeline contract add-tasks               Show task contract
 python -m core.pipeline contract update-task             Show update contract
 python -m core.pipeline contract register-subtasks       Show subtask contract
@@ -63,7 +133,7 @@ python -m core.changes summary {project}                Statistics
 python -m core.changes contract                         See expected format
 ```
 
-Prefer `changes auto` for routine recording (one command). Use `changes diff` + `changes record` when per-file reasoning_trace is needed.
+**Auto-recording**: `pipeline complete` now auto-records git changes (committed + uncommitted since task start). Use `--reasoning` to explain why. Manual `changes auto`/`changes record` still work for per-file reasoning or mid-task recording.
 
 ### Lessons (compound learning)
 ```
@@ -73,9 +143,30 @@ python -m core.lessons read-all [--severity X] [--tags "a,b"] [--category X] [--
 python -m core.lessons contract                         See expected format
 ```
 
+### Objectives (business goals with measurable key results)
+```
+python -m core.objectives add {project} --data '[...]'      Add objectives with key results
+python -m core.objectives read {project} [--status X]        Read objectives
+python -m core.objectives show {project} {objective_id}      Show details + coverage + progress
+python -m core.objectives update {project} --data '[...]'    Update objective/KR progress
+python -m core.objectives status {project}                   Coverage dashboard
+python -m core.objectives contract add                       Show objective contract
+```
+
+Objectives sit above Ideas — they answer "what do we want to achieve?" Ideas answer "how?"
+- Key Results: measurable targets (metric + baseline + target + current)
+- Ideas link to KRs via `advances_key_results: ["O-001/KR-1"]`
+- `scopes`: guideline scopes this objective relates to — ideas can inherit these
+- `derived_guidelines`: guideline IDs created BECAUSE of this objective (outbound traceability)
+- `assumptions`: explicit hypotheses that must hold (from Theory of Change)
+- `appetite`: effort budget — small (days), medium (weeks), large (months) (from Shape Up)
+- Status lifecycle: ACTIVE → ACHIEVED | ABANDONED | PAUSED
+- On ACHIEVED/ABANDONED: warns about derived guidelines to review
+- Coverage tracking: planning (KRs → Ideas), execution (Ideas → Tasks), outcome (KR progress)
+
 ### Ideas (staging area — hierarchical, with relations)
 ```
-python -m core.ideas add {project} --data '[...]'                      Add ideas (supports parent_id, relations, scopes)
+python -m core.ideas add {project} --data '[...]'                      Add ideas (supports parent_id, relations, scopes, advances_key_results)
 python -m core.ideas read {project} [--status X] [--category X] [--parent X]  Read ideas (--parent root for top-level)
 python -m core.ideas show {project} {idea_id}                          Show full details (hierarchy, explorations, risks, decisions)
 python -m core.ideas update {project} --data '[...]'                   Update status/fields (relations append-merged)
@@ -83,15 +174,21 @@ python -m core.ideas commit {project} {idea_id}                        Mark APPR
 python -m core.ideas contract add                                      Show idea contract
 ```
 
+- `advances_key_results`: links idea to objective KRs (e.g., `["O-001/KR-1"]`)
+- `scopes`: guideline scopes — can be inherited from linked objective
+
 ### Guidelines (project standards)
 ```
-python -m core.guidelines add {project} --data '[...]'         Add guidelines
+python -m core.guidelines add {project} --data '[...]'         Add guidelines (supports derived_from for objective traceability)
 python -m core.guidelines read {project} [--scope X] [--weight X]  Read guidelines
 python -m core.guidelines update {project} --data '[...]'      Update guideline status
 python -m core.guidelines context {project} --scopes "a,b"     Guidelines for LLM context
 python -m core.guidelines scopes {project}                     List unique scopes
 python -m core.guidelines contract add                         Show guideline contract
 ```
+
+- `derived_from`: objective ID this guideline was created because of (e.g., `"O-001"`)
+- When an objective is ACHIEVED/ABANDONED, review its derived guidelines
 
 ### Gates (validation checks)
 ```
@@ -107,7 +204,9 @@ Tip: Configure secret scanning as a gate: `{"name": "secrets", "command": "gitle
 
 | Command | Description |
 |---------|-------------|
-| `/idea {title}` | Add an idea to staging area (supports --parent, --relates-to) |
+| `/objective {title}` | Define a business objective with measurable key results (north star) |
+| `/objectives [id] [action]` | List/show/manage objectives, update KR progress, coverage dashboard |
+| `/idea {title}` | Add an idea to staging area (supports --parent, --relates-to, --advances) |
 | `/ideas [id] [action]` | List/show/manage ideas (explore, approve, reject, commit) |
 | `/discover {topic\|idea_id}` | Explore options, assess risks, design architecture → creates exploration + risk decisions |
 | `/plan {goal\|idea_id}` | Decompose into task graph (two-phase: draft → approve) |
@@ -122,6 +221,8 @@ Tip: Configure secret scanning as a gate: `{"name": "secrets", "command": "gitle
 | `/log` | Show full audit trail (changes + decisions) |
 | `/compound` | Extract lessons learned from project execution |
 | `/onboard` | Import brownfield project knowledge into Forge (see `skills/onboard/SKILL.md`) |
+| `/task {description}` | Quick-add a task with alignment-driven acceptance criteria |
+| `/help` | Show all commands with descriptions and when to use each one |
 
 ## Task Properties
 
@@ -160,28 +261,41 @@ For brownfield projects (existing codebase):
 2. Then continue with `/plan {goal}` for specific work
 
 When user gives a goal:
-1. Capture as idea: `/idea {title}` — add to staging area
+
+```
+/objective ──→ /idea ──→ /discover ──→ /plan ──→ /next|/run ──→ /compound
+  (why)        (what)     (assess)     (how)    (execute)      (learn)
+```
+
+0. (Optional) Define north star: `/objective {title}` — business goal with measurable KRs
+   - Provides "why" context for all downstream work
+   - Optionally create derived guidelines from KRs (`derived_from: "O-001"`)
+   - Ideas link to KRs via `advances_key_results`
+1. Capture as idea: `/idea {title}` — add to staging area (uses deep-align: restatement + questions)
    - Ideas support hierarchy: `/idea {title} --parent I-001` for sub-ideas
    - Ideas support relations: depends_on, related_to, supersedes, duplicates
-2. Explore: `/discover {idea_id}` — creates exploration + risk decisions
+   - Ideas can advance KRs: `advances_key_results: ["O-001/KR-1"]`
+   - Scopes inherited from linked objective
+2. Explore: `/discover {idea_id}` — creates exploration + risk decisions (uses deep-align for scope)
    - Status flow: DRAFT → EXPLORING → APPROVED
    - Use `/risk` to track and mitigate identified risks
 3. When ready: `/ideas {idea_id} approve` then `/plan {idea_id}`
-4. `/plan` creates a **draft plan** — review, modify, then approve to materialize
+4. `/plan` creates a **draft plan** — uses deep-align for goal alignment, then review → approve
 5. Configure project: `pipeline config` (test_cmd, lint_cmd) and `gates config`
 6. Define project guidelines: `/guideline {text}` — coding standards, conventions
 7. Run `/next` — get first task (follows `skills/next/SKILL.md`)
 8. For each task:
-   a. Gather context: `pipeline context {project} {task_id}` (deps + guidelines + risks)
+   a. Gather context: `pipeline context` — loads deps + guidelines + risks + **business context from objective**
    b. Record any significant decisions via `decisions add`
    c. Make the code changes
-   d. Record changes via `changes diff` then `changes record`
+   d. (Optional) Record changes mid-task via `changes auto` for per-file detail
    e. Verify: deep-verify + guidelines compliance (built into `/next` Step 5)
    f. Run gates: `gates check {project} --task {task_id}`
    g. Commit changes via git
-   h. Mark task complete via `pipeline complete` (enforces changes + gates)
+   h. Mark task complete via `pipeline complete --reasoning "..."` (auto-records git changes + checks gates)
 9. Optionally run `/review {task_id}` for critical tasks
-10. When all tasks done, run `/compound` to extract lessons
+10. Track objective progress: `/objectives O-001 update` — update KR current values
+11. When all tasks done, run `/compound` to extract lessons
 
 ## Rules
 
@@ -245,3 +359,4 @@ All Forge state goes to `forge_output/{project}/`:
 - `lessons.json` — lessons learned (compound learning)
 - `guidelines.json` — project standards and conventions
 - `ideas.json` — idea staging area (hierarchical, with relations)
+- `objectives.json` — business objectives with key results

@@ -71,7 +71,7 @@ def save_json(project: str, data: dict):
 CONTRACTS = {
     "add": {
         "required": ["title", "scope", "content"],
-        "optional": ["rationale", "examples", "tags", "weight"],
+        "optional": ["rationale", "examples", "tags", "weight", "derived_from"],
         "enums": {
             "weight": {"must", "should", "may"},
         },
@@ -87,6 +87,8 @@ CONTRACTS = {
             "examples: concrete code or pattern examples",
             "tags: searchable keywords",
             "weight: 'must' (always loaded to LLM context), 'should' (loaded when <10, default), 'may' (only on explicit request)",
+            "derived_from: objective ID this guideline was created because of (e.g., 'O-001'). "
+            "Traceability — explains WHY this guideline exists. When objective status changes, review derived guidelines.",
         ],
         "example": [
             {
@@ -112,7 +114,7 @@ CONTRACTS = {
     "update": {
         "required": ["id"],
         "optional": ["title", "content", "status", "rationale",
-                      "scope", "examples", "tags", "weight"],
+                      "scope", "examples", "tags", "weight", "derived_from"],
         "enums": {
             "status": {"ACTIVE", "DEPRECATED"},
             "weight": {"must", "should", "may"},
@@ -190,6 +192,7 @@ def cmd_add(args):
             "examples": g.get("examples", []),
             "tags": g.get("tags", []),
             "weight": g.get("weight", "should"),
+            "derived_from": g.get("derived_from", ""),
             "status": "ACTIVE",
             "created": timestamp,
             "updated": timestamp,
@@ -260,7 +263,8 @@ def cmd_read(args):
     print()
     for g in guidelines:
         print(f"### {g['id']}: {g['title']}")
-        print(f"**Scope**: {g['scope']} | **Weight**: {g['weight']} | **Status**: {g['status']}")
+        derived = f" | **Derived from**: {g['derived_from']}" if g.get("derived_from") else ""
+        print(f"**Scope**: {g['scope']} | **Weight**: {g['weight']} | **Status**: {g['status']}{derived}")
         print()
         print(g.get("content", ""))
         if g.get("rationale"):
@@ -305,7 +309,7 @@ def cmd_update(args):
 
         g = guidelines_by_id[g_id]
         updatable = ["title", "content", "status", "rationale", "scope",
-                      "examples", "tags", "weight"]
+                      "examples", "tags", "weight", "derived_from"]
         for field in updatable:
             if field in u:
                 if field == "scope":
@@ -329,19 +333,32 @@ def cmd_update(args):
     print(f"  Active: {active_count}")
 
 
-def render_guidelines_context(active_guidelines: list, scopes: set, project: str = "") -> list:
+def render_guidelines_context(active_guidelines: list, scopes: set, project: str = "",
+                               global_guidelines: list = None) -> list:
     """Render guidelines as formatted Markdown lines for LLM context injection.
 
     Returns a list of strings (lines). Used by both `guidelines context` CLI
     and `pipeline context` to avoid duplicating rendering logic.
+
+    global_guidelines bypass scope filtering — they are always included.
     """
-    # Always include general
+    if global_guidelines is None:
+        global_guidelines = []
+
+    # Always include general scope for project guidelines
     scopes = set(scopes)
     scopes.add("general")
 
-    must = [g for g in active_guidelines if g.get("weight") == "must" and g.get("scope") in scopes]
-    should = [g for g in active_guidelines if g.get("weight") == "should" and g.get("scope") in scopes]
-    may = [g for g in active_guidelines if g.get("weight") == "may" and g.get("scope") in scopes]
+    # Global guidelines: always included (bypass scope filter)
+    # Project guidelines: filtered by scope
+    must = [g for g in global_guidelines if g.get("weight") == "must"]
+    must += [g for g in active_guidelines if g.get("weight") == "must" and g.get("scope") in scopes]
+
+    should = [g for g in global_guidelines if g.get("weight") == "should"]
+    should += [g for g in active_guidelines if g.get("weight") == "should" and g.get("scope") in scopes]
+
+    may = [g for g in global_guidelines if g.get("weight") == "may"]
+    may += [g for g in active_guidelines if g.get("weight") == "may" and g.get("scope") in scopes]
 
     total = len(must) + len(should) + len(may)
     if total == 0:
@@ -381,23 +398,30 @@ def render_guidelines_context(active_guidelines: list, scopes: set, project: str
 
 def cmd_context(args):
     """Output formatted guidelines for LLM context injection."""
+    # Load global guidelines (bypass scope filter) and project guidelines (scope-filtered)
+    global_active = []
+    if args.project != "_global":
+        global_path = guidelines_path("_global")
+        if global_path.exists():
+            g_global = json.loads(global_path.read_text(encoding="utf-8"))
+            global_active = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
+
+    project_active = []
     path = guidelines_path(args.project)
-    if not path.exists():
+    if path.exists():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        project_active = [g for g in data.get("guidelines", []) if g.get("status") == "ACTIVE"]
+
+    if not global_active and not project_active:
         print("(no guidelines configured)")
-        return
-
-    data = json.loads(path.read_text(encoding="utf-8"))
-    active = [g for g in data.get("guidelines", []) if g.get("status") == "ACTIVE"]
-
-    if not active:
-        print("(no active guidelines)")
         return
 
     requested_scopes = set()
     if args.scopes:
         requested_scopes = {s.strip().lower() for s in args.scopes.split(",")}
 
-    lines = render_guidelines_context(active, requested_scopes, args.project)
+    lines = render_guidelines_context(project_active, requested_scopes, args.project,
+                                       global_guidelines=global_active)
     for line in lines:
         print(line)
 

@@ -33,11 +33,11 @@ description: "Get the next task from the pipeline and execute it with full trace
 | ID | Command | Effect | When |
 |----|---------|--------|------|
 | W1 | `python -m core.decisions add {project} --data '{json}'` | Records decisions | Step 3 — for significant choices |
-| W2 | `python -m core.changes record {project} --data '{json}'` | Records file changes | Step 4 — after code changes |
+| W2 | `python -m core.changes record {project} --data '{json}'` | Records file changes (optional — auto-recorded at completion) | Step 4 — for per-file detail |
 | W3 | `python -m core.pipeline add-tasks {project} --data '{json}'` | Creates follow-up tasks for major findings | Step 5 — if verification finds big issues |
 | W4 | `python -m core.gates check {project} --task {task_id}` | Runs validation gates | Step 6 — before completion |
 | W5 | `git add -A && git commit -m "..."` | Commits changes | Step 6 — after validation |
-| W6 | `python -m core.pipeline complete {project} {task_id}` | Marks task DONE | Step 7 — after all validation |
+| W6 | `python -m core.pipeline complete {project} {task_id} --reasoning "..."` | Auto-records changes + marks DONE | Step 7 — after all validation |
 | W7 | `python -m core.pipeline fail {project} {task_id} --reason "..."` | Marks task FAILED | On failure |
 
 ## Output
@@ -160,17 +160,13 @@ python -m core.decisions add {project} --data '[{
 
 ---
 
-### Step 4 — Record Changes
+### Step 4 — Record Changes (optional mid-task)
 
-After making code changes, use `changes diff` to auto-detect:
+Changes are **auto-recorded at completion** (Step 7) from git diff. This step
+is only needed if you want per-file reasoning traces or to link specific
+changes to decisions mid-task.
 
-```bash
-python -m core.changes diff {project} {task_id}
-```
-
-Review the suggested records, enrich with `reasoning_trace` and
-`decision_ids`, then record:
-
+For detailed per-file recording:
 ```bash
 python -m core.changes record {project} --data '[{
   "task_id": "{task_id}",
@@ -182,12 +178,13 @@ python -m core.changes record {project} --data '[{
     {"step": "implementation", "detail": "How it works"}
   ],
   "decision_ids": ["D-001"],
+  "guidelines_checked": ["G-001"],
   "lines_added": N,
   "lines_removed": N
 }]'
 ```
 
-**Every file you create, edit, or delete must have a change record.**
+Already-recorded files are skipped by auto-recording (no duplicates).
 
 ---
 
@@ -266,11 +263,13 @@ git add -A && git commit -m "descriptive message"
 
 ### Step 7 — Complete
 
-Mark the task as DONE:
+Mark the task as DONE. Use `--reasoning` to explain the changes:
 
 ```bash
-python -m core.pipeline complete {project} {task_id}
+python -m core.pipeline complete {project} {task_id} --reasoning "What was done and why"
 ```
+
+This auto-records any unrecorded git changes (committed + uncommitted since task start).
 
 Then immediately proceed to the next task (loop back to Step 1).
 

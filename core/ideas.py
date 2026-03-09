@@ -107,7 +107,8 @@ CONTRACTS = {
     "add": {
         "required": ["title", "description"],
         "optional": ["category", "priority", "tags", "related_ideas",
-                      "guidelines", "parent_id", "relations", "scopes"],
+                      "guidelines", "parent_id", "relations", "scopes",
+                      "advances_key_results"],
         "enums": {
             "category": {"feature", "improvement", "experiment",
                          "migration", "refactor", "infrastructure",
@@ -120,6 +121,7 @@ CONTRACTS = {
             "guidelines": list,
             "relations": list,
             "scopes": list,
+            "advances_key_results": list,
         },
         "invariant_texts": [
             "title: concise name for the idea (e.g., 'Add Redis caching to API')",
@@ -132,6 +134,7 @@ CONTRACTS = {
             "parent_id: parent idea ID for hierarchy (e.g., 'I-001'). Null/omitted for root ideas.",
             "relations: typed edges to other ideas. Each: {type: 'depends_on|related_to|supersedes|duplicates', target_id: 'I-NNN'}",
             "scopes: list of guideline scopes this idea relates to (e.g., ['backend', 'database']). Used to load applicable guidelines during /discover and /plan.",
+            "advances_key_results: list of Key Result IDs this idea advances (format: 'O-001/KR-1'). Links idea to business objectives.",
         ],
         "example": [
             {
@@ -160,7 +163,7 @@ CONTRACTS = {
                       "priority", "rejection_reason", "merged_into",
                       "tags", "related_ideas", "guidelines",
                       "exploration_notes", "parent_id", "relations",
-                      "scopes"],
+                      "scopes", "advances_key_results"],
         "enums": {
             "status": {"DRAFT", "EXPLORING", "APPROVED",
                         "REJECTED"},
@@ -175,6 +178,7 @@ CONTRACTS = {
             "guidelines": list,
             "relations": list,
             "scopes": list,
+            "advances_key_results": list,
         },
         "invariant_texts": [
             "id: existing idea ID (I-001, etc.)",
@@ -289,6 +293,7 @@ def cmd_add(args):
             "parent_id": parent_id,
             "relations": validated_relations,
             "scopes": item.get("scopes", []),
+            "advances_key_results": item.get("advances_key_results", []),
             "status": "DRAFT",
             "rejection_reason": "",
             "merged_into": "",
@@ -392,6 +397,8 @@ def cmd_show(args):
         print(f"- **Related (legacy)**: {', '.join(idea['related_ideas'])}")
     if idea.get("guidelines"):
         print(f"- **Guidelines**: {', '.join(idea['guidelines'])}")
+    if idea.get("advances_key_results"):
+        print(f"- **Advances KRs**: {', '.join(idea['advances_key_results'])}")
     print()
 
     # Hierarchy — show parent chain and children
@@ -559,7 +566,7 @@ def cmd_update(args):
         # Apply updates
         updatable = ["title", "description", "status", "category", "priority",
                      "rejection_reason", "merged_into", "tags", "related_ideas",
-                     "guidelines", "parent_id", "scopes"]
+                     "guidelines", "parent_id", "scopes", "advances_key_results"]
         for field in updatable:
             if field in u:
                 idea[field] = u[field]

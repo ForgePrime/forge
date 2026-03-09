@@ -24,6 +24,7 @@ description: "Decompose a high-level goal into a tracked, dependency-aware task 
 | R3 | `python -m core.guidelines read {project} --weight must` | Must-follow project guidelines | Step 2 — inform decomposition |
 | R4 | `python -m core.decisions contract add` | Contract for recording decisions | Step 4 — before recording planning decisions |
 | R5 | `python -m core.changes contract` | Contract for recording changes | Reference only |
+| R6 | `skills/deep-align/SKILL.md` | Alignment procedure | Step 3 — before decomposition |
 
 ## Write Commands
 
@@ -116,7 +117,32 @@ python -m core.guidelines context {project} --scopes "{idea_scopes}"
 
 ---
 
-### Step 3 — Assess Complexity
+### Step 3 — Align on Goal (medium alignment per `skills/deep-align/SKILL.md`)
+
+Before decomposing, build shared understanding of the goal:
+
+**a. Restate** the goal in one sentence: "You want X so that Y."
+Get confirmation. If the restatement is wrong, the entire plan will be wrong.
+
+**b. Ask scoping questions** — only where you'd have to guess. Pick from:
+- **Scope:** "Does this include X or just Y?"
+- **Constraints:** "Any technologies/approaches that are off limits?"
+- **Quality:** "What does 'done' look like? MVP or production-ready?"
+- **Priority:** "If I have to choose between X and Y, which matters more?"
+
+Group questions in one message (2-4 questions max). Don't ask what you
+already know from the idea, discovery findings, or codebase context.
+
+**c. If planning from an approved idea** (`/plan I-001`): the idea's description
+and discovery decisions provide most context — ask fewer questions, focus
+only on gaps not covered by prior exploration.
+
+**d. If user says "just plan it"** — proceed but flag your top 2 assumptions
+in planning decisions (Step 6).
+
+---
+
+### Step 4 — Assess Complexity
 
 Before decomposing, classify the goal into one of three tracks:
 
@@ -137,7 +163,7 @@ Ask user to confirm before proceeding.
 
 ---
 
-### Step 4 — Create Project
+### Step 5 — Create Project
 
 Generate a project slug from the goal (lowercase, hyphens, max 40 chars):
 ```bash
@@ -170,7 +196,7 @@ Use `task_id: "PLANNING"` for decisions made before tasks exist.
 
 ---
 
-### Step 5 — Decompose
+### Step 6 — Decompose
 
 Apply these decomposition rules:
 
@@ -205,7 +231,7 @@ python -m core.pipeline draft-plan {project} --data '[...]' --idea {idea_id_if_a
 
 ---
 
-### Step 6 — Configure Project
+### Step 7 — Configure Project
 
 Set up project configuration for gates and git:
 
@@ -223,7 +249,7 @@ create an OPEN decision asking the user.
 
 ---
 
-### Step 7 — Review and Approve
+### Step 8 — Review and Approve
 
 The draft plan is displayed automatically by `draft-plan`. Present it to the user:
 

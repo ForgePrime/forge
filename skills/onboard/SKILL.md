@@ -24,6 +24,7 @@ description: "Discover and import existing project knowledge into Forge for brow
 | R3 | `python -m core.lessons contract` | Contract for recording lessons | Step 4 — before import |
 | R4 | `python -m core.pipeline status {project}` | Pipeline state after creation | Step 6 — verify |
 | R5 | `python -m core.pipeline contract add-tasks` | Contract for adding tasks | Step 4 — before task import |
+| R6 | `python -m core.guidelines contract add` | Contract for recording guidelines | Step 4 — before guideline import |
 
 ## Write Commands
 
@@ -35,6 +36,7 @@ description: "Discover and import existing project knowledge into Forge for brow
 | W4 | `python -m core.pipeline config {project} --data '{json}'` | Sets test/lint commands | Step 5 — configure | `python -m core.pipeline contract config` |
 | W5 | `python -m core.gates config {project} --data '[{json}]'` | Configures validation gates | Step 5 — configure | `python -m core.gates contract config` |
 | W6 | `python -m core.pipeline add-tasks {project} --data '[{json}]'` | Imports planned tasks | Step 4 — import backlog | `python -m core.pipeline contract add-tasks` |
+| W7 | `python -m core.guidelines add {project} --data '[{json}]'` | Imports coding conventions as guidelines | Step 4 — import guidelines | `python -m core.guidelines contract add` |
 
 ## Output
 
@@ -43,12 +45,13 @@ description: "Discover and import existing project knowledge into Forge for brow
 | `forge_output/{project}/tracker.json` | Project with config, gates, and imported tasks |
 | `forge_output/{project}/decisions.json` | Imported decisions and conventions |
 | `forge_output/{project}/lessons.json` | Imported lessons (if any) |
+| `forge_output/{project}/guidelines.json` | Imported coding standards and conventions |
 
 ## Success Criteria
 
 - All discoverable project sources have been scanned
 - Key architectural decisions extracted and recorded with `decided_by: "imported"`
-- Active conventions recorded as `type: "convention"` decisions
+- Active conventions recorded as guidelines (for LLM context) AND as `type: "convention"` decisions (for audit trail)
 - Known constraints recorded as `type: "constraint"` decisions
 - Existing planned tasks (TODO/backlog) imported as pipeline tasks with dependencies
 - Test and lint commands auto-detected and configured as gates
@@ -323,6 +326,38 @@ python -m core.lessons add {project} --data '[{
   "tags": ["auth", "tech-debt", "refactoring"]
 }]'
 ```
+
+**Coding conventions as guidelines** (if coding standards/conventions found):
+
+Conventions discovered from AI instruction files, code standards configs, or
+CONTRIBUTING.md should be imported as guidelines — NOT just as decisions.
+Guidelines are loaded into LLM context during task execution; decisions are not.
+
+Load the guidelines contract first (R6):
+```bash
+python -m core.guidelines contract add
+```
+
+Then import:
+```bash
+python -m core.guidelines add {project} --data '[{
+  "title": "Use kebab-case for API routes",
+  "scope": "api",
+  "content": "All API routes use kebab-case (e.g., /user-profile, not /userProfile). Query params use snake_case.",
+  "rationale": "Per .claude/CLAUDE.md: consistent URL naming across all endpoints",
+  "weight": "must",
+  "tags": ["naming", "api"]
+}]'
+```
+
+**Rules for guideline import:**
+
+- Import conventions that affect HOW code is written (naming, patterns, structure)
+- Use `weight: "must"` for explicitly required conventions (from AI instructions, CONTRIBUTING.md)
+- Use `weight: "should"` for conventions inferred from existing code patterns
+- Set `scope` based on the area: `backend`, `frontend`, `api`, `database`, `testing`, `general`
+- Do NOT duplicate: if a convention is already enforced by a linter/formatter, note that in rationale but still import it (the guideline serves as documentation for the LLM)
+- Keep guidelines actionable — "use X" not "X is important"
 
 **Planned tasks** (if backlog/tracker/TODO with actionable items found):
 

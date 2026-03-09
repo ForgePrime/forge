@@ -20,28 +20,29 @@ description: "Discovery phase — explore options, assess feasibility, analyze r
 | ID | Command / Path | Returns | When |
 |----|----------------|---------|------|
 | R1 | `skills/deep-orchestration/SKILL.md` | Orchestration procedure | Step 1 — resolve orchestrator |
-| R2 | `skills/deep-explore/SKILL.md` | Exploration procedure | Step 2 — resolve skills |
-| R3 | `skills/deep-risk/SKILL.md` | Risk analysis procedure | Step 2 |
-| R4 | `skills/deep-architect/SKILL.md` | Architecture procedure | Step 2 |
-| R5 | `skills/deep-feasibility/SKILL.md` | Feasibility procedure | Step 2 |
-| R6 | `skills/deep-requirements/SKILL.md` | Requirements procedure | Step 2 (optional) |
-| R7 | `python -m core.lessons read-all` | Lessons from past projects | Step 3 — context |
-| R8 | `python -m core.decisions read {project} --status OPEN` | Open decisions (if project exists) | Step 3 — context |
-| R9 | `ls forge_output/ 2>/dev/null` | Existing projects | Step 3 — context |
-| R10 | `python -m core.pipeline status {project}` | Current pipeline state | Step 3 — context (if project exists) |
-| R11 | `python -m core.guidelines context {project} --scopes "{idea_scopes}"` | Applicable guidelines (constraints for analysis) | Step 3 — context |
+| R2 | `skills/deep-align/SKILL.md` | Alignment procedure | Step 2 — before analysis |
+| R3 | `skills/deep-explore/SKILL.md` | Exploration procedure | Step 3 — resolve skills |
+| R4 | `skills/deep-risk/SKILL.md` | Risk analysis procedure | Step 3 |
+| R5 | `skills/deep-architect/SKILL.md` | Architecture procedure | Step 3 |
+| R6 | `skills/deep-feasibility/SKILL.md` | Feasibility procedure | Step 3 |
+| R7 | `skills/deep-requirements/SKILL.md` | Requirements procedure | Step 3 (optional) |
+| R8 | `python -m core.lessons read-all` | Lessons from past projects | Step 4 — context |
+| R9 | `python -m core.decisions read {project} --status OPEN` | Open decisions (if project exists) | Step 4 — context |
+| R10 | `ls forge_output/ 2>/dev/null` | Existing projects | Step 4 — context |
+| R11 | `python -m core.pipeline status {project}` | Current pipeline state | Step 4 — context (if project exists) |
+| R12 | `python -m core.guidelines context {project} --scopes "{idea_scopes}"` | Applicable guidelines (constraints for analysis) | Step 4 — context |
 
 ## Write Commands
 
 | ID | Command | Effect | When | Contract |
 |----|---------|--------|------|----------|
-| W1 | `python -m core.decisions add {project} --data '{json}'` | Records discovery findings as decisions | Step 5 — after analysis | `decisions:add` |
-| W2 | `python -m core.lessons add {project} --data '{json}'` | Records discovery insights as lessons | Step 5 — significant learnings | `lessons:add` |
-| W3 | `python -m core.decisions add {project} --data '{json}'` | Records exploration decisions (type=exploration) | Step 5 — after each analysis phase | `decisions:add` |
-| W4 | `python -m core.decisions add {project} --data '{json}'` | Records risk decisions (type=risk) | Step 5 — from risk analysis | `decisions:add` |
-| W5 | `python -m core.pipeline init {slug} --goal "..."` | Creates project if none exists | Step 5 — before recording | — |
-| W6 | `python -m core.ideas update {project} --data '{json}'` | Updates idea status to EXPLORING | Step 5 — if idea-scoped | `ideas:update` |
-| W7 | Write `forge_output/{project}/research/{skill}-{slug}.md` | Persists full deep-* analysis output | Step 4 — after each skill completes | — |
+| W1 | `python -m core.decisions add {project} --data '{json}'` | Records discovery findings as decisions | Step 6 — after analysis | `decisions:add` |
+| W2 | `python -m core.lessons add {project} --data '{json}'` | Records discovery insights as lessons | Step 6 — significant learnings | `lessons:add` |
+| W3 | `python -m core.decisions add {project} --data '{json}'` | Records exploration decisions (type=exploration) | Step 6 — after each analysis phase | `decisions:add` |
+| W4 | `python -m core.decisions add {project} --data '{json}'` | Records risk decisions (type=risk) | Step 6 — from risk analysis | `decisions:add` |
+| W5 | `python -m core.pipeline init {slug} --goal "..."` | Creates project if none exists | Step 6 — before recording | — |
+| W6 | `python -m core.ideas update {project} --data '{json}'` | Updates idea status to EXPLORING | Step 6 — if idea-scoped | `ideas:update` |
+| W7 | Write `forge_output/{project}/research/{skill}-{slug}.md` | Persists full deep-* analysis output | Step 5 — after each skill completes | — |
 
 ## Output
 
@@ -90,9 +91,28 @@ Read `skills/deep-orchestration/SKILL.md` — this is the conductor that coordin
 
 ---
 
-### Step 2 — Determine Discovery Scope
+### Step 2 — Align on Discovery Scope (medium alignment per `skills/deep-align/SKILL.md`)
 
-Based on the user's input (or explicit flags), determine which analysis skills are needed:
+Before running analysis, build shared understanding of what to explore:
+
+**a. Restate** the exploration topic: "You want to explore X to understand Y."
+Get confirmation before proceeding.
+
+**b. Ask scoping questions** — only where you'd have to guess:
+- **Scope:** "Should I explore just X, or also its interaction with Y?"
+- **Constraints:** "Any options/technologies already ruled out?"
+- **Priority:** "What's most important to learn — feasibility, risks, or architecture?"
+
+Group questions in one message (1-3 questions max). If exploring a specific idea
+(`/discover I-001`), the idea's description provides most context — ask fewer questions.
+
+**c. If user says "just explore"** — proceed but focus on the broadest applicable scope.
+
+---
+
+### Step 3 — Determine Analysis Skills
+
+Based on the confirmed scope (or explicit flags), determine which analysis skills are needed:
 
 | User intent / flag | Required skills | Optional |
 |--------------------|----------------|----------|
@@ -106,7 +126,7 @@ Read each needed skill from `skills/deep-{name}/SKILL.md` and its `references/` 
 
 ---
 
-### Step 3 — Gather Forge Context
+### Step 4 — Gather Forge Context
 
 Before running analysis, gather project context to feed into the deep-* skills:
 
@@ -134,17 +154,17 @@ python -m core.guidelines context {project} --scopes "{idea_scopes_or_general}"
 
 Guidelines with weight `must` are **hard constraints** — deep-* skills MUST NOT propose options that violate them. Guidelines with weight `should` are **soft constraints** — deep-* skills may propose alternatives but must note the deviation.
 
-Pass these constraints as context when executing each deep-* skill in Step 4.
+Pass these constraints as context when executing each deep-* skill in Step 5.
 
 Compile this as context input for the orchestrator.
 
 ---
 
-### Step 4 — Execute via deep-orchestration
+### Step 5 — Execute via deep-orchestration
 
 Follow the deep-orchestration SKILL.md procedure:
 
-1. **Define** — subject is the user's discovery topic, with Forge context gathered in Step 3
+1. **Define** — subject is the user's discovery topic, with Forge context gathered in Step 4
 2. **Sequence** — build the dependency graph for selected skills:
 
 ```
@@ -175,7 +195,7 @@ Write the complete analysis to `forge_output/{project}/research/{skill-name}-{sl
 # {Skill Name} Analysis: {topic}
 Date: {ISO timestamp}
 Skill: {skill-name} v{version}
-Decision: {D-NNN} (linked after Step 5)
+Decision: {D-NNN} (linked after Step 6)
 
 ---
 
@@ -184,7 +204,7 @@ Decision: {D-NNN} (linked after Step 5)
 
 This file persists across sessions. When context compresses, the full analysis is recoverable from disk.
 
-4. **Aggregate** — combine outputs per deep-orchestration Step 4
+4. **Aggregate** — combine outputs per deep-orchestration Step 5
 
 Track execution:
 
@@ -197,7 +217,7 @@ Track execution:
 
 ---
 
-### Step 5 — Record Findings in Forge
+### Step 6 — Record Findings in Forge
 
 After orchestration completes, record findings as structured artifacts.
 
@@ -301,7 +321,7 @@ python -m core.lessons add {project} --data '[{
 
 ---
 
-### Step 6 — Present Discovery Brief
+### Step 7 — Present Discovery Brief
 
 Present the combined findings to the user:
 
