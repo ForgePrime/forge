@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.auth import get_current_user
+from app.contract_validation import ContractValidationMiddleware
 from app.events import EventBus
 from app.routers import (
     ac_templates,
@@ -39,12 +40,15 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle — DB pool, Redis, storage adapter."""
 
     # --- Startup ---
-    # Database pool
-    app.state.db_pool = await asyncpg.create_pool(
-        settings.database_url,
-        min_size=2,
-        max_size=10,
-    )
+    # Database pool (only when using PostgreSQL storage)
+    if settings.storage_mode == "postgresql":
+        app.state.db_pool = await asyncpg.create_pool(
+            settings.database_url,
+            min_size=2,
+            max_size=10,
+        )
+    else:
+        app.state.db_pool = None
 
     # Redis client
     app.state.redis = aioredis.from_url(
@@ -66,7 +70,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown ---
-    await app.state.db_pool.close()
+    if app.state.db_pool is not None:
+        await app.state.db_pool.close()
     await app.state.redis.aclose()
 
 
@@ -89,6 +94,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Contract validation — validates request bodies against entity contracts.
+# Runs before auth (defense-in-depth: reject malformed payloads early).
+# Disable globally with FORGE_SKIP_CONTRACT_VALIDATION=true env var.
+app.add_middleware(ContractValidationMiddleware)
 
 
 # ---------------------------------------------------------------------------

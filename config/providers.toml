@@ -1,0 +1,10 @@
+# Forge LLM Provider Configuration
+# Configure API keys and model preferences for LLM providers.
+
+[anthropic]
+api_key = ""  # Set via ANTHROPIC_API_KEY env var
+default_model = "claude-sonnet-4-20250514"
+
+[openai]
+api_key = ""  # Set via OPENAI_API_KEY env var
+default_model = "gpt-4o"

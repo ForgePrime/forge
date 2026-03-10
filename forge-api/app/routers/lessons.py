@@ -23,7 +23,7 @@ router = APIRouter(prefix="/projects/{slug}/lessons", tags=["lessons"])
 LESSON_CATEGORIES = Literal[
     "pattern-discovered", "mistake-avoided", "decision-validated",
     "decision-reversed", "tool-insight", "architecture-lesson",
-    "process-improvement",
+    "process-improvement", "market-insight",
 ]
 
 
