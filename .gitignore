@@ -10,3 +10,6 @@ forge_output/
 
 # Plugin registry (per-machine paths, rebuilt by scan)
 forge_plugins.json
+
+
+deep-process/
