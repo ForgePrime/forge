@@ -210,7 +210,6 @@ To check for updates from upstream: compare version in each `skills/deep-*/SKILL
 
 ## Heritage
 
-Core patterns evolved from Skill_v1 (BigQuery schema builder):
 
 | Pattern | Description |
 |---------|-------------|
