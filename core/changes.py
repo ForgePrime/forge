@@ -25,11 +25,11 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
+from contracts import render_contract, validate_contract
+from storage import JSONFileStorage, now_iso
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -39,31 +39,18 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Paths --
+# -- Storage --
 
-def changes_path(project: str) -> Path:
-    return Path("forge_output") / project / "changes.json"
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def load_or_create(project: str, storage=None) -> dict:
+    if storage is None:
+        storage = JSONFileStorage()
+    return storage.load_data(project, 'changes')
 
 
-def load_or_create(project: str) -> dict:
-    path = changes_path(project)
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {
-        "project": project,
-        "updated": now_iso(),
-        "changes": [],
-    }
-
-
-def save_json(project: str, data: dict):
-    path = changes_path(project)
-    data["updated"] = now_iso()
-    atomic_write_json(path, data)
+def save_json(project: str, data: dict, storage=None):
+    if storage is None:
+        storage = JSONFileStorage()
+    storage.save_data(project, 'changes', data)
 
 
 # -- Contract --
@@ -145,15 +132,14 @@ def cmd_record(args):
         sys.exit(1)
 
     # Cross-validate: check task_ids and decision_ids exist
-    tracker_file = Path("forge_output") / args.project / "tracker.json"
-    decisions_file = Path("forge_output") / args.project / "decisions.json"
+    storage = JSONFileStorage()
     valid_task_ids = set()
     valid_decision_ids = set()
-    if tracker_file.exists():
-        tracker = json.loads(tracker_file.read_text(encoding="utf-8"))
+    if storage.exists(args.project, 'tracker'):
+        tracker = storage.load_data(args.project, 'tracker')
         valid_task_ids = {t["id"] for t in tracker.get("tasks", [])}
-    if decisions_file.exists():
-        dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
+    if storage.exists(args.project, 'decisions'):
+        dec_data = storage.load_data(args.project, 'decisions')
         valid_decision_ids = {d["id"] for d in dec_data.get("decisions", [])}
 
     for c in new_changes:
@@ -203,12 +189,12 @@ def cmd_record(args):
 
 def cmd_read(args):
     """Read change log."""
-    path = changes_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'changes'):
         print(f"No changes recorded for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'changes')
     changes = data.get("changes", [])
 
     if args.task:
@@ -234,12 +220,12 @@ def cmd_read(args):
 
 def cmd_summary(args):
     """Summary statistics."""
-    path = changes_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'changes'):
         print(f"No changes recorded for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'changes')
     changes = data.get("changes", [])
 
     # Stats

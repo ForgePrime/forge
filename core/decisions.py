@@ -32,12 +32,12 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 # Import contracts from sibling module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
+from contracts import render_contract, validate_contract
+from storage import JSONFileStorage, now_iso
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -47,34 +47,20 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Paths --
+# -- Storage --
 
-def decisions_path(project: str) -> Path:
-    return Path("forge_output") / project / "decisions.json"
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def load_or_create(project: str, storage=None) -> dict:
+    if storage is None:
+        storage = JSONFileStorage()
+    return storage.load_data(project, 'decisions')
 
 
-def load_or_create(project: str) -> dict:
-    path = decisions_path(project)
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {
-        "project": project,
-        "updated": now_iso(),
-        "decisions": [],
-        "open_count": 0,
-    }
-
-
-def save_json(project: str, data: dict):
-    path = decisions_path(project)
-    data["updated"] = now_iso()
+def save_json(project: str, data: dict, storage=None):
+    if storage is None:
+        storage = JSONFileStorage()
     data["open_count"] = sum(1 for d in data.get("decisions", [])
                              if d.get("status") == "OPEN")
-    atomic_write_json(path, data)
+    storage.save_data(project, 'decisions', data)
 
 
 # -- Status transitions for risk lifecycle --
@@ -255,17 +241,16 @@ def cmd_add(args):
         sys.exit(1)
 
     # Cross-validate: check task_ids exist in pipeline
-    tracker_file = Path("forge_output") / args.project / "tracker.json"
-    if tracker_file.exists():
-        tracker = json.loads(tracker_file.read_text(encoding="utf-8"))
+    _s = JSONFileStorage()
+    if _s.exists(args.project, 'tracker'):
+        tracker = _s.load_data(args.project, 'tracker')
         valid_task_ids = {t["id"] for t in tracker.get("tasks", [])}
         # Special task IDs used by skills for pre-task decisions
         special_ids = {"PLANNING", "ONBOARDING", "REVIEW", "DISCOVERY"}
         # Also allow idea IDs (I-NNN) as task_id for exploration decisions
-        ideas_file = Path("forge_output") / args.project / "ideas.json"
         idea_ids = set()
-        if ideas_file.exists():
-            ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
+        if _s.exists(args.project, 'ideas'):
+            ideas_data = _s.load_data(args.project, 'ideas')
             idea_ids = {i["id"] for i in ideas_data.get("ideas", [])}
         for d in new_decisions:
             tid = d.get("task_id", "")
@@ -357,12 +342,12 @@ def cmd_add(args):
 
 def cmd_read(args):
     """Read decisions (optionally filtered)."""
-    path = decisions_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'decisions'):
         print(f"No decisions for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'decisions')
     decisions = data.get("decisions", [])
 
     # Filter
@@ -505,12 +490,12 @@ def cmd_update(args):
 
 def cmd_show(args):
     """Show full details for a single decision."""
-    path = decisions_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'decisions'):
         print(f"No decisions for '{args.project}' yet.", file=sys.stderr)
         sys.exit(1)
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'decisions')
     decision = None
     for d in data.get("decisions", []):
         if d["id"] == args.decision_id:
@@ -677,18 +662,17 @@ def _validate_linked_entity(project: str, d: dict):
     entity_id = d.get("linked_entity_id", "")
     if not entity_type or not entity_id:
         return
+    _s = JSONFileStorage()
     if entity_type == "idea":
-        ideas_file = Path("forge_output") / project / "ideas.json"
-        if ideas_file.exists():
-            ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
+        if _s.exists(project, 'ideas'):
+            ideas_data = _s.load_data(project, 'ideas')
             idea_ids = {i["id"] for i in ideas_data.get("ideas", [])}
             if entity_id not in idea_ids:
                 print(f"WARNING: Idea '{entity_id}' not found in ideas.json",
                       file=sys.stderr)
     elif entity_type == "task":
-        tracker_file = Path("forge_output") / project / "tracker.json"
-        if tracker_file.exists():
-            tracker_data = json.loads(tracker_file.read_text(encoding="utf-8"))
+        if _s.exists(project, 'tracker'):
+            tracker_data = _s.load_data(project, 'tracker')
             task_ids = {t["id"] for t in tracker_data.get("tasks", [])}
             if entity_id not in task_ids:
                 print(f"WARNING: Task '{entity_id}' not found in tracker.json",

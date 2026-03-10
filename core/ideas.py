@@ -40,12 +40,12 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 # Import contracts from sibling module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
+from contracts import render_contract, validate_contract
+from storage import JSONFileStorage, now_iso
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -55,41 +55,28 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Paths --
+# -- Storage --
 
-def ideas_path(project: str) -> Path:
-    return Path("forge_output") / project / "ideas.json"
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def load_or_create(project: str) -> dict:
-    path = ideas_path(project)
-    if path.exists():
-        data = json.loads(path.read_text(encoding="utf-8"))
-        # Migration: READY → APPROVED, PARKED → DRAFT
-        for idea in data.get("ideas", []):
-            if idea.get("status") == "READY":
-                idea["status"] = "APPROVED"
-            elif idea.get("status") == "PARKED":
-                idea["status"] = "DRAFT"
-                existing = idea.get("exploration_notes", "")
-                separator = "\n\n---\n\n" if existing else ""
-                idea["exploration_notes"] = existing + separator + "--- Unparked (auto-migrated from PARKED status)"
-        return data
-    return {
-        "project": project,
-        "updated": now_iso(),
-        "ideas": [],
-    }
+def load_or_create(project: str, storage=None) -> dict:
+    if storage is None:
+        storage = JSONFileStorage()
+    data = storage.load_data(project, 'ideas')
+    # Migration: READY → APPROVED, PARKED → DRAFT
+    for idea in data.get("ideas", []):
+        if idea.get("status") == "READY":
+            idea["status"] = "APPROVED"
+        elif idea.get("status") == "PARKED":
+            idea["status"] = "DRAFT"
+            existing = idea.get("exploration_notes", "")
+            separator = "\n\n---\n\n" if existing else ""
+            idea["exploration_notes"] = existing + separator + "--- Unparked (auto-migrated from PARKED status)"
+    return data
 
 
-def save_json(project: str, data: dict):
-    path = ideas_path(project)
-    data["updated"] = now_iso()
-    atomic_write_json(path, data)
+def save_json(project: str, data: dict, storage=None):
+    if storage is None:
+        storage = JSONFileStorage()
+    storage.save_data(project, 'ideas', data)
 
 
 def find_idea(data: dict, idea_id: str) -> dict:
@@ -108,7 +95,7 @@ CONTRACTS = {
         "required": ["title", "description"],
         "optional": ["category", "priority", "tags", "related_ideas",
                       "guidelines", "parent_id", "relations", "scopes",
-                      "advances_key_results"],
+                      "advances_key_results", "knowledge_ids"],
         "enums": {
             "category": {"feature", "improvement", "experiment",
                          "migration", "refactor", "infrastructure",
@@ -122,6 +109,7 @@ CONTRACTS = {
             "relations": list,
             "scopes": list,
             "advances_key_results": list,
+            "knowledge_ids": list,
         },
         "invariant_texts": [
             "title: concise name for the idea (e.g., 'Add Redis caching to API')",
@@ -135,6 +123,7 @@ CONTRACTS = {
             "relations: typed edges to other ideas. Each: {type: 'depends_on|related_to|supersedes|duplicates', target_id: 'I-NNN'}",
             "scopes: list of guideline scopes this idea relates to (e.g., ['backend', 'database']). Used to load applicable guidelines during /discover and /plan.",
             "advances_key_results: list of Key Result IDs this idea advances (format: 'O-001/KR-1'). Links idea to business objectives.",
+            "knowledge_ids: list of Knowledge IDs (K-001, etc.) that provide context for this idea. Loaded during /discover and /plan.",
         ],
         "example": [
             {
@@ -163,7 +152,7 @@ CONTRACTS = {
                       "priority", "rejection_reason", "merged_into",
                       "tags", "related_ideas", "guidelines",
                       "exploration_notes", "parent_id", "relations",
-                      "scopes", "advances_key_results"],
+                      "scopes", "advances_key_results", "knowledge_ids"],
         "enums": {
             "status": {"DRAFT", "EXPLORING", "APPROVED",
                         "REJECTED"},
@@ -179,6 +168,7 @@ CONTRACTS = {
             "relations": list,
             "scopes": list,
             "advances_key_results": list,
+            "knowledge_ids": list,
         },
         "invariant_texts": [
             "id: existing idea ID (I-001, etc.)",
@@ -294,6 +284,7 @@ def cmd_add(args):
             "relations": validated_relations,
             "scopes": item.get("scopes", []),
             "advances_key_results": item.get("advances_key_results", []),
+            "knowledge_ids": item.get("knowledge_ids", []),
             "status": "DRAFT",
             "rejection_reason": "",
             "merged_into": "",
@@ -318,12 +309,12 @@ def cmd_add(args):
 
 def cmd_read(args):
     """Read ideas (optionally filtered)."""
-    path = ideas_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'ideas'):
         print(f"No ideas for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'ideas')
     ideas = data.get("ideas", [])
 
     # Filter
@@ -371,12 +362,12 @@ def cmd_read(args):
 
 def cmd_show(args):
     """Show full details for a single idea."""
-    path = ideas_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'ideas'):
         print(f"No ideas for '{args.project}' yet.", file=sys.stderr)
         sys.exit(1)
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'ideas')
     idea = find_idea(data, args.idea_id)
     dec_data = None  # loaded on demand below
 
@@ -399,6 +390,8 @@ def cmd_show(args):
         print(f"- **Guidelines**: {', '.join(idea['guidelines'])}")
     if idea.get("advances_key_results"):
         print(f"- **Advances KRs**: {', '.join(idea['advances_key_results'])}")
+    if idea.get("knowledge_ids"):
+        print(f"- **Knowledge**: {', '.join(idea['knowledge_ids'])}")
     print()
 
     # Hierarchy — show parent chain and children
@@ -448,9 +441,8 @@ def cmd_show(args):
         print()
 
     # Show explorations and risks from decisions.json (type=exploration, type=risk)
-    decisions_file = Path("forge_output") / args.project / "decisions.json"
-    if decisions_file.exists():
-        dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
+    if storage.exists(args.project, 'decisions'):
+        dec_data = storage.load_data(args.project, 'decisions')
         all_decisions = dec_data.get("decisions", [])
 
         # Explorations: type=exploration with task_id or linked_entity_id matching idea
@@ -494,9 +486,9 @@ def cmd_show(args):
         print()
 
     # Show other related decisions (not exploration/risk, those are shown above)
-    if decisions_file.exists():
+    if storage.exists(args.project, 'decisions'):
         if not dec_data:
-            dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
+            dec_data = storage.load_data(args.project, 'decisions')
         other_decisions = [d for d in dec_data.get("decisions", [])
                            if d.get("task_id") == idea["id"]
                            and d.get("type") not in ("exploration", "risk")]
@@ -566,7 +558,8 @@ def cmd_update(args):
         # Apply updates
         updatable = ["title", "description", "status", "category", "priority",
                      "rejection_reason", "merged_into", "tags", "related_ideas",
-                     "guidelines", "parent_id", "scopes", "advances_key_results"]
+                     "guidelines", "parent_id", "scopes", "advances_key_results",
+                     "knowledge_ids"]
         for field in updatable:
             if field in u:
                 idea[field] = u[field]
@@ -666,9 +659,9 @@ def cmd_commit(args):
         print()
 
     # Show related decisions
-    decisions_file = Path("forge_output") / args.project / "decisions.json"
-    if decisions_file.exists():
-        dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
+    storage = JSONFileStorage()
+    if storage.exists(args.project, 'decisions'):
+        dec_data = storage.load_data(args.project, 'decisions')
         related = [d for d in dec_data.get("decisions", [])
                    if d.get("task_id") == idea["id"]]
         open_decisions = [d for d in related if d.get("status") == "OPEN"]

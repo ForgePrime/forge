@@ -25,12 +25,12 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 # Import contracts from sibling module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
+from contracts import render_contract, validate_contract
+from storage import JSONFileStorage, now_iso
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -40,31 +40,18 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Paths --
+# -- Storage --
 
-def guidelines_path(project: str) -> Path:
-    return Path("forge_output") / project / "guidelines.json"
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def load_or_create(project: str, storage=None) -> dict:
+    if storage is None:
+        storage = JSONFileStorage()
+    return storage.load_data(project, 'guidelines')
 
 
-def load_or_create(project: str) -> dict:
-    path = guidelines_path(project)
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {
-        "project": project,
-        "updated": now_iso(),
-        "guidelines": [],
-    }
-
-
-def save_json(project: str, data: dict):
-    path = guidelines_path(project)
-    data["updated"] = now_iso()
-    atomic_write_json(path, data)
+def save_json(project: str, data: dict, storage=None):
+    if storage is None:
+        storage = JSONFileStorage()
+    storage.save_data(project, 'guidelines', data)
 
 
 # -- Contracts --
@@ -217,12 +204,12 @@ def cmd_add(args):
 
 def cmd_read(args):
     """Read guidelines (optionally filtered)."""
-    path = guidelines_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'guidelines'):
         print(f"No guidelines for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'guidelines')
     guidelines = data.get("guidelines", [])
 
     # Filter
@@ -399,18 +386,17 @@ def render_guidelines_context(active_guidelines: list, scopes: set, project: str
 
 def cmd_context(args):
     """Output formatted guidelines for LLM context injection."""
+    storage = JSONFileStorage()
+
     # Load global guidelines (bypass scope filter) and project guidelines (scope-filtered)
     global_active = []
     if args.project != "_global":
-        global_path = guidelines_path("_global")
-        if global_path.exists():
-            g_global = json.loads(global_path.read_text(encoding="utf-8"))
-            global_active = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
+        g_global = storage.load_global('guidelines')
+        global_active = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     project_active = []
-    path = guidelines_path(args.project)
-    if path.exists():
-        data = json.loads(path.read_text(encoding="utf-8"))
+    if storage.exists(args.project, 'guidelines'):
+        data = storage.load_data(args.project, 'guidelines')
         project_active = [g for g in data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     if not global_active and not project_active:
@@ -429,12 +415,12 @@ def cmd_context(args):
 
 def cmd_scopes(args):
     """List unique scopes in the project."""
-    path = guidelines_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'guidelines'):
         print(f"No guidelines for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'guidelines')
     guidelines = data.get("guidelines", [])
 
     scope_counts = {}
@@ -458,12 +444,12 @@ def cmd_scopes(args):
 
 def cmd_import(args):
     """Import guidelines from another project into this one."""
-    source_path = guidelines_path(args.source)
-    if not source_path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.source, 'guidelines'):
         print(f"ERROR: No guidelines found in project '{args.source}'", file=sys.stderr)
         sys.exit(1)
 
-    source_data = json.loads(source_path.read_text(encoding="utf-8"))
+    source_data = storage.load_data(args.source, 'guidelines')
     source_guidelines = [g for g in source_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     if not source_guidelines:

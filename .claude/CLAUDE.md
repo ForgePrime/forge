@@ -195,6 +195,40 @@ python -m core.guidelines contract add                         Show guideline co
 - When an objective is ACHIEVED/ABANDONED, review its derived guidelines
 - `guidelines import`: copy guidelines from one project to another (dedup by title, tracks source)
 
+### Knowledge (domain context — K-NNN)
+```
+python -m core.knowledge add {project} --data '[...]'              Add knowledge objects
+python -m core.knowledge read {project} [--status X] [--category X] [--scope X]  Read/filter
+python -m core.knowledge show {project} {knowledge_id}             Show details + version history
+python -m core.knowledge update {project} --data '[...]'           Update (creates version if content changed)
+python -m core.knowledge link {project} --data '{...}'             Link to entity
+python -m core.knowledge unlink {project} {knowledge_id} {index}   Remove link by index
+python -m core.knowledge impact {project} {knowledge_id}           Impact analysis
+python -m core.knowledge contract add                              Show add contract
+```
+
+- Categories: domain-rules, api-reference, architecture, business-context, technical-context, code-patterns, integration, infrastructure
+- Status lifecycle: DRAFT → ACTIVE → REVIEW_NEEDED → ACTIVE / DEPRECATED → ARCHIVED
+- Versioning: content updates create new version entries (change_reason required)
+- Impact analysis: scans tracker, ideas, objectives for references to K-NNN
+- Tasks and ideas can reference knowledge via `knowledge_ids: ["K-001"]`
+- Lessons can be promoted to knowledge via `lessons promote-knowledge`
+
+### AC Templates (reusable acceptance criteria — AC-NNN)
+```
+python -m core.ac_templates add {project} --data '[...]'                          Add templates
+python -m core.ac_templates read {project} [--category X] [--scope X]             Read/filter
+python -m core.ac_templates show {project} {template_id}                          Show details
+python -m core.ac_templates update {project} --data '[...]'                       Update template
+python -m core.ac_templates instantiate {project} {template_id} --params '{...}'  Fill in params
+python -m core.ac_templates contract add                                          Show add contract
+```
+
+- Categories: performance, security, quality, functionality, accessibility, reliability, data-integrity, ux
+- Parameterized: templates use `{placeholder}` syntax, filled by `instantiate`
+- Instantiation returns structured AC: `{text, from_template, params}` — used in task acceptance_criteria
+- Usage tracking: `usage_count` incremented on each instantiation
+
 ### Gates (validation checks)
 ```
 python -m core.gates config {project} --data '[...]'   Configure test/lint gates
@@ -226,6 +260,8 @@ Tip: Configure secret scanning as a gate: `{"name": "secrets", "command": "gitle
 | `/risk [title\|id] [action]` | Manage risks (add type=risk decisions, analyze, mitigate, accept, close) |
 | `/guideline {text}` | Add a project guideline (standard, convention, rule) |
 | `/guidelines [scope]` | List/manage guidelines |
+| `/knowledge [id] [action]` | Manage knowledge objects (domain rules, patterns, technical context) |
+| `/ac-template [id] [action]` | Manage AC templates (reusable parameterized acceptance criteria) |
 | `/status` | Show current project status |
 | `/next` | Get and execute next task (includes verification + guidelines check) |
 | `/run [tasks]` | Execute tasks continuously: `/run`, `/run 3`, `/run T-003..T-007` |
@@ -250,6 +286,8 @@ When adding tasks, each task supports:
 - `skill` — path to SKILL.md for structured execution
 - `scopes` — list of guideline scopes this task relates to (e.g., `["backend", "database"]`). `general` is always included automatically. Used by `pipeline context` to load applicable guidelines.
 - `origin` — where this task came from (idea ID like `I-001`, or free text)
+- `knowledge_ids` — list of Knowledge IDs (K-001, etc.) that provide context for this task. Loaded by `pipeline context`.
+- `test_requirements` — dict with `unit`, `integration`, `e2e` booleans indicating required test types.
 
 Tasks can be modified after creation with `update-task` (only TODO/FAILED tasks).
 Tasks can be removed with `remove-task` (only TODO, and only if no other tasks depend on them).
@@ -409,3 +447,5 @@ All Forge state goes to `forge_output/{project}/`:
 - `guidelines.json` — project standards and conventions
 - `ideas.json` — idea staging area (hierarchical, with relations)
 - `objectives.json` — business objectives with key results
+- `knowledge.json` — knowledge objects (domain rules, patterns, context)
+- `ac_templates.json` — acceptance criteria templates (reusable, parameterized)

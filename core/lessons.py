@@ -17,22 +17,23 @@ Usage:
     python -m core.lessons <command> <project> [options]
 
 Commands:
-    add       {project} --data '{json}'     Add lessons learned
-    read      {project}                      Read lessons for project
-    read-all                                 Read lessons across all projects
-    promote   {lesson_id} [--scope X] [--weight X]  Promote lesson to global guideline
-    contract                                 Print contract spec
+    add               {project} --data '{json}'     Add lessons learned
+    read              {project}                      Read lessons for project
+    read-all                                         Read lessons across all projects
+    promote           {lesson_id} [--scope X] [--weight X]  Promote lesson to global guideline
+    promote-knowledge {lesson_id} [--category X] [--scopes X]  Promote lesson to knowledge object
+    contract                                         Print contract spec
 """
 
 import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
+from contracts import render_contract, validate_contract
+from storage import JSONFileStorage, now_iso
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -42,31 +43,18 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Paths --
+# -- Storage --
 
-def lessons_path(project: str) -> Path:
-    return Path("forge_output") / project / "lessons.json"
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def load_or_create(project: str, storage=None) -> dict:
+    if storage is None:
+        storage = JSONFileStorage()
+    return storage.load_data(project, 'lessons')
 
 
-def load_or_create(project: str) -> dict:
-    path = lessons_path(project)
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {
-        "project": project,
-        "updated": now_iso(),
-        "lessons": [],
-    }
-
-
-def save_json(project: str, data: dict):
-    path = lessons_path(project)
-    data["updated"] = now_iso()
-    atomic_write_json(path, data)
+def save_json(project: str, data: dict, storage=None):
+    if storage is None:
+        storage = JSONFileStorage()
+    storage.save_data(project, 'lessons', data)
 
 
 # -- Contract --
@@ -74,7 +62,8 @@ def save_json(project: str, data: dict):
 CONTRACTS = {
     "add": {
         "required": ["category", "title", "detail"],
-        "optional": ["task_id", "decision_ids", "severity", "applies_to", "tags"],
+        "optional": ["task_id", "decision_ids", "severity", "applies_to", "tags",
+                      "promoted_to_guideline", "promoted_to_knowledge"],
         "enums": {
             "category": {
                 "pattern-discovered",   # Reusable pattern found
@@ -97,6 +86,8 @@ CONTRACTS = {
             "detail: explain WHY this matters, not just WHAT happened",
             "applies_to: describe when this lesson is relevant (e.g. 'any API with auth')",
             "tags: searchable keywords for future retrieval",
+            "promoted_to_guideline: G-NNN ID if this lesson was promoted to a guideline (auto-set by promote command)",
+            "promoted_to_knowledge: K-NNN ID if this lesson was promoted to knowledge (auto-set by promote-knowledge command)",
         ],
         "example": [
             {
@@ -181,12 +172,12 @@ def cmd_add(args):
 
 def cmd_read(args):
     """Read lessons for a project."""
-    path = lessons_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'lessons'):
         print(f"No lessons recorded for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'lessons')
     lessons = data.get("lessons", [])
 
     print(f"## Lessons: {args.project}")
@@ -209,18 +200,17 @@ def cmd_read(args):
 
 def cmd_read_all(args):
     """Read lessons across all projects (with optional filtering)."""
-    output_dir = Path("forge_output")
-    if not output_dir.exists():
+    storage = JSONFileStorage()
+    projects = storage.list_projects()
+    if not projects:
         print("No projects found.")
         return
 
     all_lessons = []
-    for project_dir in sorted(output_dir.iterdir()):
-        if project_dir.is_dir():
-            lpath = project_dir / "lessons.json"
-            if lpath.exists():
-                data = json.loads(lpath.read_text(encoding="utf-8"))
-                all_lessons.extend(data.get("lessons", []))
+    for project in projects:
+        if storage.exists(project, 'lessons'):
+            data = storage.load_data(project, 'lessons')
+            all_lessons.extend(data.get("lessons", []))
 
     if not all_lessons:
         print("No lessons recorded across any project.")
@@ -274,23 +264,20 @@ def cmd_read_all(args):
 
 def cmd_promote(args):
     """Promote a lesson to a global guideline."""
-    # Load lesson
-    all_lessons = []
-    output_dir = Path("forge_output")
-    if not output_dir.exists():
+    storage = JSONFileStorage()
+    projects = storage.list_projects()
+    if not projects:
         print("No projects found.", file=sys.stderr)
         sys.exit(1)
 
     found = None
-    for project_dir in sorted(output_dir.iterdir()):
-        if project_dir.is_dir():
-            lpath = project_dir / "lessons.json"
-            if lpath.exists():
-                data = json.loads(lpath.read_text(encoding="utf-8"))
-                for l in data.get("lessons", []):
-                    if l.get("id") == args.lesson_id:
-                        found = l
-                        break
+    for project in projects:
+        if storage.exists(project, 'lessons'):
+            data = storage.load_data(project, 'lessons')
+            for l in data.get("lessons", []):
+                if l.get("id") == args.lesson_id:
+                    found = l
+                    break
         if found:
             break
 
@@ -298,13 +285,13 @@ def cmd_promote(args):
         print(f"ERROR: Lesson {args.lesson_id} not found", file=sys.stderr)
         sys.exit(1)
 
+    if found.get("promoted_to_guideline"):
+        print(f"WARNING: Lesson {args.lesson_id} already promoted to {found['promoted_to_guideline']}")
+        print("Skipping.")
+        return
+
     # Load global guidelines
-    global_path = Path("forge_output") / "_global" / "guidelines.json"
-    if global_path.exists():
-        global_data = json.loads(global_path.read_text(encoding="utf-8"))
-    else:
-        global_path.parent.mkdir(parents=True, exist_ok=True)
-        global_data = {"scope": "_global", "updated": now_iso(), "guidelines": []}
+    global_data = storage.load_global('guidelines')
 
     # Check for duplicate
     for g in global_data.get("guidelines", []):
@@ -343,14 +330,156 @@ def cmd_promote(args):
     }
 
     global_data["guidelines"].append(guideline)
-    global_data["updated"] = now_iso()
-    atomic_write_json(global_path, global_data)
+    storage.save_global('guidelines', global_data)
+
+    # Update lesson with promoted_to_guideline reference
+    lesson_project = found.get("project", project)
+    lesson_data = storage.load_data(lesson_project, 'lessons')
+    for l in lesson_data.get("lessons", []):
+        if l["id"] == found["id"]:
+            l["promoted_to_guideline"] = guideline["id"]
+            break
+    storage.save_data(lesson_project, 'lessons', lesson_data)
 
     print(f"Lesson promoted to global guideline:")
     print(f"  {found['id']} → {guideline['id']}")
     print(f"  Title: {guideline['title']}")
     print(f"  Scope: {scope} | Weight: {weight}")
     print(f"  Source: {found.get('project', '?')}/{found['id']}")
+
+
+def cmd_promote_knowledge(args):
+    """Promote a lesson to a knowledge object."""
+    storage = JSONFileStorage()
+    projects = storage.list_projects()
+    if not projects:
+        print("No projects found.", file=sys.stderr)
+        sys.exit(1)
+
+    # Find the lesson across all projects
+    found = None
+    lesson_project = None
+    for project in projects:
+        if storage.exists(project, 'lessons'):
+            data = storage.load_data(project, 'lessons')
+            for l in data.get("lessons", []):
+                if l.get("id") == args.lesson_id:
+                    found = l
+                    lesson_project = project
+                    break
+        if found:
+            break
+
+    if not found:
+        print(f"ERROR: Lesson {args.lesson_id} not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if already promoted
+    if found.get("promoted_to_knowledge"):
+        print(f"WARNING: Lesson {args.lesson_id} already promoted to {found['promoted_to_knowledge']}")
+        print("Skipping.")
+        return
+
+    # Determine target project (use lesson's project)
+    target_project = lesson_project
+
+    # Map lesson category to knowledge category
+    category_map = {
+        "pattern-discovered": "code-patterns",
+        "mistake-avoided": "technical-context",
+        "decision-validated": "architecture",
+        "decision-reversed": "architecture",
+        "tool-insight": "technical-context",
+        "architecture-lesson": "architecture",
+        "process-improvement": "technical-context",
+        "market-insight": "business-context",
+    }
+    category = args.category or category_map.get(found.get("category", ""), "technical-context")
+
+    # Load knowledge data and check for duplicates
+    k_data = storage.load_data(target_project, 'knowledge')
+    existing_keys = {
+        (k.get("category", "").lower().strip(), k.get("title", "").lower().strip())
+        for k in k_data.get("knowledge", [])
+    }
+    if (category.lower().strip(), found["title"].lower().strip()) in existing_keys:
+        print(f"WARNING: Knowledge with same category+title already exists. Skipping.")
+        return
+
+    existing_ids = [
+        int(k["id"].split("-")[1]) for k in k_data.get("knowledge", [])
+        if k.get("id", "").startswith("K-")
+    ]
+    k_num = max(existing_ids, default=0) + 1
+    k_id = f"K-{k_num:03d}"
+
+    timestamp = now_iso()
+    scopes = []
+    if args.scopes:
+        scopes = [s.strip() for s in args.scopes.split(",")]
+    elif found.get("tags"):
+        scopes = found["tags"][:3]  # Use first 3 tags as scopes
+
+    knowledge = {
+        "id": k_id,
+        "title": found["title"],
+        "category": category,
+        "content": found["detail"],
+        "status": "DRAFT",
+        "version": 1,
+        "scopes": scopes,
+        "tags": found.get("tags", []),
+        "source": {
+            "type": "lesson",
+            "ref": found["id"],
+            "derived_from_lessons": [found["id"]],
+        },
+        "linked_entities": [
+            {
+                "entity_type": "lesson",
+                "entity_id": found["id"],
+                "relation": "reference",
+            },
+        ],
+        "dependencies": [],
+        "versions": [
+            {
+                "version": 1,
+                "content": found["detail"],
+                "changed_by": "forge",
+                "changed_at": timestamp,
+                "change_reason": f"Promoted from lesson {found['id']}",
+            },
+        ],
+        "review": {
+            "last_reviewed_at": timestamp,
+            "review_interval_days": 30,
+            "next_review_at": None,
+        },
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "created_by": "forge",
+    }
+
+    k_data["knowledge"].append(knowledge)
+    storage.save_data(target_project, 'knowledge', k_data)
+
+    # Update lesson with promoted_to_knowledge reference
+    lesson_data = storage.load_data(lesson_project, 'lessons')
+    for l in lesson_data.get("lessons", []):
+        if l["id"] == found["id"]:
+            l["promoted_to_knowledge"] = k_id
+            break
+    storage.save_data(lesson_project, 'lessons', lesson_data)
+
+    print(f"Lesson promoted to knowledge:")
+    print(f"  {found['id']} → {k_id}")
+    print(f"  Title: {knowledge['title']}")
+    print(f"  Category: {category} | Status: DRAFT")
+    print(f"  Scopes: {', '.join(scopes) if scopes else '(none)'}")
+    print(f"  Source: {lesson_project}/{found['id']}")
+    print(f"\nReview and activate: python -m core.knowledge update {target_project} "
+          f"--data '{{\"id\": \"{k_id}\", \"status\": \"ACTIVE\"}}'")
 
 
 def cmd_contract(args):
@@ -382,6 +511,11 @@ def main():
     p.add_argument("--scope", help="Guideline scope (default: general)")
     p.add_argument("--weight", choices=["must", "should", "may"], help="Override weight (default: based on severity)")
 
+    p = sub.add_parser("promote-knowledge", help="Promote a lesson to a knowledge object")
+    p.add_argument("lesson_id", help="Lesson ID (e.g. L-001)")
+    p.add_argument("--category", help="Knowledge category (default: inferred from lesson category)")
+    p.add_argument("--scopes", help="Comma-separated scopes (default: from lesson tags)")
+
     sub.add_parser("contract", help="Print contract spec")
 
     args = parser.parse_args()
@@ -391,6 +525,7 @@ def main():
         "read": cmd_read,
         "read-all": cmd_read_all,
         "promote": cmd_promote,
+        "promote-knowledge": cmd_promote_knowledge,
         "contract": cmd_contract,
     }
 

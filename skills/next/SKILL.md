@@ -93,11 +93,11 @@ its procedure instead of this generic flow.
 
 Before writing any code, understand the full context:
 
-a. **Read context from dependencies, guidelines, and risk decisions** (what previous tasks produced + applicable standards + active risk decisions):
+a. **Read context from dependencies, guidelines, knowledge, and risk decisions** (what previous tasks produced + applicable standards + knowledge context + active risk decisions):
 ```bash
 python -m core.pipeline context {project} {task_id}
 ```
-This includes: dependency outputs, decisions, lessons, applicable guidelines (based on task's `scopes`), AND active risk decisions (linked to this task or its source idea). **Follow all MUST guidelines strictly. Follow SHOULD guidelines unless there's a documented reason not to.**
+This includes: dependency outputs, decisions, lessons, applicable guidelines (based on task's `scopes`), knowledge objects (from task's `knowledge_ids` + inherited from source idea), test requirements, AND active risk decisions (linked to this task or its source idea). **Follow all MUST guidelines strictly. Follow SHOULD guidelines unless there's a documented reason not to.**
 
 b. **If task has origin from an idea** (origin starts with `I-`), load the idea context:
 ```bash

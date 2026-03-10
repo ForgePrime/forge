@@ -37,11 +37,11 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
+from contracts import render_contract, validate_contract
+from storage import JSONFileStorage, now_iso
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -51,31 +51,18 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Paths --
+# -- Storage --
 
-def objectives_path(project: str) -> Path:
-    return Path("forge_output") / project / "objectives.json"
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def load_or_create(project: str, storage=None) -> dict:
+    if storage is None:
+        storage = JSONFileStorage()
+    return storage.load_data(project, 'objectives')
 
 
-def load_or_create(project: str) -> dict:
-    path = objectives_path(project)
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {
-        "project": project,
-        "updated": now_iso(),
-        "objectives": [],
-    }
-
-
-def save_json(project: str, data: dict):
-    path = objectives_path(project)
-    data["updated"] = now_iso()
-    atomic_write_json(path, data)
+def save_json(project: str, data: dict, storage=None):
+    if storage is None:
+        storage = JSONFileStorage()
+    storage.save_data(project, 'objectives', data)
 
 
 def find_objective(data: dict, obj_id: str) -> dict:
@@ -93,7 +80,7 @@ CONTRACTS = {
     "add": {
         "required": ["title", "description", "key_results"],
         "optional": ["appetite", "scope", "assumptions", "tags",
-                      "scopes", "derived_guidelines"],
+                      "scopes", "derived_guidelines", "knowledge_ids"],
         "enums": {
             "appetite": {"small", "medium", "large"},
             "scope": {"project", "cross-project"},
@@ -104,6 +91,7 @@ CONTRACTS = {
             "tags": list,
             "scopes": list,
             "derived_guidelines": list,
+            "knowledge_ids": list,
         },
         "invariants": [
             (lambda item, i: len(item.get("key_results", [])) >= 1,
@@ -130,6 +118,7 @@ CONTRACTS = {
             "Ideas/tasks linked to this objective can inherit these scopes for guideline loading.",
             "derived_guidelines: list of guideline IDs that were created BECAUSE of this objective (e.g., ['G-010']). "
             "Outbound link — 'these guidelines exist because of this objective'. NOT 'these guidelines apply to this objective'.",
+            "knowledge_ids: list of Knowledge IDs (K-001, etc.) that provide context for this objective.",
         ],
         "example": [
             {
@@ -155,7 +144,7 @@ CONTRACTS = {
         "required": ["id"],
         "optional": ["title", "description", "status", "appetite",
                       "assumptions", "tags", "key_results",
-                      "scopes", "derived_guidelines"],
+                      "scopes", "derived_guidelines", "knowledge_ids"],
         "enums": {
             "status": {"ACTIVE", "ACHIEVED", "ABANDONED", "PAUSED"},
             "appetite": {"small", "medium", "large"},
@@ -166,6 +155,7 @@ CONTRACTS = {
             "key_results": list,
             "scopes": list,
             "derived_guidelines": list,
+            "knowledge_ids": list,
         },
         "invariant_texts": [
             "id: existing objective ID (O-001, etc.)",
@@ -245,6 +235,7 @@ def cmd_add(args):
             "tags": item.get("tags", []),
             "scopes": item.get("scopes", []),
             "derived_guidelines": item.get("derived_guidelines", []),
+            "knowledge_ids": item.get("knowledge_ids", []),
             "status": "ACTIVE",
             "created": timestamp,
             "updated": timestamp,
@@ -268,12 +259,12 @@ def cmd_add(args):
 
 def cmd_read(args):
     """Read objectives (optionally filtered)."""
-    path = objectives_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'objectives'):
         print(f"No objectives for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'objectives')
     objectives = data.get("objectives", [])
 
     if args.status:
@@ -314,6 +305,8 @@ def cmd_show(args):
         print(f"- **Scopes**: {', '.join(obj['scopes'])}")
     if obj.get("derived_guidelines"):
         print(f"- **Derived Guidelines**: {', '.join(obj['derived_guidelines'])}")
+    if obj.get("knowledge_ids"):
+        print(f"- **Knowledge**: {', '.join(obj['knowledge_ids'])}")
     print()
     print("### Description")
     print(obj.get("description", ""))
@@ -341,10 +334,10 @@ def cmd_show(args):
         print()
 
     # Coverage: find linked ideas
-    ideas_file = Path("forge_output") / args.project / "ideas.json"
+    _s = JSONFileStorage()
     linked_ideas = []
-    if ideas_file.exists():
-        ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
+    if _s.exists(args.project, 'ideas'):
+        ideas_data = _s.load_data(args.project, 'ideas')
         for idea in ideas_data.get("ideas", []):
             advances = idea.get("advances_key_results", [])
             if any(kr_ref.startswith(obj["id"]) or kr_ref in _kr_full_ids(obj)
@@ -380,9 +373,8 @@ def cmd_show(args):
         print("  These KRs have no Ideas addressing them yet.")
 
     # Task progress for linked ideas
-    tracker_file = Path("forge_output") / args.project / "tracker.json"
-    if tracker_file.exists() and linked_ideas:
-        tracker = json.loads(tracker_file.read_text(encoding="utf-8"))
+    if _s.exists(args.project, 'tracker') and linked_ideas:
+        tracker = _s.load_data(args.project, 'tracker')
         tasks = tracker.get("tasks", [])
         idea_ids = {i["id"] for i in linked_ideas}
         related_tasks = [t for t in tasks if t.get("origin") in idea_ids]
@@ -434,7 +426,7 @@ def cmd_update(args):
 
         # Simple field updates
         for field in ["title", "description", "appetite", "assumptions", "tags",
-                       "scopes", "derived_guidelines"]:
+                       "scopes", "derived_guidelines", "knowledge_ids"]:
             if field in u:
                 obj[field] = u[field]
 
@@ -488,12 +480,12 @@ def cmd_update(args):
 
 def cmd_status(args):
     """Coverage dashboard across all objectives."""
-    path = objectives_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'objectives'):
         print(f"No objectives for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'objectives')
     objectives = data.get("objectives", [])
 
     if not objectives:
@@ -501,17 +493,16 @@ def cmd_status(args):
         return
 
     # Load ideas for coverage
-    ideas_file = Path("forge_output") / args.project / "ideas.json"
+    _s = JSONFileStorage()
     all_ideas = []
-    if ideas_file.exists():
-        ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
+    if _s.exists(args.project, 'ideas'):
+        ideas_data = _s.load_data(args.project, 'ideas')
         all_ideas = ideas_data.get("ideas", [])
 
     # Load tasks for execution progress
-    tracker_file = Path("forge_output") / args.project / "tracker.json"
     all_tasks = []
-    if tracker_file.exists():
-        tracker = json.loads(tracker_file.read_text(encoding="utf-8"))
+    if _s.exists(args.project, 'tracker'):
+        tracker = _s.load_data(args.project, 'tracker')
         all_tasks = tracker.get("tasks", [])
 
     print(f"## Objective Dashboard: {args.project}")

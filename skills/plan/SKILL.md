@@ -223,6 +223,8 @@ For each task, specify:
 - `parallel`: true if this task can run alongside siblings
 - `conflicts_with`: list of task IDs modifying same files
 - `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). Inherit from idea scopes where applicable. `general` is always included automatically during execution.
+- `knowledge_ids`: list of Knowledge IDs (K-001, etc.) that provide context for this task. Inherit from source idea where applicable. Loaded by `pipeline context` for LLM assembly.
+- `test_requirements`: dict with boolean keys `unit`, `integration`, `e2e` indicating which test types this task needs.
 
 Store as draft plan for review (W2):
 ```bash

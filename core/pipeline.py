@@ -37,11 +37,11 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
+from contracts import render_contract, validate_contract
+from storage import JSONFileStorage, now_iso
 
 CLAIM_WAIT_SECONDS = 1.5
 
@@ -53,36 +53,33 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Paths --
+# -- Storage --
 
-def output_dir(project: str) -> Path:
-    return Path("forge_output") / project
+_default_storage = None
 
-
-def tracker_path(project: str) -> Path:
-    return output_dir(project) / "tracker.json"
-
-
-# -- Time --
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def _get_storage(storage=None):
+    """Get storage adapter, using module-level default if not provided."""
+    global _default_storage
+    if storage is not None:
+        return storage
+    if _default_storage is None:
+        _default_storage = JSONFileStorage()
+    return _default_storage
 
 
 # -- Tracker I/O --
 
-def load_tracker(project: str) -> dict:
-    path = tracker_path(project)
-    if not path.exists():
+def load_tracker(project: str, storage=None) -> dict:
+    s = _get_storage(storage)
+    if not s.exists(project, 'tracker'):
         print(f"ERROR: No tracker for project '{project}'. Run: init {project} --goal \"...\"", file=sys.stderr)
         sys.exit(1)
-    return json.loads(path.read_text(encoding="utf-8"))
+    return s.load_data(project, 'tracker')
 
 
-def save_tracker(project: str, tracker: dict):
-    path = tracker_path(project)
-    tracker["updated"] = now_iso()
-    atomic_write_json(path, tracker)
+def save_tracker(project: str, tracker: dict, storage=None):
+    s = _get_storage(storage)
+    s.save_data(project, 'tracker', tracker)
 
 
 def find_task(tracker: dict, task_id: str) -> dict:
@@ -142,7 +139,8 @@ CONTRACTS = {
         "required": ["id", "name"],
         "optional": ["description", "instruction", "depends_on", "parallel",
                       "conflicts_with", "skill", "acceptance_criteria",
-                      "type", "blocked_by_decisions", "scopes", "origin"],
+                      "type", "blocked_by_decisions", "scopes", "origin",
+                      "knowledge_ids", "test_requirements"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -153,6 +151,8 @@ CONTRACTS = {
             "acceptance_criteria": list,
             "blocked_by_decisions": list,
             "scopes": list,
+            "knowledge_ids": list,
+            "test_requirements": dict,
         },
         "invariant_texts": [
             "id: unique task identifier (e.g., T-001)",
@@ -162,11 +162,13 @@ CONTRACTS = {
             "depends_on: list of prerequisite task IDs (must exist)",
             "parallel: true if this task can run alongside others",
             "conflicts_with: list of task IDs that modify same files",
-            "acceptance_criteria: list of concrete conditions that must be true when task is DONE",
+            "acceptance_criteria: list of conditions for DONE — supports plain strings or structured: {text, from_template, params}",
             "type: task category — feature (default), bug, chore, or investigation",
             "blocked_by_decisions: list of decision IDs (D-001, etc.) that must be CLOSED before this task can start",
             "scopes: list of guideline scopes this task relates to (e.g., ['backend', 'database']). 'general' is always included automatically.",
             "origin: source of this task — idea ID (I-001) or free text tracing where this task came from",
+            "knowledge_ids: list of Knowledge IDs (K-001, etc.) linked to this task for context assembly",
+            "test_requirements: {unit: bool, integration: bool, e2e: bool, description: str} — what testing is needed",
         ],
         "example": [
             {
@@ -204,7 +206,8 @@ CONTRACTS = {
         "required": ["id"],
         "optional": ["name", "description", "instruction", "depends_on",
                       "conflicts_with", "skill", "acceptance_criteria",
-                      "type", "blocked_by_decisions", "scopes", "origin"],
+                      "type", "blocked_by_decisions", "scopes", "origin",
+                      "knowledge_ids", "test_requirements"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -214,6 +217,8 @@ CONTRACTS = {
             "acceptance_criteria": list,
             "blocked_by_decisions": list,
             "scopes": list,
+            "knowledge_ids": list,
+            "test_requirements": dict,
         },
         "invariant_texts": [
             "id: existing task ID to update",
@@ -283,8 +288,8 @@ CONTRACTS = {
 
 def cmd_init(args):
     """Create a new project tracker."""
-    path = tracker_path(args.project)
-    if path.exists() and not args.force:
+    storage = _get_storage()
+    if storage.exists(args.project, 'tracker') and not args.force:
         print(f"Project '{args.project}' already exists.")
         tracker = load_tracker(args.project)
         print_status(args.project, tracker)
@@ -304,9 +309,39 @@ def cmd_init(args):
     print(f"## Project created: {args.project}")
     print(f"")
     print(f"Goal: {args.goal}")
-    print(f"Saved to: {path}")
+    print(f"Saved to: forge_output/{args.project}/tracker.json")
     print(f"")
     print(f"Next: Add tasks with `add-tasks` or run `/plan {args.project}` to decompose the goal.")
+
+
+def _build_task_entry(t: dict, source_idea_id: str = None) -> dict:
+    """Build a task entry dict from raw task data. Single source of truth for task schema."""
+    entry = {
+        "id": t["id"],
+        "name": t["name"],
+        "description": t.get("description", ""),
+        "depends_on": t.get("depends_on", []),
+        "parallel": t.get("parallel", False),
+        "conflicts_with": t.get("conflicts_with", []),
+        "skill": t.get("skill"),
+        "instruction": t.get("instruction", ""),
+        "acceptance_criteria": t.get("acceptance_criteria", []),
+        "type": t.get("type", "feature"),
+        "blocked_by_decisions": t.get("blocked_by_decisions", []),
+        "scopes": t.get("scopes", []),
+        "origin": t.get("origin", source_idea_id or ""),
+        "knowledge_ids": t.get("knowledge_ids", []),
+        "status": "TODO",
+        "started_at": None,
+        "completed_at": None,
+        "failed_reason": None,
+    }
+    if t.get("test_requirements"):
+        entry["test_requirements"] = t["test_requirements"]
+    # If origin not set but source_idea_id exists, set it
+    if source_idea_id and not entry["origin"]:
+        entry["origin"] = source_idea_id
+    return entry
 
 
 def cmd_add_tasks(args):
@@ -339,27 +374,7 @@ def cmd_add_tasks(args):
             sys.exit(1)
 
     # Build task entries
-    entries = []
-    for t in new_tasks:
-        entries.append({
-            "id": t["id"],
-            "name": t["name"],
-            "description": t.get("description", ""),
-            "depends_on": t.get("depends_on", []),
-            "parallel": t.get("parallel", False),
-            "conflicts_with": t.get("conflicts_with", []),
-            "skill": t.get("skill"),
-            "instruction": t.get("instruction", ""),
-            "acceptance_criteria": t.get("acceptance_criteria", []),
-            "type": t.get("type", "feature"),
-            "blocked_by_decisions": t.get("blocked_by_decisions", []),
-            "scopes": t.get("scopes", []),
-            "origin": t.get("origin", ""),
-            "status": "TODO",
-            "started_at": None,
-            "completed_at": None,
-            "failed_reason": None,
-        })
+    entries = [_build_task_entry(t) for t in new_tasks]
 
     # Validate DAG with all tasks (existing + new)
     all_tasks = tracker["tasks"] + entries
@@ -439,12 +454,8 @@ def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning
         return 0
 
     # Load existing changes — skip already recorded files for this task
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    changes_path = Path("forge_output") / project / "changes.json"
-    if changes_path.exists():
-        ch_data = json.loads(changes_path.read_text(encoding="utf-8"))
-    else:
-        ch_data = {"project": project, "updated": now_iso(), "changes": []}
+    storage = _get_storage()
+    ch_data = storage.load_data(project, 'changes')
 
     existing_files = {c["file"] for c in ch_data.get("changes", [])
                       if c.get("task_id") == task_id}
@@ -499,9 +510,7 @@ def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning
 
     if new_changes:
         ch_data["changes"].extend(new_changes)
-        ch_data["updated"] = timestamp
-        from contracts import atomic_write_json
-        atomic_write_json(changes_path, ch_data)
+        storage.save_data(project, 'changes', ch_data)
 
     return len(new_changes)
 
@@ -520,10 +529,8 @@ def _has_conflict(task: dict, active_ids: set) -> bool:
 
 def _load_open_decision_ids(project: str) -> set:
     """Load set of OPEN decision IDs from decisions.json."""
-    dpath = Path("forge_output") / project / "decisions.json"
-    if not dpath.exists():
-        return set()
-    data = json.loads(dpath.read_text(encoding="utf-8"))
+    storage = _get_storage()
+    data = storage.load_data(project, 'decisions')
     return {d["id"] for d in data.get("decisions", []) if d.get("status") == "OPEN"}
 
 
@@ -750,12 +757,10 @@ def cmd_complete(args):
 
     # Check that changes were recorded for this task
     if not force:
-        changes_file = Path("forge_output") / args.project / "changes.json"
-        task_changes = []
-        if changes_file.exists():
-            changes_data = json.loads(changes_file.read_text(encoding="utf-8"))
-            task_changes = [c for c in changes_data.get("changes", [])
-                            if c.get("task_id") == args.task_id]
+        storage = _get_storage()
+        changes_data = storage.load_data(args.project, 'changes')
+        task_changes = [c for c in changes_data.get("changes", [])
+                        if c.get("task_id") == args.task_id]
         if not task_changes:
             print(f"WARNING: No changes recorded for {args.task_id}. "
                   f"Use --force to complete anyway.", file=sys.stderr)
@@ -898,7 +903,8 @@ def cmd_update_task(args):
     # Apply updates (only provided fields)
     updatable = ["name", "description", "instruction", "depends_on",
                  "conflicts_with", "skill", "acceptance_criteria",
-                 "type", "blocked_by_decisions", "scopes", "origin"]
+                 "type", "blocked_by_decisions", "scopes", "origin",
+                 "knowledge_ids", "test_requirements"]
     changed = []
     for field in updatable:
         if field in updates:
@@ -1194,29 +1200,33 @@ def print_status(project: str, tracker: dict):
         ac = active.get("acceptance_criteria", [])
         if ac:
             # Load changes to check what's recorded for this task
-            changes_file = Path("forge_output") / project / "changes.json"
-            recorded_files = set()
-            if changes_file.exists():
-                ch_data = json.loads(changes_file.read_text(encoding="utf-8"))
-                recorded_files = {
-                    c.get("summary", "").lower()
-                    for c in ch_data.get("changes", [])
-                    if c.get("task_id") == active["id"]
-                }
+            _s = _get_storage()
+            ch_data = _s.load_data(project, 'changes')
+            recorded_files = {
+                c.get("summary", "").lower()
+                for c in ch_data.get("changes", [])
+                if c.get("task_id") == active["id"]
+            }
 
             print(f"  Acceptance criteria ({len(ac)}):")
             for criterion in ac:
-                # Simple heuristic: if changes recorded, show progress
-                print(f"    - {criterion}")
+                if isinstance(criterion, dict):
+                    text = criterion.get("text", "")
+                    tmpl = criterion.get("from_template")
+                    if tmpl:
+                        print(f"    - {text} (from {tmpl})")
+                    else:
+                        print(f"    - {text}")
+                else:
+                    print(f"    - {criterion}")
 
         # Show recorded changes count
-        changes_file = Path("forge_output") / project / "changes.json"
-        if changes_file.exists():
-            ch_data = json.loads(changes_file.read_text(encoding="utf-8"))
-            task_changes = [c for c in ch_data.get("changes", [])
-                           if c.get("task_id") == active["id"]]
-            if task_changes:
-                print(f"  Changes recorded: {len(task_changes)} files")
+        _s = _get_storage()
+        ch_data = _s.load_data(project, 'changes')
+        task_changes = [c for c in ch_data.get("changes", [])
+                       if c.get("task_id") == active["id"]]
+        if task_changes:
+            print(f"  Changes recorded: {len(task_changes)} files")
 
     # DAG visualization
     print()
@@ -1305,12 +1315,38 @@ def print_task_detail(task: dict):
     if blocked:
         print(f"**Blocked by decisions**: {', '.join(blocked)}")
 
+    k_ids = task.get("knowledge_ids", [])
+    if k_ids:
+        print(f"**Knowledge**: {', '.join(k_ids)}")
+
+    test_req = task.get("test_requirements")
+    if test_req:
+        parts = []
+        if test_req.get("unit"):
+            parts.append("unit")
+        if test_req.get("integration"):
+            parts.append("integration")
+        if test_req.get("e2e"):
+            parts.append("e2e")
+        label = ", ".join(parts) if parts else "none specified"
+        print(f"**Test Requirements**: {label}")
+        if test_req.get("description"):
+            print(f"  {test_req['description']}")
+
     ac = task.get("acceptance_criteria", [])
     if ac:
         print(f"")
         print(f"**Acceptance Criteria**:")
         for criterion in ac:
-            print(f"  - [ ] {criterion}")
+            if isinstance(criterion, dict):
+                text = criterion.get("text", "")
+                tmpl = criterion.get("from_template")
+                if tmpl:
+                    print(f"  - [ ] {text} (from {tmpl})")
+                else:
+                    print(f"  - [ ] {text}")
+            else:
+                print(f"  - [ ] {criterion}")
 
     print(f"")
     print(f"When done: `python -m core.pipeline complete {{project}} {task['id']}`")
@@ -1333,12 +1369,11 @@ def _objective_kr_pct(baseline, target, current) -> int:
 def _estimate_context_size(project: str, task_ids: set) -> int:
     """Estimate context size in characters for the given dependency tasks."""
     total = 0
-    for fname in ("changes.json", "decisions.json", "lessons.json"):
-        fpath = Path("forge_output") / project / fname
-        if fpath.exists():
-            data = json.loads(fpath.read_text(encoding="utf-8"))
-            key = fname.replace(".json", "")
-            for entry in data.get(key, []):
+    _s = _get_storage()
+    for entity in ("changes", "decisions", "lessons"):
+        if _s.exists(project, entity):
+            data = _s.load_data(project, entity)
+            for entry in data.get(entity, []):
                 if entry.get("task_id") in task_ids:
                     total += len(json.dumps(entry))
     return total
@@ -1353,10 +1388,8 @@ def cmd_context(args):
     print()
 
     # Pre-load decisions (used in multiple sections below)
-    decisions_file = Path("forge_output") / args.project / "decisions.json"
-    dec_data = None
-    if decisions_file.exists():
-        dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
+    _s = _get_storage()
+    dec_data = _s.load_data(args.project, 'decisions')
 
     # Task details
     if task.get("description"):
@@ -1378,20 +1411,18 @@ def cmd_context(args):
             print()
 
         # Show changes from dependency tasks
-        changes_file = Path("forge_output") / args.project / "changes.json"
-        if changes_file.exists():
-            changes_data = json.loads(changes_file.read_text(encoding="utf-8"))
-            dep_changes = [c for c in changes_data.get("changes", [])
-                           if c.get("task_id") in deps]
-            if dep_changes:
-                print(f"### Changes from Dependencies")
-                print()
-                print("| Task | File | Action | Summary |")
-                print("|------|------|--------|---------|")
-                for c in dep_changes:
-                    summary = c.get("summary", "")[:50]
-                    print(f"| {c['task_id']} | {c['file']} | {c['action']} | {summary} |")
-                print()
+        changes_data = _s.load_data(args.project, 'changes')
+        dep_changes = [c for c in changes_data.get("changes", [])
+                       if c.get("task_id") in deps]
+        if dep_changes:
+            print(f"### Changes from Dependencies")
+            print()
+            print("| Task | File | Action | Summary |")
+            print("|------|------|--------|---------|")
+            for c in dep_changes:
+                summary = c.get("summary", "")[:50]
+                print(f"| {c['task_id']} | {c['file']} | {c['action']} | {summary} |")
+            print()
 
         # Show decisions from dependency tasks
         if dec_data:
@@ -1422,31 +1453,24 @@ def cmd_context(args):
             print()
 
     # Show relevant lessons
-    lessons_file = Path("forge_output") / args.project / "lessons.json"
-    if lessons_file.exists():
-        lessons_data = json.loads(lessons_file.read_text(encoding="utf-8"))
-        lessons = lessons_data.get("lessons", [])
-        if lessons:
-            print(f"### Relevant Lessons")
-            print()
-            for l in lessons:
-                print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
-            print()
+    lessons_data = _s.load_data(args.project, 'lessons')
+    lessons = lessons_data.get("lessons", [])
+    if lessons:
+        print(f"### Relevant Lessons")
+        print()
+        for l in lessons:
+            print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
+        print()
 
     # Guidelines context (uses shared renderer from guidelines module)
     # Load global guidelines (bypass scope filter) and project guidelines (scope-filtered)
     global_guidelines = []
     if args.project != "_global":
-        global_guidelines_file = Path("forge_output") / "_global" / "guidelines.json"
-        if global_guidelines_file.exists():
-            g_global = json.loads(global_guidelines_file.read_text(encoding="utf-8"))
-            global_guidelines = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
+        g_global = _s.load_global('guidelines')
+        global_guidelines = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
-    project_guidelines = []
-    guidelines_file = Path("forge_output") / args.project / "guidelines.json"
-    if guidelines_file.exists():
-        g_data = json.loads(guidelines_file.read_text(encoding="utf-8"))
-        project_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
+    g_data = _s.load_data(args.project, 'guidelines')
+    project_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     if global_guidelines or project_guidelines:
         task_scopes = set(task.get("scopes", []))
@@ -1456,13 +1480,54 @@ def cmd_context(args):
         for line in lines:
             print(line)
 
+    # Knowledge context (from task.knowledge_ids + origin idea)
+    k_ids = set(task.get("knowledge_ids", []))
+    # Inherit knowledge_ids from origin idea
+    if task.get("origin") and task["origin"].startswith("I-"):
+        if _s.exists(args.project, 'ideas'):
+            ideas_data = _s.load_data(args.project, 'ideas')
+            for idea in ideas_data.get("ideas", []):
+                if idea["id"] == task["origin"]:
+                    k_ids.update(idea.get("knowledge_ids", []))
+                    break
+    if k_ids and _s.exists(args.project, 'knowledge'):
+        k_data = _s.load_data(args.project, 'knowledge')
+        k_objects = {k["id"]: k for k in k_data.get("knowledge", [])
+                     if k.get("status") == "ACTIVE"}
+        linked = [k_objects[kid] for kid in sorted(k_ids) if kid in k_objects]
+        if linked:
+            print(f"### Knowledge ({len(linked)})")
+            print()
+            for k in linked:
+                print(f"**{k['id']}**: {k['title']} [{k['category']}]")
+                content_preview = k.get("content", "")[:200]
+                if content_preview:
+                    print(f"  {content_preview}")
+            print()
+
+    # Test requirements
+    test_req = task.get("test_requirements")
+    if test_req:
+        print(f"### Test Requirements")
+        print()
+        parts = []
+        if test_req.get("unit"):
+            parts.append("unit")
+        if test_req.get("integration"):
+            parts.append("integration")
+        if test_req.get("e2e"):
+            parts.append("e2e")
+        if parts:
+            print(f"Required: {', '.join(parts)}")
+        if test_req.get("description"):
+            print(f"{test_req['description']}")
+        print()
+
     # Business context: trace task → origin idea → objective (F-001: graceful degradation)
     if task.get("origin") and task["origin"].startswith("I-"):
-        ideas_file = Path("forge_output") / args.project / "ideas.json"
-        objectives_file = Path("forge_output") / args.project / "objectives.json"
-        if ideas_file.exists() and objectives_file.exists():
-            ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
-            obj_data = json.loads(objectives_file.read_text(encoding="utf-8"))
+        if _s.exists(args.project, 'ideas') and _s.exists(args.project, 'objectives'):
+            ideas_data = _s.load_data(args.project, 'ideas')
+            obj_data = _s.load_data(args.project, 'objectives')
             # Find origin idea
             origin_idea = None
             for idea in ideas_data.get("ideas", []):
@@ -1494,9 +1559,7 @@ def cmd_context(args):
                     print()
 
     # Risks (type=risk decisions) linked to this task or origin idea
-    if decisions_file.exists():
-        if not dec_data:
-            dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
+    if _s.exists(args.project, 'decisions'):
         risk_decisions = [d for d in dec_data.get("decisions", [])
                           if d.get("type") == "risk"
                           and d.get("status") not in ("CLOSED",)]
@@ -1667,28 +1730,7 @@ def cmd_approve_plan(args):
     # Build task entries (same logic as cmd_add_tasks)
     entries = []
     for t in draft_tasks:
-        entry = {
-            "id": t["id"],
-            "name": t["name"],
-            "description": t.get("description", ""),
-            "depends_on": t.get("depends_on", []),
-            "parallel": t.get("parallel", False),
-            "conflicts_with": t.get("conflicts_with", []),
-            "skill": t.get("skill"),
-            "instruction": t.get("instruction", ""),
-            "acceptance_criteria": t.get("acceptance_criteria", []),
-            "type": t.get("type", "feature"),
-            "blocked_by_decisions": t.get("blocked_by_decisions", []),
-            "scopes": t.get("scopes", []),
-            "origin": t.get("origin", source_idea_id or ""),
-            "status": "TODO",
-            "started_at": None,
-            "completed_at": None,
-            "failed_reason": None,
-        }
-        # If origin not set but source_idea_id exists, set it
-        if not entry["origin"] and source_idea_id:
-            entry["origin"] = source_idea_id
+        entry = _build_task_entry(t, source_idea_id=source_idea_id)
         entries.append(entry)
 
     # Validate DAG
@@ -1710,17 +1752,16 @@ def cmd_approve_plan(args):
 
     # Mark source idea as COMMITTED
     if source_idea_id:
-        ideas_file = Path("forge_output") / args.project / "ideas.json"
-        if ideas_file.exists():
-            ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
+        _s = _get_storage()
+        if _s.exists(args.project, 'ideas'):
+            ideas_data = _s.load_data(args.project, 'ideas')
             for idea in ideas_data.get("ideas", []):
                 if idea["id"] == source_idea_id:
                     if idea["status"] == "APPROVED":
                         idea["status"] = "COMMITTED"
                         idea["committed_at"] = now_iso()
                         idea["updated"] = now_iso()
-                        ideas_data["updated"] = now_iso()
-                        atomic_write_json(ideas_file, ideas_data)
+                        _s.save_data(args.project, 'ideas', ideas_data)
                         print(f"Idea {source_idea_id} marked as COMMITTED.")
                     elif idea["status"] == "COMMITTED":
                         pass  # already committed
@@ -1758,7 +1799,12 @@ def _print_draft_tasks(tasks: list):
         if t.get("acceptance_criteria"):
             print(f"  **Acceptance criteria**: {len(t['acceptance_criteria'])} items")
             for ac in t["acceptance_criteria"]:
-                print(f"    - {ac}")
+                if isinstance(ac, dict):
+                    text = ac.get("text", "")
+                    tmpl = ac.get("from_template")
+                    print(f"    - {text}" + (f" (from {tmpl})" if tmpl else ""))
+                else:
+                    print(f"    - {ac}")
         print()
 
 

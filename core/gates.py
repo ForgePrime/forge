@@ -19,11 +19,11 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
+from contracts import render_contract, validate_contract
+from storage import JSONFileStorage, now_iso
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -58,28 +58,21 @@ CONTRACTS = {
 }
 
 
-# -- Paths --
+# -- I/O --
 
-def tracker_path(project: str) -> Path:
-    return Path("forge_output") / project / "tracker.json"
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def load_tracker(project: str) -> dict:
-    path = tracker_path(project)
-    if not path.exists():
+def load_tracker(project: str, storage=None) -> dict:
+    if storage is None:
+        storage = JSONFileStorage()
+    if not storage.exists(project, 'tracker'):
         print(f"ERROR: No tracker for project '{project}'.", file=sys.stderr)
         sys.exit(1)
-    return json.loads(path.read_text(encoding="utf-8"))
+    return storage.load_data(project, 'tracker')
 
 
-def save_tracker(project: str, tracker: dict):
-    path = tracker_path(project)
-    tracker["updated"] = now_iso()
-    atomic_write_json(path, tracker)
+def save_tracker(project: str, tracker: dict, storage=None):
+    if storage is None:
+        storage = JSONFileStorage()
+    storage.save_data(project, 'tracker', tracker)
 
 
 # -- Commands --
