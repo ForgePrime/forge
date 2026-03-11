@@ -17,6 +17,7 @@ from app.routers._helpers import (
     next_id,
     save_entity,
 )
+from app.services.teslint import run_teslint
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -270,3 +271,206 @@ async def delete_skill(
 
     await emit_event(request, _GLOBAL, "skill.deleted", {"id": skill_id})
     return {"removed": skill_id}
+
+
+# ---------------------------------------------------------------------------
+# Lint endpoint
+# ---------------------------------------------------------------------------
+
+@router.post("/{skill_id}/lint")
+async def lint_skill(
+    skill_id: str,
+    storage=Depends(get_storage),
+):
+    """Run TESLint on a skill's SKILL.md content. Returns findings."""
+    data = await load_entity(storage, _GLOBAL, _ENTITY)
+    data = _ensure_data(data)
+    skill = find_item_or_404(data["skills"], skill_id, "Skill")
+
+    content = skill.get("skill_md_content")
+    if not content:
+        raise HTTPException(422, f"Skill '{skill_id}' has no SKILL.md content to lint")
+
+    import asyncio
+    result = await asyncio.to_thread(
+        run_teslint,
+        skill.get("name", skill_id),
+        content,
+        skill.get("teslint_config"),
+    )
+
+    findings = [
+        {
+            "rule_id": f.rule_id,
+            "severity": f.severity,
+            "message": f.message,
+            "line": f.line,
+            "column": f.column,
+        }
+        for f in result.findings
+    ]
+
+    return {
+        "skill_id": skill_id,
+        "success": result.success,
+        "passed": result.passed,
+        "error_count": result.error_count,
+        "warning_count": result.warning_count,
+        "info_count": result.info_count,
+        "findings": findings,
+        "error_message": result.error_message,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Promote endpoint — DRAFT → ACTIVE with 3-gate validation
+# ---------------------------------------------------------------------------
+
+class PromoteRequest(BaseModel):
+    force: bool = False
+
+
+@router.post("/{skill_id}/promote")
+async def promote_skill(
+    skill_id: str,
+    body: PromoteRequest,
+    request: Request,
+    storage=Depends(get_storage),
+):
+    """Promote a skill from DRAFT to ACTIVE.
+
+    Three gates:
+    1. SKILL.md has YAML frontmatter with name + description
+    2. evals_json has at least 1 entry
+    3. TESLint passes with 0 errors
+
+    If all pass: DRAFT → ACTIVE.
+    If TESLint fails and force=True: DRAFT → ACTIVE + promoted_with_warnings=True.
+    """
+    async with _get_lock(_GLOBAL, _ENTITY):
+        data = await load_entity(storage, _GLOBAL, _ENTITY)
+        data = _ensure_data(data)
+        skill = find_item_or_404(data["skills"], skill_id, "Skill")
+
+        if skill.get("status") != "DRAFT":
+            raise HTTPException(
+                422,
+                f"Only DRAFT skills can be promoted. Current status: {skill.get('status')}",
+            )
+
+        # --- Gate 1: SKILL.md frontmatter ---
+        gate_results = []
+        content = skill.get("skill_md_content", "") or ""
+
+        has_frontmatter = content.strip().startswith("---")
+        has_name = bool(skill.get("name"))
+        has_description = bool(skill.get("description"))
+        gate1_passed = has_frontmatter and has_name and has_description
+        gate_results.append({
+            "gate": "frontmatter",
+            "passed": gate1_passed,
+            "detail": (
+                "SKILL.md has valid frontmatter with name and description"
+                if gate1_passed
+                else "Missing: "
+                + (", ".join(filter(None, [
+                    "YAML frontmatter (---)" if not has_frontmatter else None,
+                    "name" if not has_name else None,
+                    "description" if not has_description else None,
+                ])))
+            ),
+        })
+
+        # --- Gate 2: Evals ---
+        evals = skill.get("evals_json", [])
+        gate2_passed = len(evals) >= 1
+        gate_results.append({
+            "gate": "evals",
+            "passed": gate2_passed,
+            "detail": (
+                f"{len(evals)} eval(s) defined"
+                if gate2_passed
+                else "At least 1 eval test case required"
+            ),
+        })
+
+        # --- Gate 3: TESLint ---
+        gate3_passed = False
+        teslint_error_count = 0
+        teslint_warning_count = 0
+        if content.strip():
+            import asyncio
+            lint_result = await asyncio.to_thread(
+                run_teslint,
+                skill.get("name", skill_id),
+                content,
+                skill.get("teslint_config"),
+            )
+            gate3_passed = lint_result.passed
+            teslint_error_count = lint_result.error_count
+            teslint_warning_count = lint_result.warning_count
+
+            if not lint_result.success and lint_result.error_message:
+                gate_results.append({
+                    "gate": "teslint",
+                    "passed": False,
+                    "detail": f"TESLint error: {lint_result.error_message}",
+                })
+            else:
+                gate_results.append({
+                    "gate": "teslint",
+                    "passed": gate3_passed,
+                    "detail": (
+                        f"TESLint passed ({teslint_warning_count} warnings)"
+                        if gate3_passed
+                        else f"TESLint found {teslint_error_count} error(s), {teslint_warning_count} warning(s)"
+                    ),
+                })
+        else:
+            gate_results.append({
+                "gate": "teslint",
+                "passed": False,
+                "detail": "No SKILL.md content to lint",
+            })
+
+        # --- Decision ---
+        all_passed = gate1_passed and gate2_passed and gate3_passed
+        can_promote = all_passed or (gate1_passed and gate2_passed and body.force)
+
+        if not can_promote:
+            failed = [g for g in gate_results if not g["passed"]]
+            msg = "Promotion blocked. Failed gates: " + "; ".join(
+                f"{g['gate']}: {g['detail']}" for g in failed
+            )
+            if not body.force and not gate3_passed and gate1_passed and gate2_passed:
+                msg += ". Use force=true to override TESLint errors."
+            raise HTTPException(422, msg)
+
+        # Promote
+        now = _now_iso()
+        skill["status"] = "ACTIVE"
+        skill["promoted_with_warnings"] = not all_passed  # True if force-promoted
+        skill["updated_at"] = now
+
+        # Append promotion history
+        history_entry = {
+            "promoted_at": now,
+            "error_count": teslint_error_count,
+            "warning_count": teslint_warning_count,
+            "forced": body.force and not all_passed,
+            "gates": gate_results,
+        }
+        if "promotion_history" not in skill:
+            skill["promotion_history"] = []
+        skill["promotion_history"].append(history_entry)
+
+        await save_entity(storage, _GLOBAL, _ENTITY, data)
+
+    await emit_event(request, _GLOBAL, "skill.promoted", {"id": skill_id})
+
+    return {
+        "skill_id": skill_id,
+        "status": "ACTIVE",
+        "promoted_with_warnings": skill["promoted_with_warnings"],
+        "gates": gate_results,
+    }
