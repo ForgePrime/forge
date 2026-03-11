@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { skills as skillsApi } from "@/lib/api";
+import { skills as skillsApi, ApiError } from "@/lib/api";
 import { Badge, statusVariant } from "@/components/shared/Badge";
 import { Button } from "@/components/shared/Button";
 import type { Skill, SkillStatus, TESLintFinding, PromotionHistoryEntry } from "@/lib/types";
@@ -75,19 +75,17 @@ export default function SkillDetailPage() {
     setPromoteError(null);
     setShowForceConfirm(false);
     try {
-      const res = await skillsApi.promote(id, force);
-      if (res.status === "ACTIVE") {
-        await fetchSkill();
-      } else {
-        // Promotion failed — show gate results
-        const failed = res.gates.filter((g) => !g.passed);
-        setPromoteError(
-          `Promotion blocked: ${failed.map((g) => `${g.gate}: ${g.detail}`).join("; ")}`
-        );
-        if (!force) setShowForceConfirm(true);
-      }
+      await skillsApi.promote(id, force);
+      // Success — backend returns 200 with status=ACTIVE
+      await fetchSkill();
     } catch (e) {
-      setPromoteError((e as Error).message);
+      const msg = (e as Error).message;
+      setPromoteError(msg);
+      // Backend returns 422 when gates fail. Offer force-promote
+      // only if this was a non-forced attempt (force override available).
+      if (!force && e instanceof ApiError && e.status === 422) {
+        setShowForceConfirm(true);
+      }
     } finally {
       setPromoting(false);
     }
@@ -167,17 +165,26 @@ export default function SkillDetailPage() {
             {promoting ? "Promoting..." : "Promote to ACTIVE"}
           </Button>
         )}
-        {transitions.map((ts) => (
-          <Button
-            key={ts}
-            size="sm"
-            variant={ts === "ARCHIVED" || ts === "DEPRECATED" ? "danger" : "secondary"}
-            onClick={() => handleStatusChange(ts)}
-            disabled={changingStatus}
-          >
-            {ts === "DEPRECATED" ? "Deprecate" : ts === "ARCHIVED" ? "Archive" : `Set ${ts}`}
-          </Button>
-        ))}
+        {transitions.map((ts) => {
+          const isDestructive = ts === "ARCHIVED" || ts === "DEPRECATED";
+          return (
+            <Button
+              key={ts}
+              size="sm"
+              variant={isDestructive ? "danger" : "secondary"}
+              onClick={() => {
+                if (isDestructive) {
+                  const label = ts === "DEPRECATED" ? "deprecate" : "archive";
+                  if (!confirm(`Are you sure you want to ${label} this skill?${ts === "ARCHIVED" ? " This cannot be undone." : ""}`)) return;
+                }
+                handleStatusChange(ts);
+              }}
+              disabled={changingStatus}
+            >
+              {ts === "DEPRECATED" ? "Deprecate" : ts === "ARCHIVED" ? "Archive" : `Set ${ts}`}
+            </Button>
+          );
+        })}
         {promoteError && (
           <span className="text-xs text-red-600">{promoteError}</span>
         )}

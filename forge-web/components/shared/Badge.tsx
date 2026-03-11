@@ -41,6 +41,7 @@ export function statusVariant(status: string): BadgeVariant {
     case "REJECTED":
     case "DEPRECATED":
     case "ABANDONED":
+    case "ARCHIVED":
       return "danger";
     case "TODO":
     case "DRAFT":

@@ -216,6 +216,7 @@ export function SkillForm({ open, onClose, skill, onSuccess }: SkillFormProps) {
         {lintFindings.length > 0 && (
           <span className="text-xs text-gray-400">{lintFindings.length} finding(s)</span>
         )}
+        <span className="text-xs text-gray-300">Lints saved content — save first</span>
       </div>
       {lintFindings.length > 0 && (
         <div className="space-y-1">
