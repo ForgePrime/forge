@@ -12,10 +12,13 @@ from app.routers._helpers import (
     _get_lock,
     check_project_exists,
     emit_event,
+    find_item,
     find_item_or_404,
     load_entity,
+    load_global_entity,
     next_id,
     save_entity,
+    save_global_entity,
 )
 
 router = APIRouter(prefix="/projects/{slug}/tasks", tags=["tasks"])
@@ -35,6 +38,7 @@ class TaskCreate(BaseModel):
     scopes: list[str] = []
     parallel: bool = False
     skill: str | None = None
+    skill_id: str | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -71,6 +75,7 @@ async def add_tasks(slug: str, body: list[TaskCreate], storage=Depends(get_stora
         tracker = await load_entity(storage, slug, "tracker")
         tasks = tracker.get("tasks", [])
         added = []
+        linked_skill_ids: list[str] = []
         for item in body:
             task_id = next_id(tasks, "T")
             task = {
@@ -87,11 +92,25 @@ async def add_tasks(slug: str, body: list[TaskCreate], storage=Depends(get_stora
                 "scopes": item.scopes,
                 "parallel": item.parallel,
                 "skill": item.skill,
+                "skill_id": item.skill_id,
             }
             tasks.append(task)
             added.append(task_id)
+            if item.skill_id:
+                linked_skill_ids.append(item.skill_id)
         tracker["tasks"] = tasks
         await save_entity(storage, slug, "tracker", tracker)
+
+    # Increment usage_count for linked skills
+    if linked_skill_ids:
+        async with _get_lock("_global", "skills"):
+            skills_data = await load_global_entity(storage, "skills")
+            if "skills" in skills_data:
+                for skill in skills_data["skills"]:
+                    if skill.get("id") in linked_skill_ids:
+                        skill["usage_count"] = skill.get("usage_count", 0) + linked_skill_ids.count(skill["id"])
+                await save_global_entity(storage, "skills", skills_data)
+
     return {"added": added, "total": len(tasks)}
 
 

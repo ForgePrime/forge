@@ -122,7 +122,9 @@ async def _check_skill_in_use(storage, skill_id: str) -> list[dict]:
             try:
                 tracker = await load_entity(storage, proj, "tracker")
                 for task in tracker.get("tasks", []):
-                    if task.get("status") == "IN_PROGRESS" and task.get("skill") == skill_id:
+                    if task.get("status") != "IN_PROGRESS":
+                        continue
+                    if task.get("skill_id") == skill_id or task.get("skill") == skill_id:
                         in_use.append({
                             "project": proj,
                             "task_id": task.get("id"),
