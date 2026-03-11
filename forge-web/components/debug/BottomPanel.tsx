@@ -8,6 +8,8 @@ import {
 } from "@/stores/debugPanelStore";
 import { useDebugStore } from "@/stores/debugStore";
 import { ApiInspector } from "./ApiInspector";
+import { LlmMonitor } from "./LlmMonitor";
+import { EventStream } from "./EventStream";
 
 // ---------------------------------------------------------------------------
 // Height mappings
@@ -146,21 +148,11 @@ export function BottomPanel() {
           <div role="tabpanel" id="debug-panel-api" hidden={activeTab !== "api"} className="h-full">
             <ApiInspector />
           </div>
-          <div role="tabpanel" id="debug-panel-llm" hidden={activeTab !== "llm"}>
-            <div className="text-center py-8">
-              <p className="font-medium text-gray-400">LLM Monitor</p>
-              <p className="text-xs text-gray-300 mt-1">
-                LLM session monitoring will appear here. Full implementation in T-068.
-              </p>
-            </div>
+          <div role="tabpanel" id="debug-panel-llm" hidden={activeTab !== "llm"} className="h-full">
+            <LlmMonitor />
           </div>
-          <div role="tabpanel" id="debug-panel-events" hidden={activeTab !== "events"}>
-            <div className="text-center py-8">
-              <p className="font-medium text-gray-400">Event Stream</p>
-              <p className="text-xs text-gray-300 mt-1">
-                Real-time WebSocket events will appear here. Full implementation in T-068.
-              </p>
-            </div>
+          <div role="tabpanel" id="debug-panel-events" hidden={activeTab !== "events"} className="h-full">
+            <EventStream />
           </div>
         </div>
       )}
