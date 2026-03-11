@@ -70,6 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "System",
     items: [
+      { label: "Settings", segment: "settings", icon: "⚙" },
       { label: "Debug", segment: "debug", icon: "🔍" },
     ],
   },

@@ -235,6 +235,8 @@ export const projects = {
   list: () => list<{ projects: string[] }>("/projects"),
   create: (data: ProjectCreate) => create<{ project: string; goal: string }>("/projects", data),
   get: (slug: string) => get<ProjectDetail>(`/projects/${slug}`),
+  update: (slug: string, data: { goal?: string; config?: Record<string, unknown> }) =>
+    update<ProjectDetail>(`/projects/${slug}`, data),
   status: (slug: string) => get<ProjectStatus>(`/projects/${slug}/status`),
 };
 
