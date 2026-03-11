@@ -72,6 +72,27 @@ async def get_project(slug: str, storage=Depends(get_storage)):
     }
 
 
+@router.patch("/{slug}")
+async def update_project(slug: str, body: ProjectUpdate, storage=Depends(get_storage)):
+    """Update project goal and/or config."""
+    await check_project_exists(storage, slug)
+    async with _get_lock(slug, "tracker"):
+        tracker = await load_entity(storage, slug, "tracker")
+        if body.goal is not None:
+            tracker["goal"] = body.goal
+        if body.config is not None:
+            tracker["config"] = body.config
+        await save_entity(storage, slug, "tracker", tracker)
+    return {
+        "project": tracker.get("project", slug),
+        "goal": tracker.get("goal", ""),
+        "config": tracker.get("config", {}),
+        "created": tracker.get("created", ""),
+        "updated": tracker.get("updated", ""),
+        "task_count": len(tracker.get("tasks", [])),
+    }
+
+
 @router.get("/{slug}/status")
 async def project_status(slug: str, storage=Depends(get_storage)):
     """Project dashboard — task counts, progress, blockers."""

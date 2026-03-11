@@ -7,6 +7,7 @@ import {
   gates as gatesApi,
   guidelines as guidelinesApi,
   health as healthApi,
+  me as meApi,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/hooks/useWebSocket";
 import { Badge } from "@/components/shared/Badge";
@@ -167,7 +168,11 @@ function GatesSection({ slug }: { slug: string }) {
     setAdding(true);
     setError(null);
     try {
-      await gatesApi.create(slug, [{ name: newName.trim(), command: newCommand.trim(), required: newRequired }]);
+      const merged = [
+        ...gatesList.map((g) => ({ name: g.name, command: g.command, required: g.required })),
+        { name: newName.trim(), command: newCommand.trim(), required: newRequired },
+      ];
+      await gatesApi.create(slug, merged);
       setNewName("");
       setNewCommand("");
       setNewRequired(true);
@@ -176,6 +181,19 @@ function GatesSection({ slug }: { slug: string }) {
       setError((e as Error).message);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleDeleteGate = async (gateName: string) => {
+    setError(null);
+    try {
+      const remaining = gatesList
+        .filter((g) => g.name !== gateName)
+        .map((g) => ({ name: g.name, command: g.command, required: g.required }));
+      await gatesApi.create(slug, remaining);
+      fetchGates();
+    } catch (e) {
+      setError((e as Error).message);
     }
   };
 
@@ -220,6 +238,13 @@ function GatesSection({ slug }: { slug: string }) {
             <code className="text-[10px] text-gray-500 ml-auto font-mono truncate max-w-[200px]">
               {gate.command}
             </code>
+            <button
+              onClick={() => handleDeleteGate(gate.name)}
+              className="text-[10px] text-red-400 hover:text-red-600 ml-1"
+              title={`Remove gate "${gate.name}"`}
+            >
+              ✕
+            </button>
           </div>
         ))}
         {!loading && gatesList.length === 0 && (
@@ -349,11 +374,15 @@ function ConnectionInfoSection({ slug }: { slug: string }) {
   const { connected } = useWebSocket(slug);
   const [apiHealth, setApiHealth] = useState<{ status: string; version: string } | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
+  const [authInfo, setAuthInfo] = useState<{ sub: string; auth_method: string; role: string } | null>(null);
 
   useEffect(() => {
     healthApi()
       .then(setApiHealth)
       .catch((e) => setHealthError((e as Error).message));
+    meApi()
+      .then(setAuthInfo)
+      .catch(() => { /* not authenticated */ });
   }, []);
 
   return (
@@ -394,6 +423,18 @@ function ConnectionInfoSection({ slug }: { slug: string }) {
         <div>
           <span className="text-xs text-gray-500 block mb-1">Project</span>
           <span className="text-sm text-gray-700">{slug}</span>
+        </div>
+
+        <div>
+          <span className="text-xs text-gray-500 block mb-1">Auth</span>
+          {authInfo ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-700">{authInfo.sub}</span>
+              <span className="text-[10px] text-gray-400">{authInfo.auth_method} / {authInfo.role}</span>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-400">Not authenticated</span>
+          )}
         </div>
       </div>
     </section>
