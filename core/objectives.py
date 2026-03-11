@@ -80,7 +80,8 @@ CONTRACTS = {
     "add": {
         "required": ["title", "description", "key_results"],
         "optional": ["appetite", "scope", "assumptions", "tags",
-                      "scopes", "derived_guidelines", "knowledge_ids"],
+                      "scopes", "derived_guidelines", "knowledge_ids",
+                      "guideline_ids", "relations"],
         "enums": {
             "appetite": {"small", "medium", "large"},
             "scope": {"project", "cross-project"},
@@ -92,23 +93,32 @@ CONTRACTS = {
             "scopes": list,
             "derived_guidelines": list,
             "knowledge_ids": list,
+            "guideline_ids": list,
+            "relations": list,
         },
         "invariants": [
             (lambda item, i: len(item.get("key_results", [])) >= 1,
              "At least one key_result is required"),
             (lambda item, i: all(
-                isinstance(kr, dict) and kr.get("metric") and kr.get("target") is not None
+                isinstance(kr, dict) and (
+                    (kr.get("metric") and kr.get("target") is not None)
+                    or kr.get("description")
+                )
                 for kr in item.get("key_results", [])
-            ), "Each key_result must have 'metric' (string) and 'target' (number)"),
+            ), "Each key_result must have either ('metric' + 'target') or 'description' (or both)"),
         ],
         "invariant_texts": [
             "title: concise name for the objective (e.g., 'Reduce API response time')",
             "description: why this matters, who benefits, business context",
-            "key_results: array of measurable outcomes (at least 1). Each: {metric, baseline, target, current}",
-            "  - metric: what we measure (e.g., 'p95 response time in ms')",
+            "key_results: array of outcomes (at least 1). Two styles supported:",
+            "  Numeric KR: {metric, baseline, target, current} — progress tracked as percentage",
+            "  Descriptive KR: {description} — progress tracked via status badge (NOT_STARTED/IN_PROGRESS/ACHIEVED)",
+            "  Both styles can be combined: {metric, target, description}",
+            "  - metric: what we measure (e.g., 'p95 response time in ms') — required for numeric KRs",
             "  - baseline: starting value (number, default 0)",
-            "  - target: goal value (number, required)",
+            "  - target: goal value (number, required for numeric KRs)",
             "  - current: current value (number, default = baseline)",
+            "  - description: qualitative outcome description — required for descriptive KRs",
             "appetite: effort budget — small (days), medium (weeks), large (months). From Shape Up.",
             "scope: 'project' (single project) or 'cross-project' (spans multiple projects)",
             "assumptions: list of strings — explicit assumptions that must hold for this objective to make sense. "
@@ -119,6 +129,10 @@ CONTRACTS = {
             "derived_guidelines: list of guideline IDs that were created BECAUSE of this objective (e.g., ['G-010']). "
             "Outbound link — 'these guidelines exist because of this objective'. NOT 'these guidelines apply to this objective'.",
             "knowledge_ids: list of Knowledge IDs (K-001, etc.) that provide context for this objective.",
+            "guideline_ids: list of guideline IDs explicitly assigned to this objective (e.g., ['G-001', 'G-005']). "
+            "Inbound link — guidelines that apply to this objective beyond scope-based auto-loading.",
+            "relations: list of typed relations to other objectives. Each: {type, target_id, notes?}. "
+            "Types: depends_on, related_to, supersedes, duplicates. target_id is O-NNN format.",
         ],
         "example": [
             {
@@ -127,6 +141,7 @@ CONTRACTS = {
                 "key_results": [
                     {"metric": "p95 response time (ms)", "baseline": 850, "target": 200},
                     {"metric": "timeout errors per day", "baseline": 47, "target": 0},
+                    {"description": "All critical endpoints have caching strategy documented"},
                 ],
                 "appetite": "medium",
                 "scope": "project",
@@ -137,6 +152,10 @@ CONTRACTS = {
                 "tags": ["performance", "api"],
                 "scopes": ["backend", "performance"],
                 "derived_guidelines": ["G-010"],
+                "guideline_ids": ["G-001", "G-005"],
+                "relations": [
+                    {"type": "related_to", "target_id": "O-002", "notes": "Shared infrastructure concern"},
+                ],
             }
         ],
     },
@@ -144,7 +163,8 @@ CONTRACTS = {
         "required": ["id"],
         "optional": ["title", "description", "status", "appetite",
                       "assumptions", "tags", "key_results",
-                      "scopes", "derived_guidelines", "knowledge_ids"],
+                      "scopes", "derived_guidelines", "knowledge_ids",
+                      "guideline_ids", "relations"],
         "enums": {
             "status": {"ACTIVE", "ACHIEVED", "ABANDONED", "PAUSED"},
             "appetite": {"small", "medium", "large"},
@@ -156,14 +176,19 @@ CONTRACTS = {
             "scopes": list,
             "derived_guidelines": list,
             "knowledge_ids": list,
+            "guideline_ids": list,
+            "relations": list,
         },
         "invariant_texts": [
             "id: existing objective ID (O-001, etc.)",
             "Only provided fields are updated — omitted fields stay unchanged",
             "status: ACTIVE (working on it), ACHIEVED (all KRs met), ABANDONED (no longer relevant), PAUSED (on hold)",
             "key_results: update specific KRs by including their id (KR-1, etc.) with new values. "
-            "Only update 'current' for progress tracking. Include {id, current} at minimum.",
+            "Only update 'current' for progress tracking. Include {id, current} at minimum. "
+            "For descriptive KRs, update 'status' (NOT_STARTED/IN_PROGRESS/ACHIEVED).",
             "assumptions: replaces the full list (not append-merged)",
+            "guideline_ids: replaces the full list of explicitly assigned guidelines",
+            "relations: replaces the full list of objective relations",
         ],
         "example": [
             {"id": "O-001", "key_results": [
@@ -216,13 +241,19 @@ def cmd_add(args):
         # Build key results with IDs
         key_results = []
         for kr_idx, kr in enumerate(item["key_results"], 1):
-            key_results.append({
-                "id": f"KR-{kr_idx}",
-                "metric": kr["metric"],
-                "baseline": kr.get("baseline", 0),
-                "target": kr["target"],
-                "current": kr.get("current", kr.get("baseline", 0)),
-            })
+            kr_data = {"id": f"KR-{kr_idx}"}
+            # Numeric KR fields (metric + target)
+            if kr.get("metric"):
+                kr_data["metric"] = kr["metric"]
+                kr_data["baseline"] = kr.get("baseline", 0)
+                kr_data["target"] = kr["target"]
+                kr_data["current"] = kr.get("current", kr.get("baseline", 0))
+            # Descriptive KR field
+            if kr.get("description"):
+                kr_data["description"] = kr["description"]
+                if "metric" not in kr_data:
+                    kr_data["status"] = kr.get("status", "NOT_STARTED")
+            key_results.append(kr_data)
 
         obj = {
             "id": obj_id,
@@ -236,6 +267,8 @@ def cmd_add(args):
             "scopes": item.get("scopes", []),
             "derived_guidelines": item.get("derived_guidelines", []),
             "knowledge_ids": item.get("knowledge_ids", []),
+            "guideline_ids": item.get("guideline_ids", []),
+            "relations": item.get("relations", []),
             "status": "ACTIVE",
             "created": timestamp,
             "updated": timestamp,
@@ -253,8 +286,11 @@ def cmd_add(args):
         obj = next(o for o in data["objectives"] if o["id"] == obj_id)
         print(f"  {obj_id}: {obj['title']}")
         for kr in obj["key_results"]:
-            direction = "↑" if kr["target"] > kr["baseline"] else "↓"
-            print(f"    {kr['id']}: {kr['metric']} — {kr['baseline']} {direction} {kr['target']}")
+            if kr.get("metric"):
+                direction = "↑" if kr["target"] > kr["baseline"] else "↓"
+                print(f"    {kr['id']}: {kr['metric']} — {kr['baseline']} {direction} {kr['target']}")
+            else:
+                print(f"    {kr['id']}: {kr.get('description', '(descriptive)')}")
 
 
 def cmd_read(args):
@@ -307,6 +343,10 @@ def cmd_show(args):
         print(f"- **Derived Guidelines**: {', '.join(obj['derived_guidelines'])}")
     if obj.get("knowledge_ids"):
         print(f"- **Knowledge**: {', '.join(obj['knowledge_ids'])}")
+    if obj.get("guideline_ids"):
+        print(f"- **Assigned Guidelines**: {', '.join(obj['guideline_ids'])}")
+    if obj.get("relations"):
+        print(f"- **Relations**: {len(obj['relations'])} links")
     print()
     print("### Description")
     print(obj.get("description", ""))
@@ -316,14 +356,19 @@ def cmd_show(args):
     print("### Key Results")
     print()
     for kr in obj.get("key_results", []):
-        baseline = kr.get("baseline", 0)
-        target = kr["target"]
-        current = kr.get("current", baseline)
-        pct = _kr_percentage(baseline, target, current)
-        bar = _progress_bar(pct)
-        direction = "↓" if target < baseline else "↑"
-        print(f"**{kr['id']}**: {kr['metric']}")
-        print(f"  {baseline} {direction} **{current}** → {target}  {bar} {pct}%")
+        if kr.get("metric"):
+            baseline = kr.get("baseline", 0)
+            target = kr["target"]
+            current = kr.get("current", baseline)
+            pct = _kr_percentage(baseline, target, current)
+            bar = _progress_bar(pct)
+            direction = "↓" if target < baseline else "↑"
+            print(f"**{kr['id']}**: {kr['metric']}")
+            print(f"  {baseline} {direction} **{current}** → {target}  {bar} {pct}%")
+        else:
+            status = kr.get("status", "NOT_STARTED")
+            print(f"**{kr['id']}**: {kr.get('description', '(descriptive)')}")
+            print(f"  Status: [{status}]")
         print()
 
     # Assumptions
@@ -385,9 +430,18 @@ def cmd_show(args):
 
     print()
 
+    # Relations
+    if obj.get("relations"):
+        print("### Relations")
+        for rel in obj["relations"]:
+            notes = f" — {rel['notes']}" if rel.get("notes") else ""
+            print(f"- [{rel['type']}] → {rel['target_id']}{notes}")
+        print()
+
     # Overall KR progress
+    numeric_krs = [kr for kr in obj.get("key_results", []) if kr.get("metric")]
     kr_pcts = [_kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
-               for kr in obj.get("key_results", [])]
+               for kr in numeric_krs]
     avg_pct = sum(kr_pcts) // len(kr_pcts) if kr_pcts else 0
     print(f"- **Outcome progress**: {avg_pct}% average across KRs")
 
@@ -426,7 +480,8 @@ def cmd_update(args):
 
         # Simple field updates
         for field in ["title", "description", "appetite", "assumptions", "tags",
-                       "scopes", "derived_guidelines", "knowledge_ids"]:
+                       "scopes", "derived_guidelines", "knowledge_ids",
+                       "guideline_ids", "relations"]:
             if field in u:
                 obj[field] = u[field]
 
@@ -457,7 +512,8 @@ def cmd_update(args):
             for kr_update in u["key_results"]:
                 kr_id = kr_update.get("id")
                 if kr_id and kr_id in existing_krs:
-                    for field in ["current", "metric", "baseline", "target"]:
+                    for field in ["current", "metric", "baseline", "target",
+                                  "description", "status"]:
                         if field in kr_update:
                             existing_krs[kr_id][field] = kr_update[field]
                 else:
@@ -474,8 +530,11 @@ def cmd_update(args):
         obj = next(o for o in data["objectives"] if o["id"] == obj_id)
         print(f"  {obj_id}: {obj['title']} ({obj['status']})")
         for kr in obj.get("key_results", []):
-            pct = _kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
-            print(f"    {kr['id']}: {kr['metric']} — {kr.get('current', '?')}/{kr['target']} ({pct}%)")
+            if kr.get("metric"):
+                pct = _kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
+                print(f"    {kr['id']}: {kr['metric']} — {kr.get('current', '?')}/{kr['target']} ({pct}%)")
+            else:
+                print(f"    {kr['id']}: {kr.get('description', '(descriptive)')} [{kr.get('status', 'NOT_STARTED')}]")
 
 
 def cmd_status(args):
@@ -530,11 +589,16 @@ def cmd_status(args):
                 idea_ids_for_obj.add(idea["id"])
 
         for kr in obj.get("key_results", []):
-            pct = _kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
-            bar = _progress_bar(pct)
             full_id = f"{obj['id']}/{kr['id']}"
             covered = "+" if full_id in covered_krs else "-"
-            print(f"  [{covered}] {kr['id']}: {kr['metric']} {bar} {pct}%  ({kr.get('current', '?')}/{kr['target']})")
+            if kr.get("metric"):
+                pct = _kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
+                bar = _progress_bar(pct)
+                print(f"  [{covered}] {kr['id']}: {kr['metric']} {bar} {pct}%  ({kr.get('current', '?')}/{kr['target']})")
+            else:
+                status = kr.get("status", "NOT_STARTED")
+                desc = kr.get("description", "(descriptive)")[:40]
+                print(f"  [{covered}] {kr['id']}: {desc} [{status}]")
 
         # Task progress
         related_tasks = [t for t in all_tasks if t.get("origin") in idea_ids_for_obj]
@@ -546,8 +610,9 @@ def cmd_status(args):
         # Summary line
         total_krs = len(kr_ids)
         covered_count = len(covered_krs)
+        numeric_krs = [kr for kr in obj.get("key_results", []) if kr.get("metric")]
         kr_pcts = [_kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
-                   for kr in obj.get("key_results", [])]
+                   for kr in numeric_krs]
         avg_pct = sum(kr_pcts) // len(kr_pcts) if kr_pcts else 0
         print(f"  Planning: {covered_count}/{total_krs} KRs covered | Outcome: {avg_pct}% avg")
         print()
@@ -591,12 +656,20 @@ def _kr_progress_summary(key_results: list) -> str:
     """One-line summary of KR progress."""
     if not key_results:
         return "—"
-    pcts = []
-    for kr in key_results:
-        pct = _kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
-        pcts.append(pct)
-    avg = sum(pcts) // len(pcts) if pcts else 0
-    return f"{avg}% ({len(pcts)} KRs)"
+    numeric_krs = [kr for kr in key_results if kr.get("metric")]
+    descriptive_krs = [kr for kr in key_results if not kr.get("metric")]
+    parts = []
+    if numeric_krs:
+        pcts = [_kr_percentage(kr.get("baseline", 0), kr["target"],
+                               kr.get("current", kr.get("baseline", 0)))
+                for kr in numeric_krs]
+        avg = sum(pcts) // len(pcts)
+        parts.append(f"{avg}%")
+    if descriptive_krs:
+        achieved = sum(1 for kr in descriptive_krs if kr.get("status") == "ACHIEVED")
+        parts.append(f"{achieved}/{len(descriptive_krs)} desc")
+    total = len(key_results)
+    return f"{', '.join(parts)} ({total} KRs)"
 
 
 def _progress_bar(pct: int, width: int = 10) -> str:

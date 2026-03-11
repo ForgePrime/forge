@@ -31,12 +31,21 @@ class ObjectiveCreate(BaseModel):
     scopes: list[str] = []
     derived_guidelines: list[str] = []
     knowledge_ids: list[str] = []
+    guideline_ids: list[str] = []
+    relations: list[dict] = []
 
     @field_validator("key_results")
     @classmethod
-    def at_least_one_kr(cls, v):
+    def validate_key_results(cls, v):
         if not v:
             raise ValueError("At least one key_result is required")
+        for i, kr in enumerate(v):
+            has_metric = bool(kr.get("metric")) and kr.get("target") is not None
+            has_description = bool(kr.get("description"))
+            if not has_metric and not has_description:
+                raise ValueError(
+                    f"key_result[{i}] must have either ('metric' + 'target') or 'description'"
+                )
         return v
 
 
@@ -51,6 +60,8 @@ class ObjectiveUpdate(BaseModel):
     scopes: list[str] | None = None
     derived_guidelines: list[str] | None = None
     knowledge_ids: list[str] | None = None
+    guideline_ids: list[str] | None = None
+    relations: list[dict] | None = None
 
 
 @router.get("")
@@ -106,18 +117,26 @@ async def objectives_coverage(slug: str, storage=Depends(get_storage)):
         # Calculate KR progress
         kr_progress = []
         for kr in krs:
-            baseline = kr.get("baseline", 0)
-            target = kr.get("target", 0)
-            current = kr.get("current", baseline)
-            span = target - baseline
-            pct = round((current - baseline) / span * 100, 1) if span else 0
-            kr_progress.append({
-                "metric": kr.get("metric", ""),
-                "baseline": baseline,
-                "target": target,
-                "current": current,
-                "progress_pct": min(max(pct, 0), 100),
-            })
+            if kr.get("metric"):
+                baseline = kr.get("baseline", 0)
+                target = kr.get("target", 0)
+                current = kr.get("current", baseline)
+                span = target - baseline
+                pct = round((current - baseline) / span * 100, 1) if span else 0
+                kr_progress.append({
+                    "type": "numeric",
+                    "metric": kr.get("metric", ""),
+                    "baseline": baseline,
+                    "target": target,
+                    "current": current,
+                    "progress_pct": min(max(pct, 0), 100),
+                })
+            else:
+                kr_progress.append({
+                    "type": "descriptive",
+                    "description": kr.get("description", ""),
+                    "status": kr.get("status", "NOT_STARTED"),
+                })
 
         # Count aligned ideas and tasks
         aligned_ideas = [i for i in ideas if any(
