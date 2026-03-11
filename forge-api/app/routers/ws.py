@@ -61,18 +61,30 @@ async def project_events(websocket: WebSocket, slug: str):
     # Use shared EventBus from app state (F-06)
     event_bus = websocket.app.state.event_bus
     pubsub = None
+    global_pubsub = None
     try:
         pubsub = await event_bus.subscribe(slug)
+        # Also subscribe to _global channel for global entity events (skills, etc.)
+        global_pubsub = await event_bus.subscribe("_global")
         last_ping = time.monotonic()
 
         while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
+            # Check project channel
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.05)
             if message and message["type"] == "message":
                 data = message["data"]
                 if isinstance(data, bytes):
                     data = data.decode("utf-8")
                 await websocket.send_text(data)
-            else:
+            # Check global channel
+            g_message = await global_pubsub.get_message(ignore_subscribe_messages=True, timeout=0.05)
+            if g_message and g_message["type"] == "message":
+                data = g_message["data"]
+                if isinstance(data, bytes):
+                    data = data.decode("utf-8")
+                await websocket.send_text(data)
+
+            if not message and not g_message:
                 await asyncio.sleep(0.05)
 
             # Periodic ping to detect dead connections
@@ -84,9 +96,10 @@ async def project_events(websocket: WebSocket, slug: str):
     except Exception:
         pass
     finally:
-        if pubsub is not None:
-            await pubsub.unsubscribe()
-            if hasattr(pubsub, "aclose"):
-                await pubsub.aclose()
-            elif hasattr(pubsub, "close"):
-                await pubsub.close()
+        for ps in (pubsub, global_pubsub):
+            if ps is not None:
+                await ps.unsubscribe()
+                if hasattr(ps, "aclose"):
+                    await ps.aclose()
+                elif hasattr(ps, "close"):
+                    await ps.close()

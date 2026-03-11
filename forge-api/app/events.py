@@ -23,6 +23,10 @@ EVENT_TYPES = {
     "ai.suggestion",
     "debug.session",
     "idea.status_changed",
+    "skill.created",
+    "skill.updated",
+    "skill.deleted",
+    "skill.promoted",
 }
 
 

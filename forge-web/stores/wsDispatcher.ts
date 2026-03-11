@@ -15,6 +15,7 @@ import { useKnowledgeStore } from "./knowledgeStore";
 import { useLessonStore } from "./lessonStore";
 import { useACTemplateStore } from "./acTemplateStore";
 import { useGateStore } from "./gateStore";
+import { useSkillStore } from "./skillStore";
 import { isRecentMutation } from "@/lib/mutationTracker";
 import { useToastStore } from "./toastStore";
 import { useActivityStore } from "./activityStore";
@@ -31,6 +32,7 @@ const stores = [
   useLessonStore,
   useACTemplateStore,
   useGateStore,
+  useSkillStore,
 ] as const;
 
 /** Maps WS event prefixes to API entity paths for SWR revalidation. */
@@ -45,7 +47,11 @@ const EVENT_TO_ENTITY: Record<string, string> = {
   lesson: "lessons",
   ac_template: "ac-templates",
   gate: "gates",
+  skill: "skills",
 };
+
+/** Global entities use /{path} instead of /projects/{slug}/{path}. */
+const GLOBAL_ENTITIES = new Set(["skill"]);
 
 /**
  * Extract entity prefix and ID from a WS event.
@@ -76,13 +82,24 @@ export function dispatchWsEvent(event: ForgeEvent): void {
   // 2. Trigger SWR revalidation for entity lists (unless it's our own echo)
   if (!skipSWR) {
     const entityPath = EVENT_TO_ENTITY[prefix];
-    if (entityPath && event.project) {
-      const pattern = `/projects/${event.project}/${entityPath}`;
-      mutate(
-        (key) => typeof key === "string" && key.startsWith(pattern),
-        undefined,
-        { revalidate: true },
-      );
+    if (entityPath) {
+      if (GLOBAL_ENTITIES.has(prefix)) {
+        // Global entities: revalidate /{entityPath} keys (no project prefix)
+        const pattern = `/${entityPath}`;
+        mutate(
+          (key) => typeof key === "string" && key.startsWith(pattern),
+          undefined,
+          { revalidate: true },
+        );
+      } else if (event.project) {
+        // Project-scoped entities: revalidate /projects/{slug}/{entityPath}
+        const pattern = `/projects/${event.project}/${entityPath}`;
+        mutate(
+          (key) => typeof key === "string" && key.startsWith(pattern),
+          undefined,
+          { revalidate: true },
+        );
+      }
     }
 
     // 3. Show toast notification for entity events (skip own mutations)
@@ -130,6 +147,7 @@ function parseAction(eventName: string): string | null {
     configured: "updated",
     removed: "deleted",
     closed: "completed",
+    promoted: "updated",
   };
   return NORMALIZE[action] ?? action;
 }
