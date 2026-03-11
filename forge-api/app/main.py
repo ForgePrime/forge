@@ -30,6 +30,7 @@ from app.routers import (
     maintenance,
     objectives,
     projects,
+    skills,
     tasks,
     ws,
 )
@@ -173,5 +174,6 @@ app.include_router(gates.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(execution.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(debug.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(ai.router, prefix=PREFIX, dependencies=auth_deps)
+app.include_router(skills.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(ws.router)
 app.include_router(execution.ws_router)  # Execution WS — own auth, no HTTP deps
