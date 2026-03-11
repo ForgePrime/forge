@@ -4,9 +4,26 @@ import { Badge, statusVariant } from "@/components/shared/Badge";
 interface TaskCardProps {
   task: Task;
   onStatusChange?: (id: string, status: string) => void;
+  onEdit?: (task: Task) => void;
 }
 
-export function TaskCard({ task, onStatusChange }: TaskCardProps) {
+const STATUS_ACTIONS: Record<string, Array<{ label: string; status: string; className: string }>> = {
+  TODO: [
+    { label: "Start", status: "IN_PROGRESS", className: "text-forge-600 hover:text-forge-700" },
+    { label: "Skip", status: "SKIPPED", className: "text-gray-500 hover:text-gray-600" },
+  ],
+  IN_PROGRESS: [
+    { label: "Done", status: "DONE", className: "text-green-600 hover:text-green-700" },
+    { label: "Fail", status: "FAILED", className: "text-red-600 hover:text-red-700" },
+  ],
+  FAILED: [
+    { label: "Retry", status: "TODO", className: "text-forge-600 hover:text-forge-700" },
+  ],
+};
+
+export function TaskCard({ task, onStatusChange, onEdit }: TaskCardProps) {
+  const actions = STATUS_ACTIONS[task.status] || [];
+
   return (
     <div className="rounded-lg border bg-white p-4 hover:border-forge-300 transition-colors">
       <div className="flex items-start justify-between">
@@ -21,14 +38,25 @@ export function TaskCard({ task, onStatusChange }: TaskCardProps) {
             <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>
           )}
         </div>
-        {onStatusChange && task.status === "TODO" && (
-          <button
-            onClick={() => onStatusChange(task.id, "IN_PROGRESS")}
-            className="text-xs text-forge-600 hover:text-forge-700 font-medium ml-2"
-          >
-            Start
-          </button>
-        )}
+        <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+          {onEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(task); }}
+              className="text-xs text-gray-400 hover:text-gray-600 font-medium"
+            >
+              Edit
+            </button>
+          )}
+          {onStatusChange && actions.map((action) => (
+            <button
+              key={action.status}
+              onClick={(e) => { e.stopPropagation(); onStatusChange(task.id, action.status); }}
+              className={`text-xs font-medium ${action.className}`}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="flex flex-wrap gap-1 mt-2">
         {task.scopes.map((s) => (

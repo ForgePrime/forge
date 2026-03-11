@@ -10,14 +10,14 @@ const confidence = z.enum(["HIGH", "MEDIUM", "LOW"]);
 
 export const decisionCreateSchema = z.object({
   task_id: z.string().min(1, "Task ID is required"),
-  type: decisionType.default("implementation"),
+  type: decisionType,
   issue: z.string().min(1, "Issue description is required"),
   recommendation: z.string().min(1, "Recommendation is required"),
   reasoning: z.string().optional(),
   alternatives: z.array(z.string()).optional(),
-  confidence: confidence.default("MEDIUM"),
-  status: decisionStatus.default("OPEN"),
-  decided_by: z.enum(["claude", "user", "imported"]).default("user"),
+  confidence: confidence,
+  status: decisionStatus,
+  decided_by: z.enum(["claude", "user", "imported"]).optional(),
   file: z.string().optional(),
   scope: z.string().optional(),
   tags: z.array(z.string()).optional(),

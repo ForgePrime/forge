@@ -11,10 +11,10 @@ import { acTemplateCreateSchema } from "../ac-template";
 
 describe("taskCreateSchema", () => {
   it("accepts valid minimal task", () => {
-    const result = taskCreateSchema.safeParse({ name: "Fix bug" });
+    const result = taskCreateSchema.safeParse({ name: "Fix bug", type: "feature" });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.type).toBe("feature"); // default
+      expect(result.data.type).toBe("feature");
     }
   });
 
@@ -68,8 +68,11 @@ describe("decisionCreateSchema", () => {
   it("accepts valid decision", () => {
     const result = decisionCreateSchema.safeParse({
       task_id: "T-001",
+      type: "implementation",
       issue: "Which DB?",
       recommendation: "Use PostgreSQL",
+      confidence: "MEDIUM",
+      status: "OPEN",
     });
     expect(result.success).toBe(true);
   });

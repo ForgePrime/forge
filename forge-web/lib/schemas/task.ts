@@ -7,7 +7,7 @@ export const taskCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
   instruction: z.string().optional(),
-  type: taskType.default("feature"),
+  type: taskType,
   depends_on: z.array(z.string()).optional(),
   blocked_by_decisions: z.array(z.string()).optional(),
   conflicts_with: z.array(z.string()).optional(),
