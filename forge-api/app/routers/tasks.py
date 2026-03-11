@@ -101,15 +101,18 @@ async def add_tasks(slug: str, body: list[TaskCreate], storage=Depends(get_stora
         tracker["tasks"] = tasks
         await save_entity(storage, slug, "tracker", tracker)
 
-    # Increment usage_count for linked skills
+    # Validate and increment usage_count for linked skills
     if linked_skill_ids:
         async with _get_lock("_global", "skills"):
             skills_data = await load_global_entity(storage, "skills")
-            if "skills" in skills_data:
-                for skill in skills_data["skills"]:
-                    if skill.get("id") in linked_skill_ids:
-                        skill["usage_count"] = skill.get("usage_count", 0) + linked_skill_ids.count(skill["id"])
-                await save_global_entity(storage, "skills", skills_data)
+            skill_ids_set = {s.get("id") for s in skills_data.get("skills", [])}
+            missing = [sid for sid in linked_skill_ids if sid not in skill_ids_set]
+            if missing:
+                raise HTTPException(422, f"Unknown skill_id(s): {', '.join(missing)}")
+            for skill in skills_data.get("skills", []):
+                if skill.get("id") in linked_skill_ids:
+                    skill["usage_count"] = skill.get("usage_count", 0) + linked_skill_ids.count(skill["id"])
+            await save_global_entity(storage, "skills", skills_data)
 
     return {"added": added, "total": len(tasks)}
 
@@ -142,6 +145,7 @@ async def update_task(request: Request, slug: str, task_id: str, body: TaskUpdat
 @router.delete("/{task_id}")
 async def remove_task(slug: str, task_id: str, storage=Depends(get_storage)):
     await check_project_exists(storage, slug)
+    removed_skill_id = None
     async with _get_lock(slug, "tracker"):
         tracker = await load_entity(storage, slug, "tracker")
         tasks = tracker.get("tasks", [])
@@ -152,9 +156,21 @@ async def remove_task(slug: str, task_id: str, storage=Depends(get_storage)):
         for t in tasks:
             if task_id in t.get("depends_on", []):
                 raise HTTPException(422, f"Task {t['id']} depends on {task_id}")
+        removed_skill_id = task.get("skill_id")
         tasks.remove(task)
         tracker["tasks"] = tasks
         await save_entity(storage, slug, "tracker", tracker)
+
+    # Decrement usage_count for linked skill
+    if removed_skill_id:
+        async with _get_lock("_global", "skills"):
+            skills_data = await load_global_entity(storage, "skills")
+            for skill in skills_data.get("skills", []):
+                if skill.get("id") == removed_skill_id:
+                    skill["usage_count"] = max(0, skill.get("usage_count", 0) - 1)
+                    break
+            await save_global_entity(storage, "skills", skills_data)
+
     return {"removed": task_id}
 
 
@@ -403,7 +419,25 @@ async def get_task_context(slug: str, task_id: str, storage=Depends(get_storage)
     except Exception:
         pass
 
-    # --- Section 6: Recent changes from dependencies ---
+    # --- Section 6: Linked skill ---
+    if task.get("skill_id"):
+        try:
+            skills_data = await load_global_entity(storage, "skills")
+            skill = next(
+                (s for s in skills_data.get("skills", []) if s["id"] == task["skill_id"]),
+                None,
+            )
+            if skill and skill.get("skill_md_content"):
+                sections.append(_make_section(
+                    "skill",
+                    f"Linked Skill: {skill.get('name', task['skill_id'])}",
+                    skill["skill_md_content"],
+                    max_tokens=4000,
+                ))
+        except Exception:
+            pass
+
+    # --- Section 7: Recent changes from dependencies ---
     try:
         ch_data = await load_entity(storage, slug, "changes")
         changes = ch_data.get("changes", [])

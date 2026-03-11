@@ -160,8 +160,8 @@ export function TaskForm({ slug, open, onClose, task, onSuccess }: TaskFormProps
         </>
       )}
 
-      {/* Linked Skill */}
-      {activeSkills.length > 0 && (
+      {/* Linked Skill — only on create (not updatable via PATCH) */}
+      {!isEdit && activeSkills.length > 0 && (
         <Controller
           name="skill_id"
           control={control}
@@ -184,6 +184,11 @@ export function TaskForm({ slug, open, onClose, task, onSuccess }: TaskFormProps
             </div>
           )}
         />
+      )}
+      {isEdit && task?.skill_id && (
+        <div className="mb-4 text-sm text-gray-500">
+          <span className="font-medium">Linked Skill:</span> {task.skill_id}
+        </div>
       )}
 
       <DynamicListField name="acceptance_criteria" control={control} label="Acceptance Criteria" addLabel="Add criterion" placeholder="When X, then Y" />
