@@ -16,7 +16,7 @@ export const knowledgeCreateSchema = z.object({
   linked_entities: z.array(z.record(z.string(), z.unknown())).optional(),
   dependencies: z.array(z.string()).optional(),
   review_interval_days: z.number().int().positive().optional(),
-  created_by: z.enum(["user", "ai"]).default("user"),
+  created_by: z.enum(["user", "ai"]).optional(),
 });
 
 export const knowledgeUpdateSchema = z.object({

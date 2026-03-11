@@ -90,6 +90,8 @@ describe("objectiveCreateSchema", () => {
       title: "Reduce latency",
       description: "Make API faster",
       key_results: [{ metric: "p95 latency", target: 200 }],
+      appetite: "medium",
+      scope: "project",
     });
     expect(result.success).toBe(true);
   });
@@ -122,7 +124,7 @@ describe("keyResultSchema", () => {
 
 describe("ideaCreateSchema", () => {
   it("accepts minimal idea", () => {
-    expect(ideaCreateSchema.safeParse({ title: "Redis caching" }).success).toBe(true);
+    expect(ideaCreateSchema.safeParse({ title: "Redis caching", category: "feature", priority: "MEDIUM" }).success).toBe(true);
   });
 
   it("rejects empty title", () => {
@@ -176,6 +178,7 @@ describe("lessonCreateSchema", () => {
         category: "pattern-discovered",
         title: "Use factory pattern",
         detail: "Works well for stores",
+        severity: "minor",
       }).success,
     ).toBe(true);
   });

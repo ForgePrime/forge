@@ -10,8 +10,8 @@ const priority = z.enum(["HIGH", "MEDIUM", "LOW"]);
 export const ideaCreateSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  category: ideaCategory.default("feature"),
-  priority: priority.default("MEDIUM"),
+  category: ideaCategory,
+  priority: priority,
   tags: z.array(z.string()).optional(),
   parent_id: z.string().optional(),
   related_ideas: z.array(z.string()).optional(),

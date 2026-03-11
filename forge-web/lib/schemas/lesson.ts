@@ -13,7 +13,7 @@ export const lessonCreateSchema = z.object({
   detail: z.string().min(1, "Detail is required"),
   task_id: z.string().optional(),
   decision_ids: z.array(z.string()).optional(),
-  severity: lessonSeverity.default("minor"),
+  severity: lessonSeverity,
   applies_to: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });

@@ -3,12 +3,14 @@ import { Badge, statusVariant } from "@/components/shared/Badge";
 
 interface ObjectiveCardProps {
   objective: Objective;
+  onEdit?: (objective: Objective) => void;
 }
 
-export function ObjectiveCard({ objective }: ObjectiveCardProps) {
+export function ObjectiveCard({ objective, onEdit }: ObjectiveCardProps) {
   return (
     <div className="rounded-lg border bg-white p-4 hover:border-forge-300 transition-colors">
-      <div className="flex items-center gap-2 mb-1">
+      <div className="flex items-start justify-between mb-1">
+        <div className="flex items-center gap-2">
         <span className="text-xs text-gray-400">{objective.id}</span>
         <Badge variant={statusVariant(objective.status)}>{objective.status}</Badge>
         <Badge>{objective.appetite}</Badge>
