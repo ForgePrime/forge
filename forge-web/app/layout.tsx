@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SWRProvider } from "@/lib/swr-config";
+import { ToastContainer } from "@/components/shared/ToastContainer";
 
 export const metadata: Metadata = {
   title: "Forge Platform",
@@ -19,6 +20,7 @@ export default function RootLayout({
         <SWRProvider>
           <Sidebar />
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
+          <ToastContainer />
         </SWRProvider>
       </body>
     </html>

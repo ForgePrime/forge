@@ -16,6 +16,7 @@ import { useLessonStore } from "./lessonStore";
 import { useACTemplateStore } from "./acTemplateStore";
 import { useGateStore } from "./gateStore";
 import { isRecentMutation } from "@/lib/mutationTracker";
+import { useToastStore } from "./toastStore";
 
 /** All stores that handle WS events, in dispatch order. */
 const stores = [
@@ -75,8 +76,6 @@ export function dispatchWsEvent(event: ForgeEvent): void {
   if (!skipSWR) {
     const entityPath = EVENT_TO_ENTITY[prefix];
     if (entityPath && event.project) {
-      // Revalidate all SWR keys matching this entity list pattern
-      // mutate with key filter: any key containing /projects/{slug}/{entity}
       const pattern = `/projects/${event.project}/${entityPath}`;
       mutate(
         (key) => typeof key === "string" && key.startsWith(pattern),
@@ -84,7 +83,47 @@ export function dispatchWsEvent(event: ForgeEvent): void {
         { revalidate: true },
       );
     }
+
+    // 3. Show toast notification for entity events (skip own mutations)
+    const action = parseAction(event.event);
+    if (action) {
+      const payload = event.payload as Record<string, unknown>;
+      const name = (payload.name ?? payload.title ?? payload.issue ?? payload.metric ?? "") as string;
+      const entityName = EVENT_TO_ENTITY[prefix] ?? prefix;
+      const label = entityName.replace(/-/g, " ").replace(/s$/, "");
+      const message = name
+        ? `${capitalize(label)} ${action}: ${name}`
+        : `${capitalize(label)} ${action}`;
+
+      useToastStore.getState().addToast({
+        message,
+        entityId: entityId,
+        entityType: prefix,
+        action: action as "created" | "updated" | "deleted" | "completed" | "failed" | "info",
+        project: event.project,
+      });
+    }
   }
+}
+
+/** Parse and normalize action from WS event name. e.g. "task.created" → "created" */
+function parseAction(eventName: string): string | null {
+  const parts = eventName.split(".");
+  if (parts.length < 2) return null;
+  const action = parts[1];
+  const NORMALIZE: Record<string, string> = {
+    status_changed: "updated",
+    committed: "updated",
+    recorded: "created",
+    configured: "updated",
+    removed: "deleted",
+    closed: "completed",
+  };
+  return NORMALIZE[action] ?? action;
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** Track the last WS event timestamp (for connection status). */
