@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useId } from "react";
 import { type FieldValues, type Path, type Control, Controller } from "react-hook-form";
 import { useTaskStore } from "@/stores/taskStore";
 import { useDecisionStore } from "@/stores/decisionStore";
@@ -14,6 +14,8 @@ interface EntityRefOption {
   title: string;
   type: EntityRefType;
 }
+
+const DEFAULT_ENTITY_TYPES: EntityRefType[] = ["task"];
 
 interface EntityRefFieldProps<T extends FieldValues> {
   name: Path<T>;
@@ -30,7 +32,7 @@ export function EntityRefField<T extends FieldValues>({
   name,
   control,
   label,
-  entityTypes = ["task"],
+  entityTypes = DEFAULT_ENTITY_TYPES,
   multiple = true,
   required,
   disabled,
@@ -40,6 +42,8 @@ export function EntityRefField<T extends FieldValues>({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fieldId = useId();
+  const listboxId = `${fieldId}-listbox`;
 
   const tasks = useTaskStore((s) => s.items);
   const decisions = useDecisionStore((s) => s.items);
@@ -53,13 +57,13 @@ export function EntityRefField<T extends FieldValues>({
       for (const t of tasks) opts.push({ id: t.id, title: t.name || t.id, type: "task" });
     }
     if (entityTypes.includes("decision")) {
-      for (const d of decisions) opts.push({ id: d.id, title: (d as { issue?: string }).issue || d.id, type: "decision" });
+      for (const d of decisions) opts.push({ id: d.id, title: d.issue || d.id, type: "decision" });
     }
     if (entityTypes.includes("objective")) {
-      for (const o of objectives) opts.push({ id: o.id, title: (o as { title?: string }).title || o.id, type: "objective" });
+      for (const o of objectives) opts.push({ id: o.id, title: o.title || o.id, type: "objective" });
     }
     if (entityTypes.includes("idea")) {
-      for (const i of ideas) opts.push({ id: i.id, title: (i as { title?: string }).title || i.id, type: "idea" });
+      for (const i of ideas) opts.push({ id: i.id, title: i.title || i.id, type: "idea" });
     }
     return opts;
   }, [entityTypes, tasks, decisions, objectives, ideas]);
@@ -117,7 +121,7 @@ export function EntityRefField<T extends FieldValues>({
         };
 
         return (
-          <div className="mb-4" ref={containerRef}>
+          <div className="mb-4 relative" ref={containerRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               {label}
               {required && <span className="text-red-500 ml-0.5">*</span>}
@@ -157,6 +161,12 @@ export function EntityRefField<T extends FieldValues>({
               value={query}
               onChange={(e) => { setQuery(e.target.value); setDropdownOpen(true); }}
               onFocus={() => setDropdownOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && dropdownOpen) {
+                  e.stopPropagation();
+                  setDropdownOpen(false);
+                }
+              }}
               placeholder={placeholder}
               disabled={disabled}
               className={`w-full px-3 py-2 text-sm border rounded-md outline-none transition-colors ${
@@ -167,37 +177,45 @@ export function EntityRefField<T extends FieldValues>({
               role="combobox"
               aria-expanded={dropdownOpen}
               aria-haspopup="listbox"
+              aria-controls={dropdownOpen ? listboxId : undefined}
               autoComplete="off"
             />
 
             {/* Dropdown */}
-            {dropdownOpen && filtered.length > 0 && (
+            {dropdownOpen && (
               <div
-                className="mt-1 w-full border rounded-md bg-white shadow-lg max-h-48 overflow-y-auto z-10 relative"
+                id={listboxId}
+                className="absolute mt-1 w-full border rounded-md bg-white shadow-lg max-h-48 overflow-y-auto z-10"
                 role="listbox"
               >
-                {filtered.map((opt) => {
-                  const isSelected = selected.includes(opt.id);
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      onClick={() => addRef(opt.id)}
-                      disabled={isSelected}
-                      className={`w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50 ${
-                        isSelected ? "opacity-50" : "text-gray-700"
-                      }`}
-                    >
-                      <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-1 rounded">
-                        {TYPE_PREFIXES[opt.type]}
-                      </span>
-                      <span className="font-mono text-xs text-gray-500">{opt.id}</span>
-                      <span className="truncate">{opt.title}</span>
-                    </button>
-                  );
-                })}
+                {filtered.length > 0 ? (
+                  filtered.map((opt) => {
+                    const isSelected = selected.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => addRef(opt.id)}
+                        disabled={isSelected}
+                        className={`w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50 ${
+                          isSelected ? "opacity-50" : "text-gray-700"
+                        }`}
+                      >
+                        <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-1 rounded">
+                          {TYPE_PREFIXES[opt.type]}
+                        </span>
+                        <span className="font-mono text-xs text-gray-500">{opt.id}</span>
+                        <span className="truncate">{opt.title}</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-4 text-center text-sm text-gray-400">
+                    No matching entities
+                  </div>
+                )}
               </div>
             )}
 

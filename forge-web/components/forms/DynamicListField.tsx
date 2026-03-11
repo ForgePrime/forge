@@ -1,6 +1,12 @@
 "use client";
 
+import { useRef, useCallback } from "react";
 import { type FieldValues, type Path, type Control, Controller } from "react-hook-form";
+
+interface ListItem {
+  _key: number;
+  value: string;
+}
 
 interface DynamicListFieldProps<T extends FieldValues> {
   name: Path<T>;
@@ -21,25 +27,47 @@ export function DynamicListField<T extends FieldValues>({
   required,
   disabled,
 }: DynamicListFieldProps<T>) {
+  const nextKey = useRef(0);
+
+  // Convert string[] from form to ListItem[] with stable keys
+  const toItems = useCallback((values: unknown): ListItem[] => {
+    if (!Array.isArray(values)) return [];
+    return values.map((v: string) => ({ _key: nextKey.current++, value: v }));
+  }, []);
+
   return (
     <Controller
       name={name}
       control={control}
       render={({ field, fieldState: { error } }) => {
-        const items: string[] = Array.isArray(field.value) ? field.value : [];
+        // Lazy-init: convert incoming string[] to ListItem[] on first render
+        const rawItems: ListItem[] = (() => {
+          const val = field.value;
+          if (!Array.isArray(val)) return [];
+          if (val.length === 0) return [];
+          // If already has _key, use as-is (re-render path)
+          if (typeof val[0] === "object" && "_key" in val[0]) return val as ListItem[];
+          // Initial string[] from form — assign keys
+          return toItems(val);
+        })();
+
+        const setItems = (items: ListItem[]) => {
+          // Store as ListItem[] internally for stable keys, but
+          // emit string[] to the form via a hidden transform
+          (field as { value: ListItem[] }).value = items;
+          field.onChange(items.map((it) => it.value));
+        };
 
         const addItem = () => {
-          field.onChange([...items, ""]);
+          setItems([...rawItems, { _key: nextKey.current++, value: "" }]);
         };
 
-        const updateItem = (index: number, value: string) => {
-          const next = [...items];
-          next[index] = value;
-          field.onChange(next);
+        const updateItem = (key: number, value: string) => {
+          setItems(rawItems.map((it) => it._key === key ? { ...it, value } : it));
         };
 
-        const removeItem = (index: number) => {
-          field.onChange(items.filter((_, i) => i !== index));
+        const removeItem = (key: number) => {
+          setItems(rawItems.filter((it) => it._key !== key));
         };
 
         return (
@@ -50,22 +78,23 @@ export function DynamicListField<T extends FieldValues>({
             </label>
 
             <div className="space-y-2">
-              {items.map((item, idx) => (
-                <div key={idx} className="flex gap-2 items-start">
+              {rawItems.map((item, idx) => (
+                <div key={item._key} className="flex gap-2 items-start">
                   <span className="text-xs text-gray-400 mt-2.5 w-5 text-right flex-shrink-0">
                     {idx + 1}.
                   </span>
                   <input
                     type="text"
-                    value={item}
-                    onChange={(e) => updateItem(idx, e.target.value)}
+                    value={item.value}
+                    onChange={(e) => updateItem(item._key, e.target.value)}
                     placeholder={placeholder}
                     disabled={disabled}
+                    aria-label={`${label} item ${idx + 1}`}
                     className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md outline-none focus:border-forge-500 focus:ring-1 focus:ring-forge-500 disabled:bg-gray-50"
                   />
                   <button
                     type="button"
-                    onClick={() => removeItem(idx)}
+                    onClick={() => removeItem(item._key)}
                     disabled={disabled}
                     className="p-2 text-gray-400 hover:text-red-500 disabled:opacity-50 flex-shrink-0"
                     aria-label={`Remove item ${idx + 1}`}

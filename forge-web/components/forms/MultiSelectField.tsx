@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useId } from "react";
 import { type FieldValues, type Path, type Control, Controller } from "react-hook-form";
 import type { SelectOption } from "./SelectField";
 
@@ -25,6 +25,9 @@ export function MultiSelectField<T extends FieldValues>({
 }: MultiSelectFieldProps<T>) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fieldId = useId();
+  const labelId = `${fieldId}-label`;
+  const listboxId = `${fieldId}-listbox`;
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -57,8 +60,8 @@ export function MultiSelectField<T extends FieldValues>({
         };
 
         return (
-          <div className="mb-4" ref={containerRef}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="mb-4 relative" ref={containerRef}>
+            <label id={labelId} className="block text-sm font-medium text-gray-700 mb-1">
               {label}
               {required && <span className="text-red-500 ml-0.5">*</span>}
             </label>
@@ -76,11 +79,16 @@ export function MultiSelectField<T extends FieldValues>({
               role="combobox"
               aria-expanded={dropdownOpen}
               aria-haspopup="listbox"
+              aria-labelledby={labelId}
+              aria-controls={dropdownOpen ? listboxId : undefined}
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
                   if (!disabled) setDropdownOpen((o) => !o);
+                } else if (e.key === "Escape" && dropdownOpen) {
+                  e.stopPropagation();
+                  setDropdownOpen(false);
                 }
               }}
             >
@@ -111,7 +119,8 @@ export function MultiSelectField<T extends FieldValues>({
             {/* Dropdown */}
             {dropdownOpen && (
               <div
-                className="mt-1 w-full border rounded-md bg-white shadow-lg max-h-48 overflow-y-auto z-10 relative"
+                id={listboxId}
+                className="absolute mt-1 w-full border rounded-md bg-white shadow-lg max-h-48 overflow-y-auto z-10"
                 role="listbox"
                 aria-multiselectable="true"
               >

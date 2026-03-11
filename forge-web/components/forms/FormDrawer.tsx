@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useId } from "react";
 
 export interface FormDrawerProps {
   open: boolean;
@@ -22,6 +22,7 @@ export function FormDrawer({
   children,
 }: FormDrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   // Close on Escape
   const handleKeyDown = useCallback(
@@ -45,11 +46,29 @@ export function FormDrawer({
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
-  // Focus trap: focus panel on open
+  // Focus trap
   useEffect(() => {
-    if (open) {
-      setTimeout(() => panelRef.current?.focus(), 0);
-    }
+    if (!open) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    setTimeout(() => panel.focus(), 0);
+
+    const trapFocus = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    panel.addEventListener("keydown", trapFocus);
+    return () => panel.removeEventListener("keydown", trapFocus);
   }, [open]);
 
   if (!open) return null;
@@ -59,7 +78,7 @@ export function FormDrawer({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/40 z-40"
-        onClick={() => { if (!submitting) onClose(); }}
+        onClick={(e) => { e.stopPropagation(); if (!submitting) onClose(); }}
         aria-hidden="true"
       />
 
@@ -68,13 +87,13 @@ export function FormDrawer({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
         tabIndex={-1}
         className="fixed inset-y-0 right-0 z-50 w-full max-w-[480px] bg-white shadow-2xl flex flex-col outline-none animate-slide-in-right"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <h2 id={titleId} className="text-lg font-semibold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
             disabled={submitting}
