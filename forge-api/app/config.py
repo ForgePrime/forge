@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # Auth
     api_key: str = ""  # For CLI access; empty = no auth required
-    jwt_secret: str = "change-me-in-production"
+    jwt_secret: str = ""  # REQUIRED in production: set FORGE_JWT_SECRET env var
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_expire_minutes: int = 60
 

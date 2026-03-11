@@ -12,6 +12,7 @@ services:
       FORGE_HOST: "0.0.0.0"
       FORGE_PORT: "8000"
       FORGE_CORS_ORIGINS: '["http://localhost:3000","https://0dgzrhkw-3000.euw.devtunnels.ms","https://0dgzrhkw-8000.euw.devtunnels.ms"]'
+      FORGE_JWT_SECRET: ${FORGE_JWT_SECRET:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:

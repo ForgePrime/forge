@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# Default JWT secret that must be changed in production
-_DEFAULT_JWT_SECRET = "change-me-in-production"
+# Sentinel for unconfigured JWT secret
+_DEFAULT_JWT_SECRET = ""
 
 VALID_ROLES = {"admin", "user", "readonly"}
 
