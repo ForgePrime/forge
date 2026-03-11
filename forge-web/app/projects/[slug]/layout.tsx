@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useProjectStore } from "@/stores/projectStore";
 import { useWebSocket } from "@/lib/hooks/useWebSocket";
-import { useEntityStore } from "@/stores/entityStore";
+import { dispatchWsEvent } from "@/stores/wsDispatcher";
 import { DebugToggle } from "@/components/debug/DebugToggle";
 
 interface NavItem {
@@ -38,17 +38,15 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const { details, selectProject } = useProjectStore();
   const detail = details[slug];
   const { connected, onAny } = useWebSocket(slug);
-  const handleEvent = useEntityStore((s) => s.handleEvent);
-
   useEffect(() => {
     if (slug) selectProject(slug);
   }, [slug, selectProject]);
 
-  // Forward all WebSocket events to the entity store
+  // Forward all WebSocket events to per-entity stores
   useEffect(() => {
-    const unsub = onAny(handleEvent);
+    const unsub = onAny(dispatchWsEvent);
     return unsub;
-  }, [onAny, handleEvent]);
+  }, [onAny]);
 
   const basePath = `/projects/${slug}`;
 

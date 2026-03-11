@@ -114,8 +114,7 @@ export function EntityPalette({
   onDragEnd,
   className = "",
 }: EntityPaletteProps) {
-  const slices = useEntityStore((s) => s.slices);
-  const fetchEntities = useEntityStore((s) => s.fetchEntities);
+  const { slices, fetchEntities } = useEntityStore();
 
   // Fetch all entity types on mount
   useEffect(() => {
