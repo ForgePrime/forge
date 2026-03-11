@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { skills as skillsApi } from "@/lib/api";
 import { SkillCard } from "@/components/entities/SkillCard";
+import { SkillForm } from "@/components/forms/SkillForm";
 import { StatusFilter } from "@/components/shared/StatusFilter";
 import { Button } from "@/components/shared/Button";
 import type { Skill, SkillCategory } from "@/lib/types";
@@ -29,6 +30,8 @@ export default function SkillsPage() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<Skill | undefined>();
 
   const fetchSkills = useCallback(async () => {
     setLoading(true);
@@ -152,7 +155,7 @@ export default function SkillsPage() {
                 #
               </button>
             </div>
-            <Button size="sm" onClick={() => { /* T-086 will add form */ }}>
+            <Button size="sm" onClick={() => { setEditingSkill(undefined); setFormOpen(true); }}>
               + New Skill
             </Button>
           </div>
@@ -179,7 +182,12 @@ export default function SkillsPage() {
             : "space-y-3"
         }>
           {filtered.map((skill) => (
-            <SkillCard key={skill.id} skill={skill} view={view} />
+            <SkillCard
+              key={skill.id}
+              skill={skill}
+              view={view}
+              onEdit={(s) => { setEditingSkill(s); setFormOpen(true); }}
+            />
           ))}
         </div>
 
@@ -191,6 +199,13 @@ export default function SkillsPage() {
           </p>
         )}
       </div>
+
+      <SkillForm
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditingSkill(undefined); }}
+        skill={editingSkill}
+        onSuccess={fetchSkills}
+      />
     </div>
   );
 }

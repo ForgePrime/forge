@@ -10,12 +10,11 @@ const skillStatus = z.enum(["DRAFT", "ACTIVE", "DEPRECATED", "ARCHIVED"]);
 
 export const skillCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  description: z.string().default(""),
-  category: skillCategory.default("custom"),
+  description: z.string().optional(),
+  category: skillCategory.optional(),
   skill_md_content: z.string().optional(),
-  evals_json: z.array(z.record(z.string(), z.unknown())).default([]),
-  tags: z.array(z.string()).default([]),
-  scopes: z.array(z.string()).default([]),
+  tags: z.array(z.string()).optional(),
+  scopes: z.array(z.string()).optional(),
 });
 
 export const skillUpdateSchema = z.object({
@@ -24,7 +23,6 @@ export const skillUpdateSchema = z.object({
   category: skillCategory.optional(),
   status: skillStatus.optional(),
   skill_md_content: z.string().optional(),
-  evals_json: z.array(z.record(z.string(), z.unknown())).optional(),
   tags: z.array(z.string()).optional(),
   scopes: z.array(z.string()).optional(),
 });
