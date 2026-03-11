@@ -48,9 +48,9 @@ function getDefaults(objective?: Objective): ObjectiveCreateForm {
           target: kr.target,
           current: kr.current,
         })) || [{ metric: "", target: 0 }],
-        appetite: (objective as Record<string, unknown>).appetite as "small" | "medium" | "large" || "medium",
-        scope: "project",
-        assumptions: (objective as Record<string, unknown>).assumptions as string[] || [],
+        appetite: objective.appetite || "medium",
+        scope: objective.scope || "project",
+        assumptions: objective.assumptions || [],
         scopes: objective.scopes || [],
       }
     : {

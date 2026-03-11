@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { KnowledgeCard } from "@/components/entities/KnowledgeCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
+import { KnowledgeForm } from "@/components/forms/KnowledgeForm";
 import { Badge } from "@/components/shared/Badge";
 import { knowledgeMaintenance } from "@/lib/api";
 import type { Knowledge, MaintenanceReport, StaleKnowledge } from "@/lib/types";
@@ -21,12 +22,18 @@ export default function KnowledgePage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingKnowledge, setEditingKnowledge] = useState<Knowledge | undefined>();
   const [maintenance, setMaintenance] = useState<MaintenanceReport | null>(null);
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
   const [showMaintenance, setShowMaintenance] = useState(false);
 
   useEffect(() => {
+    fetchEntities(slug, "knowledge");
+  }, [slug, fetchEntities]);
+
+  const handleFormSuccess = useCallback(() => {
     fetchEntities(slug, "knowledge");
   }, [slug, fetchEntities]);
 
@@ -88,6 +95,12 @@ export default function KnowledgePage() {
           </button>
           <StatusFilter options={STATUSES} value={statusFilter} onChange={setStatusFilter} />
           <StatusFilter options={CATEGORIES} value={categoryFilter} onChange={setCategoryFilter} label="Category" />
+          <button
+            onClick={() => { setEditingKnowledge(undefined); setFormOpen(true); }}
+            className="px-3 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700"
+          >
+            + New Knowledge
+          </button>
         </div>
       </div>
 
@@ -236,6 +249,7 @@ export default function KnowledgePage() {
             key={k.id}
             knowledge={k}
             slug={slug}
+            onEdit={(knowledge) => { setEditingKnowledge(knowledge); setFormOpen(true); }}
             staleInfo={staleMap.get(k.id)}
           />
         ))}
@@ -245,6 +259,14 @@ export default function KnowledgePage() {
           </p>
         )}
       </div>
+
+      <KnowledgeForm
+        slug={slug}
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditingKnowledge(undefined); }}
+        knowledge={editingKnowledge}
+        onSuccess={handleFormSuccess}
+      />
     </div>
   );
 }

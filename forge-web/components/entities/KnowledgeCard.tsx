@@ -5,6 +5,7 @@ import Link from "next/link";
 interface KnowledgeCardProps {
   knowledge: Knowledge;
   slug: string;
+  onEdit?: (knowledge: Knowledge) => void;
   /** Optional stale info from the maintenance endpoint. */
   staleInfo?: StaleKnowledge;
 }
@@ -23,7 +24,7 @@ function isStaleLocally(k: Knowledge): { stale: boolean; daysSince: number | nul
   return { stale: daysSince > interval, daysSince };
 }
 
-export function KnowledgeCard({ knowledge: k, slug, staleInfo }: KnowledgeCardProps) {
+export function KnowledgeCard({ knowledge: k, slug, onEdit, staleInfo }: KnowledgeCardProps) {
   // Use server-provided stale info if available, otherwise compute locally
   const localStale = isStaleLocally(k);
   const isStale = staleInfo
@@ -36,23 +37,35 @@ export function KnowledgeCard({ knowledge: k, slug, staleInfo }: KnowledgeCardPr
   const isReviewNeeded = k.status === "REVIEW_NEEDED";
 
   return (
-    <Link
-      href={`/projects/${slug}/knowledge/${k.id}`}
+    <div
       className={`block rounded-lg border bg-white p-4 hover:border-forge-300 transition-colors ${
         showStaleIndicator || isReviewNeeded ? "border-l-4 border-l-amber-400" : ""
       }`}
     >
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-xs text-gray-400">{k.id}</span>
-        <Badge variant={statusVariant(k.status)}>{k.status}</Badge>
-        <Badge>{k.category}</Badge>
-        {showStaleIndicator && (
-          <Badge variant="warning">
-            Stale{daysSince != null ? ` (${daysSince}d)` : ""}
-          </Badge>
-        )}
-        {isReviewNeeded && !showStaleIndicator && (
-          <Badge variant="warning">Needs Review</Badge>
+      <div className="flex items-start justify-between mb-1">
+        <Link
+          href={`/projects/${slug}/knowledge/${k.id}`}
+          className="flex items-center gap-2 hover:underline"
+        >
+          <span className="text-xs text-gray-400">{k.id}</span>
+          <Badge variant={statusVariant(k.status)}>{k.status}</Badge>
+          <Badge>{k.category}</Badge>
+          {showStaleIndicator && (
+            <Badge variant="warning">
+              Stale{daysSince != null ? ` (${daysSince}d)` : ""}
+            </Badge>
+          )}
+          {isReviewNeeded && !showStaleIndicator && (
+            <Badge variant="warning">Needs Review</Badge>
+          )}
+        </Link>
+        {onEdit && (
+          <button
+            onClick={() => onEdit(k)}
+            className="text-xs text-gray-400 hover:text-forge-600"
+          >
+            Edit
+          </button>
         )}
       </div>
       <h3 className="font-medium text-sm">{k.title}</h3>
@@ -76,6 +89,6 @@ export function KnowledgeCard({ knowledge: k, slug, staleInfo }: KnowledgeCardPr
           ))}
         </div>
       )}
-    </Link>
+    </div>
   );
 }

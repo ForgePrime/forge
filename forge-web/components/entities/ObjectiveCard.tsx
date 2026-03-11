@@ -11,9 +11,18 @@ export function ObjectiveCard({ objective, onEdit }: ObjectiveCardProps) {
     <div className="rounded-lg border bg-white p-4 hover:border-forge-300 transition-colors">
       <div className="flex items-start justify-between mb-1">
         <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">{objective.id}</span>
-        <Badge variant={statusVariant(objective.status)}>{objective.status}</Badge>
-        <Badge>{objective.appetite}</Badge>
+          <span className="text-xs text-gray-400">{objective.id}</span>
+          <Badge variant={statusVariant(objective.status)}>{objective.status}</Badge>
+          <Badge>{objective.appetite}</Badge>
+        </div>
+        {onEdit && (
+          <button
+            onClick={() => onEdit(objective)}
+            className="text-xs text-gray-400 hover:text-forge-600"
+          >
+            Edit
+          </button>
+        )}
       </div>
       <h3 className="font-medium text-sm">{objective.title}</h3>
       <p className="text-xs text-gray-500 mt-1 line-clamp-2">{objective.description}</p>

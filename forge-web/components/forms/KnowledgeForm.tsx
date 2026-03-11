@@ -82,8 +82,6 @@ export function KnowledgeForm({ slug, open, onClose, knowledge, onSuccess }: Kno
     },
   });
 
-  const form = isEdit ? editForm : createForm;
-
   useEffect(() => {
     if (isEdit) {
       editForm.reset({
@@ -107,53 +105,88 @@ export function KnowledgeForm({ slug, open, onClose, knowledge, onSuccess }: Kno
     setApiErrors([]);
   }, [knowledge, isEdit, createForm, editForm]);
 
-  const onSubmit = form.handleSubmit(async (data) => {
+  const handleError = (e: unknown) => {
+    const errors = parseValidationErrors(e);
+    if (errors.length > 0) {
+      setApiErrors(errors);
+      const record = fieldErrorsToRecord(errors);
+      for (const [field, message] of Object.entries(record)) {
+        if (isEdit) {
+          editForm.setError(field as keyof KnowledgeUpdateForm, { message });
+        } else {
+          createForm.setError(field as keyof KnowledgeCreateForm, { message });
+        }
+      }
+    } else {
+      setApiErrors([{ field: "general", message: (e as Error).message }]);
+    }
+  };
+
+  const onCreateSubmit = createForm.handleSubmit(async (data) => {
     setSubmitting(true);
     setApiErrors([]);
     try {
-      if (isEdit) {
-        await updateKnowledge(slug, knowledge.id, data as KnowledgeUpdateForm);
-      } else {
-        await createKnowledge(slug, [data as KnowledgeCreateForm]);
-      }
-      form.reset();
+      await createKnowledge(slug, [data]);
+      createForm.reset();
       onSuccess?.();
       onClose();
     } catch (e) {
-      const errors = parseValidationErrors(e);
-      if (errors.length > 0) {
-        setApiErrors(errors);
-        const record = fieldErrorsToRecord(errors);
-        for (const [field, message] of Object.entries(record)) {
-          form.setError(field as string, { message });
-        }
-      } else {
-        setApiErrors([{ field: "general", message: (e as Error).message }]);
-      }
+      handleError(e);
     } finally {
       setSubmitting(false);
     }
   });
 
+  const onEditSubmit = editForm.handleSubmit(async (data) => {
+    setSubmitting(true);
+    setApiErrors([]);
+    try {
+      await updateKnowledge(slug, knowledge!.id, data);
+      editForm.reset();
+      onSuccess?.();
+      onClose();
+    } catch (e) {
+      handleError(e);
+    } finally {
+      setSubmitting(false);
+    }
+  });
+
+  if (isEdit) {
+    return (
+      <FormDrawer
+        open={open}
+        onClose={onClose}
+        title={`Edit ${knowledge.id}`}
+        onSubmit={onEditSubmit}
+        submitting={submitting}
+        submitLabel="Update"
+      >
+        <FormErrorSummary errors={apiErrors} />
+        <TextField name="title" control={editForm.control} label="Title" placeholder="e.g., API rate limit rules" />
+        <SelectField name="category" control={editForm.control} label="Category" options={CATEGORY_OPTIONS} />
+        <SelectField name="status" control={editForm.control} label="Status" options={STATUS_OPTIONS} />
+        <TextAreaField name="content" control={editForm.control} label="Content" placeholder="Knowledge content (Markdown supported)" rows={10} />
+        <MultiSelectField name="scopes" control={editForm.control} label="Scopes" options={SCOPE_OPTIONS} />
+        <TextField name="change_reason" control={editForm.control} label="Change Reason" placeholder="Why is this being updated?" />
+      </FormDrawer>
+    );
+  }
+
   return (
     <FormDrawer
       open={open}
       onClose={onClose}
-      title={isEdit ? `Edit ${knowledge.id}` : "Create Knowledge"}
-      onSubmit={onSubmit}
+      title="Create Knowledge"
+      onSubmit={onCreateSubmit}
       submitting={submitting}
-      submitLabel={isEdit ? "Update" : "Create"}
+      submitLabel="Create"
     >
       <FormErrorSummary errors={apiErrors} />
-
-      <TextField name="title" control={form.control} label="Title" required placeholder="e.g., API rate limit rules" />
-      <SelectField name="category" control={form.control} label="Category" options={CATEGORY_OPTIONS} />
-      {isEdit && <SelectField name="status" control={form.control} label="Status" options={STATUS_OPTIONS} />}
-      <TextAreaField name="content" control={form.control} label="Content" required={!isEdit} placeholder="Knowledge content (Markdown supported)" rows={10} />
-      <MultiSelectField name="scopes" control={form.control} label="Scopes" options={SCOPE_OPTIONS} />
-      {isEdit && (
-        <TextField name="change_reason" control={form.control} label="Change Reason" placeholder="Why is this being updated?" />
-      )}
+      <TextField name="title" control={createForm.control} label="Title" required placeholder="e.g., API rate limit rules" />
+      <SelectField name="category" control={createForm.control} label="Category" options={CATEGORY_OPTIONS} />
+      <TextAreaField name="content" control={createForm.control} label="Content" required placeholder="Knowledge content (Markdown supported)" rows={10} />
+      <MultiSelectField name="scopes" control={createForm.control} label="Scopes" options={SCOPE_OPTIONS} />
     </FormDrawer>
   );
 }
