@@ -84,7 +84,7 @@ export default function TasksPage() {
                 : ""
             }`}
           >
-            <TaskCard task={task} onStatusChange={handleStatusChange} onEdit={handleEdit} />
+            <TaskCard task={task} slug={slug} onStatusChange={handleStatusChange} onEdit={handleEdit} />
           </div>
         ))}
         {!slices.tasks.loading && filtered.length === 0 && (

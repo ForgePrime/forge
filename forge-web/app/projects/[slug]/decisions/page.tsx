@@ -67,7 +67,7 @@ export default function DecisionsPage() {
       {slices.decisions.error && <p className="text-sm text-red-600 mb-2">{slices.decisions.error}</p>}
       <div className="space-y-3">
         {filtered.map((d) => (
-          <DecisionCard key={d.id} decision={d} onStatusChange={handleStatusChange} onEdit={handleEdit} />
+          <DecisionCard key={d.id} decision={d} slug={slug} onStatusChange={handleStatusChange} onEdit={handleEdit} />
         ))}
         {!slices.decisions.loading && filtered.length === 0 && (
           <p className="text-sm text-gray-400">No decisions{statusFilter ? ` with status ${statusFilter}` : ""}</p>

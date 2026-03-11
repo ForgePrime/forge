@@ -1,8 +1,10 @@
+import Link from "next/link";
 import type { Decision } from "@/lib/types";
 import { Badge, statusVariant } from "@/components/shared/Badge";
 
 interface DecisionCardProps {
   decision: Decision;
+  slug: string;
   onStatusChange?: (id: string, status: string) => void;
   onEdit?: (decision: Decision) => void;
 }
@@ -22,13 +24,13 @@ const STATUS_ACTIONS: Record<string, Array<{ label: string; status: string; clas
   ],
 };
 
-export function DecisionCard({ decision, onStatusChange, onEdit }: DecisionCardProps) {
+export function DecisionCard({ decision, slug, onStatusChange, onEdit }: DecisionCardProps) {
   const actions = STATUS_ACTIONS[decision.status] || [];
 
   return (
     <div className="rounded-lg border bg-white p-4 hover:border-forge-300 transition-colors">
       <div className="flex items-start justify-between">
-        <div className="flex-1">
+        <Link href={`/projects/${slug}/decisions/${decision.id}`} className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs text-gray-400">{decision.id}</span>
             <Badge variant={statusVariant(decision.status)}>{decision.status}</Badge>
@@ -39,7 +41,7 @@ export function DecisionCard({ decision, onStatusChange, onEdit }: DecisionCardP
           </div>
           <h3 className="font-medium text-sm">{decision.issue}</h3>
           <p className="text-xs text-gray-500 mt-1">{decision.recommendation}</p>
-        </div>
+        </Link>
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
           {onEdit && (
             <button

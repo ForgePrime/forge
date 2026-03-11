@@ -1,8 +1,10 @@
+import Link from "next/link";
 import type { Task } from "@/lib/types";
 import { Badge, statusVariant } from "@/components/shared/Badge";
 
 interface TaskCardProps {
   task: Task;
+  slug: string;
   onStatusChange?: (id: string, status: string) => void;
   onEdit?: (task: Task) => void;
 }
@@ -21,13 +23,13 @@ const STATUS_ACTIONS: Record<string, Array<{ label: string; status: string; clas
   ],
 };
 
-export function TaskCard({ task, onStatusChange, onEdit }: TaskCardProps) {
+export function TaskCard({ task, slug, onStatusChange, onEdit }: TaskCardProps) {
   const actions = STATUS_ACTIONS[task.status] || [];
 
   return (
     <div className="rounded-lg border bg-white p-4 hover:border-forge-300 transition-colors">
       <div className="flex items-start justify-between">
-        <div className="flex-1">
+        <Link href={`/projects/${slug}/tasks/${task.id}`} className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs text-gray-400">{task.id}</span>
             <Badge variant={statusVariant(task.status)}>{task.status}</Badge>
@@ -37,7 +39,7 @@ export function TaskCard({ task, onStatusChange, onEdit }: TaskCardProps) {
           {task.description && (
             <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>
           )}
-        </div>
+        </Link>
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
           {onEdit && (task.status === "TODO" || task.status === "FAILED") && (
             <button
