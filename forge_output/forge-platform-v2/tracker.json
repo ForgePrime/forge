@@ -1,0 +1,3160 @@
+{
+  "project": "forge-platform-v2",
+  "goal": "Implement Forge Platform v2 Phases 2-4: Database & API, Web UI, AI Features — per docs/FORGE-PLATFORM-V2.md Sections 7-11. Builds on completed Phase 1 (forge-platform-v2-phase1).",
+  "created": "2026-03-10T19:00:00Z",
+  "updated": "2026-03-11T17:00:00Z",
+  "config": {},
+  "tasks": [
+    {
+      "id": "T-001",
+      "name": "context-assembly-budget-improvements",
+      "description": "Implement the 4 context assembly improvements from Phase 1 deep-verify: output token reservation, max_pct enforcement, SHOULD guidelines 80% threshold, intra-section partial truncation. Also add system_contract section to SECTION_DEFS and load_global/save_global to StorageAdapter Protocol.",
+      "instruction": "Follow the existing plan in .claude/plans/bright-cuddling-rabin.md which has the full implementation spec. Key changes:\n1. Add load_global/save_global to StorageAdapter Protocol in core/storage.py\n2. In core/llm/context.py _apply_budget(): output reservation (25% or max_output_tokens), per-section max_pct caps, SHOULD guidelines 80% check\n3. Add _split_section_items() and _truncate_section_partial() for intra-section truncation\n4. Add system_contract SectionDef (priority=1, max_pct=None, truncatable=False)\n5. Add contract parameter to assemble() and _gather_system_contract() method",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T19:30:00Z",
+      "completed_at": "2026-03-10T19:35:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [
+        "T-002"
+      ],
+      "acceptance_criteria": [
+        "Output token reservation: subtracts max_output_tokens (or 25% fallback) from context window",
+        "Per-section max_pct enforcement: sections capped to their max_pct of available tokens",
+        "SHOULD guidelines removed when total context > 80% of window",
+        "Intra-section truncation: removes individual items before removing entire section",
+        "system_contract section present in SECTION_DEFS with priority=1, truncatable=False",
+        "load_global/save_global in StorageAdapter Protocol",
+        "Backward compatible — assemble() works without contract parameter"
+      ],
+      "scopes": [
+        "backend",
+        "architecture"
+      ],
+      "origin": "Phase 1 deep-verify T-008 recommendations",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-002",
+      "name": "forge-client-abstraction",
+      "description": "Create ForgeClient that wraps all Forge operations and routes to JSONBackend (standalone) or APIBackend (remote). Phase 1 item 1.10 that was deferred. This is the foundation for CLI remote mode (T-020).",
+      "instruction": "Create core/client.py with:\n1. ForgeConfig dataclass: mode ('standalone'|'local'|'remote'), data_dir, api_url, api_key\n2. ForgeClient class with __init__(config) that selects backend\n3. JSONBackend — wraps current module functions (pipeline, decisions, changes, etc.)\n4. APIBackend — stub class with NotImplementedError (implemented in T-020)\n5. Client methods: create_task, get_context, list_projects, add_decision, record_change, etc.\n6. Config loading from ~/.forge/config.toml (fallback to standalone mode)\n\nReference: FORGE-PLATFORM-V2.md Section 8.3",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T19:35:00Z",
+      "completed_at": "2026-03-10T19:45:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [
+        "T-001"
+      ],
+      "acceptance_criteria": [
+        "core/client.py exists with ForgeClient class",
+        "JSONBackend wraps existing module functions",
+        "APIBackend stub exists (raises NotImplementedError)",
+        "Config loading from ~/.forge/config.toml or defaults to standalone",
+        "ForgeClient selects backend based on config.mode"
+      ],
+      "scopes": [
+        "backend",
+        "architecture"
+      ],
+      "origin": "Phase 1 item 1.10",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-003",
+      "name": "database-schema-design",
+      "description": "Design and implement SQL migration scripts for the full Forge database schema: all core entity tables, junction tables for relationships, indexes (GIN for arrays, FTS for knowledge). Based on Section 7.4.",
+      "instruction": "Create forge-api/migrations/ directory with:\n1. 001_initial_schema.sql — all tables from Section 7.4: projects, objectives, key_results, ideas, tasks, decisions, changes, lessons, guidelines, knowledge, knowledge_versions, ac_templates\n2. 002_junction_tables.sql — knowledge_links, task_ac, task_dependencies, task_knowledge, idea_relations\n3. 003_indexes.sql — GIN indexes for scopes/tags arrays, FTS index for knowledge, standard indexes for status/foreign keys\n4. A simple migration runner script (Python) that applies migrations in order\n5. Ensure schema matches entity structures from core/*.py modules exactly (field names, types)\n\nReference: FORGE-PLATFORM-V2.md Section 7.4",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T20:00:00Z",
+      "completed_at": "2026-03-10T20:15:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "SQL migration files exist and are syntactically valid",
+        "All entity tables from Section 7.4 defined",
+        "Junction tables for all many-to-many relationships",
+        "GIN indexes on array columns (scopes, tags)",
+        "FTS index on knowledge (title + content)",
+        "Migration runner script applies migrations in order",
+        "Schema field names match core/*.py entity structures"
+      ],
+      "scopes": [
+        "database"
+      ],
+      "origin": "Phase 2 item 2.1",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-004",
+      "name": "postgresql-adapter",
+      "description": "Implement PostgreSQLAdapter that satisfies StorageAdapter Protocol. Uses SQLAlchemy or asyncpg for database access. Must pass the same behavioral contract as JSONFileStorage.",
+      "instruction": "Create core/storage_pg.py (or forge-api/storage/postgresql.py) with:\n1. PostgreSQLAdapter class implementing StorageAdapter Protocol: load_data, save_data, exists, list_projects, load_global, save_global\n2. Connection pool management (asyncpg or SQLAlchemy async)\n3. Entity type → table name mapping\n4. JSON serialization for JSONB columns\n5. Transaction support for atomic operations\n6. load_data returns dict in same format as JSONFileStorage (e.g., {'project': ..., 'tasks': [...]})\n\nKey: the adapter translates between row-based DB storage and the dict-based interface that core modules expect. Core modules should work unchanged.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T20:35:00Z",
+      "completed_at": "2026-03-10T20:45:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-003"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "PostgreSQLAdapter implements all 6 StorageAdapter Protocol methods",
+        "isinstance check passes: isinstance(pg_adapter, StorageAdapter)",
+        "load_data returns dicts in same structure as JSONFileStorage",
+        "Connection pooling configured",
+        "Handles missing entities (returns default structure, like JSONFileStorage)"
+      ],
+      "scopes": [
+        "backend",
+        "database"
+      ],
+      "origin": "Phase 2 item 2.2",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-005",
+      "name": "knowledge-versioning-postgresql",
+      "description": "Implement full knowledge versioning in PostgreSQL: version table with diffs, version history API, rollback support. This is a PostgreSQL-only feature (JSON mode has embedded array versioning).",
+      "instruction": "In the PostgreSQL adapter:\n1. knowledge_versions table stores each version separately (version INT, content TEXT, changed_by, change_reason, created_at)\n2. On knowledge update: create new version row, increment current_version on knowledge table\n3. Diff generation between versions (simple text diff or JSON diff)\n4. API to list versions, get specific version, compare versions\n5. Rollback: create new version with content from a previous version\n\nReference: Section 7.2 (JSON = embedded array, PostgreSQL = version table with diff support)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T21:00:00Z",
+      "completed_at": "2026-03-10T21:10:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-004"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "knowledge_versions table populated on every knowledge update",
+        "Version history retrievable for any knowledge object",
+        "Diff between two versions calculable",
+        "Rollback creates new version (not destructive overwrite)",
+        "current_version field on knowledge table stays in sync"
+      ],
+      "scopes": [
+        "backend",
+        "database"
+      ],
+      "origin": "Phase 2 item 2.9",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-006",
+      "name": "knowledge-impact-analysis",
+      "description": "Implement knowledge impact analysis queries in PostgreSQL. When knowledge is updated, find all entities linked to it and assess potential impact. Uses reverse FK joins for efficiency.",
+      "instruction": "1. Query: given knowledge_id, find all linked entities via knowledge_links table\n2. For each linked entity, determine impact based on relation type (required > context > reference)\n3. Return structured impact report: affected entity list with impact level\n4. In JSON mode: full file scan (acceptable for small projects)\n5. Impact detection triggered on knowledge update (can be event-driven later)\n\nReference: Section 7.2 (JSON = full scan, PostgreSQL = reverse FK JOIN)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T21:40:00Z",
+      "completed_at": "2026-03-10T21:55:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-005"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Impact query returns all entities linked to a knowledge object",
+        "Impact levels assigned based on relation type",
+        "Works in PostgreSQL mode (efficient JOINs)",
+        "Structured impact report returned as dict/JSON"
+      ],
+      "scopes": [
+        "backend",
+        "database"
+      ],
+      "origin": "Phase 2 item 2.10",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-007",
+      "name": "json-to-postgresql-migration",
+      "description": "Build the forge-migrate tool that imports existing JSON project data into PostgreSQL. Must handle all entity types, preserve IDs, create junction table entries, and import knowledge versions.",
+      "instruction": "Create core/migrate.py (or forge-api/migrate.py) with:\n1. Read all JSON files from forge_output/{project}/\n2. Validate entity integrity (all references resolve)\n3. Insert into PostgreSQL tables, preserving ext_id (original ID like T-001, K-001)\n4. Create junction table entries for many-to-many relationships (knowledge_links, task_dependencies, etc.)\n5. Import knowledge versions as separate rows in knowledge_versions table\n6. Report: entities imported, warnings, skipped items\n7. CLI command: forge-migrate import --source ./forge_output/my-project --target postgresql://...\n\nReference: Section 7.3",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T22:15:00Z",
+      "completed_at": "2026-03-10T22:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-004"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Reads all entity JSON files from a project directory",
+        "Inserts all entities into correct PostgreSQL tables",
+        "Preserves original IDs as ext_id / aliases",
+        "Creates junction table entries for relationships",
+        "Knowledge versions imported as separate rows",
+        "Reports import statistics and any warnings"
+      ],
+      "scopes": [
+        "backend",
+        "database"
+      ],
+      "origin": "Phase 2 item 2.3",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-008",
+      "name": "fastapi-project-structure",
+      "description": "Set up the FastAPI project with proper structure: directory layout, dependencies, configuration, middleware, error handling. This is the foundation for all API endpoints.",
+      "instruction": "Create forge-api/ directory:\n1. forge-api/pyproject.toml — dependencies: fastapi, uvicorn, asyncpg/sqlalchemy, redis, pydantic\n2. forge-api/app/__init__.py\n3. forge-api/app/main.py — FastAPI app with CORS, error handlers, lifespan (DB pool, Redis)\n4. forge-api/app/config.py — settings from env vars (DATABASE_URL, REDIS_URL, etc.)\n5. forge-api/app/dependencies.py — dependency injection (get_db, get_redis, get_storage)\n6. forge-api/app/routers/ — empty router files for each entity group\n7. forge-api/app/schemas/ — Pydantic models for request/response\n8. Dockerfile for forge-api service\n\nReference: Section 10.2 for Docker, Section 8.1 for API structure",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T20:20:00Z",
+      "completed_at": "2026-03-10T20:30:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "forge-api/ directory with proper Python package structure",
+        "FastAPI app starts and serves health check endpoint",
+        "Configuration loaded from environment variables",
+        "CORS middleware configured",
+        "Dockerfile builds successfully",
+        "Dependencies specified in pyproject.toml"
+      ],
+      "scopes": [
+        "backend",
+        "api"
+      ],
+      "origin": "Phase 2 item 2.4",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-009",
+      "name": "rest-api-entity-endpoints",
+      "description": "Implement REST API endpoints for ALL entity types: projects, objectives, ideas, tasks, decisions, changes, lessons, guidelines, knowledge, AC templates. Following Section 8.1 spec exactly.",
+      "instruction": "In forge-api/app/routers/ create:\n1. projects.py — CRUD + status dashboard\n2. objectives.py — CRUD + coverage dashboard\n3. ideas.py — CRUD + hierarchy + commit\n4. tasks.py — CRUD + next (claim) + complete + context assembly\n5. decisions.py — CRUD\n6. changes.py — CRUD + auto-detect from git\n7. lessons.py — CRUD + promote\n8. guidelines.py — CRUD + context endpoint\n9. knowledge.py — CRUD + versions + impact + link/unlink\n10. ac_templates.py — CRUD + instantiate\n\nEach router uses StorageAdapter (from dependency injection) for data access. Pydantic schemas for validation. Return proper HTTP status codes per G-003.\n\nReference: Section 8.1 full endpoint list",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T22:50:00Z",
+      "completed_at": "2026-03-10T23:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-004",
+        "T-008"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All ~45 endpoints from Section 8.1 implemented",
+        "Pydantic request/response schemas for each entity",
+        "Proper HTTP status codes (201 create, 200 success, 404 not found, 422 validation)",
+        "StorageAdapter used for all data access",
+        "Endpoint tests pass (at least happy path)"
+      ],
+      "scopes": [
+        "backend",
+        "api"
+      ],
+      "origin": "Phase 2 item 2.5",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-010",
+      "name": "websocket-event-system",
+      "description": "Implement WebSocket event system for real-time updates. Events emitted on entity changes, consumed by connected WebSocket clients. Based on Redis Pub/Sub for broadcasting.",
+      "instruction": "1. forge-api/app/events.py — EventBus class using Redis Pub/Sub\n2. Event types from Section 8.2: task.status_changed, task.progress, decision.created, decision.closed, knowledge.updated, knowledge.impact, change.recorded, gate.result, execution.output, ai.suggestion (12 types)\n3. WebSocket endpoint: WS /ws/projects/{slug}/events\n4. On entity mutation (POST/PATCH/DELETE), emit event to Redis\n5. WebSocket consumer subscribes to Redis channel, forwards to connected clients\n6. JSON message format with event type, timestamp, and payload\n\nReference: Section 8.2",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T00:20:00Z",
+      "completed_at": "2026-03-11T00:45:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-009"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "WebSocket endpoint accepts connections at /ws/projects/{slug}/events",
+        "Entity mutations emit events to Redis",
+        "Connected WebSocket clients receive events in real-time",
+        "All 12 event types from Section 8.2 defined",
+        "Events include timestamp and structured payload"
+      ],
+      "scopes": [
+        "backend",
+        "api"
+      ],
+      "origin": "Phase 2 item 2.6",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-011",
+      "name": "api-authentication",
+      "description": "Add API authentication: API key for CLI access, JWT for web sessions. Middleware validates tokens on protected endpoints.",
+      "instruction": "1. API key authentication: X-API-Key header, key stored in config/server config\n2. JWT authentication: login endpoint, token generation, refresh tokens\n3. FastAPI dependency for auth: get_current_user\n4. Protect all entity endpoints (except health check)\n5. API key has full access (for CLI), JWT scoped to user\n6. Configuration: API keys in server config, JWT secret in env var\n\nReference: Section 2.7 (API authentication)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T01:10:00Z",
+      "completed_at": "2026-03-11T01:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-009"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "API key authentication works for CLI access",
+        "JWT authentication works for web sessions",
+        "Protected endpoints reject unauthenticated requests (401)",
+        "Auth middleware as FastAPI dependency",
+        "API keys configurable without code changes"
+      ],
+      "scopes": [
+        "backend",
+        "api",
+        "security"
+      ],
+      "origin": "Phase 2 item 2.7",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-012",
+      "name": "api-contract-validation-middleware",
+      "description": "Add middleware that validates API request/response bodies against entity contracts. Ensures API consumers get the same validation as CLI users.",
+      "instruction": "1. Use existing LLMContract definitions for schema validation\n2. Middleware intercepts POST/PATCH requests, validates body against entity contract\n3. On validation failure: 422 with structured error details\n4. Response validation (optional, for debugging): check response matches schema\n5. Leverage existing contract system from core/contracts.py\n\nReference: Section 2.12",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-10T12:00:00Z",
+      "completed_at": "2026-03-11T02:05:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-009"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Request bodies validated against entity contracts",
+        "422 returned with structured errors on validation failure",
+        "Contract validation reuses existing core/contracts.py definitions",
+        "Validation can be disabled per-endpoint if needed"
+      ],
+      "scopes": [
+        "backend",
+        "api"
+      ],
+      "origin": "Phase 2 item 2.12",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-013",
+      "name": "docker-compose-setup",
+      "description": "Create Docker Compose configuration for the full platform: forge-api, postgres, redis. Based on Section 10.2. forge-web added later (T-028).",
+      "instruction": "Create docker-compose.yml at project root:\n1. forge-api service: build ./forge-api, port 8000, env vars (DATABASE_URL, REDIS_URL), depends_on postgres + redis\n2. postgres service: postgres:16 image, port 5432, volume for data, env vars (user/password/db)\n3. redis service: redis:7-alpine, port 6379\n4. Volumes: pgdata, forge-data\n5. Health checks on postgres and redis\n6. forge-api Dockerfile: Python 3.11, install deps, run uvicorn\n7. docker-compose up should start the full backend stack\n\nReference: Section 10.2",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-11T02:20:00Z",
+      "completed_at": "2026-03-11T02:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-008"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "docker-compose.yml defines forge-api, postgres, redis services",
+        "docker-compose up starts all services",
+        "forge-api connects to postgres and redis",
+        "Database schema applied on first start",
+        "Health checks configured"
+      ],
+      "scopes": [
+        "infrastructure"
+      ],
+      "origin": "Phase 2 item 2.11",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-014",
+      "name": "nextjs-project-setup",
+      "description": "Set up Next.js 14 project with TypeScript, Tailwind CSS, and base layout. Foundation for all Web UI work.",
+      "instruction": "Create forge-web/ directory:\n1. npx create-next-app@14 with TypeScript, Tailwind, App Router\n2. forge-web/app/layout.tsx — root layout with sidebar navigation\n3. forge-web/app/page.tsx — landing/dashboard page (placeholder)\n4. forge-web/lib/api.ts — typed API client (base URL from env, fetch wrapper)\n5. forge-web/lib/ws.ts — WebSocket client skeleton\n6. forge-web/stores/ — Zustand store files (empty)\n7. forge-web/components/shared/ — shared UI components (Button, Card, etc.)\n8. Dockerfile for forge-web\n\nReference: Section 9.1",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T02:40:00Z",
+      "completed_at": "2026-03-11T02:55:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "forge-web/ is a working Next.js 14 project with TypeScript",
+        "App Router structure with layout and placeholder pages",
+        "Tailwind CSS configured",
+        "API client library with typed methods",
+        "Dockerfile builds successfully"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "Phase 3 item 3.1",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-015",
+      "name": "api-client-library",
+      "description": "Build typed TypeScript API client that wraps REST endpoints and WebSocket connection. Used by all UI components.",
+      "instruction": "In forge-web/lib/:\n1. api.ts — typed REST client:\n   - Generic CRUD functions: list, get, create, update, delete\n   - Entity-specific methods matching Section 8.1 endpoints\n   - Error handling with typed error responses\n   - Auth token management (JWT)\n2. ws.ts — WebSocket client:\n   - Connect to /ws/projects/{slug}/events\n   - Event subscription/unsubscription\n   - Reconnection logic with exponential backoff\n   - Type-safe event handlers\n3. hooks/useWebSocket.ts — React hook wrapping ws.ts\n\nReference: Section 8.1 endpoints, Section 8.2 events",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T03:10:00Z",
+      "completed_at": "2026-03-11T03:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-014"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Typed REST client with methods for all entity endpoints",
+        "WebSocket client with reconnection logic",
+        "useWebSocket React hook",
+        "TypeScript types for all API responses",
+        "Error handling with typed errors"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "Phase 3 item 3.2",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-016",
+      "name": "zustand-stores",
+      "description": "Implement Zustand stores for client-side state management: projectStore, entityStore, executionStore.",
+      "instruction": "In forge-web/stores/:\n1. projectStore.ts — current project, project list, project config\n2. entityStore.ts — entities by type (tasks, decisions, knowledge, etc.), CRUD operations, optimistic updates\n3. executionStore.ts — execution state, streaming output, progress\n4. Each store integrates with API client for server sync\n5. WebSocket events update stores in real-time\n\nReference: Section 9.1",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T04:00:00Z",
+      "completed_at": "2026-03-11T04:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-015"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Three Zustand stores: project, entity, execution",
+        "Stores sync with API client",
+        "WebSocket events update stores automatically",
+        "Optimistic updates for CRUD operations",
+        "TypeScript types throughout"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "Phase 3 item 3.12",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-017",
+      "name": "dashboard-and-project-pages",
+      "description": "Build dashboard and project list pages. Dashboard shows project overview with stats. Project page shows entity counts and task status distribution.",
+      "instruction": "1. forge-web/app/page.tsx — global dashboard: project list, recent activity\n2. forge-web/app/projects/page.tsx — project list with create button\n3. forge-web/app/projects/[slug]/page.tsx — project dashboard: task status chart, entity counts, recent changes, active decisions\n4. forge-web/app/projects/[slug]/layout.tsx — sidebar with entity navigation\n\nReference: Section 9.1",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T05:00:00Z",
+      "completed_at": "2026-03-11T05:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-016"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Dashboard page shows project list",
+        "Project page shows entity counts and task status",
+        "Sidebar navigation to all entity pages",
+        "Data loaded from API"
+      ],
+      "scopes": [
+        "frontend",
+        "ui"
+      ],
+      "origin": "Phase 3 item 3.3",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-018",
+      "name": "entity-crud-pages",
+      "description": "Build CRUD pages for all entity types: objectives, ideas, tasks, decisions, changes, lessons, guidelines. Each page has list view, detail view, create/edit forms.",
+      "instruction": "For each entity create pages in forge-web/app/projects/[slug]/:\n1. {entity}/page.tsx — list view with filters (status, tags, scopes)\n2. Entity card components in components/entities/ (ObjectiveCard, TaskCard, etc.)\n3. Create/edit forms with validation matching contracts\n4. Detail views showing relationships (linked knowledge, dependencies, etc.)\n5. Status transitions (task: TODO→IN_PROGRESS→DONE, decision: OPEN→CLOSED)\n\nEntities: objectives, ideas, tasks, decisions, changes, lessons, guidelines\n\nReference: Section 9.1",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T06:00:00Z",
+      "completed_at": "2026-03-11T06:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-017"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "List pages for all 7 entity types",
+        "Entity card components for each type",
+        "Create/edit forms with validation",
+        "Detail views with relationship display",
+        "Status transitions working"
+      ],
+      "scopes": [
+        "frontend",
+        "ui"
+      ],
+      "origin": "Phase 3 item 3.4",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-019",
+      "name": "knowledge-management-page",
+      "description": "Build dedicated knowledge base management page with version history, content editing, link management, and impact analysis display.",
+      "instruction": "1. forge-web/app/projects/[slug]/knowledge/page.tsx — knowledge list with category filter, status filter, search\n2. Knowledge detail: version history, content diff between versions, linked entities\n3. Knowledge editor: Markdown content editing, category/tags management\n4. Link management: view/add/remove links to entities\n5. Impact analysis: show affected entities when knowledge is updated\n6. components/entities/KnowledgeCard.tsx — card component\n\nReference: Section 9.1",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T07:00:00Z",
+      "completed_at": "2026-03-11T07:15:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-018"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Knowledge list page with filters and search",
+        "Version history display with diffs",
+        "Markdown content editor",
+        "Link management (view/add/remove)",
+        "Impact analysis display"
+      ],
+      "scopes": [
+        "frontend",
+        "ui"
+      ],
+      "origin": "Phase 3 item 3.5",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-020",
+      "name": "cli-remote-mode",
+      "description": "Implement APIBackend in ForgeClient so CLI can operate in remote mode, connecting to forge-api instead of local JSON files.",
+      "instruction": "In core/client.py, implement APIBackend:\n1. All methods make HTTP requests to forge-api endpoints\n2. Authentication: API key in X-API-Key header\n3. Error translation: HTTP errors → ForgeError exceptions\n4. Support for all operations: pipeline, decisions, changes, knowledge, etc.\n5. Config from ~/.forge/config.toml: api_url, api_key\n6. CLI commands detect mode and use ForgeClient accordingly\n\nReference: Section 8.3",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T07:30:00Z",
+      "completed_at": "2026-03-11T07:45:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-002",
+        "T-009"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "APIBackend makes HTTP requests to forge-api endpoints",
+        "API key authentication via X-API-Key header",
+        "All ForgeClient operations work in remote mode",
+        "HTTP errors translated to ForgeError exceptions",
+        "CLI can switch between standalone and remote mode via config"
+      ],
+      "scopes": [
+        "backend",
+        "api"
+      ],
+      "origin": "Phase 2 item 2.8",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-021",
+      "name": "dnd-system",
+      "description": "Implement DnD Kit drag & drop system with DragItem, DropZone, RelationshipBuilder, and EntityPalette components.",
+      "instruction": "In forge-web/components/dnd/:\n1. DragItem.tsx — draggable entity card wrapper (uses @dnd-kit/core useDraggable)\n2. DropZone.tsx — drop target area (uses useDroppable)\n3. RelationshipBuilder.tsx — handles post-drop logic: creates link/relationship via API\n4. EntityPalette.tsx — sidebar with draggable items grouped by entity type\n5. hooks/useDragDrop.ts — DnD state management hook\n6. Implement interactions from Section 9.2 DnD matrix:\n   - Entity→Entity: create link (knowledge→task, guideline→objective, etc.)\n   - Entity→Zone: trigger action (lesson→'Create Knowledge', idea→'Create Tasks')\n   - Task→Task: create dependency\n\nReference: Section 9.2",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T08:00:00Z",
+      "completed_at": "2026-03-11T09:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-018"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "DragItem and DropZone components working",
+        "Entity-to-entity drag creates links via API",
+        "Entity-to-zone drag triggers actions",
+        "Task-to-task drag creates dependency",
+        "EntityPalette shows draggable items",
+        "All 11 DnD interactions from Section 9.2 implemented"
+      ],
+      "scopes": [
+        "frontend",
+        "ui"
+      ],
+      "origin": "Phase 3 items 3.8, 3.9",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-022",
+      "name": "task-dag-visualization",
+      "description": "Build interactive task dependency graph (DAG) visualization. Shows tasks as nodes, dependencies as edges, color-coded by status.",
+      "instruction": "1. forge-web/app/projects/[slug]/board/page.tsx — DAG view page\n2. Use a graph rendering library (e.g., reactflow, dagre-d3, or custom SVG)\n3. Tasks as nodes: color by status (TODO=gray, IN_PROGRESS=blue, DONE=green, FAILED=red)\n4. Dependencies as directed edges\n5. Click node → task detail panel\n6. Highlight critical path\n7. Real-time status updates via WebSocket\n\nReference: Section 9.1 (board/page.tsx)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T08:00:00Z",
+      "completed_at": "2026-03-11T09:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-018"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Task DAG rendered as interactive graph",
+        "Tasks color-coded by status",
+        "Dependencies shown as directed edges",
+        "Click on task opens detail",
+        "Real-time updates via WebSocket"
+      ],
+      "scopes": [
+        "frontend",
+        "ui"
+      ],
+      "origin": "Phase 3 item 3.10",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-023",
+      "name": "realtime-websocket-updates",
+      "description": "Integrate WebSocket events into all UI pages for real-time updates. Entity changes reflect immediately without page refresh.",
+      "instruction": "1. Connect useWebSocket hook in project layout\n2. Subscribe to project events\n3. On task.status_changed → update entityStore tasks\n4. On knowledge.updated → update entityStore knowledge\n5. On decision.created/closed → update entityStore decisions\n6. On change.recorded → update entityStore changes\n7. Toast notifications for important events\n8. Connection status indicator in UI\n\nReference: Section 8.2 event types, Section 3.11",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T08:00:00Z",
+      "completed_at": "2026-03-11T09:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-016",
+        "T-010"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "WebSocket connected in project layout",
+        "Entity changes from server reflected in UI in real-time",
+        "Toast notifications for important events",
+        "Connection status indicator",
+        "Graceful reconnection on disconnect"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "Phase 3 item 3.11",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-024",
+      "name": "forge-web-docker",
+      "description": "Add forge-web service to Docker Compose. Next.js running in production mode behind Nginx (or standalone).",
+      "instruction": "1. forge-web/Dockerfile — multi-stage build: npm install → npm run build → production image\n2. Update docker-compose.yml: add forge-web service, port 3000, depends_on forge-api\n3. Environment: API_URL, NEXT_PUBLIC_WS_URL\n4. docker-compose up now starts full platform (web + api + db + redis)\n\nReference: Section 10.2",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-11T08:00:00Z",
+      "completed_at": "2026-03-11T09:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-014",
+        "T-013"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "forge-web Dockerfile builds successfully",
+        "forge-web service in docker-compose.yml",
+        "docker-compose up starts all 4 services",
+        "Web UI accessible at localhost:3000",
+        "Web UI connects to forge-api successfully"
+      ],
+      "scopes": [
+        "infrastructure",
+        "frontend"
+      ],
+      "origin": "Phase 3 item 3.13",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-025",
+      "name": "llm-provider-adapters",
+      "description": "Implement concrete LLM provider adapters for Anthropic, OpenAI, and Ollama. Each implements the LLMProvider Protocol from Phase 1.",
+      "instruction": "Create core/llm/providers/ directory:\n1. anthropic.py — AnthropicProvider using anthropic SDK: complete(), stream(), capabilities()\n2. openai.py — OpenAIProvider using openai SDK: complete(), stream(), capabilities()\n3. ollama.py — OllamaProvider using HTTP API: complete(), stream(), capabilities()\n4. Each provider implements LLMProvider Protocol from core/llm/provider.py\n5. Provider config from ~/.forge/providers.toml (Section 6.4)\n6. LiteLLM can be used as transport if simpler than direct SDK calls\n7. Provider registry: get_provider(name) → LLMProvider instance\n\nReference: Section 6.1, 6.4",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T08:00:00Z",
+      "completed_at": "2026-03-11T09:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "AnthropicProvider implements LLMProvider Protocol",
+        "OpenAIProvider implements LLMProvider Protocol",
+        "OllamaProvider implements LLMProvider Protocol",
+        "Provider config from providers.toml",
+        "Provider registry with get_provider(name)",
+        "Streaming support for all providers"
+      ],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "Phase 4 item 4.1",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-026",
+      "name": "ai-suggestion-endpoints",
+      "description": "Implement 5 AI suggestion API endpoints using LLM contracts: suggest-knowledge, suggest-guidelines, suggest-ac, evaluate-lesson, assess-impact.",
+      "instruction": "In forge-api/app/routers/ai.py:\n1. POST /ai/suggest-knowledge — given entity, suggest relevant knowledge objects\n2. POST /ai/suggest-guidelines — given entity, suggest applicable guidelines\n3. POST /ai/suggest-ac — given task, suggest AC from templates\n4. POST /ai/evaluate-lesson — given lesson, recommend promote to knowledge/guideline\n5. POST /ai/assess-impact — given knowledge change, assess impact on linked entities\n\nEach endpoint:\n- Loads the appropriate LLMContract from registry\n- Assembles context using ContextAssembler\n- Calls LLM via provider adapter\n- Validates output against contract schema\n- Returns structured suggestions\n\nReference: Section 8.1 (AI endpoints), Section 6.3 (contracts), Appendix A",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T10:30:00Z",
+      "completed_at": "2026-03-11T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-025",
+        "T-009"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All 5 AI suggestion endpoints working",
+        "Each uses registered LLMContract",
+        "LLM output validated against contract schema",
+        "Retry on schema validation failure (max 2)",
+        "Structured JSON responses"
+      ],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "Phase 4 items 4.2-4.6",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-027",
+      "name": "llm-contract-registry",
+      "description": "Define all 12 LLM contracts from Section 6.3: task execution, knowledge suggestion, impact assessment, plan decomposition, etc.",
+      "instruction": "In core/llm/contracts/ directory:\n1. task_execution.py — TaskExecutionContract, QuickTaskContract\n2. knowledge.py — KnowledgeSuggestionContract, KnowledgeExtractionContract, ImpactAssessmentContract\n3. planning.py — PlanDecompositionContract, ACSuggestionContract, GuidelineMatchContract\n4. analysis.py — RiskAssessmentContract, LessonPromotionContract\n5. review.py — CodeReviewContract, VerificationContract\n6. registry.py — CONTRACTS dict mapping id → contract class\n\nEach contract defines: id, name, version, input_schema, output_schema, system_prompt_template, validation_rules, retry_strategy, min_context_window, provider requirements.\n\nReference: Section 6.2, 6.3, Appendix A",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:30:00Z",
+      "completed_at": "2026-03-11T10:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-025"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All 12 contracts from Section 6.3 defined",
+        "Each contract has input_schema, output_schema, validation_rules",
+        "Contract registry with lookup by id",
+        "System prompt templates use Jinja2 or string formatting",
+        "Retry strategies defined per contract"
+      ],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "Phase 4 item 4.12",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-028",
+      "name": "execution-streaming-backend",
+      "description": "Implement task execution streaming: start task execution via API, stream LLM output through WebSocket, track progress.",
+      "instruction": "In forge-api:\n1. POST /execute/{task_id} — start execution: assemble context, call LLM, stream output\n2. GET /execute/{task_id}/status — execution status\n3. WS /execute/{task_id}/stream — stream execution output chunks\n4. POST /execute/{task_id}/cancel — cancel execution\n5. Execution flow:\n   a. Assemble context (ContextAssembler)\n   b. Select provider + contract\n   c. Call provider.stream()\n   d. Forward chunks to WebSocket\n   e. Validate final output against contract\n   f. Record changes, update task status\n\nReference: Section 8.1 (execution endpoints), Section 9.3 (execution view)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T10:30:00Z",
+      "completed_at": "2026-03-11T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-025",
+        "T-010"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Execution start endpoint works",
+        "LLM output streamed via WebSocket",
+        "Execution status trackable",
+        "Cancel execution works",
+        "Final output validated against contract"
+      ],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "Phase 4 item 4.8",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-029",
+      "name": "suggestion-panel-ui",
+      "description": "Build AI suggestion panel in Web UI: floating panel showing suggestions, accept/reject controls, confidence scores.",
+      "instruction": "In forge-web/components/ai/:\n1. SuggestionPanel.tsx — floating panel triggered on entity selection/edit\n2. SuggestionChip.tsx — individual suggestion with accept/reject buttons\n3. ImpactAlert.tsx — warning component for knowledge change impact\n4. hooks/useAISuggestions.ts — polling/requesting suggestions from API\n5. Integrate into entity pages: when viewing a task, show suggested knowledge/guidelines\n6. Accept → create link via API, Reject → dismiss\n\nReference: Section 9.1 (ai/ components)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T11:30:00Z",
+      "completed_at": "2026-03-11T12:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-026",
+        "T-018"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Suggestion panel appears on entity selection",
+        "Shows AI suggestions with confidence scores",
+        "Accept creates link via API",
+        "Reject dismisses suggestion",
+        "Impact alerts shown on knowledge changes"
+      ],
+      "scopes": [
+        "frontend",
+        "ai",
+        "ui"
+      ],
+      "origin": "Phase 4 item 4.7",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-030",
+      "name": "execution-view-ui",
+      "description": "Build execution view in Web UI: side-by-side context and LLM output, real-time streaming, progress tracking. Based on Section 9.3 wireframe.",
+      "instruction": "In forge-web/:\n1. app/projects/[slug]/execution/[taskId]/page.tsx — execution view page\n2. components/execution/ExecutionStream.tsx — real-time LLM output with syntax highlighting\n3. components/execution/ContextView.tsx — assembled context display (collapsible sections)\n4. components/execution/ProgressTracker.tsx — task progress, AC checklist, decisions made\n5. Side-by-side layout: context on left, streaming output on right\n6. Bottom bar: decisions made, changes recorded, gate status\n7. WebSocket connection for real-time streaming\n\nReference: Section 9.3 wireframe",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T11:30:00Z",
+      "completed_at": "2026-03-11T12:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-028",
+        "T-018"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Side-by-side view: context + LLM output",
+        "Real-time streaming of LLM output",
+        "Context sections collapsible",
+        "Progress tracker shows AC checklist",
+        "Bottom bar shows decisions, changes, gates"
+      ],
+      "scopes": [
+        "frontend",
+        "ai",
+        "ui"
+      ],
+      "origin": "Phase 4 item 4.9",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-031",
+      "name": "context-view-standalone",
+      "description": "Build standalone context view: show assembled context before execution. Can be used from both CLI and Web UI to preview what the LLM will see.",
+      "instruction": "1. API endpoint: GET /projects/{slug}/tasks/{id}/context — returns assembled context\n2. Web UI: components/execution/ContextView.tsx enhanced to work standalone (not just in execution view)\n3. CLI: pipeline context command already exists — verify it works with API in remote mode\n4. Show: sections with their content, token estimates, truncation notices\n\nReference: Phase 4 item 4.10",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:30:00Z",
+      "completed_at": "2026-03-11T10:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-001",
+        "T-009"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Context assembly available via API endpoint",
+        "Context view works as standalone page in Web UI",
+        "Token estimates shown per section",
+        "Truncation notices visible"
+      ],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "origin": "Phase 4 item 4.10",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-032",
+      "name": "knowledge-maintenance-system",
+      "description": "Implement automated knowledge maintenance: staleness detection, review prompts, usage tracking. Ensures knowledge stays current.",
+      "instruction": "1. Staleness detection: flag knowledge not updated in N days (configurable)\n2. Usage tracking: count how often knowledge is linked/used in context assembly\n3. Review prompts: when knowledge is stale, suggest review to user\n4. API endpoints for maintenance queries\n5. UI indicators for stale knowledge (in knowledge list page)\n\nReference: Phase 4 item 4.11",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:30:00Z",
+      "completed_at": "2026-03-11T10:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-006",
+        "T-019"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Stale knowledge flagged based on configurable threshold",
+        "Usage tracking for knowledge objects",
+        "Review prompts generated for stale knowledge",
+        "UI indicators on knowledge list page",
+        "Maintenance queries available via API"
+      ],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "Phase 4 item 4.11",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-033",
+      "name": "guideline-and-ac-template-pages",
+      "description": "Build dedicated pages for guideline library and AC template library in Web UI.",
+      "instruction": "1. forge-web/app/projects/[slug]/guidelines/page.tsx — guideline list with scope/weight filters, create/edit\n2. forge-web/app/projects/[slug]/ac-templates/page.tsx — AC template list with category filter, create/edit/instantiate\n3. GuidelineChip.tsx — compact guideline display component\n4. ACTemplateCard.tsx — card with instantiation preview\n5. Instantiate flow: select template → fill parameters → get AC text\n\nReference: Section 9.1",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:30:00Z",
+      "completed_at": "2026-03-11T10:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-018"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Guideline library page with scope/weight filters",
+        "AC template library page with category filter",
+        "Create/edit forms for both",
+        "AC template instantiation with parameters",
+        "GuidelineChip and ACTemplateCard components"
+      ],
+      "scopes": [
+        "frontend",
+        "ui"
+      ],
+      "origin": "Phase 3 items 3.6, 3.7",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-034",
+      "name": "phase2-integration-verification",
+      "description": "Integration testing and verification for Phase 2 (Database & API): end-to-end tests, API contract tests, migration tool test with real project data.",
+      "instruction": "Verify:\n1. All API endpoints return correct responses (happy path + error cases)\n2. PostgreSQL adapter passes same behavioral tests as JSONFileStorage\n3. Migration tool imports forge-platform-v2-phase1 project data correctly\n4. WebSocket events fire on entity mutations\n5. CLI remote mode works end-to-end (create project → add tasks → complete)\n6. Docker Compose starts cleanly and all services communicate\n7. Authentication works (API key + JWT)",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-11T11:30:00Z",
+      "completed_at": "2026-03-11T12:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-009",
+        "T-010",
+        "T-011",
+        "T-012",
+        "T-013",
+        "T-020"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "API endpoints pass integration tests",
+        "PostgreSQL adapter behaviorally matches JSONFileStorage",
+        "Migration tool successfully imports test project",
+        "WebSocket events work end-to-end",
+        "CLI remote mode works end-to-end",
+        "Docker Compose starts cleanly"
+      ],
+      "scopes": [
+        "backend",
+        "testing"
+      ],
+      "origin": "Phase 2 validation",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-035",
+      "name": "phase3-integration-verification",
+      "description": "Integration testing for Phase 3 (Web UI): all entity pages working, DnD interactions, real-time updates, Docker deployment.",
+      "instruction": "Verify:\n1. All entity CRUD pages work (create, read, update, delete)\n2. All 11 DnD interactions from Section 9.2 work correctly\n3. Real-time WebSocket updates work (change in one tab reflects in another)\n4. Task DAG visualization renders correctly\n5. Knowledge management page with versions and impact\n6. forge-web Docker service starts and connects to forge-api\n7. Responsive design works on common screen sizes",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-11T11:30:00Z",
+      "completed_at": "2026-03-11T12:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-019",
+        "T-021",
+        "T-022",
+        "T-023",
+        "T-024",
+        "T-033"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All entity CRUD pages functional",
+        "DnD interactions working correctly",
+        "Real-time updates working",
+        "DAG visualization renders",
+        "Docker deployment working"
+      ],
+      "scopes": [
+        "frontend",
+        "testing"
+      ],
+      "origin": "Phase 3 validation",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-036",
+      "name": "phase4-integration-verification",
+      "description": "Integration testing for Phase 4 (AI Features): LLM provider adapters, suggestion endpoints, execution streaming, contract validation.",
+      "instruction": "Verify:\n1. All 3 LLM provider adapters work (Anthropic at minimum, others with mocks if no API keys)\n2. AI suggestion endpoints return valid structured responses\n3. Contract validation catches invalid LLM output\n4. Execution streaming works end-to-end (start → stream → complete)\n5. Execution view shows real-time output\n6. Suggestion panel shows and applies suggestions\n7. Knowledge maintenance detects stale objects",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-11T12:30:00Z",
+      "completed_at": "2026-03-11T13:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-026",
+        "T-027",
+        "T-028",
+        "T-029",
+        "T-030",
+        "T-031",
+        "T-032"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "LLM provider adapters working",
+        "AI suggestion endpoints return valid responses",
+        "Execution streaming end-to-end",
+        "Execution view UI functional",
+        "Contract validation working"
+      ],
+      "scopes": [
+        "ai",
+        "testing"
+      ],
+      "origin": "Phase 4 validation",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-037",
+      "name": "llm-debug-monitor",
+      "description": "Implement a comprehensive LLM Debug Monitor that allows developers to inspect exactly what is sent to the LLM and what comes back. Features: (1) Backend debug middleware that captures full request/response payloads for every LLM call — including assembled context, system/user prompts, provider config, raw response, token usage, latency, contract validation results. (2) Debug session storage with unique session IDs. (3) API endpoints to list/view debug sessions with filtering. (4) Frontend Debug Monitor panel toggleable from the UI — shows real-time LLM call log with expandable request/response details, token counts, timing, validation status. (5) Toggle to enable/disable debug capture (off by default for performance). This enables identifying prompt engineering issues, context assembly bugs, token budget problems, validation failures, and provider errors.",
+      "instruction": "Implement LLM Debug Monitor across backend and frontend:\n\nBACKEND (forge-api):\n1. Create app/routers/debug.py with endpoints:\n   - POST /projects/{slug}/debug/enable — enable debug capture for project\n   - POST /projects/{slug}/debug/disable — disable debug capture\n   - GET /projects/{slug}/debug/status — check if enabled\n   - GET /projects/{slug}/debug/sessions — list debug sessions (with filters: task_id, contract_id, status, date range)\n   - GET /projects/{slug}/debug/sessions/{session_id} — full session detail\n   - DELETE /projects/{slug}/debug/sessions — clear debug sessions\n2. Create app/debug_capture.py middleware/service:\n   - DebugCapture class that wraps LLM provider calls\n   - Captures: timestamp, contract_id, provider, model, assembled_context (all sections with token counts), system_prompt, user_prompt, raw_request_config, raw_response, parsed_output, validation_results (pass/fail per rule), token_usage (input/output/total), latency_ms, error (if any)\n   - Stores sessions in project storage (debug_sessions entity)\n   - Toggle via project-level flag\n3. Integrate with execution.py — wrap mock execution to emit debug events\n4. Add 'debug.session' event type to EventBus\n\nFRONTEND (forge-web):\n1. Create components/debug/DebugMonitor.tsx — main panel component:\n   - Toggleable overlay/sidebar accessible from project layout\n   - Real-time session list with status indicators\n   - Expandable session cards showing: contract, provider, model, timing\n   - Request tab: assembled context sections, system prompt, user prompt, config\n   - Response tab: raw response, parsed output, validation results\n   - Token tab: input/output breakdown, cost estimate, budget usage\n   - Timeline view for multi-call sessions\n2. Create components/debug/DebugToggle.tsx — enable/disable button\n3. Create hooks/useDebugSessions.ts — data fetching hook\n4. Add debug toggle to project layout header\n5. Add debug API methods to lib/api.ts\n6. Add TypeScript types to lib/types.ts",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T12:00:00Z",
+      "completed_at": "2026-03-11T12:45:00Z",
+      "depends_on": [],
+      "blocked_by_decisions": [],
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Debug capture can be toggled on/off per project via API and UI",
+        "Every LLM call (when enabled) captures: full request payload, full response, token usage, latency, validation results",
+        "Debug sessions are persisted and queryable with filters (task, contract, status, date)",
+        "Frontend Debug Monitor shows real-time list of LLM calls with expandable details",
+        "Request details show: assembled context sections with token counts, system/user prompts, provider config",
+        "Response details show: raw response, parsed output, validation pass/fail per rule",
+        "Token tab shows: input/output breakdown, cost estimate if available",
+        "Debug monitor is toggleable from project layout (not visible when disabled)",
+        "Debug capture has minimal performance impact when disabled",
+        "Sessions can be cleared/deleted via API and UI",
+        "npm run build passes with 0 errors"
+      ],
+      "scopes": [
+        "backend",
+        "frontend",
+        "ai"
+      ],
+      "parallel": false,
+      "skill": null
+    },
+    {
+      "id": "T-038",
+      "name": "fix-critical-websocket-bugs",
+      "description": "Fix critical bugs in ws.py: (1) str(bytes) sends literal b'...' breaking JSON.parse on frontend — must decode bytes to utf-8 string, (2) synchronous storage.exists() blocks event loop — wrap with asyncio.to_thread, (3) no ping/pong keepalive — dead connections persist forever, (4) pubsub.aclose() may not exist in redis-py <5.0 — add compatibility check.",
+      "instruction": "Fix 4 bugs in forge-api/app/routers/ws.py:\n1. Line 65: Replace `await websocket.send_text(str(data))` with bytes decode: `if isinstance(data, bytes): data = data.decode('utf-8'); await websocket.send_text(data)`\n2. Line 48: Replace `exists = storage.exists(slug, 'tracker')` with `exists = await asyncio.to_thread(storage.exists, slug, 'tracker')`\n3. Add periodic ping in the polling loop (every 30s): send `{\"event\": \"ping\"}` to detect dead connections\n4. Line 75: Wrap `pubsub.aclose()` with hasattr check for redis-py version compatibility",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:22:46.446Z",
+      "completed_at": "2026-03-11T09:23:20.962Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "WebSocket messages decoded from bytes to utf-8 before sending",
+        "storage.exists() called via asyncio.to_thread",
+        "Periodic ping/pong keepalive every 30 seconds",
+        "pubsub cleanup works with both redis-py 4.x and 5.x"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-039",
+      "name": "fix-project-creation-overwrite",
+      "description": "Fix critical bug: create_project endpoint can silently overwrite an existing project (including all tasks) with an empty tasks array. Also add slug validation to prevent path traversal via crafted project names.",
+      "instruction": "Fix 2 bugs:\n1. In forge-api/app/routers/projects.py create_project: Before save_entity, check if project exists with `exists = await asyncio.to_thread(storage.exists, body.slug, 'tracker')` and raise HTTPException(409, 'Project already exists') if true.\n2. Add slug validation in create_project: `if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', body.slug): raise HTTPException(422, 'Invalid project slug')`",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:23:20.963Z",
+      "completed_at": "2026-03-11T09:23:55.998Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "POST /projects with existing slug returns 409 Conflict",
+        "Project slug validated against ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ regex",
+        "Existing projects cannot be overwritten"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-040",
+      "name": "fix-execution-subsystem-bugs",
+      "description": "Fix critical bugs in execution.py: (1) _executions dict grows unboundedly (memory leak) — clean up completed executions after persist, (2) 'executions' entity type not in default_structure causing StorageError on first persist, (3) cancel_execution race with _on_done double-persisting.",
+      "instruction": "Fix 3 bugs in forge-api/app/routers/execution.py:\n1. Memory leak: In _on_done callback, after _persist_execution completes, delete the record from _executions if status is terminal (completed/failed/cancelled).\n2. Entity type: Add 'executions' to default_structure in core/storage.py (or handle it in _persist_execution with a default empty structure).\n3. Cancel race: Remove _persist_execution call from cancel_execution endpoint — let _on_done handle all persistence. Or add a flag to skip _on_done persistence if already persisted by cancel.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:23:55.999Z",
+      "completed_at": "2026-03-11T09:25:30.529Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [
+        "T-041"
+      ],
+      "acceptance_criteria": [
+        "Completed executions removed from _executions dict after persistence",
+        "First execution for a project doesn't crash with StorageError",
+        "Cancel + _on_done don't produce conflicting persisted states"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-041",
+      "name": "fix-execution-ws-stream-url-mismatch",
+      "description": "Fix critical bug: frontend ExecutionStream connects to /ws/projects/{slug}/execute/{taskId}/stream but backend registers at /api/v1/projects/{slug}/execute/{task_id}/stream. WebSocket execution streaming is completely non-functional. Also fix frontend ExecutionState type to match actual backend response shape.",
+      "instruction": "Fix 2 bugs:\n1. In forge-api/app/main.py: Register execution WebSocket route separately (like ws.router) with a path that the frontend can reach, OR fix frontend ExecutionStream.tsx WS_BASE/url construction to match the actual backend path (/api/v1/...). The execution WS endpoint must NOT have HTTP auth dependencies injected (WebSocket endpoints handle auth internally).\n2. In forge-web/lib/types.ts: Fix ExecutionState interface to match actual backend response — add execution_id, rename output to output_chunks, remove duration_seconds or make optional.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:25:30.530Z",
+      "completed_at": "2026-03-11T09:27:32.616Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [
+        "T-040"
+      ],
+      "acceptance_criteria": [
+        "Frontend WS URL matches backend execution stream endpoint path",
+        "Execution WebSocket endpoint is reachable without HTTP auth dependency injection",
+        "ExecutionState type matches actual backend ExecutionState response",
+        "Execution streaming connects and receives real-time output"
+      ],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-042",
+      "name": "fix-ac-template-parameter-injection",
+      "description": "Fix critical bug: AC template instantiation uses sequential str.replace() for parameter substitution, allowing parameter values containing {placeholder} syntax to inject new placeholders. Use single-pass regex substitution instead.",
+      "instruction": "Fix in forge-api/app/routers/ac_templates.py lines 144-151:\nReplace the sequential str.replace() loop with a single-pass regex substitution:\n```python\nimport re\ndef _substitute(template, params):\n    return re.sub(r'{(w+)}', lambda m: str(params[m.group(1)]) if m.group(1) in params else m.group(0), template)\n```\nThen check for unresolved placeholders on the result.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:23:55.999Z",
+      "completed_at": "2026-03-11T09:25:30.530Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Parameter values containing {placeholder} syntax do not get treated as template placeholders",
+        "Single-pass regex substitution used instead of sequential str.replace()",
+        "Unresolved placeholder detection still works correctly"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-043",
+      "name": "fix-lesson-promotion-race-conditions",
+      "description": "Fix critical TOCTOU race in lesson promotion to knowledge: two concurrent requests can both pass the 'not promoted' check and create duplicate knowledge entries. Also add cross-check to prevent promoting a lesson to both guideline AND knowledge.",
+      "instruction": "Fix in forge-api/app/routers/lessons.py:\n1. For promote to knowledge (lines 134-168): Hold the lessons lock for the entire operation and nest the knowledge lock inside it, so the check + write is atomic.\n2. Add cross-check: when promoting to guideline, also check promoted_to_knowledge. When promoting to knowledge, also check promoted_to_guideline. Raise 422 if already promoted to either.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:25:30.530Z",
+      "completed_at": "2026-03-11T09:27:32.617Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Lesson promotion to knowledge holds lessons lock for entire operation",
+        "Concurrent promote requests cannot create duplicate knowledge entries",
+        "Lesson cannot be promoted to both guideline and knowledge"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-044",
+      "name": "fix-governance-status-transitions",
+      "description": "Fix important governance bugs: (1) Decision status transitions have no guards — CLOSED can be reopened, (2) Idea status transitions have no guards — REJECTED can jump to APPROVED, (3) DecisionCreate allows initial status=CLOSED bypassing workflow, (4) blocked_by_decisions only checks CLOSED status ignoring MITIGATED/ACCEPTED/DEFERRED.",
+      "instruction": "Fix 4 bugs:\n1. decisions.py update_decision: Add VALID_TRANSITIONS map and validate status changes. CLOSED should be terminal (or require explicit reopen).\n2. ideas.py update_idea: Add VALID_TRANSITIONS map. REJECTED can only go to DRAFT (reopen). COMMITTED is terminal.\n3. decisions.py DecisionCreate: Force initial status to OPEN regardless of input (like ideas forces DRAFT).\n4. tasks.py claim_next_task line 164: Change closed_decisions filter to include MITIGATED, ACCEPTED, DEFERRED as resolved statuses that unblock tasks.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:25:30.530Z",
+      "completed_at": "2026-03-11T09:27:32.617Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Decision status transitions validated against allowed transition map",
+        "Idea status transitions validated (REJECTED->APPROVED blocked)",
+        "New decisions always start as OPEN regardless of input",
+        "Tasks blocked by MITIGATED/ACCEPTED/DEFERRED decisions are unblocked"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-045",
+      "name": "fix-frontend-type-and-calculation-bugs",
+      "description": "Fix important frontend bugs: (1) ObjectiveCard progress ignores baseline — diverges from backend calculation, (2) KnowledgeLinkEntityType includes 'decision' but backend rejects it, (3) objectives.status return type wrong, (4) IdeaUpdate allows COMMITTED, (5) entityStore.handleEvent merges raw WS payload corrupting task objects (new_status not mapped to status).",
+      "instruction": "Fix 5 bugs:\n1. ObjectiveCard.tsx line 21: Change progress calc to match backend: `const span = kr.target - (kr.baseline ?? 0); const pct = span !== 0 ? Math.round(((kr.current ?? kr.baseline ?? 0) - (kr.baseline ?? 0)) / span * 100) : 0;`\n2. types.ts: Remove 'decision' from KnowledgeLinkEntityType OR add it to backend LINK_ENTITY_TYPES.\n3. api.ts line 226: Create proper ObjectiveCoverageItem type for status endpoint.\n4. types.ts: Change IdeaUpdate status to Exclude<IdeaStatus, 'COMMITTED'>.\n5. entityStore.ts handleEvent 'update' case: Map new_status to status field, remove old_status/new_status from merge data.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:27:32.617Z",
+      "completed_at": "2026-03-11T09:29:15.163Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "ObjectiveCard progress matches backend calculation (uses baseline)",
+        "KnowledgeLinkEntityType aligned between frontend and backend",
+        "objectives.status API return type matches actual response shape",
+        "entityStore WS events correctly update task status field"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-046",
+      "name": "fix-contract-validation-bypass",
+      "description": "Fix important bug: contract validation middleware silently passes requests with bodies exceeding 1MB without any validation. An attacker can bypass all contract validation by padding their JSON payload.",
+      "instruction": "Fix in forge-api/app/contract_validation.py lines 503-504:\nReplace `return await call_next(request)` with `return JSONResponse(status_code=413, content={'detail': 'Request body too large for validation'})` when body exceeds _MAX_BODY_SIZE.\nImport JSONResponse from starlette.responses if not already imported.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:27:32.617Z",
+      "completed_at": "2026-03-11T09:29:15.164Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Requests with body > 1MB return 413 instead of bypassing validation",
+        "Normal-sized requests continue to be validated as before"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-047",
+      "name": "fix-knowledge-maintenance-inconsistencies",
+      "description": "Fix important knowledge management bugs: (1) Stale detection uses only linked_count but overview uses total_references — inconsistent suggestions, (2) No validation that linked entities exist — allows dangling links, (3) Global vs project guideline IDs both use G- prefix — collision in merged context, (4) No guard on modifying DEPRECATED guideline content.",
+      "instruction": "Fix 4 bugs:\n1. maintenance.py stale_knowledge endpoint: Compute total_references (linked + external) same as overview, pass to _generate_review_suggestion.\n2. knowledge.py link_entity: Add existence validation — load the target entity store and verify entity_id exists before creating link.\n3. lessons.py promote to guideline OR guidelines.py: Use different prefix for global guidelines (e.g. 'GG-') or namespace them in the merge.\n4. guidelines.py update_guideline: If status is DEPRECATED, only allow status field changes (block content/title/weight updates).",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:27:32.617Z",
+      "completed_at": "2026-03-11T09:29:15.164Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Stale knowledge suggestions consistent with overview reference counts",
+        "Linking to non-existent entity returns 404",
+        "Global and project guidelines have distinct ID prefixes",
+        "DEPRECATED guidelines cannot have non-status fields modified"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-048",
+      "name": "fix-remaining-ui-bugs",
+      "description": "Fix remaining important UI bugs: (1) DropZone overlay missing position:relative — escapes bounds, (2) useWebSocket handlers lost on reconnection, (3) Changes page 'verify' filter not valid backend action, (4) DecisionCard close button only for OPEN not ANALYZING, (5) Dashboard stale cross-project data on navigation, (6) useAISuggestions no auto-fetch on tab switch.",
+      "instruction": "Fix 6 bugs:\n1. DropZone.tsx: Add 'relative' to parent div className.\n2. useWebSocket.ts: Add wsInstance counter or dependency so on/onAny re-register when WS reconnects.\n3. changes/page.tsx line 36: Remove 'verify' from action filter options.\n4. DecisionCard.tsx line 25: Show close button for non-terminal statuses (not just OPEN).\n5. Dashboard page.tsx: Clear entity slices when slug changes before fetching new data.\n6. useAISuggestions.ts: Add useEffect to auto-fetch when suggestionType changes.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:29:15.164Z",
+      "completed_at": "2026-03-11T09:31:06.789Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "DropZone overlay stays within component bounds",
+        "WebSocket event handlers survive reconnection",
+        "Changes page filter only shows valid backend actions",
+        "DecisionCard shows close button for ANALYZING status too",
+        "Dashboard clears stale data when switching projects",
+        "AI suggestions auto-fetch when tab changes"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-049",
+      "name": "fix-stuck-claiming-tasks-recovery",
+      "description": "Fix important bug: tasks in CLAIMING status can get stuck permanently if the server crashes/restarts between phase 1 and phase 2 of the two-phase claim. No recovery mechanism exists to reset stale CLAIMING tasks.",
+      "instruction": "Fix in forge-api/app/routers/tasks.py claim_next_task:\n1. Before the main claiming loop, scan for CLAIMING tasks older than 30 seconds (using a claimed_at timestamp).\n2. Reset stale CLAIMING tasks to TODO (remove agent assignment).\n3. Add 'claimed_at' timestamp when setting CLAIMING status.\n4. Optionally: add a startup check in main.py lifespan to scan all projects for stuck CLAIMING tasks.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-11T09:29:15.164Z",
+      "completed_at": "2026-03-11T09:31:06.790Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "CLAIMING tasks older than 30 seconds are automatically reset to TODO",
+        "claimed_at timestamp recorded when entering CLAIMING status",
+        "Tasks do not get permanently stuck in CLAIMING state"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "deep-verify systematic review",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-050",
+      "name": "add-idea-status-changed-websocket-event",
+      "description": "Add the 12th WebSocket event type 'idea.status_changed' to complete O-001 KR-4. Emit when idea status transitions (update, commit).",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T14:00:00Z",
+      "completed_at": "2026-03-11T14:10:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "idea.status_changed added to EVENT_TYPES in events.py",
+        "Event emitted on idea status change via PATCH /{idea_id}",
+        "Event emitted on idea commit via POST /{idea_id}/commit",
+        "Event payload includes idea_id, old_status, new_status"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-001 KR-4 completion",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-051",
+      "name": "install-dependencies-vitest-setup",
+      "description": "Install all new runtime and dev dependencies for the UI overhaul. Runtime: react-hook-form, @hookform/resolvers, zod, swr, react-hotkeys-hook. Dev: vitest, @testing-library/react, @testing-library/jest-dom, jsdom, openapi-typescript. Configure vitest with jsdom environment. Add test/generate-types scripts to package.json.",
+      "instruction": "1. In forge-web/ run: npm install react-hook-form @hookform/resolvers zod swr react-hotkeys-hook\n2. Run: npm install -D vitest @testing-library/react @testing-library/jest-dom jsdom openapi-typescript\n3. Create vitest.config.ts: environment jsdom, setupFiles pointing to test-setup.ts, include '**/*.test.{ts,tsx}'\n4. Create test-setup.ts: import '@testing-library/jest-dom'\n5. Add to package.json scripts: \"test\": \"vitest\", \"test:run\": \"vitest run\", \"generate-types\": \"openapi-typescript http://localhost:8000/openapi.json -o lib/generated-types.ts\"\n6. Create a smoke test: lib/__tests__/setup.test.ts that imports vitest and passes\n7. Verify: npm run test:run passes",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-11T17:00:00Z",
+      "completed_at": "2026-03-11T17:10:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "react-hook-form, @hookform/resolvers, zod, swr, react-hotkeys-hook in dependencies",
+        "vitest, @testing-library/react, @testing-library/jest-dom, jsdom, openapi-typescript in devDependencies",
+        "vitest.config.ts configured with jsdom environment",
+        "npm run test:run passes with at least 1 smoke test",
+        "npm run build still succeeds"
+      ],
+      "scopes": [
+        "frontend",
+        "infrastructure"
+      ],
+      "origin": "I-001",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-052",
+      "name": "split-entity-store",
+      "description": "Split monolithic entityStore.ts (393 LOC, 10 entity types) into per-entity stores with shared factory pattern. Mitigates D-005 (State Management Explosion, composite score 29). Create a createEntityStore factory for common CRUD + loading/error state. Centralized WS event dispatcher routes events to individual stores.",
+      "instruction": "1. Create stores/factory.ts: createEntityStore<T>(entityType, apiEndpoints) factory returning Zustand store with: items[], loading, error, fetchAll, create, update, remove, handleWsEvent\n2. Create individual stores using factory: stores/taskStore.ts, stores/decisionStore.ts, stores/objectiveStore.ts, stores/ideaStore.ts, stores/knowledgeStore.ts, stores/guidelineStore.ts, stores/changeStore.ts, stores/lessonStore.ts, stores/acTemplateStore.ts, stores/gateStore.ts\n3. Create stores/wsDispatcher.ts: centralizes WebSocket event routing to individual stores based on event type\n4. Update all page components and other files that import from entityStore to use the new per-entity stores\n5. Keep entityStore.ts temporarily as re-export facade for gradual migration if needed\n6. Add unit tests: stores/__tests__/factory.test.ts testing CRUD operations on a mock store\n7. Verify: npm run build passes, all pages still work",
+      "type": "refactor",
+      "status": "DONE",
+      "started_at": "2026-03-11T17:15:00Z",
+      "completed_at": "2026-03-11T18:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-051"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-053"
+      ],
+      "acceptance_criteria": [
+        "entityStore split into 10+ individual store files using factory pattern",
+        "Each store under 100 LOC",
+        "Factory function provides generic CRUD + loading/error state",
+        "Centralized WS dispatcher routes events to correct store",
+        "All existing pages work with new stores (imports updated)",
+        "Unit test for factory CRUD operations passes",
+        "npm run build succeeds"
+      ],
+      "scopes": [
+        "frontend",
+        "architecture"
+      ],
+      "origin": "I-001",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-053",
+      "name": "openapi-types-zod-schemas",
+      "description": "Generate TypeScript types from FastAPI OpenAPI spec and create zod validation schemas per entity. Mitigates D-006 (Form Validation Divergence, composite score 26). Replace manual types.ts with generated types where possible. Create lib/schemas/ with zod schemas matching backend Pydantic constraints.",
+      "instruction": "1. Run the forge-api container, fetch /openapi.json\n2. Run: npx openapi-typescript http://localhost:8000/openapi.json -o lib/generated-types.ts\n3. Review generated types vs existing lib/types.ts — identify gaps and overlaps\n4. Create lib/schemas/task.ts: zod schema for TaskCreate, TaskUpdate with proper enums, required fields\n5. Create lib/schemas/decision.ts: zod schema for DecisionCreate, DecisionUpdate\n6. Create lib/schemas/objective.ts: with nested KeyResult array schema\n7. Create lib/schemas/idea.ts: with relations array, advances_key_results\n8. Create lib/schemas/knowledge.ts, lib/schemas/lesson.ts: simpler schemas\n9. Create lib/schemas/index.ts: re-exports all schemas\n10. Update lib/types.ts: keep as main types file but use generated types where they match, remove Record<string,unknown> escape hatches where zod covers them\n11. Add field-level 422 error mapping utility: lib/utils/apiErrors.ts\n12. Add tests: lib/schemas/__tests__/task.test.ts validating good/bad data",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T18:35:00Z",
+      "completed_at": "2026-03-11T19:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-051"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-052"
+      ],
+      "acceptance_criteria": [
+        "Generated types from OpenAPI spec exist in lib/generated-types.ts",
+        "Zod schemas exist for at least 6 entity types in lib/schemas/",
+        "Each schema validates required fields, enum values, and nested structures",
+        "422 error mapping utility parses API validation errors into field-level messages",
+        "Unit tests verify schema validation catches invalid data",
+        "npm run build succeeds"
+      ],
+      "scopes": [
+        "frontend",
+        "architecture"
+      ],
+      "origin": "I-001",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-054",
+      "name": "sidebar-navigation-layout",
+      "description": "Replace the flat 12-tab horizontal navigation with a grouped sidebar (ADR-001). 5 groups: Planning (Objectives, Ideas), Execution (Tasks, Board, Execution), Quality (Decisions, Guidelines, AC Templates), Knowledge (Knowledge, Lessons, Changes), System (Debug, Settings). Add dynamic routes for entity detail pages. Add breadcrumb navigation.",
+      "instruction": "1. Create components/layout/ProjectSidebar.tsx: collapsible groups, entity icons, entity counts loaded from stores, active item highlighting\n2. Create components/layout/ProjectLayout.tsx: sidebar (240px collapsible) + main content area + breadcrumb bar\n3. Create components/layout/Breadcrumb.tsx: auto-generated from route segments\n4. Add dynamic route directories: app/projects/[slug]/tasks/[id]/page.tsx (placeholder), app/projects/[slug]/decisions/[id]/page.tsx (placeholder), app/projects/[slug]/objectives/[id]/page.tsx (placeholder), app/projects/[slug]/ideas/[id]/page.tsx (placeholder)\n5. Update app/projects/[slug]/layout.tsx: replace TabNavigation with new ProjectLayout\n6. Ensure all existing list pages still render in the new layout\n7. Sidebar collapse toggle + remembers state in localStorage\n8. Mobile responsive: sidebar as drawer on small screens",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T19:10:00Z",
+      "completed_at": "2026-03-11T19:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-052",
+        "T-053"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Grouped sidebar with 5 groups replaces horizontal tabs",
+        "All existing list pages accessible from sidebar",
+        "Dynamic routes created for tasks/[id], decisions/[id], objectives/[id], ideas/[id]",
+        "Breadcrumb navigation shows current location",
+        "Sidebar collapses and remembers state",
+        "Entity counts shown next to each group item",
+        "All existing pages render correctly in new layout",
+        "npm run build succeeds"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-001",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-055",
+      "name": "debug-bottom-panel",
+      "description": "Create a resizable bottom panel for the debug console (ADR-002). Accessible from every view via React Portal. Three states: collapsed (status bar with error count badge), 1/3 height, full screen. Push content up behavior (not overlay). Tab infrastructure for API Inspector / LLM Monitor / Event Stream (placeholder content initially).",
+      "instruction": "1. Create components/debug/BottomPanel.tsx: resizable panel using CSS resize or custom drag handle\n2. Three states: collapsed (40px status bar), expanded (33vh), fullscreen (calc(100vh - header))\n3. React Portal renders into a fixed container outside main content flow\n4. Main content area adjusts height when panel expands (push up, not overlay)\n5. Tab bar inside panel: API Inspector, LLM Monitor, Event Stream (placeholder content in each)\n6. Status bar shows: connection indicator, error count badge (red), event count\n7. Keyboard shortcut: Ctrl+` toggles panel open/closed\n8. Create stores/debugPanelStore.ts: panel state (collapsed/expanded/full), active tab, toggle actions\n9. Wire into ProjectLayout from T-054\n10. Double-click on drag handle → toggle between expanded and fullscreen",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T19:35:00Z",
+      "completed_at": "2026-03-11T19:50:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-054"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Bottom panel visible on all project pages",
+        "Three states work: collapsed, 1/3 height, full screen",
+        "Push content up behavior (main content area shrinks)",
+        "Tab bar with 3 tabs (API Inspector, LLM Monitor, Event Stream)",
+        "Error count badge on collapsed status bar",
+        "Ctrl+` keyboard shortcut toggles panel",
+        "Panel state persists across page navigation"
+      ],
+      "scopes": [
+        "frontend",
+        "debug",
+        "ux"
+      ],
+      "origin": "I-001",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-056",
+      "name": "command-palette",
+      "description": "Build a command palette (Cmd+K / Ctrl+K) for quick entity search and actions. Search across all entity types by ID or name. Quick actions: New Task, New Idea, New Decision. Entity navigation: type ID to jump to detail page. Uses react-hotkeys-hook for keyboard shortcut registration.",
+      "instruction": "1. Create components/layout/CommandPalette.tsx: modal overlay with search input\n2. On Cmd+K (Mac) / Ctrl+K (Windows): open palette\n3. Search input with typeahead across all entities (tasks, decisions, ideas, objectives, knowledge, guidelines, lessons)\n4. Results grouped by entity type with icon + ID + title + status badge\n5. Arrow keys navigate results, Enter selects, Escape closes\n6. Quick actions section at bottom: 'New Task' (Ctrl+N T), 'New Idea' (Ctrl+N I), 'New Decision' (Ctrl+N D)\n7. Type entity ID directly (e.g., 'T-001') → instant navigation\n8. Use react-hotkeys-hook for global shortcuts\n9. Create hooks/useCommandPalette.ts: search logic, result ranking (exact ID match first, then title match)\n10. Integrate into ProjectLayout",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T19:55:00Z",
+      "completed_at": "2026-03-11T14:14:06.876Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-054"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Cmd+K / Ctrl+K opens command palette",
+        "Search finds entities by ID and title across all types",
+        "Results grouped by entity type with icons",
+        "Keyboard navigation: arrows, Enter, Escape",
+        "Quick actions available: New Task, New Idea, New Decision",
+        "Direct ID input (T-001) navigates to entity",
+        "Palette accessible from any project page"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-001",
+      "knowledge_ids": [],
+      "skill": null,
+      "reasoning": "Command palette with Cmd+K global search. Split root/dialog for perf. ARIA combobox, scrollIntoView, body scroll lock. Deep-verify fixes applied."
+    },
+    {
+      "id": "T-057",
+      "name": "form-drawer-reusable-fields",
+      "description": "Create the FormDrawer component (slide-in right, 480px) and reusable form field components (ADR-003). Integration with react-hook-form and zod validation. Reusable fields: TextField, TextAreaField, SelectField, MultiSelectField, EntityRefField (autocomplete), DynamicListField (for arrays like acceptance_criteria, key_results).",
+      "instruction": "1. Create components/forms/FormDrawer.tsx: slide-in from right, 480px wide, backdrop overlay, close on Escape, header with title + close button, scrollable body, sticky footer with Cancel + Save buttons\n2. Create components/forms/TextField.tsx: react-hook-form Controller + label + error display\n3. Create components/forms/TextAreaField.tsx: multiline variant\n4. Create components/forms/SelectField.tsx: dropdown with options, supports enum values\n5. Create components/forms/MultiSelectField.tsx: multi-select with tag chips, removable\n6. Create components/forms/EntityRefField.tsx: typeahead search for entity references (tasks, decisions, etc.), displays as chips with entity ID + title\n7. Create components/forms/DynamicListField.tsx: add/remove items in a list (for acceptance_criteria, key_results arrays)\n8. Create components/forms/FormErrorSummary.tsx: displays API 422 errors mapped to fields\n9. All fields integrate with react-hook-form register/control + zod validation\n10. Add test: components/forms/__tests__/FormDrawer.test.tsx (renders, opens, closes)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T14:14:23.708Z",
+      "completed_at": "2026-03-11T14:23:21.124Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-053"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "FormDrawer slides in from right at 480px width",
+        "All 7 field types render with labels and error messages",
+        "EntityRefField searches entities by ID/name with typeahead",
+        "DynamicListField supports add/remove items",
+        "Fields integrate with react-hook-form Controller",
+        "Zod validation errors display at field level",
+        "API 422 errors map to correct form fields",
+        "Escape key closes drawer"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-003",
+      "knowledge_ids": [],
+      "skill": null,
+      "reasoning": "FormDrawer (slide-in, focus trap, body scroll lock) + 7 form fields (TextField, TextAreaField, SelectField, MultiSelectField, EntityRefField, DynamicListField, FormErrorSummary). Deep-verify: fixed ARIA combobox, dropdown positioning, Escape handling, useId for IDs, stable list keys."
+    },
+    {
+      "id": "T-058",
+      "name": "task-decision-forms",
+      "description": "Build create and edit forms for Tasks and Decisions using the FormDrawer and reusable fields from T-057. Task form: name, description, instruction, type (enum), status, depends_on (EntityRefField), blocked_by_decisions (EntityRefField), scopes (MultiSelect), acceptance_criteria (DynamicList). Decision form: type (standard/exploration/risk), issue, recommendation, reasoning, alternatives (DynamicList), status, severity/likelihood (for risk type). Include inline status change quick actions on list cards.",
+      "instruction": "1. Create components/forms/TaskForm.tsx: uses FormDrawer + zod schema from T-053\n   - Fields: name (required), description (textarea), instruction (textarea), type (select: feature/bug/chore/investigation), depends_on (EntityRefField for tasks), blocked_by_decisions (EntityRefField for decisions), scopes (MultiSelect), acceptance_criteria (DynamicList), parallel (checkbox), conflicts_with (EntityRefField for tasks)\n   - Mode: 'create' (POST) or 'edit' (PATCH with existing values)\n2. Create components/forms/DecisionForm.tsx: uses FormDrawer + zod schema\n   - Fields: type (select: standard types + exploration + risk), issue (required, textarea), recommendation (textarea), reasoning (textarea), alternatives (DynamicList), confidence (select), status (select)\n   - Conditional fields: if type=risk show severity, likelihood, mitigation_plan; if type=exploration show exploration_type, findings\n3. Add 'Create Task' / 'Create Decision' buttons to respective list pages\n4. Add 'Edit' action to TaskCard and DecisionCard\n5. Add inline status change buttons on cards (e.g., TODO→IN_PROGRESS, OPEN→CLOSED)\n6. Wire form submissions to API via stores (create → POST, edit → PATCH)\n7. Handle 422 errors with field-level mapping\n8. After successful save: close drawer, refresh list",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T14:23:27.498Z",
+      "completed_at": "2026-03-11T14:33:22.521Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-057",
+        "T-052"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-059"
+      ],
+      "acceptance_criteria": [
+        "Task create form opens in FormDrawer with all fields",
+        "Task edit form pre-fills existing values",
+        "Decision create form with conditional risk/exploration fields",
+        "Decision edit form pre-fills existing values",
+        "Inline status change buttons on TaskCard and DecisionCard",
+        "Zod validation prevents invalid submissions",
+        "API 422 errors displayed at field level",
+        "List refreshes after successful create/edit"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-003",
+      "knowledge_ids": [],
+      "skill": null,
+      "reasoning": "Task + Decision create/edit forms using FormDrawer. Inline status actions on cards. Deep-verify: fixed form reset, Controller for checkbox, edit-mode field visibility, resolution_notes field, Edit restricted to TODO/FAILED."
+    },
+    {
+      "id": "T-059",
+      "name": "remaining-entity-forms",
+      "description": "Build create and edit forms for Objectives, Ideas, Knowledge, and Lessons. Objective form includes dynamic KeyResult array editing (metric, baseline, target, current). Idea form includes parent_id (EntityRefField), relations, advances_key_results. Add Promote to Guideline/Knowledge buttons on Lesson cards.",
+      "instruction": "1. Create components/forms/ObjectiveForm.tsx:\n   - Fields: title (required), description (textarea), status (select), appetite (select: small/medium/large), scopes (MultiSelect), tags (MultiSelect), assumptions (DynamicList)\n   - KeyResults: DynamicListField with sub-fields: metric (text), baseline (number), target (number), current (number), unit (text)\n2. Create components/forms/IdeaForm.tsx:\n   - Fields: title (required), description (textarea), category (select), priority (select), status (select), parent_id (EntityRefField for ideas), relations (DynamicList with type + target_id), advances_key_results (MultiSelect showing O-*/KR-*), scopes (MultiSelect), tags (MultiSelect)\n3. Create components/forms/KnowledgeForm.tsx:\n   - Fields: title (required), content (textarea, large), category (select), status (select), scopes (MultiSelect), tags (MultiSelect)\n   - Edit mode: requires change_reason field (for versioning)\n4. Create components/forms/LessonForm.tsx:\n   - Fields: title (required), content (textarea), severity (select), category (select), tags (MultiSelect)\n   - Add 'Promote to Guideline' button: calls appropriate API\n   - Add 'Promote to Knowledge' button: calls appropriate API\n5. Add create/edit buttons to each entity's list page\n6. Wire all forms to respective stores and API endpoints",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T14:33:29.917Z",
+      "completed_at": "2026-03-11T21:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-057",
+        "T-052"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-058"
+      ],
+      "acceptance_criteria": [
+        "Objective create/edit form with dynamic KeyResult array editing",
+        "Idea create/edit form with parent_id, relations, advances_key_results",
+        "Knowledge create/edit form with change_reason on edit",
+        "Lesson create/edit form with Promote to Guideline/Knowledge buttons",
+        "All forms use zod validation from T-053 schemas",
+        "Create/edit buttons present on each entity's list page",
+        "Forms submit to correct API endpoints via stores"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-003",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-060",
+      "name": "task-decision-detail-pages",
+      "description": "Build detail pages for Tasks and Decisions with tabbed content. Task detail: Overview (description, AC, instruction), Dependencies (linked tasks with status), Decisions (linked decisions), Changes (from this task), Context (context assembly preview). Decision detail: full view with issue/recommendation/reasoning/alternatives, risk fields, linked tasks, exploration findings.",
+      "instruction": "1. Create app/projects/[slug]/tasks/[id]/page.tsx:\n   - Fetch task by ID from API\n   - Tab component with tabs: Overview, Dependencies, Decisions, Changes, Context\n   - Overview: description, acceptance_criteria checklist, instruction block, type/status/scopes badges\n   - Dependencies: list of depends_on tasks with their status, click navigates to task\n   - Decisions: filtered decisions where task_id matches, or blocked_by_decisions\n   - Changes: filtered changes for this task_id\n   - Context: call pipeline context API, render sections (like existing ContextView)\n2. Create app/projects/[slug]/decisions/[id]/page.tsx:\n   - Fetch decision by ID\n   - Main view (not tabbed, single scroll): issue, recommendation, reasoning, alternatives list\n   - If type=risk: severity, likelihood, mitigation_plan, resolution_notes\n   - If type=exploration: exploration_type, findings list, options, open_questions\n   - Linked tasks section: tasks referencing this decision\n   - Status change actions\n3. Add navigation from list pages: click card → navigate to detail\n4. Breadcrumb updates to show entity ID",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T21:05:00Z",
+      "completed_at": "2026-03-11T21:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-054",
+        "T-058"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-061"
+      ],
+      "acceptance_criteria": [
+        "Task detail page renders with 5 tabs: Overview, Dependencies, Decisions, Changes, Context",
+        "Decision detail page renders with full content and conditional risk/exploration sections",
+        "Clicking a card in list navigates to detail page",
+        "Breadcrumb shows: Project > Tasks > T-001",
+        "Back navigation works (browser back button)",
+        "Related entities are listed with clickable links"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-004",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-061",
+      "name": "objective-idea-detail-pages",
+      "description": "Build detail pages for Objectives and Ideas. Objective detail: KR progress bars (with inline edit for current value), linked ideas, linked tasks (through ideas), derived guidelines, status. Idea detail: child ideas hierarchy tree, linked explorations/risks/decisions, linked KRs with progress, relations visualization, status workflow buttons.",
+      "instruction": "1. Create app/projects/[slug]/objectives/[id]/page.tsx:\n   - Fetch objective by ID\n   - Header: title, status badge, appetite badge\n   - Key Results section: each KR as progress bar (current/target), inline edit button for 'current' value (PATCH objective)\n   - Linked Ideas: ideas with advances_key_results matching this objective's KRs\n   - Linked Tasks: tasks from linked ideas (through origin field)\n   - Derived Guidelines: guidelines with derived_from matching this objective\n   - Assumptions section: collapsible list\n2. Create app/projects/[slug]/ideas/[id]/page.tsx:\n   - Fetch idea by ID\n   - Header: title, status badge, priority badge, category tag\n   - Status workflow buttons: DRAFT→EXPLORING, EXPLORING→APPROVED, APPROVED→COMMITTED (validate transitions)\n   - Child Ideas: if this idea has children, show as tree/list\n   - Explorations & Risks: decisions linked to this idea (type=exploration or risk)\n   - Linked KRs: from advances_key_results, show objective title + KR progress\n   - Relations: depends_on, related_to links as cards\n   - Description section\n3. Add navigation from list pages\n4. Update breadcrumbs",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T21:35:00Z",
+      "completed_at": "2026-03-11T22:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-054",
+        "T-059"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-060"
+      ],
+      "acceptance_criteria": [
+        "Objective detail page shows KR progress bars with inline edit",
+        "Linked ideas, tasks, and derived guidelines listed on objective page",
+        "Idea detail page shows child hierarchy, explorations, risks, linked KRs",
+        "Status workflow buttons enforce valid transitions",
+        "Clicking cards navigates to detail pages",
+        "Breadcrumbs show: Project > Objectives > O-001"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-004",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-062",
+      "name": "entity-link-component",
+      "description": "Create a universal EntityLink component (ADR-006) that renders entity IDs (T-001, D-003, K-005, O-001, I-002) as clickable navigation links throughout the entire UI. Hover preview shows entity title + status + type in a floating card. Badge and tag clicks filter the parent list.",
+      "instruction": "1. Create components/shared/EntityLink.tsx:\n   - Props: entityId (string like 'T-001', 'D-003'), showPreview (boolean, default true)\n   - Parse entity type from prefix: T=task, D=decision, K=knowledge, O=objective, I=idea, G=guideline, L=lesson\n   - Render as <Link> to detail page route\n   - Styled as inline link with entity type icon + colored text\n2. Create components/shared/EntityPreview.tsx:\n   - Hover card (debounced 300ms): shows entity title, status badge, type, description snippet\n   - Fetches entity data on hover (with SWR cache)\n   - Position: appears below/above link, follows cursor area\n3. Create components/shared/FilterableBadge.tsx:\n   - Clicking a badge/tag on any card triggers filter on the parent list\n   - E.g., clicking 'backend' scope tag filters task list to scope=backend\n4. Scan all existing card components and replace hardcoded entity ID text with <EntityLink>\n5. Scan detail pages and replace entity references with <EntityLink>\n6. Add test: EntityLink.test.tsx (renders, generates correct link href)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T22:05:00Z",
+      "completed_at": "2026-03-11T22:20:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-060",
+        "T-061"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "EntityLink renders entity IDs as clickable links to detail pages",
+        "Hover preview shows title, status, type after 300ms debounce",
+        "All entity cards use EntityLink for cross-references",
+        "Badge/tag clicks filter parent list",
+        "Entity type detected from ID prefix (T-, D-, K-, O-, I-, G-, L-)",
+        "Preview card positioned correctly without overflow"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-004",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-063",
+      "name": "swr-ws-revalidation",
+      "description": "Integrate SWR for data fetching alongside Zustand stores (ADR-005). Implement WS events triggering SWR cache revalidation (ADR-004). Server-is-truth pattern for creates (D-007): no optimistic add, show saving spinner. Optimistic updates with rollback for status changes. 5s dedup window for recently-mutated entities.",
+      "instruction": "1. Create lib/swr-config.tsx: SWRConfig provider with global fetcher using api.ts request()\n2. Create hooks/useEntityData.ts: custom hook wrapping useSWR for entity lists with proper cache keys\n3. Create hooks/useEntityDetail.ts: custom hook for single entity fetch with cache\n4. Modify stores/wsDispatcher.ts: on WS event, call mutate() on relevant SWR cache keys to trigger revalidation\n5. Create lib/mutationTracker.ts: tracks recently-mutated entity IDs with 5s TTL window\n   - On API mutation (create/update/delete): add entity ID to tracker\n   - On WS event: check if entity ID is in tracker → skip if yes (suppress own echo)\n6. Update store factory: create operations show saving state (no optimistic add), update operations are optimistic with rollback on error\n7. Wrap app/layout.tsx with SWRConfig provider\n8. Update connection status indicator: green (connected), yellow (reconnecting), red (disconnected) + last event timestamp\n9. Update at least 2 list pages (tasks, decisions) to use SWR hooks as proof of pattern",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T22:30:00Z",
+      "completed_at": "2026-03-11T15:54:26.680Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-052"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "SWR fetches entity data with caching and deduplication",
+        "WS events trigger SWR revalidation (lists refresh automatically)",
+        "Creates show saving spinner without optimistic add",
+        "Updates are optimistic with rollback on API error",
+        "5s dedup window prevents duplicate UI updates from own mutations",
+        "Connection status shows green/yellow/red states",
+        "At least 2 list pages updated to use SWR pattern"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "I-007",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-064",
+      "name": "toast-notifications-activity-feed",
+      "description": "Add toast notifications for entity events and a reusable activity feed component. Toasts: entity created/updated/deleted events as non-intrusive corner notifications. Click toast to navigate to entity. Activity feed: chronological event stream component reusable on dashboard and other pages.",
+      "instruction": "1. Create components/shared/ToastContainer.tsx: fixed position bottom-right, stacks max 3 toasts\n2. Create components/shared/Toast.tsx: event type icon + message + entity link, auto-dismiss 5s, dismiss on click, slide-in animation\n3. Create stores/toastStore.ts: addToast(event), removeToast(id), max 3 visible\n4. Wire WS events to toast store: on task.status_changed, decision.created, knowledge.updated etc. → show toast with entity info\n5. Click toast → navigate to entity detail page via EntityLink logic\n6. Create components/shared/ActivityFeed.tsx: reusable component showing chronological events\n   - Each event: icon, timestamp (relative: '2m ago'), entity type badge, event description, EntityLink\n   - Props: maxItems (default 20), entityFilter (optional), compact mode\n   - Sources: WS events (real-time) + optionally recent entities from API (initial load)\n7. Add ToastContainer to root layout\n8. Filter out own-mutation events from toasts (use mutationTracker from T-063)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T15:54:49.812Z",
+      "completed_at": "2026-03-11T16:00:30.558Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-063"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Toast notifications appear on WS events (bottom-right corner)",
+        "Max 3 toasts visible, auto-dismiss after 5s",
+        "Click toast navigates to entity",
+        "ActivityFeed component shows chronological events with icons and timestamps",
+        "ActivityFeed is reusable (accepts filters, compact mode)",
+        "Own-mutation events filtered from toasts"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-007",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-065",
+      "name": "dashboard-command-center",
+      "description": "Redesign the project dashboard as a command center (I-002). Active objectives with KR progress. Task pipeline proportions bar. Open decisions requiring attention. Activity feed. Quick action buttons. Blocking alerts showing what blocks progress.",
+      "instruction": "1. Redesign app/projects/[slug]/page.tsx (dashboard):\n2. Section 1 — Active Objectives: cards with title, KR progress bars (colored by completion %), alert icon if KR stale (no progress in 7+ days)\n3. Section 2 — Task Pipeline: horizontal bar showing TODO/IN_PROGRESS/DONE/FAILED proportions with counts. Click segment → filter task list\n4. Section 3 — Open Decisions: decisions with status OPEN or ANALYZING, show issue + entity link, inline action buttons (Close, Defer)\n5. Section 4 — Activity Feed: reuse ActivityFeed from T-064, show last 10 events\n6. Section 5 — Quick Actions: button row: New Task, New Idea, Claim Next (calls pipeline next), Add Knowledge, New Decision. Each opens respective form or executes action\n7. Section 6 — Blocking Alerts: tasks with status TODO but blocked (unresolved decisions, unmet dependencies), show reason + quick action to unblock\n8. Dashboard loads in <1s: use SWR with staleWhileRevalidate\n9. Layout: responsive grid, 2 columns on desktop, 1 on mobile\n10. Remove old dashboard stats that are now redundant",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T17:35:00.000Z",
+      "completed_at": null,
+      "failed_reason": null,
+      "depends_on": [
+        "T-062",
+        "T-064"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Dashboard shows active objectives with KR progress bars",
+        "Task pipeline proportions bar with clickable segments",
+        "Open decisions listed with inline Close/Defer actions",
+        "Activity feed shows last 10 events in real-time",
+        "Quick action buttons: New Task, New Idea, Claim Next, Add Knowledge, New Decision",
+        "Blocking alerts show blocked tasks with reasons and unblock actions",
+        "Dashboard loads in under 1 second",
+        "Responsive layout: 2 columns desktop, 1 column mobile"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-002",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-066",
+      "name": "enhanced-kanban-dag",
+      "description": "Enhance the Kanban board and DAG visualization (I-005). Kanban: columns by status with drag-and-drop status change. DAG: color by priority, blocked edges red, tooltip with description, click navigates to detail. Filters: status, scope, type, agent.",
+      "instruction": "1. Enhance app/projects/[slug]/board/page.tsx (Kanban):\n   - Columns: TODO, IN_PROGRESS, DONE, FAILED\n   - Cards: name, type badge, scope tags, blocked indicator (red border if blocked_by_decisions unresolved)\n   - Drag & drop between columns: changes task status via PATCH API\n   - Filter bar: status (multi-select), scope, type, agent\n   - Card count per column\n2. Enhance DAG visualization (existing component):\n   - Color nodes by priority/status: TODO=gray, IN_PROGRESS=blue, DONE=green, FAILED=red\n   - Blocked edges: red dashed line for dependency on unfinished/blocked task\n   - Tooltip on hover: task name, description snippet, status, scopes\n   - Click node → navigate to task detail page\n   - Decision blockage shown as red diamond nodes\n3. Filter controls shared between Kanban and DAG views\n4. Toggle button to switch between Kanban and DAG on same page",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T18:00:00.000Z",
+      "completed_at": null,
+      "failed_reason": null,
+      "depends_on": [
+        "T-062",
+        "T-063"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Kanban board shows tasks in status columns with drag-and-drop",
+        "Drag changes task status via API",
+        "Cards show name, type, scopes, blocked indicator",
+        "DAG nodes colored by status, blocked edges in red",
+        "Hover tooltip on DAG nodes shows task details",
+        "Click DAG node navigates to task detail",
+        "Filters work: status, scope, type, agent",
+        "Toggle between Kanban and DAG views"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-005",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-067",
+      "name": "api-inspector-debug-store",
+      "description": "Build the API Inspector tab for the debug console (D-003, D-010). Create debugStore with circular buffer (200 entries). Add interceptor to api.ts request() function to capture all API calls. Display in the API Inspector tab of the bottom panel: method, URL, status, timing, payload (lazy-loaded on click).",
+      "instruction": "1. Create stores/debugStore.ts:\n   - entries: circular buffer (max 200 entries), each: {id, timestamp, method, url, status, duration_ms, requestSize, responseSize, requestBody?, responseBody?}\n   - Stats: total requests, error count, avg response time\n   - Actions: addEntry, clear, getEntry(id) for lazy payload loading\n2. Modify lib/api.ts request() function:\n   - Wrap fetch call with timing capture\n   - Before fetch: record method, URL, request body (store reference, not full clone)\n   - After fetch: record status, duration, response body reference\n   - Call debugStore.addEntry() with captured data\n   - Do NOT patch global fetch — only intercept through request()\n3. Create components/debug/ApiInspector.tsx:\n   - List view: timestamp, method badge (GET=green, POST=blue, PATCH=yellow, DELETE=red), URL path, status code (colored), duration\n   - Click row → expand to show request/response bodies (lazy-loaded from debugStore)\n   - JSON tree viewer for bodies (collapsible)\n   - Filter: by method, by status (2xx/4xx/5xx), by URL pattern\n   - Clear button, export to JSON\n4. Wire ApiInspector into bottom panel's 'API Inspector' tab\n5. Error count feeds into bottom panel status bar badge",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T16:00:58.556Z",
+      "completed_at": "2026-03-11T16:07:51.800Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-055",
+        "T-052"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "debugStore captures all API calls via api.ts interceptor",
+        "Circular buffer limits to 200 entries (oldest removed)",
+        "API Inspector tab shows: method, URL, status, timing",
+        "Click row expands to show request/response JSON bodies",
+        "Color coding: GET=green, POST=blue, PATCH=yellow, DELETE=red; status 2xx/4xx/5xx colored",
+        "Filters work: method, status, URL pattern",
+        "Error count badge on bottom panel status bar",
+        "No global fetch() patching"
+      ],
+      "scopes": [
+        "frontend",
+        "debug"
+      ],
+      "origin": "I-008",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-068",
+      "name": "llm-monitor-event-stream",
+      "description": "Build the LLM Monitor and Event Stream tabs for the debug console (I-008). LLM Monitor uses existing debug capture backend (6 endpoints from T-037). Shows per-session: what was sent (task, objectives, guidelines, full prompt), what was received (response, tokens, cost), effects (entities created/changed). Event Stream shows real-time WS events with filtering.",
+      "instruction": "1. Create components/debug/LlmMonitor.tsx:\n   - Fetch debug sessions from API: GET /debug/sessions, GET /debug/sessions/{id}\n   - Session list: virtualized (react-window not needed yet — simple windowing), shows session_id, task_id, model, timestamp, token count, status\n   - Click session → expand detail view:\n     a. SENT section: what task (with EntityLink), what objectives + KR progress, what guidelines (with content), full system prompt and user prompt (syntax-highlighted code blocks)\n     b. RECEIVED section: full LLM response (formatted), parsed output, stop_reason, validation results\n     c. EFFECTS section: entities created/changed as EntityLinks\n     d. COSTS section: input_tokens, output_tokens, latency_ms, model, provider\n   - Filter by: task_id, model, status, date range\n2. Create components/debug/EventStream.tsx:\n   - Real-time WS events displayed as they arrive\n   - Each event: timestamp, event type badge (colored by type), entity link, payload (collapsible JSON tree)\n   - Filter by event type (multi-select checkboxes)\n   - Auto-scroll with pause when user scrolls up\n   - Clear button\n   - Event count in status bar\n3. Wire both into bottom panel tabs\n4. Lazy-load session details (don't fetch all at once)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T18:30:00.000Z",
+      "completed_at": null,
+      "failed_reason": null,
+      "depends_on": [
+        "T-067",
+        "T-063"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "LLM Monitor shows debug sessions from backend API",
+        "Session detail shows: sent (task, objectives, guidelines, prompts), received (response, tokens), effects (entity links), costs",
+        "Prompts displayed with syntax highlighting in code blocks",
+        "Event Stream shows real-time WS events with type badges",
+        "Event filtering by type works",
+        "Auto-scroll pauses when user scrolls up",
+        "Session details lazy-loaded on click",
+        "All entity references are EntityLinks (clickable, hoverable)"
+      ],
+      "scopes": [
+        "frontend",
+        "debug"
+      ],
+      "origin": "I-008",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-069",
+      "name": "settings-page",
+      "description": "Build the project settings page (I-006). Project config editing (goal, test_cmd, lint_cmd). Gates configuration CRUD. Guideline scopes management. Connection info display. Route: /projects/[slug]/settings.",
+      "instruction": "1. Create app/projects/[slug]/settings/page.tsx:\n2. Section 1 — Project Config:\n   - Editable fields: goal (textarea), test_cmd (text), lint_cmd (text)\n   - Save button → PATCH /projects/{slug} (check if endpoint exists, add to backend if missing)\n   - If PATCH /projects doesn't exist: create a minimal PATCH handler in forge-api\n3. Section 2 — Gates Configuration:\n   - List existing gates with name, command, required badge\n   - Add gate form: name, command, required (checkbox)\n   - Edit/delete existing gates\n   - 'Run Gates' button for selected task → calls gates check API\n   - Gate results: pass (green check) / fail (red X) with output\n4. Section 3 — Guideline Scopes:\n   - List all unique scopes used in project guidelines\n   - Count of guidelines per scope\n   - Click scope → navigate to guidelines list filtered by scope\n5. Section 4 — Connection Info:\n   - API URL, status (healthy/unhealthy via /health endpoint)\n   - Auth method: display current mode (dev/api-key/jwt)\n   - WebSocket status from existing connection indicator\n6. Add Settings link to sidebar (System group, gear icon)",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T16:07:51.800Z",
+      "completed_at": "2026-03-11T17:30:00.000Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-054"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Settings page accessible from sidebar under System group",
+        "Project config (goal, test_cmd, lint_cmd) editable and saveable",
+        "Gates CRUD: add, edit, delete gates",
+        "Run Gates button executes gate check and shows results",
+        "Guideline scopes listed with counts",
+        "Connection info shows API health, auth method, WS status",
+        "PATCH /projects/{slug} endpoint works (add if missing)"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "origin": "I-006",
+      "knowledge_ids": [],
+      "skill": null
+    },
+    {
+      "id": "T-070",
+      "name": "backend-objectives-schema-extension",
+      "description": "Extend backend objectives schema: KR gets optional description (metric becomes optional), objectives get guideline_ids and relations fields. Update both core/objectives.py contracts and forge-api Pydantic models.",
+      "instruction": "1. core/objectives.py: Update 'add' contract invariants — KR validation changes from 'metric required' to 'metric OR description required'. Add guideline_ids (optional list[str]) and relations (optional list[dict]) to objective contract fields.\n2. core/objectives.py: In cmd_add KR builder, include description, guideline_ids fields from input.\n3. core/objectives.py: In cmd_update KR merge, preserve new fields.\n4. forge-api/app/routers/objectives.py: Update ObjectiveCreate Pydantic model — add guideline_ids, relations. Update KR validator to accept metric OR description.\n5. forge-api/app/routers/objectives.py: Update ObjectiveUpdate similarly.\n6. Ensure backward compatibility: existing objectives with metric+target KRs continue working unchanged.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:00:00Z",
+      "completed_at": "2026-03-11T23:15:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "KR with only metric+target still validates (backward compat)",
+        "KR with only description (no metric) validates",
+        "KR with neither metric nor description is rejected",
+        "guideline_ids field accepted as optional list on objectives",
+        "relations field accepted as optional list of {type, target_id, notes} on objectives",
+        "Existing O-001..O-009 objectives load without errors"
+      ],
+      "scopes": [
+        "backend",
+        "forge-core"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-071",
+      "name": "db-migration-objectives-overhaul",
+      "description": "PostgreSQL migration: add description column to key_results (make metric nullable), add guideline_ids and relations columns to objectives table.",
+      "instruction": "1. Create forge-api/migrations/004_objectives_overhaul.sql.\n2. Add CHECK constraint: (metric IS NOT NULL) OR (description IS NOT NULL) on key_results.\n3. Create rollback script forge-api/migrations/rollback_004.sql.\n4. Test migration is idempotent (safe to run twice).",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:15:00Z",
+      "completed_at": "2026-03-11T23:25:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-070"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Migration script runs without errors on current database",
+        "Existing key_results data preserved (metric still populated)",
+        "New columns have correct defaults",
+        "Rollback script tested and working",
+        "Migration is idempotent"
+      ],
+      "scopes": [
+        "backend",
+        "database"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-072",
+      "name": "backend-cycle-detection-relations",
+      "description": "Add cycle detection for objective relations (type=depends_on). Validate relations on create/update — reject if adding a relation would create a cycle. Also validate that guideline_ids reference existing guidelines.",
+      "instruction": "1. forge-api/app/routers/objectives.py: Add helper function _detect_cycles using DFS.\n2. In create_objectives endpoint: check for cycles in depends_on relations. Return 422 if cycle detected.\n3. In update_objective endpoint: same cycle check.\n4. Add guideline_ids validation: check each G-NNN exists. Warn (don't reject) if not found.\n5. core/objectives.py: Add validation for relations structure: type must be depends_on|related_to|supersedes|duplicates, target_id O-NNN format, optional notes.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:35:00Z",
+      "completed_at": "2026-03-11T23:45:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-070"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Creating O-A depends_on O-B depends_on O-A is rejected with clear error",
+        "Valid relations (no cycles) are accepted",
+        "relation type must be one of: depends_on, related_to, supersedes, duplicates",
+        "Invalid relation type is rejected",
+        "guideline_ids referencing non-existent guidelines produces warning (not error)"
+      ],
+      "scopes": [
+        "backend",
+        "forge-core"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-073",
+      "name": "frontend-types-schemas-objectives",
+      "description": "Update TypeScript types and Zod schemas for new objective/KR fields: optional description on KR, guideline_ids, relations on Objective.",
+      "instruction": "1. forge-web/lib/types.ts: Update KeyResult interface — make metric optional, add description?: string.\n2. forge-web/lib/types.ts: Update Objective/ObjectiveCreate — add guideline_ids?: string[], relations?: ObjectiveRelation[]. Define ObjectiveRelation type.\n3. forge-web/lib/schemas/objective.ts: Update keyResultSchema — metric optional, add description optional, refine metric OR description.\n4. forge-web/lib/schemas/objective.ts: Add guideline_ids and relations to objectiveCreateSchema and objectiveUpdateSchema.\n5. Update forge-web/lib/api.ts if needed.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:25:00Z",
+      "completed_at": "2026-03-11T23:35:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-070"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "TypeScript compiles without errors",
+        "Zod schema validates KR with metric only (backward compat)",
+        "Zod schema validates KR with description only (new style)",
+        "Zod schema rejects KR with neither metric nor description",
+        "ObjectiveRelation type defined with correct fields",
+        "No existing component type errors introduced"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-074",
+      "name": "frontend-objective-form-enhancement",
+      "description": "Extend ObjectiveForm with: (1) optional description field per KR with progressive disclosure, (2) guideline picker multi-select, (3) relations editor with type select + objective target picker.",
+      "instruction": "1. ObjectiveForm.tsx — KR section: Add collapsible Details per KR with textarea for description.\n2. Update default KR to include description: ''.\n3. getDefaults: Map description from existing KR data.\n4. Add GuidelinesPicker section with MultiSelectField loading guidelines from API.\n5. Add RelationsEditor section: type select + target objective select + optional notes.\n6. Ensure form submit includes all new fields.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:55:00Z",
+      "completed_at": "2026-03-12T00:10:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-073"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-075"
+      ],
+      "acceptance_criteria": [
+        "KR description field visible when user clicks expand/details",
+        "KR without description still submits fine (optional)",
+        "Guideline picker shows available guidelines with search",
+        "Selected guidelines saved as guideline_ids on submit",
+        "Relations editor allows adding/removing relations",
+        "Relation type dropdown has 4 options",
+        "Target objective dropdown excludes current objective",
+        "Form submits successfully with all new fields"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-075",
+      "name": "frontend-objective-detail-enhancement",
+      "description": "Enhance objective detail page: (1) descriptive KRs show status badge instead of progress bar, (2) applied guidelines section, (3) relations display with type badges, (4) knowledge linking UI.",
+      "instruction": "1. objectives/[id]/page.tsx — KRProgressBar: Detect KR type — if metric present show progress bar, if only description show status badge with toggle.\n2. Add Applied Guidelines section below KRs.\n3. Add Relations section with type badges and clickable targets.\n4. Add Knowledge section with K-NNN badges and Link Knowledge button.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-12T00:10:00Z",
+      "completed_at": "2026-03-12T00:25:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-073"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-074"
+      ],
+      "acceptance_criteria": [
+        "Numeric KR shows progress bar (backward compat)",
+        "Descriptive KR shows status badge with toggle",
+        "Applied guidelines section shows merged list (scopes + explicit)",
+        "Guidelines grouped visually: from scopes vs explicitly assigned",
+        "Relations list shows type badge + clickable target",
+        "Knowledge section shows linked K-NNN badges",
+        "Link Knowledge button opens search/select modal"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-076",
+      "name": "backend-ai-suggest-kr",
+      "description": "New endpoint POST /projects/{slug}/ai/suggest-kr — suggests KR descriptions, metrics, and baselines based on objective context using heuristic scoring (+ mock LLM path).",
+      "instruction": "1. forge-api/app/routers/ai.py: Add new endpoint POST /projects/{slug}/ai/suggest-kr.\n2. Request body: {objective_id: str, context?: str}.\n3. Load objective, score against knowledge objects. Generate mock suggestions.\n4. Response: {objective_id, suggestions: [{description, metric?, metric_hint?, rationale, relevance_score}], mode: 'mock'}.\n5. Return 3-5 suggestions sorted by relevance_score.\n6. Follow existing pattern from suggest_guidelines.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:45:00Z",
+      "completed_at": "2026-03-11T23:55:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-070"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Endpoint responds with 200 and valid suggestion list",
+        "Suggestions include description + rationale",
+        "Suggestions scored and sorted by relevance",
+        "Returns 3-5 suggestions per request",
+        "Handles missing objective_id with 404",
+        "Mode field indicates 'mock' (for future LLM upgrade)"
+      ],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-077",
+      "name": "frontend-kr-suggestions-panel",
+      "description": "KRSuggestionsPanel component: loads suggestions from /ai/suggest-kr, displays as cards with Apply buttons. Integrated into ObjectiveForm as collapsible side section.",
+      "instruction": "1. Create KRSuggestionsPanel.tsx with SWR fetch from /ai/suggest-kr.\n2. Suggestion cards with description, metric hint, rationale, relevance score, Apply button.\n3. Apply calls onApply callback to add KR from suggestion.\n4. Refresh button to re-fetch.\n5. Integrate into ObjectiveForm as collapsible AI Suggestions section.\n6. Integrate into objective detail page as Suggest KRs button.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-12T00:25:00Z",
+      "completed_at": "2026-03-12T00:40:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-076",
+        "T-074"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Panel loads suggestions from API and displays them",
+        "Each suggestion has Apply button that adds KR to form",
+        "Loading state shown while fetching",
+        "Error state with retry button if API fails",
+        "Refresh button re-fetches suggestions",
+        "Panel collapsible (doesn't clutter form by default)",
+        "Applied suggestion populates KR description field"
+      ],
+      "scopes": [
+        "frontend",
+        "ai"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-078",
+      "name": "frontend-objectives-actions-menu",
+      "description": "Add Actions dropdown to objective detail page exposing CLI-equivalent operations: Discover, Update KR Progress, Achieve, Abandon, Pause. Per constraint D-017.",
+      "instruction": "1. objectives/[id]/page.tsx: Add Actions dropdown button.\n2. Actions: Discover, Update KR Progress, Mark as Achieved, Mark as Abandoned, Pause.\n3. Only show valid transitions.\n4. Confirmation dialog for destructive actions.\n5. After status change, refresh page data via SWR mutate.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T22:00:00Z",
+      "completed_at": "2026-03-11T22:15:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-075"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Actions dropdown visible on objective detail page",
+        "Achieve action changes status to ACHIEVED with confirmation",
+        "Abandon action requires reason and changes status to ABANDONED",
+        "Pause action changes status to PAUSED",
+        "Only valid transitions shown (context-sensitive menu)",
+        "Page data refreshes after status change",
+        "Discover action available (link or trigger)"
+      ],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-079",
+      "name": "db-migration-skills-table",
+      "description": "Create PostgreSQL migration for global skills table — no project_id FK. All fields from ADR-1 (D-023).",
+      "instruction": "1. Create forge-api/migrations/004_skills.sql.\n2. CREATE TABLE skills: id SERIAL PK, ext_id TEXT UNIQUE NOT NULL, name TEXT NOT NULL, description TEXT, category TEXT DEFAULT 'custom' CHECK, status TEXT DEFAULT 'DRAFT' CHECK, skill_md_content TEXT, evals_json JSONB DEFAULT '[]', resources JSONB DEFAULT '{}', teslint_config JSONB, tags TEXT[] DEFAULT '{}', scopes TEXT[] DEFAULT '{}', promoted_with_warnings BOOLEAN DEFAULT FALSE, promotion_history JSONB DEFAULT '[]', usage_count INTEGER DEFAULT 0, created_by TEXT, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW().\n3. GIN indexes on tags, scopes. B-tree on status, category.\n4. NO project_id — skills are global.\n5. Create rollback script.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:00:00Z",
+      "completed_at": "2026-03-11T23:15:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Skills table created with all columns",
+        "NO project_id column",
+        "GIN indexes on tags/scopes",
+        "Status/category CHECK constraints",
+        "ext_id UNIQUE",
+        "Rollback script works",
+        "Migration idempotent"
+      ],
+      "scopes": [
+        "backend",
+        "database",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-080",
+      "name": "backend-skills-crud-router",
+      "description": "Create skills.py router with full CRUD at /api/v1/skills (global, no project slug). First non-project-scoped router.",
+      "instruction": "1. Create forge-api/app/routers/skills.py with Pydantic models.\n2. GET /skills: filter by category, status, tags, scopes, search.\n3. POST /skills: batch create, generate S-001, S-002.\n4. GET/PATCH/DELETE /skills/{id}. DELETE blocked if IN_PROGRESS tasks use it.\n5. Auth: get_current_user (JWT). No slug dependency.\n6. Events: skill.created/updated/deleted.\n7. Register in main.py at /api/v1/skills.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:20:00Z",
+      "completed_at": "2026-03-11T23:40:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-079"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "CRUD at /api/v1/skills",
+        "S-NNN ext_id generation",
+        "Filter by category/status/tags/scopes/search",
+        "DELETE blocked if IN_PROGRESS tasks use skill",
+        "Auth required",
+        "Events emitted",
+        "Router without slug prefix"
+      ],
+      "scopes": [
+        "backend",
+        "api",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-081",
+      "name": "backend-teslint-service",
+      "description": "Create TESLint subprocess service (services/teslint.py). Temp dir with .claude/skills/{name}/SKILL.md, python -m teslint --format json, parse output. Per ADR-3, D-020.",
+      "instruction": "1. Create forge-api/app/services/teslint.py.\n2. run_teslint(skill_name, skill_md_content, teslint_config=None) -> TESLintResult.\n3. Temp dir with .claude/skills/{name}/SKILL.md structure.\n4. subprocess.run with 10s timeout, --format json.\n5. Parse JSON, cleanup in finally.\n6. Handle: not installed, timeout, 0 findings warning.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:20:00Z",
+      "completed_at": "2026-03-11T23:40:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Correct .claude/skills/ temp dir structure",
+        "10s timeout",
+        "JSON parsed to TESLintResult",
+        "Cleanup in finally",
+        "0 findings warning",
+        "Graceful error if TESLint missing"
+      ],
+      "scopes": [
+        "backend",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-082",
+      "name": "backend-lint-promote-endpoints",
+      "description": "POST /skills/{id}/lint and POST /skills/{id}/promote. Lint returns findings. Promote validates 3 gates with force override. Per ADR-5, G-015.",
+      "instruction": "1. POST /skills/{id}/lint: call run_teslint(), return findings.\n2. POST /skills/{id}/promote (body: {force: bool}):\n   Gate 1: YAML frontmatter has name+description.\n   Gate 2: evals_json >= 1 entry.\n   Gate 3: TESLint 0 errors.\n   All pass: DRAFT->ACTIVE. TESLint fails + force=true: ACTIVE + promoted_with_warnings.\n3. Append promotion_history.\n4. ACTIVE->DEPRECATED, DEPRECATED->ARCHIVED via PATCH.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-11T23:45:00Z",
+      "completed_at": "2026-03-12T00:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-080",
+        "T-081"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Lint returns findings",
+        "Promote validates 3 gates",
+        "Force override with audit trail",
+        "promoted_with_warnings flag",
+        "promotion_history appended",
+        "Only DRAFT promotable",
+        "Status transitions work"
+      ],
+      "scopes": [
+        "backend",
+        "api",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-083",
+      "name": "frontend-skills-types-store-api",
+      "description": "Skill TypeScript types, Zod schemas, API client (global, no slug), Zustand store via factory. First non-project frontend entity.",
+      "instruction": "1. types.ts: Skill, SkillCreate, SkillUpdate, TESLintResult, TESLintFinding, SkillStatus, SkillCategory, PromotionHistoryEntry.\n2. schemas/skill.ts: Zod validation.\n3. api.ts: skills.list/create/get/update/remove/lint/promote — no slug, /api/v1/skills.\n4. stores/skillStore.ts: factory, WS events.\n5. SWR hook without slug.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-12T00:10:00Z",
+      "completed_at": "2026-03-12T00:25:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-080"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Types match backend",
+        "API without slug",
+        "lint/promote API defined",
+        "Store via factory",
+        "WS events mapped",
+        "TypeScript compiles"
+      ],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-084",
+      "name": "frontend-skills-list-page",
+      "description": "Create /skills list page with category sidebar, status filters, tag filters, search, grid/list toggle. Top-level route. Per G-014, G-016.",
+      "instruction": "1. app/skills/page.tsx — top-level route.\n2. Category sidebar (10 categories) with counts.\n3. Status filter, search, tag filter, grid/list toggle.\n4. SkillCard component. + New Skill button.\n5. Badges: DRAFT=orange, ACTIVE=green, DEPRECATED=gray.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-12T00:30:00Z",
+      "completed_at": "2026-03-12T00:45:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-083"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-085"
+      ],
+      "acceptance_criteria": [
+        "Page at /skills",
+        "Category sidebar with counts",
+        "Filters work",
+        "Grid/list toggle",
+        "Status badges",
+        "+ New Skill",
+        "Empty state"
+      ],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-085",
+      "name": "frontend-skill-detail-page",
+      "description": "Create /skills/[id] detail: SKILL.md preview, metadata, evals, TESLint report, promotion UI with force override, usage stats, promotion history. Per G-015.",
+      "instruction": "1. app/skills/[id]/page.tsx.\n2. Header with status badges (incl. ACTIVE+warnings triangle).\n3. SKILL.md as sanitized markdown. Metadata, evals, TESLint (Run Lint button).\n4. Promotion UI: Promote, force override with confirmation.\n5. Usage section, promotion history timeline.\n6. Deprecate/Archive actions.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-12T00:45:00Z",
+      "completed_at": "2026-03-12T01:00:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-083"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-084"
+      ],
+      "acceptance_criteria": [
+        "SKILL.md rendered as markdown",
+        "Status badges correct",
+        "Lint report works",
+        "Promote with force override",
+        "promoted_with_warnings badge",
+        "Usage stats",
+        "Promotion history"
+      ],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-086",
+      "name": "frontend-skill-form-editor",
+      "description": "SkillForm: create/edit with SKILL.md textarea (monospace), category select, evals editor, tags, scopes. Inline lint. ACTIVE edit warning. Per G-013, D-022.",
+      "instruction": "1. components/forms/SkillForm.tsx with react-hook-form + zod.\n2. Fields: name, description, category (10), skill_md_content (monospace textarea + placeholder), evals (DynamicListField), tags, scopes.\n3. Lint button with inline findings.\n4. ACTIVE edit: 'Used by N tasks' warning.\n5. FormDrawer + SWR revalidation.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-12T01:00:00Z",
+      "completed_at": "2026-03-12T01:20:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-083"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-084",
+        "T-085"
+      ],
+      "acceptance_criteria": [
+        "Creates/edits skills",
+        "Monospace textarea + placeholder",
+        "Inline lint",
+        "Category 10 options",
+        "Evals add/remove",
+        "ACTIVE edit warning",
+        "Zod validation"
+      ],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-087",
+      "name": "frontend-global-navigation-skills",
+      "description": "Add Skills to global Sidebar as top-level nav item. Route /skills, count badge, active state. Per G-014.",
+      "instruction": "1. Sidebar.tsx: Skills nav item with icon, link /skills, count badge.\n2. app/skills/layout.tsx without ProjectSidebar.\n3. Breadcrumbs: Home > Skills > [Name].\n4. Active state on /skills/*.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-12T01:20:00Z",
+      "completed_at": "2026-03-12T01:25:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-084"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Skills in global Sidebar",
+        "Top-level item",
+        "Count badge",
+        "Active state",
+        "Breadcrumbs",
+        "No ProjectSidebar on /skills"
+      ],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-088",
+      "name": "task-skill-integration",
+      "description": "Integrate skills with tasks: TaskForm skill_id dropdown (ACTIVE only), task detail linked skill, skill detail usage stats.",
+      "instruction": "1. TaskForm: Skill SelectField with ACTIVE skills.\n2. Task detail: EntityLink to /skills/{id}.\n3. Skill detail: usage section with tasks across projects.\n4. types.ts: task.skill_id field.\n5. Backward compat with old skill paths.",
+      "type": "feature",
+      "status": "DONE",
+      "started_at": "2026-03-12T01:25:00Z",
+      "completed_at": "2026-03-11T20:02:47.763Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-085",
+        "T-086"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "TaskForm Skill dropdown",
+        "Skill optional",
+        "Task detail linked skill",
+        "Skill usage stats",
+        "Backward compat"
+      ],
+      "scopes": [
+        "frontend",
+        "backend",
+        "skills"
+      ],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-089",
+      "name": "docker-stack-verification",
+      "description": "Verify Docker Compose full stack: all 4 services (forge-api, forge-web, postgres, redis) start successfully, health checks pass, volume mounts are correct (per L-007/L-013 lessons), dev hot-reload works for both API and web, database migrations run cleanly, WebSocket connection establishes.",
+      "instruction": "1. Review docker-compose.yml — check all 4 services defined with health checks.\n2. Review Dockerfiles for forge-api and forge-web — check multi-stage builds, dev vs prod modes.\n3. Check volume mounts: verify ALL source directories are mounted for dev mode (not just core/ — L-013 lesson).\n4. Check environment variables and .env template.\n5. Review migration scripts — verify they run on startup or have a documented command.\n6. Check WebSocket configuration passes through Docker networking.\n7. Document any issues found and fixes needed.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All 4 Docker services defined with health checks",
+        "Volume mounts cover full source trees (not partial)",
+        "Dev mode supports hot-reload for API and web",
+        "Database migrations documented and tested",
+        "WebSocket passes through Docker networking",
+        "No stale build issues (L-007/L-013 addressed)"
+      ],
+      "scopes": ["infrastructure", "integration"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-090",
+      "name": "deep-verify-projects-nav-layout",
+      "description": "Deep-verify: Projects (list/detail/create/settings), Dashboard page, Sidebar navigation, Layout component, DnD shared components (DragItem, DropZone, RelationshipBuilder), StatusFilter, EntityLink, EntityRefField.",
+      "instruction": "1. Read all files: app/projects/page.tsx, app/projects/[slug]/page.tsx, app/projects/[slug]/settings/page.tsx, components/layout/Sidebar.tsx, components/layout/Layout.tsx, components/shared/ (all), components/dnd/ (all), components/forms/FormDrawer.tsx.\n2. Run 2-3 parallel deep-verify agents with scopes: (a) data flow + API integration, (b) component contracts + props, (c) edge cases + error handling.\n3. Check: navigation links correct, project CRUD works, dashboard data loads, DnD handlers fire correctly, shared components handle null/empty/error states.\n4. Document all findings with severity.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All project pages verified (list, detail, settings)",
+        "Dashboard data loading verified",
+        "Sidebar navigation links correct for all entities",
+        "DnD components verified (drag handlers, drop targets)",
+        "Shared components handle edge cases (null, empty, error)",
+        "Findings documented with severity ratings"
+      ],
+      "scopes": ["frontend", "testing"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-091",
+      "name": "deep-verify-tasks-pipeline",
+      "description": "Deep-verify: Tasks list/detail/form, Kanban board, Pipeline view (DAG), task context tab, task completion flow, task dependencies display, status transitions.",
+      "instruction": "1. Read all files: app/projects/[slug]/tasks/page.tsx, app/projects/[slug]/tasks/[id]/page.tsx, components/forms/TaskForm.tsx, components/entities/TaskCard.tsx, pipeline-related components.\n2. Run 2-3 parallel agents: (a) CRUD flow correctness, (b) Kanban drag-and-drop + status transitions, (c) context tab + dependencies + edge cases.\n3. Check: task create/edit form submits correctly, kanban DnD works (Firefox L-005), pipeline DAG renders, context tab loads dependencies/guidelines/knowledge, status transitions validate correctly.\n4. Document all findings.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Task CRUD verified (create, read, update, delete)",
+        "Kanban board DnD verified (Firefox compat L-005)",
+        "Pipeline DAG renders correctly",
+        "Task context tab loads all sections",
+        "Status transitions validated",
+        "Findings documented with severity"
+      ],
+      "scopes": ["frontend", "testing"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-092",
+      "name": "deep-verify-decisions-changes",
+      "description": "Deep-verify: Decisions list/detail/form, Changes log page, status transitions (OPEN→CLOSED/DEFERRED), linked entity display, risk decisions, exploration decisions.",
+      "instruction": "1. Read all files: app/projects/[slug]/decisions/page.tsx, app/projects/[slug]/decisions/[id]/page.tsx, components/forms/DecisionForm.tsx, components/entities/DecisionCard.tsx, app/projects/[slug]/changes/page.tsx.\n2. Run 2-3 parallel agents: (a) CRUD + status transitions, (b) decision types (standard, exploration, risk) display correctly, (c) changes log + auto-detect.\n3. Check: decision create with all types, status update flow, linked entities clickable, changes list renders diffs, auto-detect works.\n4. Document all findings.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Decision CRUD verified for all 3 types (standard, exploration, risk)",
+        "Status transitions work (OPEN→CLOSED/DEFERRED)",
+        "Linked entities displayed and clickable",
+        "Changes log renders correctly",
+        "Risk-specific fields (severity, likelihood, mitigation) display",
+        "Findings documented with severity"
+      ],
+      "scopes": ["frontend", "testing"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-093",
+      "name": "deep-verify-objectives-ideas",
+      "description": "Deep-verify: Objectives list/detail/form/KR-editor/suggest-kr/actions-menu + Ideas list/detail/form/hierarchy/commit/status-transitions. Includes O-008 new features (descriptive KRs, guideline picker, relations, knowledge linking).",
+      "instruction": "1. Read all files: app/projects/[slug]/objectives/page.tsx, app/projects/[slug]/objectives/[id]/page.tsx, components/forms/ObjectiveForm.tsx, components/forms/KRSuggestionsPanel.tsx, app/projects/[slug]/ideas/page.tsx, app/projects/[slug]/ideas/[id]/page.tsx, components/forms/IdeaForm.tsx.\n2. Run 2-3 parallel agents: (a) Objective CRUD + KR dual-mode (numeric vs descriptive), (b) Ideas CRUD + hierarchy + commit flow, (c) O-008 features: guideline picker, relations editor, knowledge linking, suggest-kr panel, actions menu.\n3. Check: KR progress bar vs status badge, guideline_ids saved, relations cycle detection (frontend side), knowledge link/unlink, suggest-kr loads and Apply works, status transitions (ACTIVE→ACHIEVED/ABANDONED/PAUSED), idea hierarchy display.\n4. Document all findings.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Objective CRUD verified with dual-mode KRs",
+        "KR suggest panel loads and Apply works",
+        "Guideline picker and relations editor verified",
+        "Knowledge linking UI verified",
+        "Actions menu transitions validated",
+        "Ideas CRUD + hierarchy + commit verified",
+        "Findings documented with severity"
+      ],
+      "scopes": ["frontend", "testing"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-094",
+      "name": "deep-verify-knowledge-guidelines",
+      "description": "Deep-verify: Knowledge list/detail/form/versions/links/impact/maintenance + Guidelines list/inline-form/cards + Lessons list/form/promote + AC Templates list/instantiate/inline-edit.",
+      "instruction": "1. Read all files: app/projects/[slug]/knowledge/page.tsx, app/projects/[slug]/knowledge/[id]/page.tsx, components/forms/KnowledgeForm.tsx, app/projects/[slug]/guidelines/page.tsx, components/forms/GuidelineCard.tsx, app/projects/[slug]/lessons/page.tsx, components/forms/LessonForm.tsx, app/projects/[slug]/ac-templates/page.tsx.\n2. Run 2-3 parallel agents: (a) Knowledge CRUD + versions + links + impact analysis, (b) Guidelines inline CRUD + Lessons create + promote, (c) AC Templates + instantiate with params.\n3. Check: knowledge version history, link/unlink, impact analysis renders, guideline inline edit, lesson create, AC template instantiate with parameter substitution, maintenance panel.\n4. Document all findings.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Knowledge CRUD + versions + links + impact verified",
+        "Knowledge maintenance panel works",
+        "Guidelines inline create/edit verified",
+        "Lessons create form verified",
+        "AC Templates instantiate with params verified",
+        "Findings documented with severity"
+      ],
+      "scopes": ["frontend", "testing"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-095",
+      "name": "deep-verify-skills-full",
+      "description": "Deep-verify: Skills list/detail/form, promote flow (verify C-1 fix), lint integration, status transitions (DRAFT→ACTIVE→DEPRECATED→ARCHIVED), category sidebar, task integration. All O-009 frontend work.",
+      "instruction": "1. Read all files: app/skills/page.tsx, app/skills/[id]/page.tsx, components/forms/SkillForm.tsx, components/entities/SkillCard.tsx.\n2. Run 2-3 parallel agents: (a) CRUD flow + category sidebar + search/filter, (b) Promote flow end-to-end (especially C-1 fix: 422 → catch → showForceConfirm), (c) Lint integration + status transitions + task-skill linkage.\n3. Check: create skill form submits, edit form pre-fills, promote button triggers correct API call, 422 response shows force-promote, lint runs and displays findings, status badges correct, SkillCard renders all variants, task integration dropdown works.\n4. Document all findings.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Skills CRUD verified (create, read, update, delete)",
+        "Promote flow verified including C-1 fix (422 → force-promote)",
+        "Lint integration verified (run, display findings)",
+        "All status transitions verified",
+        "Category sidebar and filtering verified",
+        "Task-skill integration verified",
+        "Findings documented with severity"
+      ],
+      "scopes": ["frontend", "testing", "skills"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-096",
+      "name": "deep-verify-execution-debug-settings",
+      "description": "Deep-verify: Execution view (streaming, context side-by-side, progress), Gates config on settings page (L-004 replace-all fix), Debug monitor (API inspector, LLM sessions, event stream), Project settings page.",
+      "instruction": "1. Read all files: app/projects/[slug]/execution/[taskId]/page.tsx, app/projects/[slug]/settings/page.tsx (gates section), components/debug/ (all debug panel components), stores/debugStore.ts.\n2. Run 2-3 parallel agents: (a) Execution streaming + context view, (b) Gates config (L-004: verify merge-before-send fix), (c) Debug monitor panels (API inspector captures, LLM session display, event stream).\n3. Check: execution start/cancel, streaming output renders, context sections expand, gates add/delete merges correctly (not replace-all), debug interceptor wired, debug entries display, LLM session detail shows prompt+response+tokens.\n4. Document all findings.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Execution streaming view verified",
+        "Gates config merge-before-send verified (L-004)",
+        "Debug API inspector captures requests",
+        "Debug LLM session display verified",
+        "Debug event stream renders",
+        "Project settings page verified",
+        "Findings documented with severity"
+      ],
+      "scopes": ["frontend", "testing", "debug"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-097",
+      "name": "deep-verify-api-stores-websocket",
+      "description": "Deep-verify cross-cutting infrastructure: lib/api.ts (all 73 methods, error handling, auth), lib/types.ts + all Zod schemas, Zustand stores (factory, per-entity), SWR hooks, WebSocket dispatcher + dedup, shared utils (apiErrors, formatters).",
+      "instruction": "1. Read all files: lib/api.ts, lib/types.ts, lib/schemas/*.ts, stores/*.ts, lib/ws*.ts, lib/utils/*.ts, lib/swr*.ts.\n2. Run 2-3 parallel agents: (a) API client: method signatures match backend, error handling consistent, auth token refresh, (b) Types + schemas: TypeScript types match API responses, Zod schemas validate correctly, no mismatches, (c) Stores + WS: Zustand store factory correct, WS dispatcher fans out to all consumers, SWR dedup works, MutationTracker prevents echo.\n3. Check: every API method has correct URL/method/body, types match actual API responses, schemas don't have .default() issues, stores handle optimistic updates, WS events dispatch to correct stores.\n4. Document all findings.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T10:00:00Z",
+      "completed_at": "2026-03-12T11:00:00Z",
+      "failed_reason": null,
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All 73 API methods verified (URL, method, body, response type)",
+        "TypeScript types match API responses",
+        "Zod schemas validate correctly (no .default() issues)",
+        "Zustand store factory and per-entity stores verified",
+        "WebSocket dispatcher + dedup verified",
+        "SWR hooks integrate correctly with stores",
+        "Findings documented with severity"
+      ],
+      "scopes": ["frontend", "testing"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-098",
+      "name": "fix-critical-important-bugs",
+      "description": "Fix all CRITICAL and IMPORTANT severity bugs discovered during deep-verify tasks T-090 through T-097. Group fixes by file to minimize conflicts. Run deep-verify on the fixes themselves.",
+      "instruction": "1. Collect all findings from T-090..T-097, sorted by severity (CRITICAL first).\n2. Group bugs by file to batch edits.\n3. Fix each bug, noting the source deep-verify task.\n4. For CRITICAL fixes, verify the fix doesn't introduce regressions.\n5. Commit fixes grouped logically (one commit per entity group or per severity).\n6. Record changes via git.",
+      "type": "bug",
+      "status": "DONE",
+      "started_at": "2026-03-12T11:00:00Z",
+      "completed_at": "2026-03-12T12:30:00Z",
+      "failed_reason": null,
+      "depends_on": [
+        "T-090", "T-091", "T-092", "T-093", "T-094", "T-095", "T-096", "T-097"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All CRITICAL bugs fixed",
+        "All IMPORTANT bugs fixed",
+        "Fixes don't introduce new regressions",
+        "Changes committed with proper reasoning",
+        "Bug count documented for O-006 KR-2"
+      ],
+      "scopes": ["frontend", "backend", "testing"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-099",
+      "name": "edge-case-audit-final-fixes",
+      "description": "Systematic edge case analysis across all UI: empty states (no data), form validation (missing required, invalid format, too long), error boundaries (API failures, network errors), loading states, null/undefined data, concurrent access patterns. Fix remaining MINOR issues from deep-verify.",
+      "instruction": "1. Audit each entity page for: empty state messaging, loading indicators, error display.\n2. Audit each form for: required field validation, character limits, invalid input handling.\n3. Check error boundaries: what happens when API returns 500, 404, network timeout.\n4. Check null safety: components receiving null/undefined props.\n5. Fix remaining MINOR bugs from deep-verify.\n6. Document edge case coverage percentage for O-006 KR-4.\n7. Commit all fixes.",
+      "type": "chore",
+      "status": "DONE",
+      "started_at": "2026-03-12T12:30:00Z",
+      "completed_at": "2026-03-12T13:00:00Z",
+      "completed_at": null,
+      "failed_reason": null,
+      "depends_on": [
+        "T-098"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All entity pages have empty state handling",
+        "All forms validate required fields",
+        "Error boundaries handle API failures gracefully",
+        "Loading states shown during data fetches",
+        "Null/undefined props handled safely",
+        "Edge case coverage documented (target: 80%)",
+        "All MINOR bugs from deep-verify fixed"
+      ],
+      "scopes": ["frontend", "testing"],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "skill": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    }
+  ]
+}
