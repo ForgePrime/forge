@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { decisionCreateSchema, type DecisionCreateForm } from "@/lib/schemas/decision";
@@ -69,6 +69,35 @@ const EXPLORATION_TYPE_OPTIONS: SelectOption[] = [
   { value: "feasibility", label: "Feasibility" },
 ];
 
+function getDefaults(decision?: Decision, defaultTaskId?: string): DecisionCreateForm {
+  return decision
+    ? {
+        task_id: decision.task_id,
+        type: decision.type,
+        issue: decision.issue,
+        recommendation: decision.recommendation,
+        reasoning: decision.reasoning || "",
+        alternatives: decision.alternatives || [],
+        confidence: decision.confidence,
+        status: decision.status,
+        severity: decision.severity || "",
+        likelihood: decision.likelihood || "",
+        mitigation_plan: decision.mitigation_plan || "",
+        exploration_type: decision.exploration_type || "",
+        resolution_notes: decision.resolution_notes || "",
+      }
+    : {
+        task_id: defaultTaskId || "",
+        type: "implementation",
+        issue: "",
+        recommendation: "",
+        reasoning: "",
+        alternatives: [],
+        confidence: "MEDIUM",
+        status: "OPEN",
+      };
+}
+
 interface DecisionFormProps {
   slug: string;
   open: boolean;
@@ -85,32 +114,14 @@ export function DecisionForm({ slug, open, onClose, decision, defaultTaskId, onS
 
   const { control, handleSubmit, setError, reset } = useForm<DecisionCreateForm>({
     resolver: zodResolver(decisionCreateSchema),
-    defaultValues: decision
-      ? {
-          task_id: decision.task_id,
-          type: decision.type,
-          issue: decision.issue,
-          recommendation: decision.recommendation,
-          reasoning: decision.reasoning || "",
-          alternatives: decision.alternatives || [],
-          confidence: decision.confidence,
-          status: decision.status,
-          severity: decision.severity || "",
-          likelihood: decision.likelihood || "",
-          mitigation_plan: decision.mitigation_plan || "",
-          exploration_type: decision.exploration_type || "",
-        }
-      : {
-          task_id: defaultTaskId || "",
-          type: "implementation",
-          issue: "",
-          recommendation: "",
-          reasoning: "",
-          alternatives: [],
-          confidence: "MEDIUM",
-          status: "OPEN",
-        },
+    defaultValues: getDefaults(decision, defaultTaskId),
   });
+
+  // Reset form when decision prop changes
+  useEffect(() => {
+    reset(getDefaults(decision, defaultTaskId));
+    setApiErrors([]);
+  }, [decision, defaultTaskId, reset]);
 
   const watchType = useWatch({ control, name: "type" });
   const isRisk = watchType === "risk";
@@ -130,7 +141,7 @@ export function DecisionForm({ slug, open, onClose, decision, defaultTaskId, onS
       } else {
         await createDecision(slug, [data]);
       }
-      reset();
+      reset(getDefaults());
       onSuccess?.();
       onClose();
     } catch (e) {
@@ -160,28 +171,41 @@ export function DecisionForm({ slug, open, onClose, decision, defaultTaskId, onS
     >
       <FormErrorSummary errors={apiErrors} />
 
-      <TextField name="task_id" control={control} label="Task ID" required placeholder="T-001" disabled={isEdit} />
-      <SelectField name="type" control={control} label="Type" options={TYPE_OPTIONS} />
-      <TextAreaField name="issue" control={control} label="Issue" required placeholder="What needs to be decided?" rows={3} />
-      <TextAreaField name="recommendation" control={control} label="Recommendation" required placeholder="What do you recommend?" rows={3} />
-      <TextAreaField name="reasoning" control={control} label="Reasoning" placeholder="Why this recommendation?" rows={3} />
-      <DynamicListField name="alternatives" control={control} label="Alternatives Considered" addLabel="Add alternative" />
-      <SelectField name="confidence" control={control} label="Confidence" options={CONFIDENCE_OPTIONS} />
-      <SelectField name="status" control={control} label="Status" options={STATUS_OPTIONS} />
-
-      {/* Risk-specific fields */}
-      {isRisk && (
+      {isEdit ? (
         <>
-          <SelectField name="severity" control={control} label="Severity" options={SEVERITY_OPTIONS} />
-          <SelectField name="likelihood" control={control} label="Likelihood" options={LIKELIHOOD_OPTIONS} />
-          <TextAreaField name="mitigation_plan" control={control} label="Mitigation Plan" placeholder="How to mitigate this risk?" rows={3} />
+          {/* In edit mode: task_id, type, issue are read-only (not updatable via API) */}
+          <div className="mb-4 text-sm text-gray-500 space-y-1">
+            <p><span className="font-medium">Task:</span> {decision.task_id}</p>
+            <p><span className="font-medium">Type:</span> {decision.type}</p>
+            <p><span className="font-medium">Issue:</span> {decision.issue}</p>
+          </div>
+          <SelectField name="status" control={control} label="Status" options={STATUS_OPTIONS} />
+          <TextAreaField name="recommendation" control={control} label="Recommendation" required placeholder="What do you recommend?" rows={3} />
+          <TextAreaField name="reasoning" control={control} label="Reasoning" placeholder="Why this recommendation?" rows={3} />
+          <TextAreaField name="resolution_notes" control={control} label="Resolution Notes" placeholder="Notes on resolution..." rows={3} />
         </>
-      )}
-
-      {/* Exploration-specific fields */}
-      {isExploration && (
+      ) : (
         <>
-          <SelectField name="exploration_type" control={control} label="Exploration Type" options={EXPLORATION_TYPE_OPTIONS} />
+          <TextField name="task_id" control={control} label="Task ID" required placeholder="T-001" />
+          <SelectField name="type" control={control} label="Type" options={TYPE_OPTIONS} />
+          <TextAreaField name="issue" control={control} label="Issue" required placeholder="What needs to be decided?" rows={3} />
+          <TextAreaField name="recommendation" control={control} label="Recommendation" required placeholder="What do you recommend?" rows={3} />
+          <TextAreaField name="reasoning" control={control} label="Reasoning" placeholder="Why this recommendation?" rows={3} />
+          <DynamicListField name="alternatives" control={control} label="Alternatives Considered" addLabel="Add alternative" />
+          <SelectField name="confidence" control={control} label="Confidence" options={CONFIDENCE_OPTIONS} />
+          <SelectField name="status" control={control} label="Status" options={STATUS_OPTIONS} />
+
+          {isRisk && (
+            <>
+              <SelectField name="severity" control={control} label="Severity" options={SEVERITY_OPTIONS} />
+              <SelectField name="likelihood" control={control} label="Likelihood" options={LIKELIHOOD_OPTIONS} />
+              <TextAreaField name="mitigation_plan" control={control} label="Mitigation Plan" placeholder="How to mitigate this risk?" rows={3} />
+            </>
+          )}
+
+          {isExploration && (
+            <SelectField name="exploration_type" control={control} label="Exploration Type" options={EXPLORATION_TYPE_OPTIONS} />
+          )}
         </>
       )}
     </FormDrawer>

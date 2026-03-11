@@ -39,7 +39,7 @@ export function TaskCard({ task, onStatusChange, onEdit }: TaskCardProps) {
           )}
         </div>
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-          {onEdit && (
+          {onEdit && (task.status === "TODO" || task.status === "FAILED") && (
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(task); }}
               className="text-xs text-gray-400 hover:text-gray-600 font-medium"

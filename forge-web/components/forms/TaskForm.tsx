@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useState, useEffect } from "react";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { taskCreateSchema, type TaskCreateForm } from "@/lib/schemas/task";
 import { createTask, updateTask } from "@/stores/taskStore";
@@ -35,6 +35,34 @@ const SCOPE_OPTIONS: SelectOption[] = [
   { value: "security", label: "Security" },
 ];
 
+function getDefaults(task?: Task): TaskCreateForm {
+  return task
+    ? {
+        name: task.name,
+        description: task.description || "",
+        instruction: task.instruction || "",
+        type: task.type,
+        depends_on: task.depends_on || [],
+        blocked_by_decisions: task.blocked_by_decisions || [],
+        conflicts_with: task.conflicts_with || [],
+        acceptance_criteria: task.acceptance_criteria || [],
+        scopes: task.scopes || [],
+        parallel: task.parallel || false,
+      }
+    : {
+        name: "",
+        description: "",
+        instruction: "",
+        type: "feature",
+        depends_on: [],
+        blocked_by_decisions: [],
+        conflicts_with: [],
+        acceptance_criteria: [],
+        scopes: [],
+        parallel: false,
+      };
+}
+
 interface TaskFormProps {
   slug: string;
   open: boolean;
@@ -50,32 +78,14 @@ export function TaskForm({ slug, open, onClose, task, onSuccess }: TaskFormProps
 
   const { control, handleSubmit, setError, reset } = useForm<TaskCreateForm>({
     resolver: zodResolver(taskCreateSchema),
-    defaultValues: task
-      ? {
-          name: task.name,
-          description: task.description || "",
-          instruction: task.instruction || "",
-          type: task.type,
-          depends_on: task.depends_on || [],
-          blocked_by_decisions: task.blocked_by_decisions || [],
-          conflicts_with: task.conflicts_with || [],
-          acceptance_criteria: task.acceptance_criteria || [],
-          scopes: task.scopes || [],
-          parallel: task.parallel || false,
-        }
-      : {
-          name: "",
-          description: "",
-          instruction: "",
-          type: "feature",
-          depends_on: [],
-          blocked_by_decisions: [],
-          conflicts_with: [],
-          acceptance_criteria: [],
-          scopes: [],
-          parallel: false,
-        },
+    defaultValues: getDefaults(task),
   });
+
+  // Reset form when task prop changes (switching between create/edit or different tasks)
+  useEffect(() => {
+    reset(getDefaults(task));
+    setApiErrors([]);
+  }, [task, reset]);
 
   const onSubmit = handleSubmit(async (data) => {
     setSubmitting(true);
@@ -91,7 +101,7 @@ export function TaskForm({ slug, open, onClose, task, onSuccess }: TaskFormProps
       } else {
         await createTask(slug, [data]);
       }
-      reset();
+      reset(getDefaults());
       onSuccess?.();
       onClose();
     } catch (e) {
@@ -124,8 +134,20 @@ export function TaskForm({ slug, open, onClose, task, onSuccess }: TaskFormProps
       <TextField name="name" control={control} label="Name" required placeholder="Task name" />
       <TextAreaField name="description" control={control} label="Description" placeholder="What needs to be done?" />
       <TextAreaField name="instruction" control={control} label="Instruction" placeholder="Step-by-step instructions" rows={6} />
-      <SelectField name="type" control={control} label="Type" options={TYPE_OPTIONS} />
-      <MultiSelectField name="scopes" control={control} label="Scopes" options={SCOPE_OPTIONS} />
+
+      {/* Type, scopes, AC — read-only info in edit mode (not updatable via API) */}
+      {isEdit ? (
+        <div className="mb-4 text-sm text-gray-500 space-y-1">
+          <p><span className="font-medium">Type:</span> {task.type}</p>
+          {task.scopes?.length > 0 && <p><span className="font-medium">Scopes:</span> {task.scopes.join(", ")}</p>}
+        </div>
+      ) : (
+        <>
+          <SelectField name="type" control={control} label="Type" options={TYPE_OPTIONS} />
+          <MultiSelectField name="scopes" control={control} label="Scopes" options={SCOPE_OPTIONS} />
+        </>
+      )}
+
       <DynamicListField name="acceptance_criteria" control={control} label="Acceptance Criteria" addLabel="Add criterion" placeholder="When X, then Y" />
 
       {!isEdit && (
@@ -134,19 +156,23 @@ export function TaskForm({ slug, open, onClose, task, onSuccess }: TaskFormProps
           <EntityRefField name="blocked_by_decisions" control={control} label="Blocked By Decisions" entityTypes={["decision"]} placeholder="Search decisions..." />
           <EntityRefField name="conflicts_with" control={control} label="Conflicts With" entityTypes={["task"]} placeholder="Search tasks..." />
 
-          <div className="mb-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="rounded border-gray-300 text-forge-600 focus:ring-forge-500"
-                onChange={(e) => {
-                  const form = control._formValues as TaskCreateForm;
-                  form.parallel = e.target.checked;
-                }}
-              />
-              <span className="text-gray-700">Can run in parallel</span>
-            </label>
-          </div>
+          <Controller
+            name="parallel"
+            control={control}
+            render={({ field }) => (
+              <div className="mb-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={field.value || false}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                    className="rounded border-gray-300 text-forge-600 focus:ring-forge-500"
+                  />
+                  <span className="text-gray-700">Can run in parallel</span>
+                </label>
+              </div>
+            )}
+          />
         </>
       )}
     </FormDrawer>
