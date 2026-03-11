@@ -17,6 +17,7 @@ import { useACTemplateStore } from "./acTemplateStore";
 import { useGateStore } from "./gateStore";
 import { isRecentMutation } from "@/lib/mutationTracker";
 import { useToastStore } from "./toastStore";
+import { useActivityStore } from "./activityStore";
 
 /** All stores that handle WS events, in dispatch order. */
 const stores = [
@@ -101,6 +102,17 @@ export function dispatchWsEvent(event: ForgeEvent): void {
         entityType: prefix,
         action: action as "created" | "updated" | "deleted" | "completed" | "failed" | "info",
         project: event.project,
+      });
+
+      // Record to activity feed (persists more events than toast)
+      useActivityStore.getState().addEvent({
+        event: event.event,
+        entityId,
+        entityType: prefix,
+        project: event.project ?? "",
+        timestamp: new Date().toISOString(),
+        message,
+        action,
       });
     }
   }
