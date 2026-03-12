@@ -16,6 +16,7 @@ from app.models.llm_config import DEFAULT_PERMISSIONS, LLMModulePermission
 MODULES = [
     "skills", "tasks", "objectives", "ideas", "knowledge",
     "guidelines", "decisions", "lessons", "projects", "ac_templates",
+    "changes", "research",
 ]
 
 # All known actions

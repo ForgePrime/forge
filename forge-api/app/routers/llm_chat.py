@@ -84,6 +84,7 @@ SCOPE_TO_CONTEXT_TYPE: dict[str, str] = {
     "projects": "project",
     "ac_templates": "ac_template",
     "changes": "change",
+    "research": "research",
     "dashboard": "global",
     "settings": "global",
 }
@@ -147,7 +148,7 @@ async def chat(
         "skill": "skills", "task": "tasks", "objective": "objectives",
         "idea": "ideas", "knowledge": "knowledge", "guideline": "guidelines",
         "decision": "decisions", "lesson": "lessons", "project": "projects",
-        "ac_template": "ac_templates",
+        "ac_template": "ac_templates", "change": "changes", "research": "research",
     }
     if body.context_type != "global":
         flag_name = _CONTEXT_FLAG_MAP.get(body.context_type)

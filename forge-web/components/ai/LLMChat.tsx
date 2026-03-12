@@ -11,6 +11,12 @@ interface LLMChatProps {
   slug?: string;
   className?: string;
   onError?: (error: string) => void;
+  /** When true, hide internal header and border (for sidebar embedding). */
+  embedded?: boolean;
+  /** Scopes to forward to sendMessage. */
+  scopes?: string[];
+  /** Disabled capability IDs to forward to sendMessage. */
+  disabledCapabilities?: string[];
 }
 
 export default function LLMChat({
@@ -19,6 +25,9 @@ export default function LLMChat({
   slug = "",
   className = "",
   onError,
+  embedded = false,
+  scopes,
+  disabledCapabilities,
 }: LLMChatProps) {
   const {
     conversations,
@@ -50,48 +59,52 @@ export default function LLMChat({
     }
   }, [error, onError]);
 
-  // Start new conversation when context changes
+  // Start new conversation when context changes (skip in embedded mode — sidebar manages lifecycle)
   useEffect(() => {
-    startConversation(contextType, contextId, slug);
-  }, [contextType, contextId, slug, startConversation]);
+    if (!embedded) {
+      startConversation(contextType, contextId, slug);
+    }
+  }, [contextType, contextId, slug, startConversation, embedded]);
 
   const handleSend = useCallback(
     (message: string, fileIds?: string[]) => {
       clearError();
-      sendMessage(message, contextType, contextId, slug, null, undefined, undefined, fileIds);
+      sendMessage(message, contextType, contextId, slug, null, scopes, disabledCapabilities, fileIds);
     },
-    [contextType, contextId, slug, sendMessage, clearError],
+    [contextType, contextId, slug, sendMessage, clearError, scopes, disabledCapabilities],
   );
 
   // Token counter
   const totalTokens = (conversation?.totalTokensIn ?? 0) + (conversation?.totalTokensOut ?? 0);
 
   return (
-    <div className={`flex flex-col bg-white border border-gray-200 rounded-lg overflow-hidden ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700">AI Chat</span>
-          {contextType !== "global" && (
-            <span className="rounded bg-forge-100 px-2 py-0.5 text-xs font-medium text-forge-700">
-              {contextType} {contextId}
-            </span>
-          )}
+    <div className={`flex flex-col ${embedded ? "bg-white" : "bg-white border border-gray-200 rounded-lg"} overflow-hidden ${className}`}>
+      {/* Header (hidden in embedded/sidebar mode) */}
+      {!embedded && (
+        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">AI Chat</span>
+            {contextType !== "global" && (
+              <span className="rounded bg-forge-100 px-2 py-0.5 text-xs font-medium text-forge-700">
+                {contextType} {contextId}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            {conversation?.model && (
+              <span title="Model">{conversation.model.split("-").slice(0, 2).join("-")}</span>
+            )}
+            {totalTokens > 0 && (
+              <span title="Total tokens used">{totalTokens.toLocaleString()} tokens</span>
+            )}
+            {streaming && (
+              <span className="flex items-center gap-1 text-forge-600">
+                <span className="animate-pulse">●</span> Streaming
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          {conversation?.model && (
-            <span title="Model">{conversation.model.split("-").slice(0, 2).join("-")}</span>
-          )}
-          {totalTokens > 0 && (
-            <span title="Total tokens used">{totalTokens.toLocaleString()} tokens</span>
-          )}
-          {streaming && (
-            <span className="flex items-center gap-1 text-forge-600">
-              <span className="animate-pulse">●</span> Streaming
-            </span>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[200px]">

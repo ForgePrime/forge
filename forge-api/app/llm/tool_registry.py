@@ -807,6 +807,663 @@ async def _handle_preview_skill(
 
 
 # ---------------------------------------------------------------------------
+# Entity WRITE handlers — Tasks, Objectives, Ideas, Decisions, Knowledge,
+#                         Guidelines, Lessons, Changes
+# ---------------------------------------------------------------------------
+
+def _now_iso() -> str:
+    """ISO 8601 timestamp."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _next_id(items: list[dict], prefix: str) -> str:
+    """Generate next sequential ID from a list of entities."""
+    nums = []
+    for item in items:
+        eid = item.get("id", "")
+        if eid.startswith(f"{prefix}-"):
+            try:
+                nums.append(int(eid.split("-")[1]))
+            except (IndexError, ValueError):
+                pass
+    return f"{prefix}-{max(nums, default=0) + 1:03d}"
+
+
+async def _handle_create_task(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new task in the pipeline."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+    name = args.get("name")
+    if not name:
+        return {"error": "name is required"}
+
+    tracker = await asyncio.to_thread(storage.load_data, project, "tracker")
+    tasks = tracker.get("tasks", [])
+    new_id = _next_id(tasks, "T")
+
+    task = {
+        "id": new_id,
+        "name": name,
+        "description": args.get("description", ""),
+        "instruction": args.get("instruction", ""),
+        "status": "TODO",
+        "depends_on": args.get("depends_on", []),
+        "type": args.get("type", "feature"),
+        "scopes": args.get("scopes", []),
+        "acceptance_criteria": args.get("acceptance_criteria", []),
+        "origin": args.get("origin", ""),
+        "parallel": args.get("parallel", False),
+        "conflicts_with": args.get("conflicts_with", []),
+        "blocked_by_decisions": args.get("blocked_by_decisions", []),
+        "knowledge_ids": args.get("knowledge_ids", []),
+        "started_at": None,
+        "completed_at": None,
+        "failed_reason": None,
+    }
+    tasks.append(task)
+    tracker["tasks"] = tasks
+    await asyncio.to_thread(storage.save_data, project, "tracker", tracker)
+    return {"created": True, "id": new_id, "task": task}
+
+
+async def _handle_update_task(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update fields on a TODO or FAILED task."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    task_id = args.get("task_id")
+    if not task_id:
+        return {"error": "task_id is required"}
+
+    tracker = await asyncio.to_thread(storage.load_data, project, "tracker")
+    tasks = tracker.get("tasks", [])
+
+    for task in tasks:
+        if task.get("id") == task_id:
+            if task.get("status") not in ("TODO", "FAILED"):
+                return {"error": f"Cannot update task in status {task['status']} — only TODO or FAILED tasks can be updated"}
+            updatable = [
+                "name", "description", "instruction", "depends_on", "type",
+                "scopes", "acceptance_criteria", "origin", "parallel",
+                "conflicts_with", "blocked_by_decisions", "knowledge_ids",
+            ]
+            changed = []
+            for field in updatable:
+                if field in args and args[field] is not None:
+                    task[field] = args[field]
+                    changed.append(field)
+            if not changed:
+                return {"error": "No fields to update"}
+            tracker["tasks"] = tasks
+            await asyncio.to_thread(storage.save_data, project, "tracker", tracker)
+            return {"updated": True, "task_id": task_id, "changed_fields": changed, "task": task}
+    return {"error": f"Task {task_id} not found"}
+
+
+async def _handle_complete_task(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Mark a task as DONE with reasoning."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    task_id = args.get("task_id")
+    if not task_id:
+        return {"error": "task_id is required"}
+    reasoning = args.get("reasoning", "")
+
+    tracker = await asyncio.to_thread(storage.load_data, project, "tracker")
+    tasks = tracker.get("tasks", [])
+
+    for task in tasks:
+        if task.get("id") == task_id:
+            if task.get("status") not in ("TODO", "IN_PROGRESS", "FAILED"):
+                return {"error": f"Cannot complete task in status {task['status']}"}
+            task["status"] = "DONE"
+            task["completed_at"] = _now_iso()
+            if reasoning:
+                task["completion_reasoning"] = reasoning
+            tracker["tasks"] = tasks
+            await asyncio.to_thread(storage.save_data, project, "tracker", tracker)
+            return {"completed": True, "task_id": task_id, "status": "DONE"}
+    return {"error": f"Task {task_id} not found"}
+
+
+async def _handle_create_objective(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new objective with key results."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    title = args.get("title")
+    if not title:
+        return {"error": "title is required"}
+    description = args.get("description")
+    if not description:
+        return {"error": "description is required"}
+    key_results = args.get("key_results", [])
+    if not key_results:
+        return {"error": "at least one key_result is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "objectives")
+    objectives = data.get("objectives", [])
+    new_id = _next_id(objectives, "O")
+    now = _now_iso()
+
+    # Assign KR IDs
+    for i, kr in enumerate(key_results, 1):
+        kr["id"] = f"KR-{i}"
+
+    objective = {
+        "id": new_id,
+        "title": title,
+        "description": description,
+        "status": "ACTIVE",
+        "key_results": key_results,
+        "appetite": args.get("appetite", "medium"),
+        "scope": args.get("scope", "project"),
+        "assumptions": args.get("assumptions", []),
+        "tags": args.get("tags", []),
+        "scopes": args.get("scopes", []),
+        "derived_guidelines": args.get("derived_guidelines", []),
+        "knowledge_ids": args.get("knowledge_ids", []),
+        "created": now,
+        "updated": now,
+    }
+    objectives.append(objective)
+    data["objectives"] = objectives
+    await asyncio.to_thread(storage.save_data, project, "objectives", data)
+    return {"created": True, "id": new_id, "objective": objective}
+
+
+async def _handle_update_objective(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update an objective's status or key result progress."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    obj_id = args.get("id")
+    if not obj_id:
+        return {"error": "id is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "objectives")
+    objectives = data.get("objectives", [])
+
+    for obj in objectives:
+        if obj.get("id") == obj_id:
+            changed = []
+            if "status" in args and args["status"] is not None:
+                obj["status"] = args["status"]
+                changed.append("status")
+            if "title" in args and args["title"] is not None:
+                obj["title"] = args["title"]
+                changed.append("title")
+            if "description" in args and args["description"] is not None:
+                obj["description"] = args["description"]
+                changed.append("description")
+            # Update key result progress
+            if "key_results" in args and args["key_results"]:
+                existing_krs = {kr.get("id"): kr for kr in obj.get("key_results", [])}
+                for kr_update in args["key_results"]:
+                    kr_id = kr_update.get("id")
+                    if kr_id and kr_id in existing_krs:
+                        for k, v in kr_update.items():
+                            if k != "id":
+                                existing_krs[kr_id][k] = v
+                obj["key_results"] = list(existing_krs.values())
+                changed.append("key_results")
+            if not changed:
+                return {"error": "No fields to update"}
+            obj["updated"] = _now_iso()
+            data["objectives"] = objectives
+            await asyncio.to_thread(storage.save_data, project, "objectives", data)
+            return {"updated": True, "id": obj_id, "changed_fields": changed, "objective": obj}
+    return {"error": f"Objective {obj_id} not found"}
+
+
+async def _handle_create_idea(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new idea in staging."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    title = args.get("title")
+    if not title:
+        return {"error": "title is required"}
+    description = args.get("description")
+    if not description:
+        return {"error": "description is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "ideas")
+    ideas = data.get("ideas", [])
+    new_id = _next_id(ideas, "I")
+    now = _now_iso()
+
+    idea = {
+        "id": new_id,
+        "title": title,
+        "description": description,
+        "status": "DRAFT",
+        "category": args.get("category", "feature"),
+        "priority": args.get("priority", "MEDIUM"),
+        "tags": args.get("tags", []),
+        "parent_id": args.get("parent_id"),
+        "relations": args.get("relations", []),
+        "scopes": args.get("scopes", []),
+        "advances_key_results": args.get("advances_key_results", []),
+        "knowledge_ids": args.get("knowledge_ids", []),
+        "exploration_notes": "",
+        "rejection_reason": "",
+        "merged_into": "",
+        "committed_at": None,
+        "created": now,
+        "updated": now,
+    }
+    ideas.append(idea)
+    data["ideas"] = ideas
+    await asyncio.to_thread(storage.save_data, project, "ideas", data)
+    return {"created": True, "id": new_id, "idea": idea}
+
+
+async def _handle_update_idea(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update an idea's fields or status."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    idea_id = args.get("id")
+    if not idea_id:
+        return {"error": "id is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "ideas")
+    ideas = data.get("ideas", [])
+
+    for idea in ideas:
+        if idea.get("id") == idea_id:
+            updatable = [
+                "title", "description", "status", "category", "priority",
+                "tags", "scopes", "exploration_notes", "advances_key_results",
+                "knowledge_ids", "rejection_reason",
+            ]
+            changed = []
+            for field in updatable:
+                if field in args and args[field] is not None:
+                    idea[field] = args[field]
+                    changed.append(field)
+            # Append-merge relations
+            if "relations" in args and args["relations"]:
+                existing = idea.get("relations", [])
+                for rel in args["relations"]:
+                    if rel not in existing:
+                        existing.append(rel)
+                idea["relations"] = existing
+                changed.append("relations")
+            if not changed:
+                return {"error": "No fields to update"}
+            idea["updated"] = _now_iso()
+            data["ideas"] = ideas
+            await asyncio.to_thread(storage.save_data, project, "ideas", data)
+            return {"updated": True, "id": idea_id, "changed_fields": changed, "idea": idea}
+    return {"error": f"Idea {idea_id} not found"}
+
+
+async def _handle_create_decision(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Record a new decision, exploration, or risk."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    task_id = args.get("task_id")
+    if not task_id:
+        return {"error": "task_id is required"}
+    dec_type = args.get("type")
+    if not dec_type:
+        return {"error": "type is required"}
+    issue = args.get("issue")
+    if not issue:
+        return {"error": "issue is required"}
+    recommendation = args.get("recommendation")
+    if not recommendation:
+        return {"error": "recommendation is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "decisions")
+    decisions = data.get("decisions", [])
+    new_id = _next_id(decisions, "D")
+    now = _now_iso()
+
+    decision = {
+        "id": new_id,
+        "task_id": task_id,
+        "type": dec_type,
+        "issue": issue,
+        "recommendation": recommendation,
+        "reasoning": args.get("reasoning", ""),
+        "alternatives": args.get("alternatives", []),
+        "confidence": args.get("confidence", "MEDIUM"),
+        "status": args.get("status", "OPEN"),
+        "decided_by": "claude",
+        "timestamp": now,
+        "updated": None,
+    }
+    # Exploration-specific
+    if dec_type == "exploration":
+        for f in ("exploration_type", "findings", "options", "open_questions", "blockers", "evidence_refs"):
+            if f in args:
+                decision[f] = args[f]
+    # Risk-specific
+    if dec_type == "risk":
+        for f in ("severity", "likelihood", "linked_entity_type", "linked_entity_id", "mitigation_plan"):
+            if f in args:
+                decision[f] = args[f]
+
+    decisions.append(decision)
+    data["decisions"] = decisions
+    await asyncio.to_thread(storage.save_data, project, "decisions", data)
+    return {"created": True, "id": new_id, "decision": decision}
+
+
+async def _handle_update_decision(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update a decision — close, defer, mitigate, or add resolution notes."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    dec_id = args.get("id")
+    if not dec_id:
+        return {"error": "id is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "decisions")
+    decisions = data.get("decisions", [])
+
+    for dec in decisions:
+        if dec.get("id") == dec_id:
+            changed = []
+            updatable = [
+                "status", "recommendation", "reasoning", "resolution_notes",
+                "mitigation_plan", "confidence",
+            ]
+            for field in updatable:
+                if field in args and args[field] is not None:
+                    dec[field] = args[field]
+                    changed.append(field)
+            if not changed:
+                return {"error": "No fields to update"}
+            dec["updated"] = _now_iso()
+            data["decisions"] = decisions
+            await asyncio.to_thread(storage.save_data, project, "decisions", data)
+            return {"updated": True, "id": dec_id, "changed_fields": changed, "decision": dec}
+    return {"error": f"Decision {dec_id} not found"}
+
+
+async def _handle_create_knowledge(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new knowledge object."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    title = args.get("title")
+    if not title:
+        return {"error": "title is required"}
+    category = args.get("category")
+    if not category:
+        return {"error": "category is required"}
+    content = args.get("content")
+    if not content:
+        return {"error": "content is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "knowledge")
+    items = data.get("knowledge", [])
+    new_id = _next_id(items, "K")
+    now = _now_iso()
+
+    knowledge = {
+        "id": new_id,
+        "title": title,
+        "category": category,
+        "content": content,
+        "status": "DRAFT",
+        "scopes": args.get("scopes", []),
+        "tags": args.get("tags", []),
+        "version": 1,
+        "versions": [{
+            "version": 1,
+            "content": content,
+            "changed_by": "ai",
+            "changed_at": now,
+            "change_reason": "Initial creation",
+        }],
+        "linked_entities": args.get("linked_entities", []),
+        "dependencies": args.get("dependencies", []),
+        "created_by": "ai",
+        "created_at": now,
+        "updated_at": now,
+    }
+    items.append(knowledge)
+    data["knowledge"] = items
+    await asyncio.to_thread(storage.save_data, project, "knowledge", data)
+    return {"created": True, "id": new_id, "knowledge": knowledge}
+
+
+async def _handle_update_knowledge(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update a knowledge object — content, status, or metadata."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    k_id = args.get("id")
+    if not k_id:
+        return {"error": "id is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "knowledge")
+    items = data.get("knowledge", [])
+
+    for item in items:
+        if item.get("id") == k_id:
+            changed = []
+            now = _now_iso()
+            # Content update creates new version
+            if "content" in args and args["content"] is not None:
+                change_reason = args.get("change_reason", "Updated via AI")
+                item["content"] = args["content"]
+                item["version"] = item.get("version", 1) + 1
+                versions = item.get("versions", [])
+                versions.append({
+                    "version": item["version"],
+                    "content": args["content"],
+                    "changed_by": "ai",
+                    "changed_at": now,
+                    "change_reason": change_reason,
+                })
+                item["versions"] = versions
+                changed.append("content")
+            for field in ("title", "status", "category", "scopes", "tags"):
+                if field in args and args[field] is not None:
+                    item[field] = args[field]
+                    changed.append(field)
+            if not changed:
+                return {"error": "No fields to update"}
+            item["updated_at"] = now
+            data["knowledge"] = items
+            await asyncio.to_thread(storage.save_data, project, "knowledge", data)
+            return {"updated": True, "id": k_id, "changed_fields": changed}
+    return {"error": f"Knowledge {k_id} not found"}
+
+
+async def _handle_create_guideline(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new guideline."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    title = args.get("title")
+    if not title:
+        return {"error": "title is required"}
+    scope = args.get("scope")
+    if not scope:
+        return {"error": "scope is required"}
+    content = args.get("content")
+    if not content:
+        return {"error": "content is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "guidelines")
+    guidelines = data.get("guidelines", [])
+    new_id = _next_id(guidelines, "G")
+    now = _now_iso()
+
+    guideline = {
+        "id": new_id,
+        "title": title,
+        "scope": scope,
+        "content": content,
+        "status": "ACTIVE",
+        "weight": args.get("weight", "should"),
+        "rationale": args.get("rationale", ""),
+        "examples": args.get("examples", []),
+        "tags": args.get("tags", []),
+        "derived_from": args.get("derived_from", ""),
+        "created": now,
+        "updated": now,
+    }
+    guidelines.append(guideline)
+    data["guidelines"] = guidelines
+    await asyncio.to_thread(storage.save_data, project, "guidelines", data)
+    return {"created": True, "id": new_id, "guideline": guideline}
+
+
+async def _handle_update_guideline(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update a guideline's content, status, or weight."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    g_id = args.get("id")
+    if not g_id:
+        return {"error": "id is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "guidelines")
+    guidelines = data.get("guidelines", [])
+
+    for g in guidelines:
+        if g.get("id") == g_id:
+            changed = []
+            for field in ("title", "content", "status", "weight", "scope", "rationale"):
+                if field in args and args[field] is not None:
+                    g[field] = args[field]
+                    changed.append(field)
+            if not changed:
+                return {"error": "No fields to update"}
+            g["updated"] = _now_iso()
+            data["guidelines"] = guidelines
+            await asyncio.to_thread(storage.save_data, project, "guidelines", data)
+            return {"updated": True, "id": g_id, "changed_fields": changed, "guideline": g}
+    return {"error": f"Guideline {g_id} not found"}
+
+
+async def _handle_create_lesson(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Record a lesson learned."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    category = args.get("category")
+    if not category:
+        return {"error": "category is required"}
+    title = args.get("title")
+    if not title:
+        return {"error": "title is required"}
+    detail = args.get("detail")
+    if not detail:
+        return {"error": "detail is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "lessons")
+    lessons = data.get("lessons", [])
+    new_id = _next_id(lessons, "L")
+    now = _now_iso()
+
+    lesson = {
+        "id": new_id,
+        "project": project,
+        "category": category,
+        "title": title,
+        "detail": detail,
+        "severity": args.get("severity", "important"),
+        "task_id": args.get("task_id", ""),
+        "decision_ids": args.get("decision_ids", []),
+        "applies_to": args.get("applies_to", ""),
+        "tags": args.get("tags", []),
+        "timestamp": now,
+    }
+    lessons.append(lesson)
+    data["lessons"] = lessons
+    await asyncio.to_thread(storage.save_data, project, "lessons", data)
+    return {"created": True, "id": new_id, "lesson": lesson}
+
+
+async def _handle_record_change(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Record a file change for audit trail."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    task_id = args.get("task_id")
+    if not task_id:
+        return {"error": "task_id is required"}
+    file_path = args.get("file")
+    if not file_path:
+        return {"error": "file is required"}
+    action = args.get("action")
+    if not action:
+        return {"error": "action is required"}
+    summary = args.get("summary")
+    if not summary:
+        return {"error": "summary is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "changes")
+    changes = data.get("changes", [])
+    new_id = _next_id(changes, "C")
+    now = _now_iso()
+
+    change = {
+        "id": new_id,
+        "task_id": task_id,
+        "file": file_path,
+        "action": action,
+        "summary": summary,
+        "reasoning_trace": args.get("reasoning_trace", []),
+        "decision_ids": args.get("decision_ids", []),
+        "lines_added": args.get("lines_added"),
+        "lines_removed": args.get("lines_removed"),
+        "guidelines_checked": args.get("guidelines_checked", []),
+        "timestamp": now,
+    }
+    changes.append(change)
+    data["changes"] = changes
+    await asyncio.to_thread(storage.save_data, project, "changes", data)
+    return {"recorded": True, "id": new_id, "change": change}
+
+
+# ---------------------------------------------------------------------------
 # Default registry factory
 # ---------------------------------------------------------------------------
 
@@ -1151,6 +1808,435 @@ def create_default_registry() -> ToolRegistry:
         context_types=["skill"],
         required_permission=("skills", "read"),
         handler=_handle_preview_skill,
+    ))
+
+    # --- Task tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="createTask",
+        description="Create a new task in the project pipeline.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Task name in kebab-case (e.g., 'setup-database')."},
+                "description": {"type": "string", "description": "What needs to be done."},
+                "instruction": {"type": "string", "description": "Step-by-step how to do it."},
+                "depends_on": {"type": "array", "items": {"type": "string"}, "description": "Prerequisite task IDs (e.g., ['T-001'])."},
+                "type": {"type": "string", "enum": ["feature", "bug", "chore", "investigation"], "description": "Task type."},
+                "scopes": {"type": "array", "items": {"type": "string"}, "description": "Guideline scopes (e.g., ['backend', 'database'])."},
+                "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "description": "Conditions that must be true when DONE."},
+                "origin": {"type": "string", "description": "Where this task came from (I-001, O-001, or free text)."},
+                "project": {"type": "string", "description": "Project slug. If omitted, uses context."},
+            },
+            "required": ["name"],
+        },
+        context_types=["task", "global"],
+        required_permission=("tasks", "write"),
+        handler=_handle_create_task,
+    ))
+
+    registry.register(ToolDef(
+        name="updateTask",
+        description="Update fields on a TODO or FAILED task.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Task ID (e.g., T-001)."},
+                "name": {"type": "string", "description": "New task name."},
+                "description": {"type": "string", "description": "New description."},
+                "instruction": {"type": "string", "description": "New instruction."},
+                "depends_on": {"type": "array", "items": {"type": "string"}, "description": "New dependency list."},
+                "type": {"type": "string", "enum": ["feature", "bug", "chore", "investigation"]},
+                "scopes": {"type": "array", "items": {"type": "string"}, "description": "New scopes."},
+                "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "description": "New acceptance criteria."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["task_id"],
+        },
+        context_types=["task"],
+        required_permission=("tasks", "write"),
+        handler=_handle_update_task,
+    ))
+
+    registry.register(ToolDef(
+        name="completeTask",
+        description="Mark a task as DONE with completion reasoning.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Task ID to complete (e.g., T-001)."},
+                "reasoning": {"type": "string", "description": "Why this task is considered done."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["task_id"],
+        },
+        context_types=["task"],
+        required_permission=("tasks", "write"),
+        handler=_handle_complete_task,
+    ))
+
+    # --- Objective tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="createObjective",
+        description="Create a business objective with measurable key results.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Concise objective name."},
+                "description": {"type": "string", "description": "Why this matters, who benefits."},
+                "key_results": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "metric": {"type": "string"},
+                            "baseline": {"type": "number"},
+                            "target": {"type": "number"},
+                            "current": {"type": "number"},
+                            "description": {"type": "string"},
+                        },
+                    },
+                    "description": "Measurable outcomes. Use metric/baseline/target for numeric or description/status for qualitative.",
+                },
+                "appetite": {"type": "string", "enum": ["small", "medium", "large"], "description": "Effort budget."},
+                "scopes": {"type": "array", "items": {"type": "string"}, "description": "Guideline scopes."},
+                "assumptions": {"type": "array", "items": {"type": "string"}, "description": "Hypotheses that must hold."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["title", "description", "key_results"],
+        },
+        context_types=["objective", "global"],
+        required_permission=("objectives", "write"),
+        handler=_handle_create_objective,
+    ))
+
+    registry.register(ToolDef(
+        name="updateObjective",
+        description="Update an objective's status or key result progress.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Objective ID (e.g., O-001)."},
+                "status": {"type": "string", "enum": ["ACTIVE", "ACHIEVED", "ABANDONED", "PAUSED"]},
+                "title": {"type": "string", "description": "New title."},
+                "description": {"type": "string", "description": "New description."},
+                "key_results": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "description": "KR ID (e.g., KR-1)."},
+                            "current": {"type": "number", "description": "Current value."},
+                            "status": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                    "description": "Key result updates (partial — only changed fields).",
+                },
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id"],
+        },
+        context_types=["objective"],
+        required_permission=("objectives", "write"),
+        handler=_handle_update_objective,
+    ))
+
+    # --- Idea tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="createIdea",
+        description="Add a new idea to the staging area.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Concise idea name."},
+                "description": {"type": "string", "description": "What to achieve and why."},
+                "category": {
+                    "type": "string",
+                    "enum": ["feature", "improvement", "experiment", "migration", "refactor", "infrastructure", "business-opportunity", "research"],
+                },
+                "priority": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+                "parent_id": {"type": "string", "description": "Parent idea ID for hierarchy (e.g., I-001)."},
+                "scopes": {"type": "array", "items": {"type": "string"}, "description": "Guideline scopes."},
+                "advances_key_results": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "KR IDs this idea advances (format: O-001/KR-1).",
+                },
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["title", "description"],
+        },
+        context_types=["idea", "global"],
+        required_permission=("ideas", "write"),
+        handler=_handle_create_idea,
+    ))
+
+    registry.register(ToolDef(
+        name="updateIdea",
+        description="Update an idea's fields or status.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Idea ID (e.g., I-001)."},
+                "status": {
+                    "type": "string",
+                    "enum": ["DRAFT", "EXPLORING", "APPROVED", "REJECTED", "COMMITTED"],
+                },
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "category": {"type": "string"},
+                "priority": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+                "exploration_notes": {"type": "string", "description": "Notes from exploration/discovery."},
+                "rejection_reason": {"type": "string"},
+                "relations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "enum": ["depends_on", "related_to", "supersedes", "duplicates"]},
+                            "target_id": {"type": "string"},
+                        },
+                        "required": ["type", "target_id"],
+                    },
+                    "description": "Relations to append (not replace).",
+                },
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id"],
+        },
+        context_types=["idea"],
+        required_permission=("ideas", "write"),
+        handler=_handle_update_idea,
+    ))
+
+    # --- Decision tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="createDecision",
+        description="Record a decision, exploration finding, or risk assessment.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "Related entity ID (T-001, I-001, O-001, or PLANNING/DISCOVERY/REVIEW).",
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "architecture", "implementation", "dependency", "security",
+                        "performance", "testing", "naming", "convention", "constraint",
+                        "business", "strategy", "other", "exploration", "risk",
+                    ],
+                },
+                "issue": {"type": "string", "description": "The decision/question/risk being addressed."},
+                "recommendation": {"type": "string", "description": "What we're choosing to do."},
+                "reasoning": {"type": "string", "description": "WHY this choice."},
+                "alternatives": {"type": "array", "items": {"type": "string"}, "description": "Alternatives considered."},
+                "confidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+                "status": {"type": "string", "enum": ["OPEN", "CLOSED", "DEFERRED"]},
+                "severity": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"], "description": "For risk type."},
+                "likelihood": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"], "description": "For risk type."},
+                "mitigation_plan": {"type": "string", "description": "For risk type."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["task_id", "type", "issue", "recommendation"],
+        },
+        context_types=["decision", "global"],
+        required_permission=("decisions", "write"),
+        handler=_handle_create_decision,
+    ))
+
+    registry.register(ToolDef(
+        name="updateDecision",
+        description="Update a decision — close, defer, mitigate, or add notes.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Decision ID (e.g., D-001)."},
+                "status": {
+                    "type": "string",
+                    "enum": ["OPEN", "CLOSED", "DEFERRED", "ANALYZING", "MITIGATED", "ACCEPTED"],
+                },
+                "recommendation": {"type": "string"},
+                "reasoning": {"type": "string"},
+                "resolution_notes": {"type": "string", "description": "How it was resolved."},
+                "mitigation_plan": {"type": "string"},
+                "confidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id"],
+        },
+        context_types=["decision"],
+        required_permission=("decisions", "write"),
+        handler=_handle_update_decision,
+    ))
+
+    # --- Knowledge tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="createKnowledge",
+        description="Create a knowledge object (domain rules, patterns, technical context).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Concise title."},
+                "category": {
+                    "type": "string",
+                    "enum": [
+                        "domain-rules", "api-reference", "architecture", "business-context",
+                        "technical-context", "code-patterns", "integration", "infrastructure",
+                    ],
+                },
+                "content": {"type": "string", "description": "The knowledge content."},
+                "scopes": {"type": "array", "items": {"type": "string"}, "description": "Areas this applies to."},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["title", "category", "content"],
+        },
+        context_types=["knowledge", "global"],
+        required_permission=("knowledge", "write"),
+        handler=_handle_create_knowledge,
+    ))
+
+    registry.register(ToolDef(
+        name="updateKnowledge",
+        description="Update a knowledge object — content (creates new version), status, or metadata.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Knowledge ID (e.g., K-001)."},
+                "content": {"type": "string", "description": "New content (creates a new version)."},
+                "change_reason": {"type": "string", "description": "Why the content is being changed."},
+                "status": {
+                    "type": "string",
+                    "enum": ["DRAFT", "ACTIVE", "REVIEW_NEEDED", "DEPRECATED", "ARCHIVED"],
+                },
+                "title": {"type": "string"},
+                "category": {"type": "string"},
+                "scopes": {"type": "array", "items": {"type": "string"}},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id"],
+        },
+        context_types=["knowledge"],
+        required_permission=("knowledge", "write"),
+        handler=_handle_update_knowledge,
+    ))
+
+    # --- Guideline tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="createGuideline",
+        description="Create a project guideline (standard, convention, rule).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Concise guideline name."},
+                "scope": {"type": "string", "description": "Area this applies to (backend, frontend, testing, etc.)."},
+                "content": {"type": "string", "description": "The guideline text."},
+                "weight": {"type": "string", "enum": ["must", "should", "may"], "description": "Priority weight."},
+                "rationale": {"type": "string", "description": "Why this guideline exists."},
+                "derived_from": {"type": "string", "description": "Objective ID if derived (e.g., O-001)."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["title", "scope", "content"],
+        },
+        context_types=["guideline", "global"],
+        required_permission=("guidelines", "write"),
+        handler=_handle_create_guideline,
+    ))
+
+    registry.register(ToolDef(
+        name="updateGuideline",
+        description="Update a guideline's content, status, or weight.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Guideline ID (e.g., G-001)."},
+                "content": {"type": "string", "description": "New guideline text."},
+                "status": {"type": "string", "enum": ["ACTIVE", "DEPRECATED"]},
+                "weight": {"type": "string", "enum": ["must", "should", "may"]},
+                "title": {"type": "string"},
+                "scope": {"type": "string"},
+                "rationale": {"type": "string"},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id"],
+        },
+        context_types=["guideline"],
+        required_permission=("guidelines", "write"),
+        handler=_handle_update_guideline,
+    ))
+
+    # --- Lesson tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="createLesson",
+        description="Record a lesson learned from project execution.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": [
+                        "pattern-discovered", "mistake-avoided", "decision-validated",
+                        "decision-reversed", "tool-insight", "architecture-lesson",
+                        "process-improvement", "market-insight",
+                    ],
+                },
+                "title": {"type": "string", "description": "Concise actionable title."},
+                "detail": {"type": "string", "description": "Explain WHY this matters."},
+                "severity": {"type": "string", "enum": ["critical", "important", "minor"]},
+                "task_id": {"type": "string", "description": "Related task ID."},
+                "decision_ids": {"type": "array", "items": {"type": "string"}, "description": "Related decision IDs."},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["category", "title", "detail"],
+        },
+        context_types=["lesson", "global"],
+        required_permission=("lessons", "write"),
+        handler=_handle_create_lesson,
+    ))
+
+    # --- Change tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="recordChange",
+        description="Record a file change for the audit trail.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Related task ID (e.g., T-001)."},
+                "file": {"type": "string", "description": "Relative file path from project root."},
+                "action": {"type": "string", "enum": ["create", "edit", "delete", "rename", "move"]},
+                "summary": {"type": "string", "description": "What was changed and why."},
+                "reasoning_trace": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "step": {"type": "string"},
+                            "detail": {"type": "string"},
+                        },
+                    },
+                    "description": "Step-by-step reasoning for the change.",
+                },
+                "decision_ids": {"type": "array", "items": {"type": "string"}, "description": "Decision IDs that led to this change."},
+                "guidelines_checked": {"type": "array", "items": {"type": "string"}, "description": "Guideline IDs verified."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["task_id", "file", "action", "summary"],
+        },
+        context_types=["change", "global"],
+        required_permission=("changes", "write"),
+        handler=_handle_record_change,
     ))
 
     return registry

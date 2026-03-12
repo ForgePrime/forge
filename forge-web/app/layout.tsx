@@ -3,7 +3,7 @@ import "./globals.css";
 import { TopNavBar } from "@/components/layout/TopNavBar";
 import { LeftPanelProvider } from "@/components/layout/LeftPanelProvider";
 import { LeftPanel } from "@/components/layout/LeftPanel";
-import { RightSidebarSlot } from "@/components/layout/RightSidebarSlot";
+import { AISidebarShell } from "@/components/ai/AISidebarShell";
 import { SWRProvider } from "@/lib/swr-config";
 import { ToastContainer } from "@/components/shared/ToastContainer";
 import { DebugInit } from "@/components/debug/DebugInit";
@@ -29,7 +29,7 @@ export default function RootLayout({
             <div className="flex flex-1 overflow-hidden">
               <LeftPanel />
               <main className="flex-1 overflow-y-auto">{children}</main>
-              <RightSidebarSlot />
+              <AISidebarShell />
             </div>
           </LeftPanelProvider>
           <ToastContainer />

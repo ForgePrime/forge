@@ -29,6 +29,8 @@ class LLMFeatureFlags(BaseModel):
     lessons: bool = False
     ac_templates: bool = False
     projects: bool = False
+    changes: bool = False
+    research: bool = False
 
 
 class LLMModulePermission(BaseModel):
@@ -51,6 +53,8 @@ DEFAULT_PERMISSIONS: dict[str, dict[str, bool]] = {
     "lessons": {"read": True, "write": False, "delete": False},
     "ac_templates": {"read": True, "write": False, "delete": False},
     "projects": {"read": True, "write": False, "delete": False},
+    "changes": {"read": True, "write": False, "delete": False},
+    "research": {"read": True, "write": False, "delete": False},
 }
 
 

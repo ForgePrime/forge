@@ -9,7 +9,7 @@
  */
 import { create } from "zustand";
 import type { ForgeEvent } from "@/lib/ws";
-import type { ChatMessage, ChatToolCall, ChatSendResponse } from "@/lib/types";
+import type { ChatMessage, ChatToolCall, ChatSendResponse, ChatSession } from "@/lib/types";
 import { llm } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -28,6 +28,21 @@ export interface ChatConversation {
   model: string;
 }
 
+/** Summary for session list (no full messages). */
+export interface ChatSessionSummary {
+  session_id: string;
+  context_type: string;
+  context_id: string;
+  project: string;
+  model_used: string;
+  message_count: number;
+  total_tokens_in: number;
+  total_tokens_out: number;
+  estimated_cost: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ChatState {
   /** All active conversations keyed by session ID. */
   conversations: Record<string, ChatConversation>;
@@ -37,6 +52,10 @@ interface ChatState {
   streaming: boolean;
   /** Last error message. */
   error: string | null;
+  /** Session list for sidebar conversations tab. */
+  sessionList: ChatSessionSummary[];
+  /** True while loading session list. */
+  sessionsLoading: boolean;
 }
 
 interface ChatActions {
@@ -69,6 +88,12 @@ interface ChatActions {
   removeConversation: (sessionId: string) => void;
   /** Clear error. */
   clearError: () => void;
+  /** Load session list from backend. */
+  loadSessions: (limit?: number) => Promise<void>;
+  /** Resume an existing session (load full messages). */
+  resumeSession: (sessionId: string) => Promise<void>;
+  /** Delete a session from backend and local state. */
+  deleteSession: (sessionId: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +135,8 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   activeSessionId: null,
   streaming: false,
   error: null,
+  sessionList: [],
+  sessionsLoading: false,
 
   sendMessage: async (message, contextType = "global", contextId = "", project = "", model = null, scopes, disabledCapabilities, fileIds) => {
     const state = get();
@@ -386,4 +413,54 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  loadSessions: async (limit = 50) => {
+    set({ sessionsLoading: true });
+    try {
+      const result = await llm.listSessions(limit);
+      set({ sessionList: result.sessions as ChatSessionSummary[], sessionsLoading: false });
+    } catch (e) {
+      set({ sessionsLoading: false, error: e instanceof Error ? e.message : "Failed to load sessions" });
+    }
+  },
+
+  resumeSession: async (sessionId) => {
+    try {
+      const session: ChatSession = await llm.getSession(sessionId);
+      const conv: ChatConversation = {
+        sessionId: session.session_id,
+        contextType: session.context_type,
+        contextId: session.context_id,
+        project: session.project,
+        messages: session.messages ?? [],
+        totalTokensIn: session.total_tokens_in,
+        totalTokensOut: session.total_tokens_out,
+        estimatedCost: session.estimated_cost,
+        model: session.model_used ?? "",
+      };
+      set((s) => ({
+        conversations: { ...s.conversations, [sessionId]: conv },
+        activeSessionId: sessionId,
+        error: null,
+      }));
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : "Failed to resume session" });
+    }
+  },
+
+  deleteSession: async (sessionId) => {
+    try {
+      await llm.deleteSession(sessionId);
+      set((s) => {
+        const { [sessionId]: _, ...rest } = s.conversations;
+        return {
+          conversations: rest,
+          sessionList: s.sessionList.filter((ss) => ss.session_id !== sessionId),
+          activeSessionId: s.activeSessionId === sessionId ? null : s.activeSessionId,
+        };
+      });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : "Failed to delete session" });
+    }
+  },
 }));

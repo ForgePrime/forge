@@ -14,6 +14,12 @@ import type {
   LLMFeatureFlags,
   LLMModulePermission,
 } from "@/lib/types";
+import {
+  CAPABILITY_CONTRACTS,
+  getPermissionStatus,
+  type CapabilityDef,
+  type CapabilityContract,
+} from "@/lib/capabilities";
 
 const MODULE_LABELS: Record<string, string> = {
   skills: "Skills",
@@ -26,6 +32,8 @@ const MODULE_LABELS: Record<string, string> = {
   lessons: "Lessons",
   ac_templates: "AC Templates",
   projects: "Projects",
+  changes: "Changes",
+  research: "Research",
 };
 
 const MODULE_DESCRIPTIONS: Record<string, string> = {
@@ -39,6 +47,8 @@ const MODULE_DESCRIPTIONS: Record<string, string> = {
   lessons: "AI extraction of lessons learned",
   ac_templates: "AI generation of acceptance criteria",
   projects: "AI assistance at project level",
+  changes: "AI recording of file changes for audit trail",
+  research: "AI access to research objects and findings",
 };
 
 export default function LLMSettingsPage() {
@@ -54,6 +64,7 @@ export default function LLMSettingsPage() {
       <SkillsGitSyncSection />
       <FeatureFlagsSection />
       <PermissionsSection />
+      <CapabilitiesSection />
       <LimitsSection />
       <DebugConsoleSection />
     </div>
@@ -411,6 +422,158 @@ function PermissionsSection() {
             })}
           </tbody>
         </table>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI Capabilities — per-scope operation registry with contracts
+// ---------------------------------------------------------------------------
+
+const ACTION_COLORS: Record<string, string> = {
+  READ: "bg-blue-100 text-blue-700",
+  WRITE: "bg-amber-100 text-amber-700",
+  DELETE: "bg-red-100 text-red-700",
+};
+
+function ContractView({ contract }: { contract: CapabilityContract }) {
+  return (
+    <div className="mt-2 p-2 bg-gray-50 rounded text-[11px] font-mono space-y-1.5">
+      {contract.params.length > 0 && (
+        <div>
+          <span className="text-gray-500 font-sans text-[10px] uppercase">Parameters:</span>
+          <div className="mt-1 space-y-0.5">
+            {contract.params.map((p) => (
+              <div key={p.name} className="flex gap-1.5">
+                <span className={`${p.required ? "text-gray-800" : "text-gray-500"}`}>
+                  {p.name}{p.required ? "" : "?"}
+                </span>
+                <span className="text-gray-400">:</span>
+                <span className="text-purple-600">{p.type}</span>
+                {p.enum && (
+                  <span className="text-gray-400">({p.enum.join(" | ")})</span>
+                )}
+                <span className="text-gray-400 font-sans">— {p.description}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div>
+        <span className="text-gray-500 font-sans text-[10px] uppercase">Returns:</span>
+        <span className="ml-1.5 text-gray-600 font-sans">{contract.returns}</span>
+      </div>
+    </div>
+  );
+}
+
+function CapabilityRow({
+  cap,
+  permissions,
+}: {
+  cap: CapabilityDef;
+  permissions: Record<string, LLMModulePermission>;
+}) {
+  const [showContract, setShowContract] = useState(false);
+  const status = getPermissionStatus(cap, permissions);
+
+  return (
+    <div className="py-1.5">
+      <div className="flex items-center gap-2">
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${ACTION_COLORS[cap.action] ?? "bg-gray-100 text-gray-600"}`}>
+          {cap.action}
+        </span>
+        <span className="text-xs text-gray-800 flex-1">{cap.label}</span>
+        <span className={`text-[10px] ${
+          status === "enabled" ? "text-green-600" : status === "no-permission" ? "text-red-500" : "text-gray-400"
+        }`}>
+          {status === "enabled" ? "Enabled" : status === "no-permission" ? "Blocked" : "Coming soon"}
+        </span>
+        {cap.contract && (
+          <button
+            onClick={() => setShowContract(!showContract)}
+            className="text-[10px] text-forge-600 hover:text-forge-800 underline"
+          >
+            {showContract ? "Hide" : "Contract"}
+          </button>
+        )}
+      </div>
+      <p className="text-[10px] text-gray-400 ml-[38px]">{cap.description}</p>
+      {showContract && cap.contract && (
+        <div className="ml-[38px]">
+          <ContractView contract={cap.contract} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CapabilitiesSection() {
+  const { data: config } = useSWR<LLMConfig>("/llm/config");
+  const [expandedScopes, setExpandedScopes] = useState<Set<string>>(new Set());
+  const permissions = config?.permissions ?? {};
+
+  const toggleScope = useCallback((scope: string) => {
+    setExpandedScopes((prev) => {
+      const next = new Set(prev);
+      if (next.has(scope)) {
+        next.delete(scope);
+      } else {
+        next.add(scope);
+      }
+      return next;
+    });
+  }, []);
+
+  const scopes = Object.keys(CAPABILITY_CONTRACTS);
+
+  return (
+    <section className="border rounded-lg p-4">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">AI Capabilities</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        All operations the AI can perform, grouped by scope. Each operation shows its permission status
+        (based on Permissions above) and contract details.
+      </p>
+
+      <div className="space-y-1">
+        {scopes.map((scope) => {
+          const caps = CAPABILITY_CONTRACTS[scope] ?? [];
+          const expanded = expandedScopes.has(scope);
+          const readCount = caps.filter((c) => c.action === "READ").length;
+          const writeCount = caps.filter((c) => c.action === "WRITE").length;
+          const deleteCount = caps.filter((c) => c.action === "DELETE").length;
+
+          return (
+            <div key={scope} className="border rounded-md">
+              <button
+                onClick={() => toggleScope(scope)}
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors text-left"
+              >
+                <svg
+                  className={`h-3 w-3 text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700 flex-1">
+                  {MODULE_LABELS[scope] ?? scope}
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  {readCount}R {writeCount > 0 ? `${writeCount}W ` : ""}{deleteCount > 0 ? `${deleteCount}D ` : ""}
+                  ({caps.length} total)
+                </span>
+              </button>
+              {expanded && (
+                <div className="px-3 pb-2 border-t divide-y divide-gray-100">
+                  {caps.map((cap) => (
+                    <CapabilityRow key={cap.id} cap={cap} permissions={permissions} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
