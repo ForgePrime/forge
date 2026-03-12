@@ -70,6 +70,7 @@ class LLMConfig(BaseModel):
             for module, perms in DEFAULT_PERMISSIONS.items()
         }
     )
+    api_keys: dict[str, str] = Field(default_factory=dict)
     max_tokens_per_session: int = 50_000
     max_iterations_per_turn: int = 10
     session_ttl_hours: int = 24
@@ -82,6 +83,7 @@ class LLMConfigUpdate(BaseModel):
     default_model: str | None = None
     feature_flags: dict[str, bool] | None = None
     permissions: dict[str, LLMModulePermission | dict[str, bool]] | None = None
+    api_keys: dict[str, str] | None = None
     max_tokens_per_session: int | None = None
     max_iterations_per_turn: int | None = None
     session_ttl_hours: int | None = None

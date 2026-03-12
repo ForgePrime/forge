@@ -226,6 +226,35 @@ class OllamaProvider:
         finally:
             resp.close()
 
+    async def list_models(self) -> list[dict[str, Any]]:
+        """List available Ollama models via /api/tags endpoint."""
+        import asyncio
+
+        def _fetch_tags() -> list[dict[str, Any]]:
+            url = f"{self._base_url}/api/tags"
+            req = urllib.request.Request(url)
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                return [
+                    {
+                        "id": m["name"],
+                        "name": m["name"],
+                        "context_window": self._context_window,
+                        "max_output": self._max_output,
+                        "supports_vision": False,
+                    }
+                    for m in data.get("models", [])
+                ]
+            except Exception:
+                return []
+
+        try:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, _fetch_tags)
+        except Exception:
+            return []
+
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
             provider_name="ollama",

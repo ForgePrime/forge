@@ -21,7 +21,7 @@ Design decisions:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Protocol, runtime_checkable
 
 
 # ---------------------------------------------------------------------------
@@ -277,3 +277,12 @@ class LLMProvider(Protocol):
             ProviderCapabilities describing what this provider supports.
         """
         ...
+
+    async def list_models(self) -> list[dict[str, Any]]:
+        """List available models from this provider.
+
+        Returns a list of dicts with at least: id, name.
+        Optional fields: context_window, max_output, supports_vision.
+        Default implementation returns empty list.
+        """
+        return []

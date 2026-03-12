@@ -48,10 +48,16 @@ def _load_toml(path: Path) -> dict[str, Any]:
         return tomllib.load(f)
 
 
-def _resolve_api_key(config: dict[str, Any]) -> str:
-    """Resolve API key from config: direct value or environment variable."""
+def _resolve_api_key(config: dict[str, Any], ui_keys: dict[str, str] | None = None) -> str:
+    """Resolve API key from config: UI key > direct value > environment variable."""
+    # 1. UI-provided key takes priority
+    provider_name = config.get("_provider_name", "")
+    if ui_keys and provider_name and provider_name in ui_keys:
+        return ui_keys[provider_name]
+    # 2. Direct api_key in config (providers.toml or injected)
     if "api_key" in config:
         return config["api_key"]
+    # 3. Environment variable
     env_var = config.get("api_key_env", "")
     if env_var:
         key = os.environ.get(env_var, "")
@@ -64,14 +70,16 @@ def _resolve_api_key(config: dict[str, Any]) -> str:
     return ""
 
 
-def _create_provider(name: str, config: dict[str, Any]) -> LLMProvider:
+def _create_provider(name: str, config: dict[str, Any], ui_keys: dict[str, str] | None = None) -> LLMProvider:
     """Create a provider instance from config dict."""
     provider_type = config.get("provider", name).lower()
+    # Tag config with provider name for UI key resolution
+    config_with_name = {**config, "_provider_name": name}
 
     if provider_type == "anthropic":
         from core.llm.providers.anthropic import AnthropicProvider
 
-        api_key = _resolve_api_key(config)
+        api_key = _resolve_api_key(config_with_name, ui_keys)
         if not api_key:
             raise ProviderError(
                 "Anthropic provider requires api_key or api_key_env"
@@ -85,7 +93,7 @@ def _create_provider(name: str, config: dict[str, Any]) -> LLMProvider:
     elif provider_type == "openai":
         from core.llm.providers.openai import OpenAIProvider
 
-        api_key = _resolve_api_key(config)
+        api_key = _resolve_api_key(config_with_name, ui_keys)
         if not api_key:
             raise ProviderError(
                 "OpenAI provider requires api_key or api_key_env"
@@ -125,6 +133,7 @@ class ProviderRegistry:
     def __init__(self, configs: dict[str, dict[str, Any]] | None = None) -> None:
         self._configs: dict[str, dict[str, Any]] = configs or {}
         self._instances: dict[str, LLMProvider] = {}
+        self._ui_keys: dict[str, str] = {}
 
     @classmethod
     def from_toml(cls, path: Path) -> ProviderRegistry:
@@ -157,6 +166,13 @@ class ProviderRegistry:
         # Clear cached instance if exists
         self._instances.pop(name, None)
 
+    def set_ui_keys(self, keys: dict[str, str]) -> None:
+        """Set UI-provided API keys. Clears cached instances for affected providers."""
+        for name, key in keys.items():
+            if key and self._ui_keys.get(name) != key:
+                self._instances.pop(name, None)
+        self._ui_keys = {k: v for k, v in keys.items() if v}
+
     def get(self, name: str) -> LLMProvider:
         """Get a provider by name. Creates the instance on first access.
 
@@ -172,7 +188,7 @@ class ProviderRegistry:
                 f"Available: {', '.join(self.list_providers())}"
             )
 
-        provider = _create_provider(name, self._configs[name])
+        provider = _create_provider(name, self._configs[name], self._ui_keys)
         self._instances[name] = provider
         return provider
 

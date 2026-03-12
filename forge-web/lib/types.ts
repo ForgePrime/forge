@@ -1033,11 +1033,21 @@ export interface ChatSendResponse {
   stop_reason: string;
 }
 
+export interface ProviderModel {
+  id: string;
+  name: string;
+  context_window?: number | null;
+  max_output?: number | null;
+  supports_vision?: boolean;
+}
+
 export interface LLMProvider {
   name: string;
   provider_type: string;
   default_model: string;
   status: string;
+  has_api_key: boolean;
+  api_key_source: string;
 }
 
 export interface LLMProviderTestResult {
@@ -1060,6 +1070,8 @@ export interface LLMFeatureFlags {
   lessons: boolean;
   ac_templates: boolean;
   projects: boolean;
+  changes: boolean;
+  research: boolean;
 }
 
 export interface LLMModulePermission {
@@ -1073,6 +1085,7 @@ export interface LLMConfig {
   default_model: string | null;
   feature_flags: LLMFeatureFlags;
   permissions: Record<string, LLMModulePermission>;
+  api_keys: Record<string, string>;
   max_tokens_per_session: number;
   max_iterations_per_turn: number;
   session_ttl_hours: number;

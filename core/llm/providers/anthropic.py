@@ -255,6 +255,37 @@ class AnthropicProvider:
         except Exception as e:
             raise ProviderError(f"Anthropic streaming error: {e}") from e
 
+    async def list_models(self) -> list[dict[str, Any]]:
+        """List available Anthropic models. Tries API first, falls back to static."""
+        try:
+            result = await self._client.models.list(limit=100)
+            models = []
+            for m in result.data:
+                caps = _MODEL_CAPS.get(m.id, _DEFAULT_CAPS)
+                models.append({
+                    "id": m.id,
+                    "name": getattr(m, "display_name", None) or m.id,
+                    "context_window": caps["max_context_window"],
+                    "max_output": caps["max_output_tokens"],
+                    "supports_vision": caps.get("supports_vision", False),
+                })
+            return models if models else self._static_models()
+        except Exception:
+            return self._static_models()
+
+    @staticmethod
+    def _static_models() -> list[dict[str, Any]]:
+        return [
+            {
+                "id": model_id,
+                "name": model_id,
+                "context_window": caps["max_context_window"],
+                "max_output": caps["max_output_tokens"],
+                "supports_vision": caps.get("supports_vision", False),
+            }
+            for model_id, caps in _MODEL_CAPS.items()
+        ]
+
     def capabilities(self) -> ProviderCapabilities:
         caps = _MODEL_CAPS.get(self._model, _DEFAULT_CAPS)
         return ProviderCapabilities(

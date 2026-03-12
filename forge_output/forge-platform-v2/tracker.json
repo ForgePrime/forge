@@ -2,7 +2,7 @@
   "project": "forge-platform-v2",
   "goal": "Implement Forge Platform v2 Phases 2-4: Database & API, Web UI, AI Features — per docs/FORGE-PLATFORM-V2.md Sections 7-11. Builds on completed Phase 1 (forge-platform-v2-phase1).",
   "created": "2026-03-10T19:00:00Z",
-  "updated": "2026-03-12T21:59:26Z",
+  "updated": "2026-03-12T23:28:52Z",
   "config": {},
   "tasks": [
     {
@@ -5122,5 +5122,275 @@
       "agent": "default",
       "started_at_commit": "c5aed2933ccc6a4690f58afca1042af2a8a04e91"
     }
-  ]
+  ],
+  "draft_plan": {
+    "source_idea_id": null,
+    "source_objective_id": "O-017",
+    "created": "2026-03-12T23:28:52Z",
+    "tasks": [
+      {
+        "id": "T-166",
+        "name": "manifest-schema-and-scope-derivation",
+        "description": "Finalize PageManifest TypeScript schema with all element types, actions, conditions, data sources. Implement deriveScopes() function that extracts scopes from API endpoints in manifests. Add unit tests for scope derivation.",
+        "instruction": "1. Review and finalize forge-web/lib/manifest/types.ts. 2. Write unit tests for deriveScopes() in forge-web/lib/manifest/__tests__/deriveScopes.test.ts. 3. Export from forge-web/lib/manifest/index.ts. 4. Verify TypeScript compilation passes.",
+        "depends_on": [],
+        "type": "feature",
+        "scopes": [
+          "frontend",
+          "ai"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "PageManifest type and all 20+ element types compile without errors",
+          "deriveScopes() correctly extracts scopes from endpoint paths",
+          "Unit tests cover: project-scoped endpoints, global endpoints, mixed, edge cases",
+          "Exported from lib/manifest/index.ts"
+        ]
+      },
+      {
+        "id": "T-167",
+        "name": "manifest-serializer",
+        "description": "Implement ManifestSerializer: converts PageManifest + PageSnapshot into structured text for AI context. Handles all element types with readable output format.",
+        "instruction": "1. Finalize forge-web/lib/manifest/serializer.ts. 2. Ensure serializeManifest() produces clean output for every element type. 3. Add truncation logic (max 6000 chars). 4. Add AI sidebar self-awareness serialization. 5. Write unit tests with mock snapshot data.",
+        "depends_on": [
+          "T-166"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend",
+          "ai"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "serializeManifest() produces structured text for all element types",
+          "Card rows show badges, title, available actions based on conditions",
+          "Form drawer shows field list with required markers and current values",
+          "AI sidebar state included when available",
+          "Output respects maxChars limit with truncation",
+          "Unit tests verify output format"
+        ]
+      },
+      {
+        "id": "T-168",
+        "name": "task-list-manifest-poc",
+        "description": "Create complete PageManifest for Tasks list page. Must cover: status/type filters, card list with all fields, status transitions with conditional visibility, form drawer.",
+        "instruction": "1. Review current tasks page for completeness. 2. Finalize forge-web/lib/manifest/pages/task-list.manifest.ts. 3. Add skip/retry transitions. 4. Verify manifest matches current UX. 5. Test deriveScopes returns ['tasks'].",
+        "depends_on": [
+          "T-166"
+        ],
+        "parallel": true,
+        "type": "feature",
+        "scopes": [
+          "frontend"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "Manifest defines all elements from current Tasks page",
+          "Status transitions match: TODO->IN_PROGRESS/SKIPPED, IN_PROGRESS->DONE/FAILED, FAILED->TODO",
+          "Card includes: ID, status, type badges, name, description, scopes, dependencies",
+          "Form drawer includes all TaskForm fields",
+          "deriveScopes() returns ['tasks']"
+        ]
+      },
+      {
+        "id": "T-169",
+        "name": "manifest-renderer-core",
+        "description": "Build generic ManifestRenderer React component. Takes PageManifest and renders interactive page with layout areas, data fetching, and action dispatching.",
+        "instruction": "1. Create forge-web/components/manifest/ManifestRenderer.tsx. 2. Create elements/ directory with per-type renderers. 3. Implement useManifestData() hook (SWR). 4. Implement useManifestActions() hook. 5. Use existing Tailwind patterns. 6. Wire WebSocket refresh.",
+        "depends_on": [
+          "T-166"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "ManifestRenderer renders PageManifest into interactive UI",
+          "All layout types work: list, dashboard, detail, settings",
+          "Data sources fetch from API and provide data to elements",
+          "Actions execute: api-call, filter, navigate, open-form",
+          "Conditional visibility works for elements and row actions",
+          "WebSocket events trigger data source refresh"
+        ]
+      },
+      {
+        "id": "T-170",
+        "name": "manifest-renderer-elements",
+        "description": "Implement all individual element renderers. Each element type needs a React component handling rendering, data binding, and interaction.",
+        "instruction": "Create renderers in forge-web/components/manifest/elements/: ButtonRenderer, SelectRenderer, TextInputRenderer, BadgeRenderer, TextDisplayRenderer, CardListRenderer, CardRenderer, DataTableRenderer, FormDrawerRenderer, FormFieldRenderer, SectionRenderer, TabsRenderer, ProgressBarRenderer, ContainerRenderer, AlertRenderer, ToggleRenderer, CheckboxRenderer.",
+        "depends_on": [
+          "T-169"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "Every ManifestElement type has a renderer",
+          "Tailwind classes consistent with existing forge-web styling",
+          "BadgeRenderer maps values via variantMap",
+          "CardListRenderer applies client-side filters",
+          "FormDrawerRenderer renders fields by fieldType with validation",
+          "All renderers handle missing/empty data"
+        ]
+      },
+      {
+        "id": "T-171",
+        "name": "manifest-live-state-capture",
+        "description": "Implement PageSnapshot capture and integrate with chat store. Snapshot is serialized and sent with every AI message as page context.",
+        "instruction": "1. Create forge-web/lib/manifest/stateCapture.ts with capturePageSnapshot(). 2. Create useManifestSnapshot() hook. 3. In ManifestRenderer, register element state changes. 4. Integrate with chatStore.sendMessage(). 5. Pass serialized context to /llm/chat.",
+        "depends_on": [
+          "T-167",
+          "T-169"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend",
+          "ai"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "capturePageSnapshot() returns PageSnapshot with all states",
+          "Snapshot includes filter values, visible data rows, form state",
+          "Chat messages include serialized page context on manifest pages",
+          "Snapshot captured at send time (not stale)",
+          "AI receives page context in system prompt"
+        ]
+      },
+      {
+        "id": "T-172",
+        "name": "manifest-action-executor-ai",
+        "description": "Build action executor: AI performs manifest actions (click, submit, filter) through tool calls with delta feedback.",
+        "instruction": "1. Add executePageAction tool in forge-api/app/llm/tool_registry.py. 2. Tool sends WS command to frontend. 3. Frontend executes action from manifest. 4. Frontend sends delta via WS. 5. Delta returned as tool result. 6. Add ManifestRenderer handler for ai-action events.",
+        "depends_on": [
+          "T-170",
+          "T-171"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend",
+          "ai",
+          "backend"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "AI can execute manifest actions by element ID",
+          "Actions use same code path as user clicks",
+          "AI receives delta feedback on changes",
+          "Permission system applies",
+          "Works for: buttons, forms, filters"
+        ]
+      },
+      {
+        "id": "T-173",
+        "name": "manifest-scope-integration",
+        "description": "Replace static useScopeResolver route rules with manifest-based scope derivation. Fallback to regex for non-manifest pages.",
+        "instruction": "1. Create forge-web/lib/manifest/registry.ts mapping routes to manifests. 2. Update useScopeResolver to check registry first. 3. Remove redundant route rules. 4. Update AISidebar. 5. Update capability filtering for manifest pages.",
+        "depends_on": [
+          "T-166",
+          "T-169"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend",
+          "ai"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "Manifest pages derive scopes from API endpoints",
+          "Non-manifest pages use existing regex rules",
+          "AISidebar shows correct scopes on manifest pages",
+          "Capability list reflects manifest actions",
+          "No regression in scope detection"
+        ]
+      },
+      {
+        "id": "T-174",
+        "name": "manifest-ai-sidebar-self-awareness",
+        "description": "AI sidebar as manifest element with self-awareness: conversation history, tools used, session info, position on page.",
+        "instruction": "1. Add AISidebarElement to page manifests. 2. Serialize AISidebarState in serializer. 3. Create useSidebarSelfAwareness() hook from chatStore. 4. Include in page snapshot. 5. Update backend context resolver.",
+        "depends_on": [
+          "T-171"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend",
+          "ai"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "AI context includes sidebar state: session, message count, tools used",
+          "Last 3 messages summarized in context",
+          "AI can reference previous responses",
+          "Sidebar described positionally in output"
+        ]
+      },
+      {
+        "id": "T-175",
+        "name": "manifest-backend-context-endpoint",
+        "description": "Backend endpoint accepts serialized page context from frontend, includes in LLM system prompt. Update chat endpoint with page_context field.",
+        "instruction": "1. Add page_context field to ChatRequest in forge-api/app/routers/llm_chat.py. 2. Prepend to system prompt. 3. Update chatStore to send serialized manifest. 4. Add token budget (max ~2000 tokens). 5. Update frontend API types.",
+        "depends_on": [
+          "T-171"
+        ],
+        "type": "feature",
+        "scopes": [
+          "backend",
+          "ai",
+          "frontend"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "ChatRequest accepts optional page_context field",
+          "System prompt includes page context when provided",
+          "Token budget respected (max ~2000 tokens)",
+          "Frontend sends serialized manifest with each message",
+          "AI shows awareness of page context"
+        ]
+      },
+      {
+        "id": "T-176",
+        "name": "manifest-tasks-page-migration",
+        "description": "Replace current Tasks list page with ManifestRenderer using task-list.manifest.ts. Visual parity required.",
+        "instruction": "1. Create forge-web/app/projects/[slug]/tasks-v2/page.tsx with ManifestRenderer. 2. Compare side-by-side. 3. Adjust until visual parity. 4. Add feature flag. 5. When parity confirmed, swap routes.",
+        "depends_on": [
+          "T-168",
+          "T-170"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "ManifestRenderer renders Tasks page with visual parity",
+          "All interactions work: filtering, status transitions, create/edit",
+          "Feature flag for switching implementations",
+          "No regression"
+        ]
+      },
+      {
+        "id": "T-177",
+        "name": "manifest-additional-pages",
+        "description": "Create manifests for: Objectives, Ideas, Decisions, Knowledge, Guidelines. Each must match current page behavior.",
+        "instruction": "1. Create manifest files in forge-web/lib/manifest/pages/. 2. Follow task-list.manifest.ts patterns. 3. Match current page behavior. 4. Register in registry. 5. Feature flag per page.",
+        "depends_on": [
+          "T-176"
+        ],
+        "type": "feature",
+        "scopes": [
+          "frontend"
+        ],
+        "origin": "O-017",
+        "acceptance_criteria": [
+          "Manifests exist for: objectives, ideas, decisions, knowledge, guidelines",
+          "Each covers all current page elements",
+          "Registered in manifest registry",
+          "Can render with ManifestRenderer"
+        ]
+      }
+    ]
+  }
 }

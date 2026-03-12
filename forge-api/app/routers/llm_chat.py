@@ -69,6 +69,8 @@ class ProviderInfo(BaseModel):
     provider_type: str
     default_model: str
     status: str = "unchecked"
+    has_api_key: bool = False
+    api_key_source: str = "none"  # "ui" | "env" | "config" | "none"
 
 
 # Scope (frontend plural) → context_type (backend singular) mapping
@@ -160,6 +162,10 @@ async def chat(
                     detail=f"LLM chat is disabled for module '{body.context_type}'. "
                            f"Enable it in Settings > LLM > Feature Flags.",
                 )
+
+    # --- Inject UI-stored API keys into registry ---
+    if config.api_keys:
+        registry.set_ui_keys(config.api_keys)
 
     # --- Resolve provider ---
     provider_name = config.default_provider
@@ -350,25 +356,107 @@ async def chat(
 @router.get("/providers")
 async def list_providers(
     registry=Depends(get_provider_registry),
+    config=Depends(get_llm_config),
 ) -> dict[str, Any]:
     """List all configured LLM providers."""
+    ui_keys = config.api_keys or {}
     providers = []
     for name in registry.list_providers():
-        config = registry._configs.get(name, {})
+        pconfig = registry._configs.get(name, {})
+        # Determine API key source
+        has_key = False
+        key_source = "none"
+        if name in ui_keys and ui_keys[name]:
+            has_key = True
+            key_source = "ui"
+        elif pconfig.get("api_key"):
+            has_key = True
+            key_source = "config"
+        elif pconfig.get("api_key_env"):
+            env_val = os.environ.get(pconfig["api_key_env"], "")
+            if env_val:
+                has_key = True
+                key_source = "env"
+        elif pconfig.get("provider", name) == "ollama":
+            # Ollama doesn't need an API key
+            has_key = True
+            key_source = "none"
         providers.append(
             ProviderInfo(
                 name=name,
-                provider_type=config.get("provider", name),
-                default_model=config.get("model", "unknown"),
+                provider_type=pconfig.get("provider", name),
+                default_model=pconfig.get("model", "unknown"),
+                has_api_key=has_key,
+                api_key_source=key_source,
             )
         )
     return {"providers": [p.model_dump() for p in providers]}
+
+
+class ProviderModelInfo(BaseModel):
+    id: str
+    name: str
+    context_window: int | None = None
+    max_output: int | None = None
+    supports_vision: bool = False
+
+
+@router.get("/providers/{name}/models")
+async def list_provider_models(
+    name: str,
+    registry=Depends(get_provider_registry),
+    config=Depends(get_llm_config),
+) -> dict[str, Any]:
+    """List available models for a specific provider.
+
+    Tries dynamic listing via API. Falls back to static model caps
+    if provider can't be instantiated (e.g., no API key).
+    """
+    from core.llm.provider import ProviderError
+
+    # Inject UI keys before accessing provider
+    if config.api_keys:
+        registry.set_ui_keys(config.api_keys)
+
+    try:
+        provider = registry.get(name)
+        models = await provider.list_models()
+        if models:
+            return {"provider": name, "models": models}
+    except (ProviderError, Exception) as e:
+        logger.debug("Dynamic model list unavailable for %s: %s", name, e)
+
+    # Fallback to static model caps
+    pconfig = registry._configs.get(name, {})
+    provider_type = pconfig.get("provider", name).lower()
+    models = _static_model_list(provider_type)
+    return {"provider": name, "models": models}
+
+
+def _static_model_list(provider_type: str) -> list[dict[str, Any]]:
+    """Return hardcoded model list for a provider type."""
+    if provider_type == "anthropic":
+        from core.llm.providers.anthropic import _MODEL_CAPS
+        return [
+            {"id": k, "name": k, "context_window": v["max_context_window"],
+             "max_output": v["max_output_tokens"], "supports_vision": v.get("supports_vision", False)}
+            for k, v in _MODEL_CAPS.items()
+        ]
+    elif provider_type == "openai":
+        from core.llm.providers.openai import _MODEL_CAPS
+        return [
+            {"id": k, "name": k, "context_window": v["max_context_window"],
+             "max_output": v["max_output_tokens"], "supports_vision": v.get("supports_vision", False)}
+            for k, v in _MODEL_CAPS.items()
+        ]
+    return []
 
 
 @router.post("/providers/test")
 async def test_provider(
     body: ProviderTestRequest,
     registry=Depends(get_provider_registry),
+    config=Depends(get_llm_config),
 ) -> ProviderTestResponse:
     """Test connection to an LLM provider with a simple completion call."""
     from core.llm.provider import (
@@ -376,6 +464,10 @@ async def test_provider(
         Message,
         ProviderError,
     )
+
+    # Inject UI keys so test uses the user-configured key
+    if config.api_keys:
+        registry.set_ui_keys(config.api_keys)
 
     try:
         provider = registry.get(body.provider)
@@ -420,7 +512,14 @@ async def get_config(
     config=Depends(get_llm_config),
 ) -> dict[str, Any]:
     """Get current LLM configuration (feature flags, permissions, defaults)."""
-    return config.model_dump()
+    data = config.model_dump()
+    # Mask API keys — show only last 4 chars
+    if data.get("api_keys"):
+        data["api_keys"] = {
+            k: f"...{v[-4:]}" if len(v) > 4 else "****"
+            for k, v in data["api_keys"].items()
+        }
+    return data
 
 
 @router.put("/config")
@@ -456,6 +555,15 @@ async def update_config(
                 current["feature_flags"].update(
                     value if isinstance(value, dict) else value.model_dump()
                 )
+            elif key == "api_keys" and isinstance(value, dict):
+                # Merge: empty string removes the key
+                existing_keys = current.get("api_keys", {})
+                for provider, api_key in value.items():
+                    if api_key:
+                        existing_keys[provider] = api_key
+                    else:
+                        existing_keys.pop(provider, None)
+                current["api_keys"] = existing_keys
             else:
                 current[key] = value
 
@@ -473,7 +581,14 @@ async def update_config(
         encoding="utf-8",
     )
 
-    return updated.model_dump()
+    # Mask API keys in response
+    data = updated.model_dump()
+    if data.get("api_keys"):
+        data["api_keys"] = {
+            k: f"...{v[-4:]}" if len(v) > 4 else "****"
+            for k, v in data["api_keys"].items()
+        }
+    return data
 
 
 # ---------------------------------------------------------------------------

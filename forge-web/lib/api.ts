@@ -251,7 +251,7 @@ import type {
   Skill, SkillCreate, SkillUpdate, ValidationResult, LintResult, PromoteResult,
   SkillGenerateRequest, SkillImportRequest, BulkLintResult, SkillCategoryDef, SkillUsageEntry,
   ChatSendRequest, ChatSendResponse, ChatSession, ChatFileAttachment,
-  LLMProvider, LLMProviderTestResult, LLMConfig,
+  LLMProvider, LLMProviderTestResult, LLMConfig, ProviderModel,
 } from "./types";
 
 // -- Projects --
@@ -578,6 +578,8 @@ export const llm = {
     remove<{ deleted: boolean; session_id: string }>(`/llm/sessions/${sessionId}`),
   getProviders: () =>
     get<{ providers: LLMProvider[] }>("/llm/providers"),
+  getProviderModels: (name: string) =>
+    get<{ provider: string; models: ProviderModel[] }>(`/llm/providers/${name}/models`),
   testProvider: (provider: string) =>
     create<LLMProviderTestResult>("/llm/providers/test", { provider }),
   getConfig: () =>

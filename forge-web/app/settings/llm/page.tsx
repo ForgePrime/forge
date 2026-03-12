@@ -13,6 +13,7 @@ import type {
   LLMProviderTestResult,
   LLMFeatureFlags,
   LLMModulePermission,
+  ProviderModel,
 } from "@/lib/types";
 import {
   CAPABILITY_CONTRACTS,
@@ -75,95 +76,291 @@ export default function LLMSettingsPage() {
 // Providers
 // ---------------------------------------------------------------------------
 
-function ProvidersSection() {
-  const { data, error, isLoading } = useSWR<{ providers: LLMProvider[] }>(
-    "/llm/providers",
-  );
-  const { data: config } = useSWR<LLMConfig>("/llm/config");
+const KEY_SOURCE_LABELS: Record<string, string> = {
+  ui: "Settings (UI)",
+  env: "Environment variable",
+  config: "providers.toml",
+  none: "Not configured",
+};
+
+function ProviderCard({
+  provider,
+  config,
+  onConfigUpdate,
+}: {
+  provider: LLMProvider;
+  config: LLMConfig;
+  onConfigUpdate: (data: Partial<LLMConfig>) => Promise<void>;
+}) {
   const { addToast } = useToastStore();
-  const [testing, setTesting] = useState<string | null>(null);
+  const isDefault = config.default_provider === provider.name;
+  const needsKey = provider.provider_type !== "ollama";
+
+  // API key state
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+
+  // Model state
+  const { data: modelsData, isLoading: modelsLoading } = useSWR<{
+    provider: string;
+    models: ProviderModel[];
+  }>(`/llm/providers/${provider.name}/models`, () =>
+    llm.getProviderModels(provider.name),
+  );
+  const models = modelsData?.models ?? [];
+  const selectedModel = config.default_provider === provider.name
+    ? config.default_model ?? provider.default_model
+    : provider.default_model;
+
+  // Test state
+  const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<LLMProviderTestResult | null>(null);
 
-  const handleTest = useCallback(async (providerName: string) => {
-    setTesting(providerName);
+  const handleSaveKey = useCallback(async () => {
+    if (!apiKey.trim()) return;
+    setSavingKey(true);
+    try {
+      await onConfigUpdate({
+        api_keys: { ...config.api_keys, [provider.name]: apiKey },
+      } as Partial<LLMConfig>);
+      setApiKey("");
+      addToast({ message: `API key saved for ${provider.name}`, action: "updated" });
+    } catch (e) {
+      addToast({ message: (e as Error).message, action: "failed" });
+    } finally {
+      setSavingKey(false);
+    }
+  }, [apiKey, provider.name, config.api_keys, onConfigUpdate, addToast]);
+
+  const handleRemoveKey = useCallback(async () => {
+    try {
+      await onConfigUpdate({
+        api_keys: { ...config.api_keys, [provider.name]: "" },
+      } as Partial<LLMConfig>);
+      addToast({ message: `API key removed for ${provider.name}`, action: "updated" });
+    } catch (e) {
+      addToast({ message: (e as Error).message, action: "failed" });
+    }
+  }, [provider.name, config.api_keys, onConfigUpdate, addToast]);
+
+  const handleSetDefault = useCallback(async (model?: string) => {
+    try {
+      await onConfigUpdate({
+        default_provider: provider.name,
+        default_model: model ?? provider.default_model,
+      });
+      addToast({ message: `Default provider: ${provider.name}`, action: "updated" });
+    } catch (e) {
+      addToast({ message: (e as Error).message, action: "failed" });
+    }
+  }, [provider.name, provider.default_model, onConfigUpdate, addToast]);
+
+  const handleModelChange = useCallback(async (modelId: string) => {
+    try {
+      await onConfigUpdate({
+        default_provider: provider.name,
+        default_model: modelId,
+      });
+      addToast({ message: `Model: ${modelId}`, action: "updated" });
+    } catch (e) {
+      addToast({ message: (e as Error).message, action: "failed" });
+    }
+  }, [provider.name, onConfigUpdate, addToast]);
+
+  const handleTest = useCallback(async () => {
+    setTesting(true);
     setTestResult(null);
     try {
-      const result = await llm.testProvider(providerName);
+      const result = await llm.testProvider(provider.name);
       setTestResult(result);
       addToast({
         message: result.status === "ok"
-          ? `${providerName}: connected (${result.latency_ms}ms)`
-          : `${providerName}: ${result.error ?? "failed"}`,
+          ? `${provider.name}: connected (${result.latency_ms}ms)`
+          : `${provider.name}: ${result.error ?? "failed"}`,
         action: result.status === "ok" ? "info" : "failed",
       });
     } catch (e) {
       addToast({ message: (e as Error).message, action: "failed" });
     } finally {
-      setTesting(null);
+      setTesting(false);
     }
-  }, [addToast]);
+  }, [provider.name, addToast]);
+
+  // Find selected model caps
+  const selectedModelInfo = models.find((m) => m.id === selectedModel);
+
+  return (
+    <div className="border rounded-lg p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-gray-800">{provider.name}</span>
+        <span className="text-[10px] text-gray-400 uppercase">{provider.provider_type}</span>
+        {isDefault && <Badge variant="success">default</Badge>}
+        {!isDefault && (
+          <button
+            onClick={() => handleSetDefault()}
+            className="text-[10px] text-forge-600 hover:text-forge-800 underline ml-auto"
+          >
+            Set as default
+          </button>
+        )}
+        {/* Status dot */}
+        <span className={`ml-auto h-2 w-2 rounded-full ${
+          testResult?.status === "ok" ? "bg-green-500"
+          : testResult?.status === "error" ? "bg-red-500"
+          : provider.has_api_key ? "bg-gray-300"
+          : "bg-yellow-400"
+        }`} title={testResult?.status ?? provider.has_api_key ? "Ready" : "No API key"} />
+      </div>
+
+      {/* API Key */}
+      {needsKey && (
+        <div>
+          <label className="text-xs text-gray-500 block mb-1">API Key</label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type={showKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={
+                  config.api_keys?.[provider.name]
+                    ? config.api_keys[provider.name]
+                    : "Enter API key..."
+                }
+                className="w-full text-sm border rounded-md px-3 py-1.5 pr-8 focus:border-forge-500 focus:ring-1 focus:ring-forge-500"
+              />
+              <button
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                title={showKey ? "Hide" : "Show"}
+                type="button"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  {showKey ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                  ) : (
+                    <>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </>
+                  )}
+                </svg>
+              </button>
+            </div>
+            <Button size="sm" onClick={handleSaveKey} disabled={savingKey || !apiKey.trim()}>
+              {savingKey ? "..." : "Save"}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[10px] text-gray-400">
+              Source: {KEY_SOURCE_LABELS[provider.api_key_source] ?? provider.api_key_source}
+            </span>
+            {provider.api_key_source === "ui" && (
+              <button
+                onClick={handleRemoveKey}
+                className="text-[10px] text-red-400 hover:text-red-600 underline"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Model Selector */}
+      <div>
+        <label className="text-xs text-gray-500 block mb-1">Model</label>
+        <select
+          value={selectedModel}
+          onChange={(e) => handleModelChange(e.target.value)}
+          className="w-full text-sm border rounded-md px-3 py-1.5 focus:border-forge-500 focus:ring-1 focus:ring-forge-500 bg-white"
+          disabled={modelsLoading}
+        >
+          {modelsLoading && <option>Loading models...</option>}
+          {!modelsLoading && models.length === 0 && (
+            <option value={provider.default_model}>{provider.default_model}</option>
+          )}
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+        {selectedModelInfo && (
+          <p className="text-[10px] text-gray-400 mt-1">
+            {selectedModelInfo.context_window
+              ? `${Math.round(selectedModelInfo.context_window / 1000)}k context`
+              : ""}
+            {selectedModelInfo.max_output
+              ? ` · ${Math.round(selectedModelInfo.max_output / 1000)}k output`
+              : ""}
+            {selectedModelInfo.supports_vision ? " · vision" : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Test + Result */}
+      <div className="flex items-center gap-3">
+        <Button size="sm" variant="secondary" onClick={handleTest} disabled={testing}>
+          {testing ? "Testing..." : "Test Connection"}
+        </Button>
+        {testResult && (
+          <span className={`text-xs ${testResult.status === "ok" ? "text-green-600" : "text-red-600"}`}>
+            {testResult.status === "ok"
+              ? `Connected (${testResult.latency_ms}ms)`
+              : testResult.error ?? "Failed"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProvidersSection() {
+  const { data, error, isLoading } = useSWR<{ providers: LLMProvider[] }>(
+    "/llm/providers",
+    () => llm.getProviders(),
+  );
+  const { data: config, mutate: mutateConfig } = useSWR<LLMConfig>(
+    "/llm/config",
+    () => llm.getConfig(),
+  );
+
+  const handleConfigUpdate = useCallback(async (update: Partial<LLMConfig>) => {
+    const updated = await llm.updateConfig(update);
+    mutateConfig(updated, { revalidate: false });
+  }, [mutateConfig]);
 
   return (
     <section className="border rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Providers</h3>
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Providers</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Configure API keys, select models, and test connections.
+      </p>
 
       {isLoading && <p className="text-xs text-gray-400">Loading providers...</p>}
       {error && <p className="text-xs text-red-600">Failed to load providers</p>}
 
       {data && data.providers.length === 0 && (
         <p className="text-xs text-gray-400">
-          No providers configured. Set <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code> or{" "}
-          <code className="bg-gray-100 px-1 rounded">OPENAI_API_KEY</code> environment variable on the API server.
+          No providers configured. Add providers to{" "}
+          <code className="bg-gray-100 px-1 rounded text-[10px]">config/providers.toml</code>.
         </p>
       )}
 
-      <div className="space-y-2">
-        {data?.providers.map((p) => {
-          const isDefault = config?.default_provider === p.name;
-          return (
-            <div
+      {config && (
+        <div className="space-y-3">
+          {data?.providers.map((p) => (
+            <ProviderCard
               key={p.name}
-              className="flex items-center gap-3 bg-gray-50 rounded-md px-4 py-3"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">{p.name}</span>
-                  <span className="text-[10px] text-gray-400">{p.provider_type}</span>
-                  {isDefault && <Badge variant="success">default</Badge>}
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Model: <code className="text-[10px]">{p.default_model}</code>
-                </p>
-              </div>
-              <Badge variant={p.status === "ready" ? "success" : "warning"}>
-                {p.status}
-              </Badge>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => handleTest(p.name)}
-                disabled={testing === p.name}
-              >
-                {testing === p.name ? "Testing..." : "Test"}
-              </Button>
-            </div>
-          );
-        })}
-      </div>
-
-      {testResult && (
-        <div className={`mt-3 p-3 rounded-md text-xs ${
-          testResult.status === "ok"
-            ? "bg-green-50 border border-green-200 text-green-700"
-            : "bg-red-50 border border-red-200 text-red-700"
-        }`}>
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{testResult.provider}</span>
-            <span>{testResult.status === "ok" ? "Connected" : "Failed"}</span>
-          </div>
-          {testResult.model && <p className="mt-1">Model: {testResult.model}</p>}
-          {testResult.latency_ms != null && <p>Latency: {testResult.latency_ms}ms</p>}
-          {testResult.error && <p className="mt-1">{testResult.error}</p>}
+              provider={p}
+              config={config}
+              onConfigUpdate={handleConfigUpdate}
+            />
+          ))}
         </div>
       )}
     </section>
