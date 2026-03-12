@@ -632,6 +632,162 @@ async def _handle_get_skill_file_content(
     return {"error": f"Skill {skill_id} not found"}
 
 
+async def _handle_instantiate_ac_template(
+    args: dict[str, Any],
+    storage: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Instantiate an AC template with concrete parameters.
+
+    Loads the template, fills {placeholder} params (with defaults), increments
+    usage_count, and returns structured AC: {text, from_template, params}.
+    """
+    template_id = args.get("template_id", "")
+    params = args.get("params", {})
+    project = args.get("project") or context.get("project")
+
+    if not template_id:
+        return {"error": "template_id is required"}
+    if not project:
+        return {"error": "project is required"}
+
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+
+    data = await asyncio.to_thread(storage.load_data, project, "ac_templates")
+    templates = data.get("ac_templates", [])
+
+    template = None
+    for t in templates:
+        if t.get("id") == template_id:
+            template = t
+            break
+
+    if template is None:
+        return {"error": f"Template {template_id} not found"}
+
+    if template.get("status") == "DEPRECATED":
+        return {"error": f"Template {template_id} is DEPRECATED"}
+
+    # Resolve params: provided values + defaults from template definition
+    template_params = template.get("parameters", [])
+    resolved: dict[str, Any] = {}
+    missing: list[str] = []
+
+    for p in template_params:
+        name = p["name"]
+        if name in params:
+            resolved[name] = params[name]
+        elif "default" in p:
+            resolved[name] = p["default"]
+        else:
+            missing.append(name)
+
+    if missing:
+        return {"error": f"Missing required parameters: {', '.join(missing)}"}
+
+    # Render template — SafeDict leaves unresolved {placeholders} as-is
+    template_str = template.get("template", "")
+
+    class _SafeDict(dict):
+        def __missing__(self, key: str) -> str:
+            return "{" + key + "}"
+
+    try:
+        text = template_str.format_map(_SafeDict({k: str(v) for k, v in resolved.items()}))
+    except (ValueError, IndexError) as e:
+        return {"error": f"Template rendering failed: {e}"}
+
+    # Increment usage count and save
+    template["usage_count"] = template.get("usage_count", 0) + 1
+    await asyncio.to_thread(storage.save_data, project, "ac_templates", data)
+
+    return {
+        "text": text,
+        "from_template": template_id,
+        "params": resolved,
+    }
+
+
+async def _handle_preview_skill(
+    args: dict[str, Any],
+    storage: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Preview the current skill — renders frontmatter + body as markdown.
+
+    Returns name, description, preview_md, line_count, and file_count.
+    Uses the current skill from context (entity_id).
+    """
+    skill_id = context.get("entity_id")
+    if not skill_id:
+        return {"error": "No skill in context — this tool must be used within a skill context"}
+
+    data = await asyncio.to_thread(storage.load_global, "skills")
+    skills = data.get("skills", [])
+
+    skill = None
+    for s in skills:
+        if s.get("id") == skill_id:
+            skill = s
+            break
+
+    if skill is None:
+        return {"error": f"Skill {skill_id} not found"}
+
+    content = skill.get("skill_md_content", "")
+    name = skill.get("name", skill_id)
+    description = skill.get("description", "")
+
+    # Build preview markdown
+    preview_parts: list[str] = []
+
+    # Frontmatter section
+    preview_parts.append(f"# {name}")
+    if description:
+        preview_parts.append(f"\n> {description}")
+
+    # Metadata summary
+    meta_lines: list[str] = []
+    if skill.get("category"):
+        meta_lines.append(f"**Category**: {skill['category']}")
+    if skill.get("tags"):
+        meta_lines.append(f"**Tags**: {', '.join(skill['tags'])}")
+    if skill.get("scopes"):
+        meta_lines.append(f"**Scopes**: {', '.join(skill['scopes'])}")
+    if skill.get("status"):
+        meta_lines.append(f"**Status**: {skill['status']}")
+    if meta_lines:
+        preview_parts.append("\n" + " | ".join(meta_lines))
+
+    # Body content
+    if content:
+        # Parse frontmatter to get just the body
+        try:
+            from app.services.frontmatter import parse_frontmatter
+            fm = parse_frontmatter(content)
+            body = fm.body.strip() if fm.body else content
+        except Exception:
+            body = content
+        preview_parts.append(f"\n---\n\n{body}")
+
+    preview_md = "\n".join(preview_parts)
+
+    # Count lines and bundled files
+    line_count = len(content.split("\n")) if content else 0
+    resources = skill.get("resources") or {}
+    file_count = len(resources.get("files", []))
+
+    return {
+        "name": name,
+        "description": description,
+        "preview_md": preview_md,
+        "line_count": line_count,
+        "file_count": file_count,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Default registry factory
 # ---------------------------------------------------------------------------
@@ -930,6 +1086,53 @@ def create_default_registry() -> ToolRegistry:
         context_types=["skill"],
         required_permission=("skills", "read"),
         handler=_handle_get_skill_file_content,
+    ))
+
+    # --- Skill AC template + preview tools ---
+
+    registry.register(ToolDef(
+        name="instantiateACTemplate",
+        description=(
+            "Instantiate an AC template with concrete parameters. "
+            "Fills {placeholder} params and returns structured acceptance criteria text."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "template_id": {
+                    "type": "string",
+                    "description": "The AC template ID (e.g., AC-001).",
+                },
+                "params": {
+                    "type": "object",
+                    "description": "Key-value map of parameter names to values (e.g., {\"endpoint\": \"/api/users\", \"max_ms\": \"200\"}).",
+                    "additionalProperties": {"type": "string"},
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Project slug. If omitted, uses the current project context.",
+                },
+            },
+            "required": ["template_id", "params"],
+        },
+        context_types=["skill"],
+        required_permission=("skills", "read"),
+        handler=_handle_instantiate_ac_template,
+    ))
+
+    registry.register(ToolDef(
+        name="previewSkill",
+        description=(
+            "Preview the current skill — renders frontmatter + body as a markdown preview. "
+            "Returns name, description, rendered markdown, line count, and bundled file count."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+        context_types=["skill"],
+        required_permission=("skills", "read"),
+        handler=_handle_preview_skill,
     ))
 
     return registry

@@ -132,6 +132,14 @@ async def _resolve_skill(
                     "Use listSkillFiles, getSkillFileContent, addSkillFile, "
                     "removeSkillFile to manage bundled files."
                 )
+            data["ac_tools"] = (
+                "Use instantiateACTemplate to fill an AC template with concrete "
+                "parameters and get structured acceptance criteria text."
+            )
+            data["preview_tools"] = (
+                "Use previewSkill to render a full markdown preview of the current "
+                "skill including frontmatter metadata, body content, and file counts."
+            )
 
             return ContextPayload(
                 context_type="skill",
