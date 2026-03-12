@@ -1,26 +1,26 @@
-"""AI suggestion endpoints — mock-mode LLM contract-based suggestions."""
+"""AI suggestion endpoints — heuristic + optional LLM enrichment.
+
+Pattern: heuristic first (fast, free), LLM as optional enhancement via ?enrich=true.
+"""
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.dependencies import get_storage
+from app.dependencies import get_llm_provider, get_storage
 from app.routers._helpers import (
     check_project_exists,
     find_item_or_404,
     load_entity,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/projects/{slug}/ai", tags=["ai"])
-
-# ---------------------------------------------------------------------------
-# LLM provider config — MOCK by default (no live LLM required)
-# ---------------------------------------------------------------------------
-
-LLM_MODE = "mock"  # "mock" | "openai" | "anthropic" — only mock implemented
 
 
 # ---------------------------------------------------------------------------
@@ -250,22 +250,53 @@ async def _load_entity_by_type(storage, slug: str, entity_type: str, entity_id: 
 
 
 # ---------------------------------------------------------------------------
-# Mock LLM contract flow
+# LLM enrichment helper
 # ---------------------------------------------------------------------------
 
-def _mock_llm_call(contract_name: str, context: dict) -> dict:
-    """Simulate an LLM contract call.
+async def _llm_enrich(
+    provider,
+    contract_name: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> str | None:
+    """Call LLM provider for enrichment. Returns response text or None on failure."""
+    if provider is None:
+        return None
+    try:
+        from core.llm.provider import CompletionConfig, Message
 
-    In production this would:
-    1. Load the contract schema for `contract_name`
-    2. Assemble the prompt from context
-    3. Call the LLM provider
-    4. Validate the output against the contract schema
+        config = CompletionConfig(
+            temperature=0.3,
+            max_tokens=2048,
+            system_prompt=system_prompt,
+            response_format="json",
+        )
+        messages = [Message(role="user", content=user_prompt)]
+        result = await provider.complete(messages, config)
+        logger.debug("LLM enrich [%s]: %d tokens", contract_name, result.usage.total)
+        return result.content
+    except Exception:
+        logger.exception("LLM enrichment failed for %s", contract_name)
+        return None
 
-    In mock mode we return pre-computed heuristic results passed in context.
-    """
-    # The mock simply returns the pre-computed result
-    return context.get("mock_result", {})
+
+def _parse_json_safe(text: str | None) -> dict | list | None:
+    """Parse JSON from LLM response, returning None on failure."""
+    if not text:
+        return None
+    import json
+    # Strip markdown code fences if present
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.split("\n")
+        # Remove first and last lines (fences)
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        cleaned = "\n".join(lines)
+    try:
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Failed to parse LLM JSON response: %.200s", text)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -276,11 +307,13 @@ def _mock_llm_call(contract_name: str, context: dict) -> dict:
 async def suggest_knowledge(
     slug: str,
     body: SuggestKnowledgeRequest,
+    enrich: bool = Query(False, description="Use LLM to re-rank suggestions"),
     storage=Depends(get_storage),
+    provider=Depends(get_llm_provider),
 ):
     """Given an entity, suggest relevant knowledge objects.
 
-    Contract flow: load entity -> load knowledge -> score relevance -> return suggestions.
+    Heuristic scoring always runs. With ?enrich=true, LLM re-ranks results.
     """
     await check_project_exists(storage, slug)
 
@@ -323,14 +356,27 @@ async def suggest_knowledge(
     scored.sort(key=lambda x: x["relevance_score"], reverse=True)
     top = scored[:10]
 
-    # Contract-based LLM flow (mock)
-    result = _mock_llm_call("suggest-knowledge", {"mock_result": top})
+    mode = "heuristic"
+
+    # Optional LLM enrichment
+    if enrich and top:
+        import json
+        llm_result = await _llm_enrich(
+            provider,
+            "knowledge-suggest-v1",
+            "You are a knowledge management assistant. Re-rank and improve the relevance reasons for knowledge suggestions. Return a JSON array of objects with keys: knowledge_id, title, relevance_score (0-1), reason.",
+            f"Entity ({body.entity_type} {body.entity_id}):\n{entity_text[:1000]}\n\nCandidate knowledge items:\n{json.dumps(top, indent=2)}",
+        )
+        parsed = _parse_json_safe(llm_result)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            top = parsed
+            mode = "llm"
 
     return SuggestKnowledgeResponse(
         entity_type=body.entity_type,
         entity_id=body.entity_id,
-        suggestions=[KnowledgeSuggestion(**s) for s in result],
-        mode=LLM_MODE,
+        suggestions=[KnowledgeSuggestion(**s) for s in top],
+        mode=mode,
     )
 
 
@@ -342,11 +388,13 @@ async def suggest_knowledge(
 async def suggest_guidelines(
     slug: str,
     body: SuggestGuidelinesRequest,
+    enrich: bool = Query(False, description="Use LLM to re-rank suggestions"),
     storage=Depends(get_storage),
+    provider=Depends(get_llm_provider),
 ):
     """Given an entity, suggest applicable guidelines.
 
-    Contract flow: load entity -> load guidelines -> score applicability -> return suggestions.
+    Heuristic scoring always runs. With ?enrich=true, LLM re-ranks results.
     """
     await check_project_exists(storage, slug)
 
@@ -401,13 +449,26 @@ async def suggest_guidelines(
     scored.sort(key=lambda x: x["relevance_score"], reverse=True)
     top = scored[:10]
 
-    result = _mock_llm_call("suggest-guidelines", {"mock_result": top})
+    mode = "heuristic"
+
+    if enrich and top:
+        import json
+        llm_result = await _llm_enrich(
+            provider,
+            "guideline-match-v1",
+            "You are a coding standards advisor. Re-rank and improve reasons for guideline suggestions. Return a JSON array with keys: guideline_id, title, weight, relevance_score (0-1), reason.",
+            f"Entity ({body.entity_type} {body.entity_id}):\n{_entity_text(entity)[:1000]}\n\nCandidate guidelines:\n{json.dumps(top, indent=2)}",
+        )
+        parsed = _parse_json_safe(llm_result)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            top = parsed
+            mode = "llm"
 
     return SuggestGuidelinesResponse(
         entity_type=body.entity_type,
         entity_id=body.entity_id,
-        suggestions=[GuidelineSuggestion(**s) for s in result],
-        mode=LLM_MODE,
+        suggestions=[GuidelineSuggestion(**s) for s in top],
+        mode=mode,
     )
 
 
@@ -419,11 +480,13 @@ async def suggest_guidelines(
 async def suggest_ac(
     slug: str,
     body: SuggestACRequest,
+    enrich: bool = Query(False, description="Use LLM to improve suggested criteria"),
     storage=Depends(get_storage),
+    provider=Depends(get_llm_provider),
 ):
     """Given a task, suggest acceptance criteria from AC templates.
 
-    Contract flow: load task -> load templates -> match by scope/tags/content -> instantiate -> return.
+    Heuristic scoring always runs. With ?enrich=true, LLM improves criteria text.
     """
     await check_project_exists(storage, slug)
 
@@ -489,12 +552,25 @@ async def suggest_ac(
     scored.sort(key=lambda x: x["relevance_score"], reverse=True)
     top = scored[:10]
 
-    result = _mock_llm_call("suggest-ac", {"mock_result": top})
+    mode = "heuristic"
+
+    if enrich and top:
+        import json
+        llm_result = await _llm_enrich(
+            provider,
+            "ac-suggest-v1",
+            "You are a QA specialist. Improve and contextualize acceptance criteria for the given task. Return a JSON array with keys: template_id, title, category, suggested_criterion, relevance_score (0-1), reason.",
+            f"Task {body.task_id}:\n{task_text[:1000]}\n\nCandidate acceptance criteria:\n{json.dumps(top, indent=2)}",
+        )
+        parsed = _parse_json_safe(llm_result)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            top = parsed
+            mode = "llm"
 
     return SuggestACResponse(
         task_id=body.task_id,
-        suggestions=[ACSuggestion(**s) for s in result],
-        mode=LLM_MODE,
+        suggestions=[ACSuggestion(**s) for s in top],
+        mode=mode,
     )
 
 
@@ -506,11 +582,13 @@ async def suggest_ac(
 async def evaluate_lesson(
     slug: str,
     body: EvaluateLessonRequest,
+    enrich: bool = Query(False, description="Use LLM for deeper evaluation"),
     storage=Depends(get_storage),
+    provider=Depends(get_llm_provider),
 ):
     """Given a lesson, recommend whether to promote to knowledge or guideline.
 
-    Contract flow: load lesson -> analyze severity/category/content -> recommend promotion target.
+    Heuristic evaluation always runs. With ?enrich=true, LLM refines recommendation.
     """
     await check_project_exists(storage, slug)
 
@@ -598,13 +676,29 @@ async def evaluate_lesson(
         suggested_weight=suggested_weight,
     )
 
-    result = _mock_llm_call("evaluate-lesson", {"mock_result": recommendation.model_dump()})
+    mode = "heuristic"
+
+    if enrich:
+        import json
+        llm_result = await _llm_enrich(
+            provider,
+            "lesson-promote-v1",
+            "You are a knowledge management expert. Evaluate this lesson and recommend whether to promote to 'knowledge', 'guideline', or 'none'. Return a JSON object with keys: target, confidence (0-1), reason, suggested_scope, suggested_category, suggested_weight.",
+            f"Lesson {body.lesson_id}:\nTitle: {title}\nCategory: {category}\nSeverity: {severity}\nDetail: {detail[:1500]}",
+        )
+        parsed = _parse_json_safe(llm_result)
+        if isinstance(parsed, dict) and "target" in parsed:
+            try:
+                recommendation = PromotionRecommendation(**parsed)
+                mode = "llm"
+            except Exception:
+                pass  # keep heuristic recommendation
 
     return EvaluateLessonResponse(
         lesson_id=body.lesson_id,
         lesson_title=lesson.get("title", ""),
-        recommendation=PromotionRecommendation(**result),
-        mode=LLM_MODE,
+        recommendation=recommendation,
+        mode=mode,
     )
 
 
@@ -631,11 +725,13 @@ def _map_lesson_to_knowledge_category(lesson_category: str) -> str:
 async def assess_impact(
     slug: str,
     body: AssessImpactRequest,
+    enrich: bool = Query(False, description="Use LLM for deeper impact analysis"),
     storage=Depends(get_storage),
+    provider=Depends(get_llm_provider),
 ):
     """Given a knowledge change, assess impact on linked entities.
 
-    Contract flow: load knowledge -> find linked entities -> score impact level -> return assessment.
+    Heuristic analysis always runs. With ?enrich=true, LLM improves summary and impact levels.
     """
     await check_project_exists(storage, slug)
 
@@ -749,18 +845,32 @@ async def assess_impact(
         f"{len(impact_items)} entities: {high_count} high, {med_count} medium, {low_count} low impact."
     )
 
-    result = _mock_llm_call("assess-impact", {"mock_result": {
-        "impact_items": impact_items,
-        "summary": summary,
-    }})
+    mode = "heuristic"
+
+    if enrich and impact_items:
+        import json
+        llm_result = await _llm_enrich(
+            provider,
+            "impact-assess-v1",
+            "You are a change impact analyst. Refine the impact assessment for this knowledge change. Return a JSON object with keys: impact_items (array of {entity_type, entity_id, name, impact_level, reason}), summary (string).",
+            f"Knowledge '{knowledge.get('title', '')}' ({body.knowledge_id}):\n{_entity_text(knowledge)[:1000]}\n\nHeuristic impact:\n{json.dumps(impact_items[:20], indent=2)}",
+        )
+        parsed = _parse_json_safe(llm_result)
+        if isinstance(parsed, dict) and "impact_items" in parsed:
+            try:
+                impact_items = parsed["impact_items"]
+                summary = parsed.get("summary", summary)
+                mode = "llm"
+            except Exception:
+                pass
 
     return AssessImpactResponse(
         knowledge_id=body.knowledge_id,
         knowledge_title=knowledge.get("title", ""),
-        total_affected=len(result["impact_items"]),
-        impact_items=[ImpactItem(**it) for it in result["impact_items"]],
-        summary=result["summary"],
-        mode=LLM_MODE,
+        total_affected=len(impact_items),
+        impact_items=[ImpactItem(**it) for it in impact_items],
+        summary=summary,
+        mode=mode,
     )
 
 
@@ -821,11 +931,13 @@ _GENERIC_KR_TEMPLATES = [
 async def suggest_kr(
     slug: str,
     body: SuggestKRRequest,
+    enrich: bool = Query(False, description="Use LLM to generate KR suggestions"),
     storage=Depends(get_storage),
+    provider=Depends(get_llm_provider),
 ):
     """Suggest key results for an objective based on its context.
 
-    Uses heuristic scoring against knowledge objects and scope-based templates.
+    Heuristic scoring always runs. With ?enrich=true, LLM generates better KRs.
     """
     await check_project_exists(storage, slug)
 
@@ -905,10 +1017,23 @@ async def suggest_kr(
     while len(top) < 3 and len(scored) > len(top):
         top.append(scored[len(top)])
 
-    result = _mock_llm_call("suggest-kr", {"mock_result": top})
+    mode = "heuristic"
+
+    if enrich:
+        import json
+        llm_result = await _llm_enrich(
+            provider,
+            "kr-suggest-v1",
+            "You are a strategic planning expert. Suggest measurable key results for this objective. Return a JSON array with keys: description, metric (nullable), metric_hint (nullable), rationale, relevance_score (0-1).",
+            f"Objective {body.objective_id}:\n{obj_text[:1000]}\nScopes: {', '.join(obj_scopes)}\n\nExisting KRs: {json.dumps([kr for kr in obj.get('key_results', [])], indent=2)}\n\nHeuristic suggestions:\n{json.dumps(top, indent=2)}",
+        )
+        parsed = _parse_json_safe(llm_result)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            top = parsed
+            mode = "llm"
 
     return SuggestKRResponse(
         objective_id=body.objective_id,
-        suggestions=[KRSuggestion(**s) for s in result],
-        mode=LLM_MODE,
+        suggestions=[KRSuggestion(**s) for s in top],
+        mode=mode,
     )
