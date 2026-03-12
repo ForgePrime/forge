@@ -13,6 +13,8 @@ from typing import Any, Callable, Awaitable
 
 from core.llm.provider import ToolDefinition
 
+from app.llm.permissions import PermissionSet
+
 
 # ---------------------------------------------------------------------------
 # Tool definition
@@ -95,7 +97,7 @@ class ToolRegistry:
         args: dict[str, Any],
         storage: Any,
         context: dict[str, Any] | None = None,
-        permission_set: Any | None = None,
+        permission_set: PermissionSet | None = None,
     ) -> dict[str, Any]:
         """Execute a tool by name with the given arguments.
 
