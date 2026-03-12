@@ -1,0 +1,2682 @@
+{
+  "project": "forge-platform-v2",
+  "updated": "2026-03-10T19:45:00Z",
+  "changes": [
+    {
+      "id": "C-139",
+      "task_id": "T-114",
+      "timestamp": "2026-03-12T18:45:00Z",
+      "files": [
+        {"path": "forge-api/app/routers/skills.py", "action": "modified", "reasoning": "Added GET /skills/{id}/usage endpoint — scans all projects for tasks with matching skill_id, returns [{project, task_id, task_name, status}]"},
+        {"path": "forge-web/lib/types.ts", "action": "modified", "reasoning": "Added SkillUsageEntry interface"},
+        {"path": "forge-web/lib/api.ts", "action": "modified", "reasoning": "Added skills.usage() API client method + imported SkillUsageEntry type"},
+        {"path": "forge-web/components/skills/SkillEditor.tsx", "action": "modified", "reasoning": "Added Usage tab with lazy-loaded task list, clickable links, status badges, count from skill.usage_count, and empty state"}
+      ],
+      "reasoning": "Usage tab for SkillEditor: backend endpoint scans all projects, frontend shows task list with status badges and clickable links. Lazy-loads on tab selection.",
+      "decision_ids": ["D-032"],
+      "commit": "299002e5"
+    },
+    {
+      "id": "C-138",
+      "task_id": "T-113",
+      "timestamp": "2026-03-12T18:25:00Z",
+      "files": [
+        {"path": "forge-web/components/forms/TaskForm.tsx", "action": "modified", "reasoning": "Added scope-based skill filtering: watch scopes, pass ?scopes= to API, show optgroup with Recommended vs All skills, re-fetch on scope change"}
+      ],
+      "reasoning": "TaskForm skill dropdown now uses existing backend scope filtering. When task has scopes selected, dropdown shows scope-matched skills in 'Recommended' optgroup first, then remaining skills in 'All skills' optgroup.",
+      "decision_ids": ["D-033"],
+      "commit": "e042edd0"
+    },
+    {
+      "id": "C-137",
+      "task_id": "T-112",
+      "timestamp": "2026-03-12T18:10:00Z",
+      "files": [
+        {"path": "forge-api/app/services/teslint.py", "action": "modified", "reasoning": "Added module-not-found detection after subprocess.run (handles case where python exists but teslint isn't installed) + check_teslint_available() health check function"},
+        {"path": "forge-api/app/routers/skills.py", "action": "modified", "reasoning": "Added GET /skills/health endpoint with TESLint availability check, imported check_teslint_available"}
+      ],
+      "reasoning": "TESLint is not a real PyPI package. Instead of adding a non-existent dependency, implemented robust graceful fallback: module-not-found detection in subprocess call + health endpoint for runtime diagnostics.",
+      "decision_ids": ["D-031"],
+      "commit": "9da51a9e"
+    },
+    {
+      "id": "C-001",
+      "task_id": "T-001",
+      "file": "(no changes needed)",
+      "action": "verify",
+      "summary": "T-001 context-assembly-budget-improvements verified as already complete from Phase 1. All 7 acceptance criteria met by existing code in core/llm/context.py and core/storage.py.",
+      "reasoning_trace": [
+        {
+          "step": "verification",
+          "detail": "Checked all 7 AC against existing code: output reservation (lines 746-750), max_pct enforcement (lines 754-780), SHOULD guidelines 80% (lines 782-796), intra-section truncation (lines 645-728), system_contract in SECTION_DEFS (line 88), load_global/save_global in Protocol (storage.py lines 231-252), backward compatible contract=None (line 165)."
+        },
+        {
+          "step": "conclusion",
+          "detail": "All Phase 1 deep-verify recommendations already implemented. Task marked DONE without code changes."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 0,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T19:35:00Z"
+    },
+    {
+      "id": "C-002",
+      "task_id": "T-002",
+      "file": "core/client.py",
+      "action": "create",
+      "summary": "Created ForgeClient abstraction with JSONBackend (standalone) and APIBackend (stub). 1062 lines. Covers all 10 entity types (pipeline, decisions, changes, knowledge, guidelines, objectives, ideas, lessons, AC templates, gates) + context assembly.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Designed two-layer architecture: ForgeBackend base class defining operations interface, JSONBackend wrapping StorageAdapter for standalone mode, APIBackend as stub for T-020. ForgeClient auto-selects backend from config."
+        },
+        {
+          "step": "implementation",
+          "detail": "Implemented JSONBackend with full CRUD for all entity types, task claiming (get_next_task sets IN_PROGRESS), config loading from ~/.forge/config.toml (TOML parser with graceful fallback), context assembly via ContextAssembler."
+        },
+        {
+          "step": "deep-verify-fixes",
+          "detail": "Fixed 2 CRITICAL (import collision with pipeline.py, get_next_task not claiming), 4 IMPORTANT (no validation in add_tasks, unsafe dict access, init_project schema mismatch, __getattr__ recursion), 1 MINOR (complete_task state check). Used _build_task_entry copy to avoid pipeline.py import, setdefault() throughout, __getattr__ recursion guard."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-004",
+        "G-010"
+      ],
+      "lines_added": 1062,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T19:45:00Z"
+    },
+    {
+      "id": "C-003",
+      "task_id": "T-003",
+      "file": "forge-api/migrations/001_initial_schema.sql",
+      "action": "create",
+      "summary": "Created 001_initial_schema.sql with 13 entity tables: projects, objectives, key_results, ideas, tasks, decisions, changes, lessons, guidelines, knowledge, knowledge_versions, ac_templates, gates. All fields match core/*.py structures. JSONB for complex fields, TEXT[] for arrays, proper FKs with CASCADE.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Mapped each core/*.py module's entity structure to PostgreSQL table. Used ext_id (TEXT) for T-001/D-001 style IDs alongside SERIAL pk. JSONB for nested structures (acceptance_criteria, alternatives, examples). TEXT[] for tags/scopes arrays."
+        },
+        {
+          "step": "implementation",
+          "detail": "13 tables with UNIQUE constraints on (project_id, ext_id). knowledge_versions is PG-only (JSON mode uses embedded array). gates table for project-level CI/CD checks."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-006"
+      ],
+      "lines_added": 273,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T20:05:00Z"
+    },
+    {
+      "id": "C-004",
+      "task_id": "T-003",
+      "file": "forge-api/migrations/002_junction_tables.sql",
+      "action": "create",
+      "summary": "Created 002_junction_tables.sql with 11 junction tables: knowledge_links (polymorphic), task_dependencies, task_conflicts, task_ac, task_knowledge, idea_relations, decision_alternatives, task_decisions, change_decisions, change_guidelines, lesson_decisions.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Normalized JSON arrays (decision_ids, guidelines_checked, depends_on, conflicts_with) into proper junction tables for relational integrity and query performance. Added self-join CHECK constraints to prevent self-referencing."
+        },
+        {
+          "step": "extras",
+          "detail": "Added decision_alternatives (normalized from JSONB), task_decisions, change_decisions, change_guidelines, lesson_decisions beyond spec — needed for proper FK integrity of existing JSON array references."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-006"
+      ],
+      "lines_added": 118,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T20:10:00Z"
+    },
+    {
+      "id": "C-005",
+      "task_id": "T-003",
+      "file": "forge-api/migrations/003_indexes.sql",
+      "action": "create",
+      "summary": "Created 003_indexes.sql with 14 GIN indexes (arrays), 1 FTS index (knowledge), 25+ B-tree indexes (status, category, FKs, timestamps, agent). Partial indexes for sparse columns (agent, severity, started_at, completed_at).",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "GIN for all TEXT[] and JSONB columns that need containment queries (@>, ?). FTS on knowledge title+content with english stemmer. B-tree on every FK (PostgreSQL doesn't auto-index FK columns), all status/category filters, and timestamps for range queries."
+        },
+        {
+          "step": "optimization",
+          "detail": "Used partial indexes (WHERE IS NOT NULL) for sparse columns to reduce index bloat. Agent index partial since most tasks are single-agent."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-006"
+      ],
+      "lines_added": 92,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T20:12:00Z"
+    },
+    {
+      "id": "C-006",
+      "task_id": "T-003",
+      "file": "forge-api/migrations/migrate.py",
+      "action": "create",
+      "summary": "Created migration runner script. Discovers *.sql files sorted by version prefix, tracks applied migrations in schema_migrations table, applies pending migrations in order with per-migration transactions. Supports --status and --dry-run.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Simple forward-only runner. Strips BEGIN/COMMIT from SQL files to manage transactions externally. Supports both psycopg2 and psycopg3. DATABASE_URL env var for connection."
+        },
+        {
+          "step": "implementation",
+          "detail": "schema_migrations table with (version, filename, applied_at). Stops on first failure, reports clearly."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 143,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T20:15:00Z"
+    },
+    {
+      "id": "C-007",
+      "task_id": "T-003",
+      "file": "forge-api/migrations/001_initial_schema.sql",
+      "action": "edit",
+      "summary": "Deep-verify fixes: added 18 missing fields across ideas (7), decisions (3), changes (1), knowledge (5), ac_templates (3), guidelines (2). Fixed promoted_to_* from BOOLEAN to TEXT. Added depends_on/conflicts_with to tasks. Fixed UNIQUE NULLS NOT DISTINCT for global entities. Fixed enum comments. Added gates UNIQUE constraint.",
+      "reasoning_trace": [
+        {
+          "step": "deep-verify",
+          "detail": "Adversarial review found 9 CRITICAL issues (missing fields, wrong types, inconsistent dual-storage) and 14 IMPORTANT issues (enum mismatches, NULL uniqueness, psycopg3 compat)."
+        },
+        {
+          "step": "fix",
+          "detail": "Applied all critical and important fixes to 001, 002, 003 SQL files and migrate.py."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-005",
+        "G-006"
+      ],
+      "lines_added": 25,
+      "lines_removed": 5,
+      "recorded_at": "2026-03-10T20:18:00Z"
+    },
+    {
+      "id": "C-008",
+      "task_id": "T-008",
+      "file": "forge-api/app/main.py",
+      "action": "create",
+      "summary": "Created FastAPI project structure: main.py (app with lifespan, CORS, error handlers, health check, 11 routers), config.py (pydantic-settings from env), dependencies.py (DI for DB/Redis/storage), 11 router stubs, pyproject.toml, Dockerfile.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Standard FastAPI layout: app/ package with routers/ and schemas/ subdirs. Async lifespan manages DB pool (asyncpg) and Redis client. Settings via pydantic-settings with FORGE_ prefix."
+        },
+        {
+          "step": "implementation",
+          "detail": "17 files total: main.py, config.py, dependencies.py, 11 router stubs (all endpoints from Section 8.1 as stubs returning empty), pyproject.toml with all deps, Dockerfile with python:3.11-slim."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-003"
+      ],
+      "lines_added": 450,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T20:30:00Z"
+    },
+    {
+      "id": "C-009",
+      "task_id": "T-004",
+      "file": "core/storage_pg.py",
+      "action": "create",
+      "summary": "Created PostgreSQLAdapter implementing StorageAdapter Protocol. ~430 lines. Uses psycopg2 ThreadedConnectionPool, row↔dict converters, entity→table mapping, tracker-specific handling (project row + task rows), upsert logic, global entity support (project_id IS NULL).",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Sync adapter using psycopg2 (not asyncpg) for compatibility with existing core modules which are synchronous. FastAPI uses asyncpg separately. Row↔dict conversion handles ext_id→id mapping, JSONB serialization, timestamp formatting, and array columns."
+        },
+        {
+          "step": "implementation",
+          "detail": "6 Protocol methods: load_data (query+convert), save_data (upsert+delete removed), exists (project check + entity check), list_projects (slug query), load_global (WHERE project_id IS NULL), save_global (upsert with NULL project_id). Tracker entity is special-cased: needs project row + task rows combined."
+        },
+        {
+          "step": "key-decisions",
+          "detail": "Used _ENTITY_TABLE_MAP for table routing. _JSONB_COLUMNS and _ARRAY_COLUMNS sets for type handling. save_data does full sync: inserts new, updates existing, deletes removed items. This matches JSONFileStorage's behavior of replacing the entire file."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-004"
+      ],
+      "lines_added": 430,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T20:45:00Z"
+    },
+    {
+      "id": "C-010",
+      "task_id": "T-004",
+      "file": "core/storage_pg.py",
+      "action": "edit",
+      "summary": "Deep-verify fixes: 4 CRITICAL + 5 IMPORTANT resolved. Added per-entity timestamp mapping (changes→recorded_at, decisions/lessons→timestamp). Added _TABLE_COLUMNS allow-lists to filter unknown dict keys (prevents SQL errors from claimed_at etc). Removed broken psycopg3 fallback. Added conn.rollback() for read transactions. Added updated_at=NOW() on entity updates. Removed dead _cursor method. Added exception chaining (from e). Fixed double-close guard. Added context manager protocol.",
+      "reasoning_trace": [
+        {
+          "step": "critical-fixes",
+          "detail": "F1: Added _ENTITY_TS_OVERRIDES and _DB_TS_TO_JSON for per-entity timestamp mapping. F2: Added _TABLE_COLUMNS per table to filter out unknown keys like claimed_at, started_at_commit. F3: Reverse TS mapping in _row_to_dict. F4: Removed psycopg3 fallback (was non-functional)."
+        },
+        {
+          "step": "important-fixes",
+          "detail": "F8: _save_entity_list now adds updated_at=NOW() conditionally. F9: All read methods (load_data, exists, list_projects, load_global) now call conn.rollback() in finally block. F10: Removed dead _cursor method. F14: Exception chaining via 'from e'. F15/F16: close() sets pool=None, added __enter__/__exit__."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-005",
+        "G-010"
+      ],
+      "lines_added": 120,
+      "lines_removed": 30,
+      "recorded_at": "2026-03-10T20:55:00Z"
+    },
+    {
+      "id": "C-011",
+      "task_id": "T-005",
+      "file": "core/knowledge_versions.py",
+      "action": "create",
+      "summary": "Created KnowledgeVersioningService with 6 methods: create_version (auto-increment + insert), list_versions (metadata only), get_version (full content), diff_versions (unified diff via difflib), rollback (non-destructive new version from target), ensure_initial_version (idempotent v1 creation). ~260 lines.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Service class with connection factory injection (not tied to PostgreSQLAdapter). Uses psycopg2 RealDictCursor for row access. Each method manages its own connection lifecycle (acquire, use, commit/rollback, release). create_version accepts optional conn parameter for transactional use within larger operations."
+        },
+        {
+          "step": "implementation",
+          "detail": "create_version: SELECT current_version → INSERT version row → UPDATE knowledge.current_version. diff_versions: calls get_version twice then uses difflib.unified_diff. rollback: calls get_version(target) → create_version(content from target) → UPDATE knowledge.content."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001"
+      ],
+      "lines_added": 260,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T21:10:00Z"
+    },
+    {
+      "id": "C-012",
+      "task_id": "T-005",
+      "file": "core/knowledge_versions.py",
+      "action": "edit",
+      "summary": "Deep-verify rewrite: Fixed 4 CRITICAL (pool-based connections with getconn/putconn, SELECT FOR UPDATE for race prevention, atomic single-transaction rollback, conn parameter threading). Fixed 4 IMPORTANT (ensure_initial_version syncs current_version, diff_versions uses single connection, splitlines without keepends, update_content parameter).",
+      "reasoning_trace": [
+        {
+          "step": "critical-fixes",
+          "detail": "F-02: Rollback now uses single connection/transaction instead of 3 separate ones. F-03: create_version uses SELECT ... FOR UPDATE to lock the knowledge row. F-04: Changed from get_conn callable to pool object with getconn/putconn lifecycle."
+        },
+        {
+          "step": "important-fixes",
+          "detail": "ensure_initial_version also syncs current_version=1. diff_versions fetches both versions in single query. Added update_content param to create_version for rollback use. get_version accepts optional conn param."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-005"
+      ],
+      "lines_added": 280,
+      "lines_removed": 260,
+      "recorded_at": "2026-03-10T21:30:00Z"
+    },
+    {
+      "id": "C-013",
+      "task_id": "T-005",
+      "file": "core/storage_pg.py",
+      "action": "edit",
+      "summary": "Deep-verify F-01 fix: Integrated KnowledgeVersioningService into PostgreSQLAdapter. On knowledge INSERT: ensure_initial_version creates v1. On knowledge UPDATE with changed content: create_version creates new version. Both use same transaction via cur.connection. Added _get_knowledge_db_id helper. Graceful degradation if versioning import fails.",
+      "reasoning_trace": [
+        {
+          "step": "integration",
+          "detail": "F-01 found versioning service was never called. Wired into _save_entity_list: detects knowledge table, loads existing content for diff comparison, calls versioning service within same transaction. Pool shared between adapter and versioning service."
+        },
+        {
+          "step": "design",
+          "detail": "Pre-loads existing content in one query before the upsert loop. Passes cur.connection (not cur) to versioning methods since they open their own cursors. _versioning initialized in __init__ and reused."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-005"
+      ],
+      "lines_added": 45,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T21:35:00Z"
+    },
+    {
+      "id": "C-014",
+      "task_id": "T-006",
+      "file": "core/knowledge_impact.py",
+      "action": "create",
+      "summary": "Created KnowledgeImpactService for PostgreSQL-mode impact analysis. Queries 6 data sources: knowledge_links (polymorphic JOINs), task_knowledge (junction), tasks/ideas/objectives.knowledge_ids (array @> containment), knowledge.dependencies (reverse deps). Returns structured report with impact levels (high/medium/low) based on relation weights. Deduplicates by (entity_type, entity_id) keeping highest-impact relation.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Service class taking pool object (same pattern as KnowledgeVersioningService). 6 query methods cover all knowledge linkage paths in the schema. Polymorphic knowledge_links resolved via _resolve_entity helper. Array containment uses GIN-indexed @> operator for efficiency."
+        },
+        {
+          "step": "impact-levels",
+          "detail": "Three levels mapped from relation weights: required/depends_on → high (3), uses/context → medium (2), reference → low (1). Dedup keeps highest weight when same entity appears from multiple sources."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001"
+      ],
+      "lines_added": 265,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T21:50:00Z"
+    },
+    {
+      "id": "C-015",
+      "task_id": "T-006",
+      "file": "core/storage_pg.py",
+      "action": "edit",
+      "summary": "Added KnowledgeImpactService integration to PostgreSQLAdapter: import, __init__ initialization, and analyze_knowledge_impact() method that resolves ext_id → DB id and delegates to the service. Graceful fallback if impact module not importable.",
+      "reasoning_trace": [
+        {
+          "step": "integration",
+          "detail": "Same pattern as versioning: try/except import, pool-based init in __init__, public method on adapter for API/CLI use. analyze_knowledge_impact accepts (project, ext_id) and returns structured dict."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001"
+      ],
+      "lines_added": 45,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T21:55:00Z"
+    },
+    {
+      "id": "C-016",
+      "task_id": "T-006",
+      "file": "core/knowledge_impact.py",
+      "action": "edit",
+      "summary": "Deep-verify fixes: F-01 (psycopg2.sql.Identifier for safe SQL identifiers), F-02 (added legacy relation values to IMPACT_WEIGHTS + allowlist validation), F-04 (accept optional cursor to avoid double pool checkout), F-05 (exclude self-referencing deps via id != exclude_db_id), F-07 (added knowledge.linked_entities JSONB as 1st data source), F-08 (dedup accumulates sources list for audit), F-10 (consistent default weight=1 everywhere).",
+      "reasoning_trace": [
+        {
+          "step": "critical-fixes",
+          "detail": "F-01: All dynamic SQL now uses psycopg2.sql.Identifier/SQL for table/column names. F-02: Added references/derived-from/supports/contradicts to IMPACT_WEIGHTS with appropriate weights."
+        },
+        {
+          "step": "important-fixes",
+          "detail": "F-04: analyze_impact accepts optional cur= param, _do_analyze extracts core logic. F-05: _from_knowledge_deps takes exclude_db_id and adds AND id != %s. F-07: linked_entities JSONB queried as source #1. F-08: dedup accumulates sources list."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-005"
+      ],
+      "lines_added": 300,
+      "lines_removed": 265,
+      "recorded_at": "2026-03-10T22:10:00Z"
+    },
+    {
+      "id": "C-017",
+      "task_id": "T-006",
+      "file": "core/storage_pg.py",
+      "action": "edit",
+      "summary": "Deep-verify fixes: F-03 (global knowledge lookup uses OR project_id IS NULL with preference for project-scoped), F-04 (passes cursor to analyze_impact to avoid double pool checkout), F-11 (explicit project-not-found error), F-12 (fallback response includes all fields from normal response).",
+      "reasoning_trace": [
+        {
+          "step": "fixes",
+          "detail": "Rewrote analyze_knowledge_impact: query uses (project_id = %s OR project_id IS NULL) with ORDER BY preference. Passes cur= to service. Checks pid is None upfront. Fallback dict matches normal response schema."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-005"
+      ],
+      "lines_added": 20,
+      "lines_removed": 12,
+      "recorded_at": "2026-03-10T22:12:00Z"
+    },
+    {
+      "id": "C-018",
+      "task_id": "T-006",
+      "file": "forge-api/migrations/002_junction_tables.sql",
+      "action": "edit",
+      "summary": "Deep-verify F-02: Fixed knowledge_links.relation default from 'references' to 'reference' and updated comment to match canonical VALID_LINK_RELATIONS from core/knowledge.py (required, context, reference).",
+      "reasoning_trace": [
+        {
+          "step": "fix",
+          "detail": "Schema used different relation vocabulary than core module. Reconciled to use knowledge.py's VALID_LINK_RELATIONS as canonical source of truth."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-005",
+        "G-006"
+      ],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "recorded_at": "2026-03-10T22:13:00Z"
+    },
+    {
+      "id": "C-019",
+      "task_id": "T-007",
+      "file": "core/migrate.py",
+      "action": "create",
+      "summary": "Created forge-migrate tool (~420 lines). Commands: import (reads all JSON files, inserts to PG with FK-order import, creates junction rows, imports knowledge versions), status (dry-run scan). Features: ext_id preservation, ON CONFLICT skip for idempotent re-import, source/version decomposition for knowledge, key_results extraction from objectives, id_map for FK resolution across entity types, per-entity column filtering matching storage_pg.py.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Import order matters for FK resolution: objectives → ideas → tasks → decisions → guidelines → knowledge → changes → lessons → ac_templates. id_map tracks (table, ext_id) → db_id for junction table FK resolution."
+        },
+        {
+          "step": "implementation",
+          "detail": "6 junction importers: task_dependencies, task_conflicts, task_knowledge, knowledge_links, knowledge_versions, key_results. All use ON CONFLICT DO NOTHING for idempotent re-import. Knowledge source decomposed from nested dict to source/source_type columns. Version field mapped to current_version."
+        },
+        {
+          "step": "cli",
+          "detail": "python -m core.migrate import {source_dir} [--database-url URL] [--dry-run]. Status command shows entity counts without DB connection."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-006"
+      ],
+      "lines_added": 420,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-10T22:30:00Z"
+    },
+    {
+      "id": "C-020",
+      "task_id": "T-007",
+      "file": "core/migrate.py",
+      "action": "edit",
+      "summary": "Deep-verify fixes: F-01 (psycopg2.sql.Identifier for all table/column SQL), F-02 (SAVEPOINT-based per-entity error recovery instead of full rollback), F-03/F-04 (second-pass FK resolution for ideas.parent_id and tasks.origin_idea_id — excluded from first-pass INSERT, UPDATE'd after all entities imported), F-05 (derived_from_lessons warning printed), F-06 (added 5 missing junction importers: change_decisions, change_guidelines, lesson_decisions, task_decisions, gates), F-10/F-11 (BOOLEAN/INT column type coercion), F-13 (removed duplicate tracker parsing).",
+      "reasoning_trace": [
+        {
+          "step": "critical-fixes",
+          "detail": "F-01: insert_row uses psycopg2.sql for safe identifiers. F-02: SAVEPOINT sp_entity wraps each insert, ROLLBACK TO SAVEPOINT on failure preserves prior work. F-03/F-04: parent_id and origin_idea_id excluded from TABLE_COLUMNS, resolved in separate second pass using id_map."
+        },
+        {
+          "step": "important-fixes",
+          "detail": "F-06: Added change_decisions, change_guidelines, lesson_decisions, task_decisions, gates importers. F-10/F-11: BOOLEAN_COLUMNS and INT_COLUMNS sets with explicit coercion in item_to_row. F-05: Prints NOTE when derived_from_lessons data will be lost."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-005",
+        "G-006"
+      ],
+      "lines_added": 680,
+      "lines_removed": 420,
+      "recorded_at": "2026-03-10T22:45:00Z"
+    },
+    {
+      "id": "C-021",
+      "task_id": "T-009",
+      "file": "forge-api/app/routers/*.py",
+      "action": "edit",
+      "summary": "Implemented all 11 REST API router files with ~53 endpoints total. Created _helpers.py (shared async helpers: load_entity, save_entity, find_item_or_404, next_id). Each router: projects (4 endpoints), tasks (8), decisions (4), objectives (5 incl coverage dashboard), ideas (5 incl commit+hierarchy), changes (3 incl auto-detect stub), lessons (3 incl promote to guideline/knowledge), guidelines (4 incl LLM context), knowledge (9 incl versions+impact+link/unlink), ac_templates (5 incl instantiate), gates (3 incl check stub).",
+      "reasoning_trace": [
+        {
+          "step": "architecture",
+          "detail": "All routers use async/await with asyncio.to_thread bridge to sync StorageAdapter. Shared _helpers.py avoids code duplication across 11 files."
+        },
+        {
+          "step": "implementation",
+          "detail": "Pydantic BaseModel for request validation (Create/Update models per entity). Each entity stored in its own JSON file via StorageAdapter (decisions.json, ideas.json, etc.) except tasks and gates which live in tracker.json."
+        },
+        {
+          "step": "edge-cases",
+          "detail": "Knowledge update creates version snapshots when content changes. Lessons promote supports both guideline and knowledge targets. AC template instantiate resolves placeholders with defaults and validates completeness."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-003",
+        "G-005"
+      ],
+      "lines_added": 850,
+      "lines_removed": 100,
+      "group_id": "t009-api-routers",
+      "recorded_at": "2026-03-10T23:30:00Z"
+    },
+    {
+      "id": "C-022",
+      "task_id": "T-009",
+      "file": "forge-api/app/routers/*.py + main.py + dependencies.py",
+      "action": "edit",
+      "summary": "Deep-verify fixes (6 CRITICAL + 11 IMPORTANT): F-01 (storage adapter initialization in lifespan + 503 guard in get_storage), F-02 (asyncio.Lock per entity in _helpers.py — all write endpoints use _get_lock), F-03 (guidelines /context route moved before /{id}), F-04 (two-phase claim: CLAIMING→sleep→verify→IN_PROGRESS), F-05 (blocked_by_decisions check in /next), F-06 (blocked_by_decisions field in TaskCreate/TaskUpdate), F-07 (global guidelines merged in /context), F-08 (GuidelineCreate.scope required), F-09 (ObjectiveCreate.key_results validator), F-10 (Literal types for all contract enums), F-11 (GET /{id} added for guidelines, changes, lessons), F-12 (check_project_exists on all entity endpoints), F-13 (link_id uses max+1 not len+1), F-14 (idea commit only from APPROVED), F-16 (PATCH rejects COMMITTED status), F-17 (knowledge status transition validation).",
+      "reasoning_trace": [
+        {
+          "step": "critical",
+          "detail": "F-01: lifespan creates JSONFileStorage when storage_mode=json; get_storage raises 503 if null. F-02: _entity_locks dict with per-(project,entity) asyncio.Lock wraps all read-modify-write cycles. F-04: Two-phase claim with CLAIMING status, sleep, re-read, verify agent ownership. F-05: Loads decisions.json to check blocked_by_decisions subset of closed."
+        },
+        {
+          "step": "important",
+          "detail": "F-10: All Pydantic models use typing.Literal for enum fields matching core contracts. F-11: Three missing GET /{id} endpoints added. F-12: check_project_exists called at start of every entity endpoint. F-17: VALID_TRANSITIONS dict enforces knowledge status machine."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-003",
+        "G-005",
+        "G-006"
+      ],
+      "lines_added": 300,
+      "lines_removed": 200,
+      "group_id": "t009-deep-verify",
+      "recorded_at": "2026-03-11T00:15:00Z"
+    },
+    {
+      "id": "C-023",
+      "task_id": "T-010",
+      "file": "forge-api/app/events.py",
+      "action": "create",
+      "summary": "Created EventBus class using Redis Pub/Sub. Defines 10 event types from Section 8.2. EventBus.emit() publishes JSON messages with event type, project, timestamp, payload. EventBus.subscribe() returns PubSub subscription for a project's channel.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Redis Pub/Sub chosen per spec for broadcasting. Channel per project: forge:events:{slug}. Fire-and-forget semantics — event loss is acceptable."
+        },
+        {
+          "step": "implementation",
+          "detail": "EventBus wraps redis.asyncio PubSub. WebSocket router in ws.py polls PubSub messages and forwards to connected clients."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001"
+      ],
+      "lines_added": 55,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T00:45:00Z"
+    },
+    {
+      "id": "C-024",
+      "task_id": "T-010",
+      "file": "forge-api/app/routers/ws.py",
+      "action": "create",
+      "summary": "WebSocket endpoint at /ws/projects/{slug}/events. Accepts connection, subscribes to Redis Pub/Sub channel, forwards messages to client. Handles disconnect gracefully.",
+      "reasoning_trace": [
+        {
+          "step": "implementation",
+          "detail": "Non-blocking poll with 100ms timeout + 50ms sleep avoids tight loop while maintaining low latency."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001"
+      ],
+      "lines_added": 45,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T00:45:00Z"
+    },
+    {
+      "id": "C-025",
+      "task_id": "T-010",
+      "file": "forge-api/app/routers/{tasks,decisions,changes,knowledge}.py + _helpers.py + main.py + dependencies.py",
+      "action": "edit",
+      "summary": "Wired event emission into entity mutation endpoints. Added emit_event helper to _helpers.py (fire-and-forget). EventBus created in lifespan and stored on app.state. Events emitted: task.status_changed (update/claim/complete), decision.created, decision.closed, change.recorded, knowledge.updated. WebSocket router registered in main.py.",
+      "reasoning_trace": [
+        {
+          "step": "integration",
+          "detail": "emit_event is fire-and-forget — catches exceptions to avoid failing the primary request. Request parameter added to mutation endpoints for app.state access."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-003"
+      ],
+      "lines_added": 80,
+      "lines_removed": 15,
+      "group_id": "t010-websocket-events",
+      "recorded_at": "2026-03-11T00:45:00Z"
+    },
+    {
+      "id": "C-026",
+      "task_id": "T-010",
+      "file": "forge-api/app/routers/{tasks,decisions,ws}.py + events.py",
+      "action": "edit",
+      "summary": "Deep-verify fixes (3 CRITICAL + 3 IMPORTANT): F-01 (claim_next_task now breaks after first CLAIMING — initialized claimed_id before loop), F-02 (decision.created event uses body[i] per decision, not body[0] for all), F-03 (WebSocket PubSub cleaned up safely: pubsub=None init, broad except, conditional cleanup), F-05 (EventBus.emit validates event_type against EVENT_TYPES), F-06 (WS handler uses app.state.event_bus instead of creating new EventBus), F-07 (WS validates project exists before accepting connection).",
+      "reasoning_trace": [
+        {
+          "step": "critical",
+          "detail": "F-01: Added break after first CLAIMING + claimed_id=None before loop. F-02: enumerate(added) with body[i] instead of body[0]. F-03: pubsub=None, broad except, conditional cleanup in finally."
+        },
+        {
+          "step": "important",
+          "detail": "F-05: ValueError on unknown event types. F-06: websocket.app.state.event_bus. F-07: storage.exists() check before accept(), close 4004 if not found."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-005",
+        "G-006"
+      ],
+      "lines_added": 25,
+      "lines_removed": 15,
+      "group_id": "t010-deep-verify",
+      "recorded_at": "2026-03-11T01:00:00Z"
+    },
+    {
+      "id": "C-027",
+      "task_id": "T-011",
+      "file": "forge-api/app/auth.py",
+      "action": "create",
+      "summary": "Auth module: API key (X-API-Key header) + JWT bearer token. get_current_user dependency validates either credential. Graceful dev mode: if no api_key configured, anonymous access allowed. create_access_token/decode_access_token helpers using python-jose.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Dual auth: API key for CLI (stateless, simple), JWT for web UI (expiring tokens, user context). Dev mode allows unauthenticated access when FORGE_API_KEY is empty."
+        },
+        {
+          "step": "security",
+          "detail": "JWT uses HS256 with configurable secret. API key compared with constant-time via string equality (python-jose handles timing). HTTPException 401 on all auth failures."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-003"
+      ],
+      "lines_added": 95,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T01:30:00Z"
+    },
+    {
+      "id": "C-028",
+      "task_id": "T-011",
+      "file": "forge-api/app/routers/auth.py",
+      "action": "create",
+      "summary": "Auth router: POST /login (username+password → JWT), POST /refresh (renew JWT), GET /me (current user info). Login validates against configured FORGE_API_KEY. Token includes sub, role, exp claims.",
+      "reasoning_trace": [
+        {
+          "step": "implementation",
+          "detail": "Simple auth: username 'forge' with password matching API key. Full user management (password hashing, user DB) deferred to future task."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-003"
+      ],
+      "lines_added": 75,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T01:30:00Z"
+    },
+    {
+      "id": "C-029",
+      "task_id": "T-011",
+      "file": "forge-api/app/main.py",
+      "action": "edit",
+      "summary": "Registered auth router (no auth required) and added Depends(get_current_user) to all 11 entity routers via dependencies= parameter. Health check and WebSocket endpoints remain unprotected.",
+      "reasoning_trace": [
+        {
+          "step": "integration",
+          "detail": "Using FastAPI router-level dependencies instead of per-endpoint Depends — cleaner and ensures all current + future endpoints on protected routers require auth."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001"
+      ],
+      "lines_added": 20,
+      "lines_removed": 12,
+      "group_id": "t011-auth",
+      "recorded_at": "2026-03-11T01:30:00Z"
+    },
+    {
+      "id": "C-030",
+      "task_id": "T-011",
+      "file": "forge-api/app/{auth,routers/auth,routers/ws,config}.py",
+      "action": "edit",
+      "summary": "Deep-verify security fixes (4 CRITICAL + 3 IMPORTANT): F-01/F-02 (hmac.compare_digest for all secret comparisons — API key and login password), F-03/F-04 (unified dev-mode detection via _is_auth_configured() — treats default jwt_secret as unconfigured, consistent bypass logic), F-07 (WebSocket auth via ?token= query param or X-API-Key header, close 4001 if unauthorized), F-12 (jwt_algorithm restricted to Literal[HS256/HS384/HS512]), F-06 (audit logging for failed auth attempts), F-11 (generic 'Authentication failed' messages), F-13 (role validation against VALID_ROLES set).",
+      "reasoning_trace": [
+        {
+          "step": "critical",
+          "detail": "hmac.compare_digest prevents timing attacks on API key and password. _is_auth_configured() replaces inconsistent dual checks. Default jwt_secret explicitly treated as unconfigured."
+        },
+        {
+          "step": "important",
+          "detail": "WebSocket auth checks token query param or X-API-Key header before accepting connection. Logging added for failed auth attempts."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [
+        "G-001",
+        "G-003",
+        "G-006"
+      ],
+      "lines_added": 45,
+      "lines_removed": 30,
+      "group_id": "t011-deep-verify",
+      "recorded_at": "2026-03-11T01:50:00Z"
+    },
+    {
+      "id": "C-031",
+      "task_id": "T-012",
+      "file": "forge-api/app/contract_validation.py",
+      "action": "create",
+      "summary": "Contract validation middleware with full entity contract registry. Mirrors core module CONTRACTS definitions adapted for API use (no ID required in bodies). Uses validate_contract from core/contracts.py. Supports bypass via X-Skip-Contract-Validation header.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Chose Starlette BaseHTTPMiddleware over per-route dependency for global coverage with skip mechanism"
+        },
+        {
+          "step": "registry",
+          "detail": "Defined API-adapted contract specs for all 11 entities (tasks, decisions, changes, objectives, ideas, guidelines, knowledge, lessons, ac-templates, gates) with add/update operations"
+        },
+        {
+          "step": "routing",
+          "detail": "Regex-based route matching extracts entity name from URL path, maps to contract spec by (entity, method)"
+        },
+        {
+          "step": "skip",
+          "detail": "Special POST routes (next, complete, commit, promote, link, instantiate) excluded from validation"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 340,
+      "group_id": "t012-contract-validation",
+      "recorded_at": "2026-03-11T02:00:00Z"
+    },
+    {
+      "id": "C-032",
+      "task_id": "T-012",
+      "file": "forge-api/app/main.py",
+      "action": "edit",
+      "summary": "Registered ContractValidationMiddleware after CORS middleware. Added import for ContractValidationMiddleware.",
+      "reasoning_trace": [
+        {
+          "step": "integration",
+          "detail": "Middleware registered after CORS so it runs on validated CORS requests. Placed before route handlers to intercept before Pydantic validation."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 4,
+      "group_id": "t012-contract-validation",
+      "recorded_at": "2026-03-11T02:00:00Z"
+    },
+    {
+      "id": "C-033",
+      "task_id": "T-012",
+      "file": "forge-api/app/contract_validation.py",
+      "action": "edit",
+      "summary": "Deep-verify fixes: (F-01) Knowledge update status enum UPPERCASE+underscore matching core. (F-03) Tasks update documented as intentional subset, added CLAIMING status. (F-04) Decisions update extended with risk fields. (F-06) Removed unrestricted header bypass. (F-07) Implemented FORGE_SKIP_CONTRACT_VALIDATION env var. (F-09) Added 1MB body size limit. (F-13) Added second objectives invariant for KR metric/target. (F-14) Added content-type check before JSON parsing.",
+      "reasoning_trace": [
+        {
+          "step": "critical-fix",
+          "detail": "Knowledge status enum was lowercase/hyphenated (draft, review-needed) but core and router use UPPERCASE/underscore (DRAFT, REVIEW_NEEDED)"
+        },
+        {
+          "step": "security",
+          "detail": "Removed X-Skip-Contract-Validation header bypass — only env var global disable remains"
+        },
+        {
+          "step": "completeness",
+          "detail": "Added missing invariant for objectives key_results validation"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 25,
+      "lines_removed": 15,
+      "group_id": "t012-deep-verify",
+      "recorded_at": "2026-03-11T02:15:00Z"
+    },
+    {
+      "id": "C-034",
+      "task_id": "T-012",
+      "file": "forge-api/app/routers/lessons.py",
+      "action": "edit",
+      "summary": "Added 'market-insight' to LESSON_CATEGORIES Literal type to match core/lessons.py contract.",
+      "reasoning_trace": [
+        {
+          "step": "consistency",
+          "detail": "Core contract and middleware both accept market-insight but router Pydantic model was missing it"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "group_id": "t012-deep-verify",
+      "recorded_at": "2026-03-11T02:15:00Z"
+    },
+    {
+      "id": "C-035",
+      "task_id": "T-013",
+      "file": "docker-compose.yml",
+      "action": "create",
+      "summary": "Docker Compose configuration with forge-api, postgres:16, and redis:7-alpine services. Health checks on all services, dependency ordering via service_healthy condition. Volumes for pgdata and forge-data persistence. Core module mounted read-only. Migrations auto-applied via docker-entrypoint-initdb.d.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Based on Section 10.2 spec, Phase 2 scope (forge-web added in T-028)"
+        },
+        {
+          "step": "health",
+          "detail": "postgres: pg_isready, redis: redis-cli ping, forge-api: urllib HTTP check to /health"
+        },
+        {
+          "step": "env",
+          "detail": "All config via FORGE_ prefixed env vars matching pydantic-settings model"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 65,
+      "group_id": "t013-docker-compose",
+      "recorded_at": "2026-03-11T02:25:00Z"
+    },
+    {
+      "id": "C-036",
+      "task_id": "T-013",
+      "file": "forge-api/Dockerfile",
+      "action": "edit",
+      "summary": "Improved Dockerfile: copy pyproject.toml first for layer caching, set PYTHONPATH=/app for core module imports, added comment about core/ volume mount.",
+      "reasoning_trace": [
+        {
+          "step": "optimization",
+          "detail": "Separate pyproject.toml COPY before code COPY enables pip install layer caching when only code changes"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 5,
+      "lines_removed": 2,
+      "group_id": "t013-docker-compose",
+      "recorded_at": "2026-03-11T02:25:00Z"
+    },
+    {
+      "id": "C-037",
+      "task_id": "T-013",
+      "file": "config/providers.toml",
+      "action": "create",
+      "summary": "Placeholder LLM provider configuration file for Docker volume mount. API keys set via env vars.",
+      "reasoning_trace": [
+        {
+          "step": "config",
+          "detail": "docker-compose mounts ./config:/config:ro, this file provides the template"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 10,
+      "group_id": "t013-docker-compose",
+      "recorded_at": "2026-03-11T02:25:00Z"
+    },
+    {
+      "id": "C-038",
+      "task_id": "T-013",
+      "file": "forge-api/Dockerfile",
+      "action": "edit",
+      "summary": "Deep-verify fixes: (C-1) Fixed pip install layer caching — install deps from pyproject.toml via tomllib before copying code. (I-2) Added non-root 'forge' user with /data ownership.",
+      "reasoning_trace": [
+        {
+          "step": "critical-fix",
+          "detail": "pip install . with only pyproject.toml fails — now extracts deps list and installs them first, then copies code"
+        },
+        {
+          "step": "security",
+          "detail": "Added non-root user per Docker best practices"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 8,
+      "lines_removed": 3,
+      "group_id": "t013-deep-verify",
+      "recorded_at": "2026-03-11T02:35:00Z"
+    },
+    {
+      "id": "C-039",
+      "task_id": "T-013",
+      "file": "docker-compose.yml",
+      "action": "edit",
+      "summary": "Deep-verify fixes: (I-5) Added ANTHROPIC_API_KEY/OPENAI_API_KEY passthrough. (I-6) Externalized credentials via env var substitution with defaults. (M-1) Removed deprecated version key. (M-2) Increased start_period to 30s.",
+      "reasoning_trace": [
+        {
+          "step": "security",
+          "detail": "Credentials now use ${VAR:-default} pattern for env-based override"
+        },
+        {
+          "step": "robustness",
+          "detail": "LLM API keys passed through from host, start_period increased for slow machines"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 8,
+      "lines_removed": 6,
+      "group_id": "t013-deep-verify",
+      "recorded_at": "2026-03-11T02:35:00Z"
+    },
+    {
+      "id": "C-040",
+      "task_id": "T-013",
+      "file": "forge-api/app/main.py",
+      "action": "edit",
+      "summary": "Deep-verify fix (I-4): Database pool creation conditional on storage_mode=postgresql. JSON storage mode no longer requires PostgreSQL to be running.",
+      "reasoning_trace": [
+        {
+          "step": "decoupling",
+          "detail": "asyncpg pool was created unconditionally even in json mode, wasting connections and creating unnecessary dependency"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 6,
+      "lines_removed": 4,
+      "group_id": "t013-deep-verify",
+      "recorded_at": "2026-03-11T02:35:00Z"
+    },
+    {
+      "id": "C-041",
+      "task_id": "T-013",
+      "file": "forge-api/app/contract_validation.py",
+      "action": "edit",
+      "summary": "Deep-verify fix (C-2): Defensive import for core.contracts — middleware skips validation if core/ not available instead of crashing on ImportError.",
+      "reasoning_trace": [
+        {
+          "step": "robustness",
+          "detail": "core/ is volume-mounted at runtime; import failure should degrade gracefully not crash"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 4,
+      "lines_removed": 1,
+      "group_id": "t013-deep-verify",
+      "recorded_at": "2026-03-11T02:35:00Z"
+    },
+    {
+      "id": "C-042",
+      "task_id": "T-013",
+      "file": "forge-api/.dockerignore",
+      "action": "create",
+      "summary": "Added .dockerignore to exclude __pycache__, .env, .git and other build artifacts from Docker context.",
+      "reasoning_trace": [
+        {
+          "step": "security",
+          "detail": "Prevents .env secret leakage into image layers and reduces build context size"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 9,
+      "group_id": "t013-deep-verify",
+      "recorded_at": "2026-03-11T02:35:00Z"
+    },
+    {
+      "id": "C-043",
+      "task_id": "T-014",
+      "file": "forge-web/",
+      "action": "create",
+      "summary": "Next.js 14 project setup with TypeScript, Tailwind CSS, App Router. Includes: root layout with sidebar, dashboard page, typed API client (api.ts), WebSocket client with reconnection (ws.ts), Zustand store stubs, shared components (Button, Card, Badge), Dockerfile with multi-stage build, and all config files.",
+      "reasoning_trace": [
+        {
+          "step": "scaffold",
+          "detail": "Manual project creation instead of create-next-app for full control over structure and dependencies"
+        },
+        {
+          "step": "api-client",
+          "detail": "Generic CRUD wrapper + auth helpers matching forge-api endpoints"
+        },
+        {
+          "step": "websocket",
+          "detail": "ForgeWebSocket class with typed events, exponential backoff reconnection, subscribe/unsubscribe pattern"
+        },
+        {
+          "step": "components",
+          "detail": "Button (4 variants), Card with header/title, Badge with status variant mapping"
+        },
+        {
+          "step": "docker",
+          "detail": "Multi-stage build: deps → builder → runner with standalone output, non-root user"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 520,
+      "group_id": "t014-nextjs-setup",
+      "recorded_at": "2026-03-11T02:55:00Z"
+    },
+    {
+      "id": "C-044",
+      "task_id": "T-014",
+      "file": "forge-web/",
+      "action": "edit",
+      "summary": "Deep-verify fixes: (F-003) Added .eslintrc.json for next/core-web-vitals. (F-004) Content-Type only set when request has body. (F-001) Added logout(). (F-005) WebSocket CONNECTING guard prevents duplicate connections. (F-007) Sidebar active state uses startsWith for nested routes.",
+      "reasoning_trace": [
+        {
+          "step": "lint",
+          "detail": "ESLint config needed for npm run lint to work"
+        },
+        {
+          "step": "headers",
+          "detail": "GET/DELETE requests should not send Content-Type: application/json"
+        },
+        {
+          "step": "ws-fix",
+          "detail": "Rapid connect() calls could create multiple WebSocket instances"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 12,
+      "lines_removed": 6,
+      "group_id": "t014-deep-verify",
+      "recorded_at": "2026-03-11T03:05:00Z"
+    },
+    {
+      "id": "C-045",
+      "task_id": "T-015",
+      "file": "forge-web/lib/types.ts",
+      "action": "create",
+      "summary": "Full TypeScript type definitions for all 11 Forge entities (Project, Task, Decision, Objective, Idea, ChangeRecord, Guideline, Knowledge, Lesson, ACTemplate, Gate) with Create/Update interfaces and enum union types.",
+      "reasoning_trace": [
+        {
+          "step": "types-first",
+          "detail": "Type definitions created before API methods to ensure type safety across all entity wrappers"
+        },
+        {
+          "step": "pydantic-match",
+          "detail": "Types match Pydantic models in forge-api routers for end-to-end type consistency"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 380,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T03:20:00Z"
+    },
+    {
+      "id": "C-046",
+      "task_id": "T-015",
+      "file": "forge-web/lib/api.ts",
+      "action": "edit",
+      "summary": "Extended API client with entity-specific typed methods for all 11 entities: projects, tasks (incl. claimNext, complete, context), decisions, objectives (incl. status), ideas (incl. commit), changes, guidelines (incl. context), knowledge (incl. versions, impact, link/unlink), lessons (incl. promote), acTemplates (incl. instantiate), gates.",
+      "reasoning_trace": [
+        {
+          "step": "entity-wrappers",
+          "detail": "Each entity gets a namespace object with typed CRUD + action methods matching REST endpoints"
+        },
+        {
+          "step": "return-types",
+          "detail": "Response types match actual API envelope shapes ({tasks: Task[], count: number} etc.)"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 145,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T03:22:00Z"
+    },
+    {
+      "id": "C-047",
+      "task_id": "T-015",
+      "file": "forge-web/lib/hooks/useWebSocket.ts",
+      "action": "create",
+      "summary": "React hook wrapping ForgeWebSocket class. Auto-connects on mount for given project slug, disconnects on cleanup. Exposes connected state, on() and onAny() subscription methods.",
+      "reasoning_trace": [
+        {
+          "step": "lifecycle",
+          "detail": "useEffect manages connect/disconnect lifecycle tied to slug changes"
+        },
+        {
+          "step": "stable-refs",
+          "detail": "useCallback ensures stable handler references for consumers"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 55,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T03:25:00Z"
+    },
+    {
+      "id": "C-048",
+      "task_id": "T-015",
+      "file": "forge-web/lib/types.ts",
+      "action": "edit",
+      "summary": "Deep-verify fixes: (F-001..F-004) Fixed Project/ProjectStatus types to match actual API response shapes. (F-017..F-037) Added all missing fields to Decision, Objective, Idea, Change, Guideline, Knowledge, Lesson, ACTemplate types and their Create/Update interfaces. Added ObjectiveUpdate, ACTemplateUpdate, LessonPromote types. Added proper literal types for KnowledgeLink, ACTemplateCategory, ObjectiveStatus.",
+      "reasoning_trace": [
+        {
+          "step": "type-mismatch",
+          "detail": "All entity types were missing fields present in Pydantic models, causing runtime access to undefined properties"
+        },
+        {
+          "step": "response-shapes",
+          "detail": "Project endpoints returned different field names (project vs slug, created vs created_at) than types declared"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 180,
+      "lines_removed": 120,
+      "group_id": "t015-deep-verify",
+      "recorded_at": "2026-03-11T03:40:00Z"
+    },
+    {
+      "id": "C-049",
+      "task_id": "T-015",
+      "file": "forge-web/lib/api.ts",
+      "action": "edit",
+      "summary": "Deep-verify fixes: (F-001..F-016) Fixed all return types — create methods return {added: string[], total: number} not entity arrays. Fixed projects.list/create/get/status return types. Fixed tasks.claimNext to send agent as query param instead of body. Fixed guidelines.context to return {must,should,may,total}. Fixed acTemplates.instantiate body shape and return type. Fixed gates.create return type to {configured: number}. (F-038..F-045) Added missing methods: objectives.update, acTemplates.update, gates.check, auth.me, changes.autoDetect, knowledge.getVersion. Fixed request() to preserve init.headers.",
+      "reasoning_trace": [
+        {
+          "step": "return-types",
+          "detail": "All create endpoints return ID arrays, not full entity objects — consumer code would get undefined on field access"
+        },
+        {
+          "step": "query-vs-body",
+          "detail": "tasks.claimNext agent param declared as Query() in FastAPI but was sent as JSON body — silently ignored"
+        },
+        {
+          "step": "missing-methods",
+          "detail": "6 API endpoints had no client methods — objectives.update, acTemplates.update, gates.check, auth.me, changes.auto, knowledge.getVersion"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 75,
+      "lines_removed": 50,
+      "group_id": "t015-deep-verify",
+      "recorded_at": "2026-03-11T03:42:00Z"
+    },
+    {
+      "id": "C-050",
+      "task_id": "T-016",
+      "file": "forge-web/stores/projectStore.ts",
+      "action": "edit",
+      "summary": "Zustand store for project state: slug list, current project selection, project detail/status caching, create project with optimistic update. All methods use typed API client.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Simple flat store — projects are top-level nav, not deeply nested"
+        },
+        {
+          "step": "caching",
+          "detail": "Details and statuses cached by slug to avoid refetching on navigation"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 85,
+      "lines_removed": 6,
+      "recorded_at": "2026-03-11T04:15:00Z"
+    },
+    {
+      "id": "C-051",
+      "task_id": "T-016",
+      "file": "forge-web/stores/entityStore.ts",
+      "action": "edit",
+      "summary": "Generic entity store managing all 10 entity types (tasks, decisions, objectives, ideas, changes, guidelines, knowledge, lessons, acTemplates, gates). Features: per-type slices with loading/error, typed CRUD actions for each entity, WebSocket event handler for real-time updates, generic fetchEntities for list operations.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Single store with per-type slices avoids 10 separate stores while keeping type safety via typed action methods"
+        },
+        {
+          "step": "ws-integration",
+          "detail": "handleEvent maps WS event names to entity types and merges payloads into slices"
+        },
+        {
+          "step": "optimistic",
+          "detail": "Server-first for most operations; optimistic removed from task updates to avoid type union issues"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 260,
+      "lines_removed": 6,
+      "recorded_at": "2026-03-11T04:18:00Z"
+    },
+    {
+      "id": "C-052",
+      "task_id": "T-016",
+      "file": "forge-web/stores/executionStore.ts",
+      "action": "edit",
+      "summary": "Execution store tracking task execution lifecycle: claim next task, phase transitions (idle→claiming→gathering-context→executing→validating→completing), log streaming, gate check results, progress tracking, task completion.",
+      "reasoning_trace": [
+        {
+          "step": "phases",
+          "detail": "ExecutionPhase enum mirrors the /next skill workflow steps for UI display"
+        },
+        {
+          "step": "gates",
+          "detail": "runGates calls API and maps results to GateResult interface for UI rendering"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 100,
+      "lines_removed": 6,
+      "recorded_at": "2026-03-11T04:20:00Z"
+    },
+    {
+      "id": "C-053",
+      "task_id": "T-016",
+      "file": "forge-web/stores/entityStore.ts",
+      "action": "edit",
+      "summary": "Deep-verify fixes: (F-002) task.failed now handled as update not create — prevented duplicate tasks. (F-003) Added task.removed, idea.committed events + 'replace' op for gate.configured. (F-004) WS payloads merged into existing items instead of replacing them. (F-005/F-006) All create* methods now have loading/error state via withCreateLoading helper. (F-007) All update* methods have error handling via withUpdate helper. (F-009/F-010) removeTask is optimistic with rollback — uses get() for previous state capture. (F-012) fetchEntities uses request sequence numbers to discard stale responses. (F-013) Gates identified by 'name' not 'id' via getItemId helper; gate.configured uses 'replace' op.",
+      "reasoning_trace": [
+        {
+          "step": "critical-fix",
+          "detail": "task.failed appended duplicate instead of updating existing — changed eventMap to explicit op types"
+        },
+        {
+          "step": "helpers",
+          "detail": "withCreateLoading and withUpdate DRY helpers replaced 10 copy-pasted patterns"
+        },
+        {
+          "step": "race-condition",
+          "detail": "_fetchSeq counter incremented before fetch, checked after — stale responses discarded"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 180,
+      "lines_removed": 150,
+      "group_id": "t016-deep-verify",
+      "recorded_at": "2026-03-11T04:45:00Z"
+    },
+    {
+      "id": "C-054",
+      "task_id": "T-016",
+      "file": "forge-web/stores/projectStore.ts",
+      "action": "edit",
+      "summary": "Deep-verify fix (F-011): selectProject now checks get().currentSlug after async fetch — discards stale response if user navigated to different project during load.",
+      "reasoning_trace": [
+        {
+          "step": "race-condition",
+          "detail": "Rapid project switching could show wrong project detail because slower first fetch overwrites faster second"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 3,
+      "lines_removed": 0,
+      "group_id": "t016-deep-verify",
+      "recorded_at": "2026-03-11T04:46:00Z"
+    },
+    {
+      "id": "C-055",
+      "task_id": "T-016",
+      "file": "forge-web/stores/executionStore.ts",
+      "action": "edit",
+      "summary": "Deep-verify fix (F-017): claimNext error detection now uses instanceof ApiError with status === 404 instead of fragile string matching on error message.",
+      "reasoning_trace": [
+        {
+          "step": "reliability",
+          "detail": "String matching on error messages is fragile — ApiError already carries status code"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 3,
+      "lines_removed": 4,
+      "group_id": "t016-deep-verify",
+      "recorded_at": "2026-03-11T04:47:00Z"
+    },
+    {
+      "id": "C-056",
+      "task_id": "T-017",
+      "file": "forge-web/app/page.tsx",
+      "action": "edit",
+      "summary": "Replaced placeholder dashboard with dynamic project list. Fetches projects + statuses from API. Shows progress bars, status counts, project goals. Links to individual projects.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Grid layout with project cards showing progress bar and status counts — quick overview without drilling in"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 95,
+      "lines_removed": 24,
+      "recorded_at": "2026-03-11T05:10:00Z"
+    },
+    {
+      "id": "C-057",
+      "task_id": "T-017",
+      "file": "forge-web/app/projects/page.tsx",
+      "action": "create",
+      "summary": "Project list page with inline create form. Slug + goal inputs, creates via projectStore.createProject. Shows each project with progress percentage and task count.",
+      "reasoning_trace": [
+        {
+          "step": "ux",
+          "detail": "Inline create form toggled by button — no modal needed for simple slug+goal input"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 120,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T05:15:00Z"
+    },
+    {
+      "id": "C-058",
+      "task_id": "T-017",
+      "file": "forge-web/app/projects/[slug]/layout.tsx",
+      "action": "create",
+      "summary": "Project layout with breadcrumb (Projects / {slug}) and entity navigation tabs (Overview, Tasks, Decisions, Objectives, Ideas, Knowledge, Guidelines, Changes, Lessons). Active tab highlighted with border-bottom. Calls selectProject on mount.",
+      "reasoning_trace": [
+        {
+          "step": "navigation",
+          "detail": "Tab-based entity nav instead of sidebar — all entities visible at once, no deep nesting"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 75,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T05:18:00Z"
+    },
+    {
+      "id": "C-059",
+      "task_id": "T-017",
+      "file": "forge-web/app/projects/[slug]/page.tsx",
+      "action": "create",
+      "summary": "Project dashboard page: task status distribution with segmented progress bar, open decisions list (top 5), recent changes (last 5), entity counts grid (8 entity types). All data from stores/API.",
+      "reasoning_trace": [
+        {
+          "step": "layout",
+          "detail": "Top status card + 2-column decisions/changes + bottom entity counts grid"
+        },
+        {
+          "step": "status-bar",
+          "detail": "Segmented progress bar uses task status colors — visual at-a-glance project health"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 150,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T05:22:00Z"
+    },
+    {
+      "id": "C-060",
+      "task_id": "T-017",
+      "file": "forge-web/app/",
+      "action": "edit",
+      "summary": "Deep-verify fixes: (F-001/F-002) Replaced statuses-in-deps pattern with useRef Set to track fetched slugs — prevents re-render loop and infinite retry on error. (F-003) Project dashboard now fetches all 8 entity types for accurate counts. (F-004) Decisions fetched without status filter; open decisions filtered client-side for display.",
+      "reasoning_trace": [
+        {
+          "step": "render-loop",
+          "detail": "statuses in useEffect deps triggered re-run on every fetchStatus completion — ref-based tracking avoids this"
+        },
+        {
+          "step": "entity-counts",
+          "detail": "5 of 8 entity types showed 0 because they were never fetched — added fetchEntities calls for all"
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 15,
+      "lines_removed": 12,
+      "group_id": "t017-deep-verify",
+      "recorded_at": "2026-03-11T05:35:00Z"
+    },
+    {
+      "id": "C-061",
+      "task_id": "T-018",
+      "file": "forge-web/components/shared/StatusFilter.tsx",
+      "action": "create",
+      "summary": "Reusable select dropdown for filtering entities by status/category/weight. Label prop defaults to 'Status'. Generic design shared across all 7 entity list pages.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Simple controlled select component with label and 'All' default option. Used by tasks, decisions, objectives, ideas, guidelines, lessons pages. Changes page has custom inline select due to different label/options structure."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 27,
+      "lines_removed": 0,
+      "recorded_at": "2026-03-11T06:30:00Z"
+    },
+    {
+      "id": "C-062",
+      "task_id": "T-018",
+      "file": "forge-web/components/entities/",
+      "action": "create",
+      "summary": "Created 7 entity card components: TaskCard (status badge, type badge, scopes, depends_on, Start button), DecisionCard (confidence badge, issue/recommendation, Close button), ObjectiveCard (KR progress bars), IdeaCard (priority/category badges, tags), ChangeCard (action-colored badge, file, +/- lines), GuidelineCard (weight-colored badge, scope, tags), LessonCard (severity badge, tags). All use shared Badge component with statusVariant mapping.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Each card displays the most relevant fields for its entity type. Interactive actions limited to status transitions: TaskCard has Start (TODO→IN_PROGRESS), DecisionCard has Close (OPEN→CLOSED)."
+        },
+        {
+          "step": "consistency",
+          "detail": "All cards share same visual structure: rounded border, white background, forge-300 hover border, consistent spacing and typography."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 255,
+      "lines_removed": 0,
+      "group_id": "t018-entity-cards",
+      "recorded_at": "2026-03-11T06:30:00Z"
+    },
+    {
+      "id": "C-063",
+      "task_id": "T-018",
+      "file": "forge-web/app/projects/[slug]/{tasks,decisions,objectives,ideas,changes,guidelines,lessons}/page.tsx",
+      "action": "create",
+      "summary": "Created 7 entity list pages with status/category filters. Each page: fetches via entityStore on mount, filters client-side, shows loading state, empty state messages. TasksPage includes status change handler and error display. DecisionsPage includes close handler. ChangesPage sorts newest-first. GuidelinesPage has dual filters (status + weight). LessonsPage filters by category.",
+      "reasoning_trace": [
+        {
+          "step": "pattern",
+          "detail": "All pages follow same pattern: useEffect fetch, useState filter, client-side filter, map to card component, empty state"
+        },
+        {
+          "step": "interactivity",
+          "detail": "TasksPage handleStatusChange → updateTask, DecisionsPage handleClose → updateDecision. Other entities are read-only in list view."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 320,
+      "lines_removed": 0,
+      "group_id": "t018-entity-pages",
+      "recorded_at": "2026-03-11T06:30:00Z"
+    },
+    {
+      "id": "C-064",
+      "task_id": "T-018",
+      "file": "forge-web/app/projects/[slug]/{decisions,objectives,ideas,changes,guidelines,lessons}/page.tsx + components/shared/Badge.tsx + components/entities/ChangeCard.tsx + lib/types.ts",
+      "action": "edit",
+      "summary": "Deep-verify fixes (3 IMPORTANT): (F-001) Added error display to 6 entity pages that were missing it — only TasksPage had error display. (F-002) Added 7 missing status mappings to statusVariant: DEFERRED/PAUSED→warning, ACHIEVED/MITIGATED/ACCEPTED/COMMITTED→success, ABANDONED→danger, ANALYZING→info. (F-003) Added 'verify' action to ChangeAction type, changes filter list, and ChangeCard actionColors map — real data (C-001) uses 'verify' actions.",
+      "reasoning_trace": [
+        {
+          "step": "F-001",
+          "detail": "API errors were silently swallowed — users saw blank pages. Added red error text matching TasksPage pattern."
+        },
+        {
+          "step": "F-002",
+          "detail": "DecisionStatus DEFERRED/ANALYZING/MITIGATED/ACCEPTED, ObjectiveStatus ACHIEVED/PAUSED/ABANDONED, IdeaStatus COMMITTED all fell through to gray default badge."
+        },
+        {
+          "step": "F-003",
+          "detail": "changes.json C-001 has action='verify' but type, filter, and color map only had 5 actions. Added verify with 'default' (gray) color."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 18,
+      "lines_removed": 5,
+      "group_id": "t018-deep-verify",
+      "recorded_at": "2026-03-11T06:45:00Z"
+    },
+    {
+      "id": "C-065",
+      "task_id": "T-019",
+      "file": "forge-web/components/entities/KnowledgeCard.tsx",
+      "action": "create",
+      "summary": "Knowledge card component with status/category badges, content preview, link/dep counts, tags. Clickable link to detail page.",
+      "reasoning_trace": [
+        {
+          "step": "design",
+          "detail": "Wrapped in Next.js Link for navigation to /knowledge/[id] detail page. Shows linked_entities and dependencies counts as compact metadata."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 45,
+      "lines_removed": 0,
+      "group_id": "t019-knowledge",
+      "recorded_at": "2026-03-11T07:15:00Z"
+    },
+    {
+      "id": "C-066",
+      "task_id": "T-019",
+      "file": "forge-web/app/projects/[slug]/knowledge/page.tsx",
+      "action": "create",
+      "summary": "Knowledge list page with status filter, category filter, and text search (title/content/tags). Uses KnowledgeCard components with slug passed for detail links.",
+      "reasoning_trace": [
+        {
+          "step": "search",
+          "detail": "Added text search input that filters by title, content, and tags — critical for knowledge bases with many entries"
+        },
+        {
+          "step": "dual-filter",
+          "detail": "Status + category dropdowns matching API filter params for consistent UX"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 75,
+      "lines_removed": 0,
+      "group_id": "t019-knowledge",
+      "recorded_at": "2026-03-11T07:15:00Z"
+    },
+    {
+      "id": "C-067",
+      "task_id": "T-019",
+      "file": "forge-web/app/projects/[slug]/knowledge/[id]/page.tsx",
+      "action": "create",
+      "summary": "Knowledge detail page with 4 tabs: Content (markdown editor with change_reason), Versions (history with expandable content), Links (view/add/remove entity links), Impact (affected entities display). Features: inline editing, version history browsing, link management with entity type/relation selectors, impact analysis visualization.",
+      "reasoning_trace": [
+        {
+          "step": "tabs",
+          "detail": "4-tab layout separates concerns: content editing, version history, link management, impact analysis"
+        },
+        {
+          "step": "editor",
+          "detail": "Content tab toggles between view/edit mode. Edit mode shows title, markdown textarea, and conditional change_reason field when content differs"
+        },
+        {
+          "step": "versions",
+          "detail": "Lists version snapshots with expandable content preview. Shows current version indicator."
+        },
+        {
+          "step": "links",
+          "detail": "Existing links shown with remove button. Add link form with entity type, entity ID, and relation dropdowns."
+        },
+        {
+          "step": "impact",
+          "detail": "Fetches impact analysis from API showing affected entity types, IDs, names, and relations."
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 310,
+      "lines_removed": 0,
+      "group_id": "t019-knowledge",
+      "recorded_at": "2026-03-11T07:15:00Z"
+    },
+    {
+      "id": "C-068",
+      "task_id": "T-020",
+      "action": "edit",
+      "file_path": "core/client.py",
+      "reasoning_trace": "Implemented full APIBackend replacing stub NotImplementedError. All ForgeBackend methods now use urllib.request for HTTP calls to forge-api. Added ForgeRemoteError exception class. Fixed data.pop() mutation bug in update methods.",
+      "before_snapshot": "APIBackend stub with __getattr__ raising NotImplementedError",
+      "after_snapshot": "Full APIBackend with _request() core method, all entity CRUD operations, error handling via ForgeRemoteError",
+      "verification_steps": [
+        {
+          "step": "review",
+          "detail": "All ForgeBackend Protocol methods implemented with matching signatures"
+        },
+        {
+          "step": "fix",
+          "detail": "Fixed data.pop('id') mutation in 6 update methods - changed to data.get('id') + filtered body"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 580,
+      "lines_removed": 35,
+      "group_id": "t020-remote",
+      "recorded_at": "2026-03-11T08:30:00Z"
+    },
+    {
+      "id": "C-069",
+      "task_id": "T-025",
+      "action": "create",
+      "file_path": "core/llm/providers/__init__.py",
+      "reasoning_trace": "Package init for LLM provider implementations, exports ProviderRegistry and get_provider convenience function.",
+      "before_snapshot": null,
+      "after_snapshot": "Package init exporting ProviderRegistry, get_provider",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 12,
+      "lines_removed": 0,
+      "group_id": "t025-providers",
+      "recorded_at": "2026-03-11T09:00:00Z"
+    },
+    {
+      "id": "C-070",
+      "task_id": "T-025",
+      "action": "create",
+      "file_path": "core/llm/providers/anthropic.py",
+      "reasoning_trace": "Anthropic Claude provider implementing LLMProvider Protocol. Uses anthropic SDK AsyncAnthropic client. Handles system prompt extraction, tool conversion to Anthropic format, streaming via messages.stream(), model capability map for cost/context tracking.",
+      "before_snapshot": null,
+      "after_snapshot": "AnthropicProvider with complete(), stream(), capabilities(). Model caps for opus-4, sonnet-4, haiku-3.5.",
+      "verification_steps": [
+        {
+          "step": "protocol",
+          "detail": "Implements all 3 LLMProvider methods: async complete, async stream, sync capabilities"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 222,
+      "lines_removed": 0,
+      "group_id": "t025-providers",
+      "recorded_at": "2026-03-11T09:00:00Z"
+    },
+    {
+      "id": "C-071",
+      "task_id": "T-025",
+      "action": "create",
+      "file_path": "core/llm/providers/openai.py",
+      "reasoning_trace": "OpenAI provider implementing LLMProvider Protocol. Uses openai SDK AsyncOpenAI client. Handles function calling format, JSON mode, stream_options for usage in streaming, Azure compatibility via base_url.",
+      "before_snapshot": null,
+      "after_snapshot": "OpenAIProvider with complete(), stream(), capabilities(). Model caps for gpt-4o, gpt-4o-mini, gpt-4-turbo, o1.",
+      "verification_steps": [
+        {
+          "step": "protocol",
+          "detail": "Implements all 3 LLMProvider methods with OpenAI-specific format conversions"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 237,
+      "lines_removed": 0,
+      "group_id": "t025-providers",
+      "recorded_at": "2026-03-11T09:00:00Z"
+    },
+    {
+      "id": "C-072",
+      "task_id": "T-025",
+      "action": "create",
+      "file_path": "core/llm/providers/ollama.py",
+      "reasoning_trace": "Ollama provider using stdlib urllib — no external dependencies. Uses run_in_executor for async wrapping of sync HTTP calls. Streaming via line-by-line NDJSON parsing. Zero cost (local inference).",
+      "before_snapshot": null,
+      "after_snapshot": "OllamaProvider with complete(), stream(), capabilities(). Configurable context_window and max_output.",
+      "verification_steps": [
+        {
+          "step": "protocol",
+          "detail": "Implements all 3 LLMProvider methods using only stdlib urllib"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 203,
+      "lines_removed": 0,
+      "group_id": "t025-providers",
+      "recorded_at": "2026-03-11T09:00:00Z"
+    },
+    {
+      "id": "C-073",
+      "task_id": "T-025",
+      "action": "create",
+      "file_path": "core/llm/providers/registry.py",
+      "reasoning_trace": "Provider registry with TOML config loading, lazy instantiation, API key resolution from env vars, and module-level get_provider() convenience. Searches project-level and ~/.forge/providers.toml.",
+      "before_snapshot": null,
+      "after_snapshot": "ProviderRegistry.from_toml(), from_project(), get(), register(), register_config(). get_provider() module-level function.",
+      "verification_steps": [
+        {
+          "step": "config",
+          "detail": "Supports providers.toml with api_key_env for env var resolution, lazy provider creation on first get()"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 185,
+      "lines_removed": 0,
+      "group_id": "t025-providers",
+      "recorded_at": "2026-03-11T09:00:00Z"
+    },
+    {
+      "id": "C-074",
+      "task_id": "T-025",
+      "action": "edit",
+      "file_path": "core/llm/__init__.py",
+      "reasoning_trace": "Updated LLM package init to export ProviderRegistry and get_provider from the new providers subpackage.",
+      "before_snapshot": "__all__ with provider, contract, context exports",
+      "after_snapshot": "__all__ extended with ProviderRegistry, get_provider",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 5,
+      "lines_removed": 0,
+      "group_id": "t025-providers",
+      "recorded_at": "2026-03-11T09:00:00Z"
+    },
+    {
+      "id": "C-075",
+      "task_id": "T-025",
+      "action": "verify",
+      "file_path": "core/llm/providers/",
+      "reasoning_trace": "Deep-verify fixes: F-001 broadened Ollama stream() exception handling, F-002 added fallback is_final yield, F-003 fixed OpenAI double is_final, F-005 removed unused LLMProvider imports, F-007/F-008 unified system message merging across providers, F-010 fixed registry cwd() to use explicit project_dir, F-011 fixed deprecated get_event_loop to get_running_loop.",
+      "before_snapshot": "9 findings (1 CRITICAL, 4 IMPORTANT, 4 MINOR)",
+      "after_snapshot": "All CRITICAL and IMPORTANT findings fixed. Minor: empty message validation skipped (APIs handle it).",
+      "verification_steps": [
+        {
+          "step": "fix",
+          "detail": "Ollama: broadened except clause, added got_final fallback, used get_running_loop"
+        },
+        {
+          "step": "fix",
+          "detail": "OpenAI: removed is_final from finish_reason chunk, only usage-only chunk is final"
+        },
+        {
+          "step": "fix",
+          "detail": "OpenAI: merged system messages into single message to avoid duplicates"
+        },
+        {
+          "step": "fix",
+          "detail": "Registry: get_provider now accepts project_dir param, falls back to ~/.forge"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 12,
+      "lines_removed": 18,
+      "group_id": "t025-verify",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-076",
+      "task_id": "T-021",
+      "action": "create",
+      "file_path": "forge-web/lib/hooks/useDragDrop.ts",
+      "reasoning_trace": "DnD state management hook with interaction matrix (Task→Task=dependency, Entity→Entity=link, Entity→Zone=action), drag serialization via custom MIME type, valid target resolution.",
+      "before_snapshot": null,
+      "after_snapshot": "useDragDrop hook with resolveDropAction, getValidTargets, serializeDragData, parseDragData",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 150,
+      "lines_removed": 0,
+      "group_id": "t021-dnd",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-077",
+      "task_id": "T-021",
+      "action": "create",
+      "file_path": "forge-web/components/dnd/DragItem.tsx",
+      "reasoning_trace": "Draggable wrapper using HTML5 drag API. Sets custom MIME type + text/plain fallback. Visual feedback with cursor/opacity changes. ARIA attributes for accessibility.",
+      "before_snapshot": null,
+      "after_snapshot": "DragItem component with draggable prop, dataTransfer handling, aria attributes",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 60,
+      "lines_removed": 0,
+      "group_id": "t021-dnd",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-078",
+      "task_id": "T-021",
+      "action": "create",
+      "file_path": "forge-web/components/dnd/DropZone.tsx",
+      "reasoning_trace": "Drop target validating against interaction matrix. Visual ring highlight on valid dragOver. Prevents self-drops. Structured DropResult on drop.",
+      "before_snapshot": null,
+      "after_snapshot": "DropZone with entity/zone target types, validation, visual feedback",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 80,
+      "lines_removed": 0,
+      "group_id": "t021-dnd",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-079",
+      "task_id": "T-021",
+      "action": "create",
+      "file_path": "forge-web/components/dnd/RelationshipBuilder.tsx",
+      "reasoning_trace": "Post-drop handler creating links via knowledge API and dependencies via task update API. Toast-like feedback with processing/success/error states.",
+      "before_snapshot": null,
+      "after_snapshot": "RelationshipBuilder with processDropResult for create-link, create-dependency, trigger-action",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 120,
+      "lines_removed": 0,
+      "group_id": "t021-dnd",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-080",
+      "task_id": "T-021",
+      "action": "create",
+      "file_path": "forge-web/components/dnd/EntityPalette.tsx",
+      "reasoning_trace": "Sidebar with 7 entity groups, auto-fetches from entityStore, collapsible sections, compact DragItem chips with ID/label/status.",
+      "before_snapshot": null,
+      "after_snapshot": "EntityPalette with entity groups, loading states, DragItem integration",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 100,
+      "lines_removed": 0,
+      "group_id": "t021-dnd",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-081",
+      "task_id": "T-022",
+      "action": "create",
+      "file_path": "forge-web/app/projects/[slug]/board/page.tsx",
+      "reasoning_trace": "Task DAG visualization using SVG. Layered layout via Kahn's algorithm with longest-path assignment. Color-coded status nodes, bezier curve edges, tooltips, navigation link.",
+      "before_snapshot": null,
+      "after_snapshot": "375-line DAG board page with SVG rendering, layer assignment, tooltip, legend",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 375,
+      "lines_removed": 0,
+      "group_id": "t022-dag",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-082",
+      "task_id": "T-022",
+      "action": "edit",
+      "file_path": "forge-web/app/projects/[slug]/layout.tsx",
+      "reasoning_trace": "Added Board tab to project navigation between Tasks and Decisions.",
+      "before_snapshot": "Nav tabs: Tasks, Decisions, Objectives, ...",
+      "after_snapshot": "Nav tabs: Tasks, Board, Decisions, Objectives, ...",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 3,
+      "lines_removed": 0,
+      "group_id": "t022-dag",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-083",
+      "task_id": "T-023",
+      "action": "edit",
+      "file_path": "forge-web/app/projects/[slug]/layout.tsx",
+      "reasoning_trace": "Integrated WebSocket in project layout: useWebSocket hook for connection, useEntityStore handleEvent for forwarding events, green/red connection indicator dot.",
+      "before_snapshot": "Layout without WebSocket integration",
+      "after_snapshot": "Layout with WS connect, event forwarding to entityStore, connection status dot",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 20,
+      "lines_removed": 0,
+      "group_id": "t023-ws",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-084",
+      "task_id": "T-024",
+      "action": "edit",
+      "file_path": "docker-compose.yml",
+      "reasoning_trace": "Added forge-web service: build from ./forge-web, port 3000, NEXT_PUBLIC_API_URL/WS_URL env, depends_on forge-api healthy, wget healthcheck, unless-stopped restart.",
+      "before_snapshot": "Docker Compose with forge-api, postgres, redis",
+      "after_snapshot": "Docker Compose with forge-web added (4 services total)",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 17,
+      "lines_removed": 0,
+      "group_id": "t024-docker",
+      "recorded_at": "2026-03-11T09:30:00Z"
+    },
+    {
+      "id": "C-085",
+      "task_id": "T-027",
+      "action": "create",
+      "file_path": "core/llm/contracts/",
+      "reasoning_trace": "Created all 12 LLM contracts from Section 6.3 in 6 files: task_execution.py (2), knowledge.py (3), planning.py (3), analysis.py (2), review.py (2), registry.py (CONTRACTS dict + get_default_registry).",
+      "before_snapshot": null,
+      "after_snapshot": "12 contracts: task-execution-v1, task-quick-v1, knowledge-suggest-v1, knowledge-extract-v1, impact-assess-v1, plan-decompose-v1, ac-suggest-v1, guideline-match-v1, risk-assess-v1, lesson-promote-v1, code-review-v1, verify-v1",
+      "verification_steps": [
+        {
+          "step": "schema",
+          "detail": "Each contract has input_schema, output_schema, validation_rules with check_fn, retry_strategy"
+        },
+        {
+          "step": "registry",
+          "detail": "CONTRACTS dict maps all 12 IDs, get_default_registry() pre-loads all"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 680,
+      "lines_removed": 0,
+      "group_id": "t027-contracts",
+      "recorded_at": "2026-03-11T10:00:00Z"
+    },
+    {
+      "id": "C-086",
+      "task_id": "T-021",
+      "action": "verify",
+      "file_path": "forge-web/components/dnd/",
+      "reasoning_trace": "Deep-verify fixes: F-001 added decisions to ENTITY_TYPE_TO_LINK_TYPE and KnowledgeLinkEntityType, F-004 replaced broken onAnimationEnd with AutoDismiss setTimeout, F-006 added isDragging state for opacity feedback.",
+      "before_snapshot": "2 CRITICAL, 4 IMPORTANT findings",
+      "after_snapshot": "Fixed: decision link mapping, toast auto-dismiss, drag opacity feedback",
+      "verification_steps": [
+        {
+          "step": "fix",
+          "detail": "Added decisions: 'decision' to link type map and types.ts KnowledgeLinkEntityType"
+        },
+        {
+          "step": "fix",
+          "detail": "Replaced onAnimationEnd with AutoDismiss component using useEffect+setTimeout"
+        },
+        {
+          "step": "fix",
+          "detail": "Added isDragging state to DragItem for opacity-40 feedback"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 20,
+      "lines_removed": 8,
+      "group_id": "t021-verify",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-087",
+      "task_id": "T-022",
+      "action": "verify",
+      "file_path": "forge-web/app/projects/[slug]/board/page.tsx",
+      "reasoning_trace": "Deep-verify fixes: F-001 cycle nodes placed in separate layer with orange dashed border. F-008 node click now navigates to task list with highlight param.",
+      "before_snapshot": "Cycle nodes dumped to layer 0, click goes to generic task list",
+      "after_snapshot": "Cycle nodes in maxLayer+1 with visual warning, click includes task ID highlight",
+      "verification_steps": [
+        {
+          "step": "fix",
+          "detail": "Cycle nodes assigned to assignedMax+1 layer, rendered with orange border and dashed stroke"
+        },
+        {
+          "step": "fix",
+          "detail": "handleNodeClick now passes task.id as highlight query param"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 10,
+      "lines_removed": 5,
+      "group_id": "t022-verify",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-088",
+      "task_id": "T-023",
+      "action": "verify",
+      "file_path": "forge-web/stores/entityStore.ts",
+      "reasoning_trace": "Deep-verify fixes: F-001/F-002 added task.status_changed and decision.closed to eventMap, added idKey field to resolve entity IDs from backend payloads (task_id, decision_id, knowledge_id, change_id).",
+      "before_snapshot": "eventMap missing backend event names, payload ID lookup used generic 'id'",
+      "after_snapshot": "eventMap matches backend events, idKey resolves entity-specific ID fields",
+      "verification_steps": [
+        {
+          "step": "fix",
+          "detail": "Added task.status_changed, decision.closed to eventMap"
+        },
+        {
+          "step": "fix",
+          "detail": "Added idKey to eventMap entries, handleEvent uses idKey ?? 'id' fallback"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 15,
+      "lines_removed": 12,
+      "group_id": "t023-verify",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-089",
+      "task_id": "T-024",
+      "action": "verify",
+      "file_path": "forge-web/Dockerfile",
+      "reasoning_trace": "Deep-verify fix: F-007 NEXT_PUBLIC_ env vars must be set at build time. Added ARG/ENV in builder stage. Docker-compose uses build.args with localhost URLs (browser-accessible).",
+      "before_snapshot": "NEXT_PUBLIC_ vars set as runtime env (ignored by Next.js)",
+      "after_snapshot": "ARG NEXT_PUBLIC_API_URL/WS_URL in builder stage, docker-compose passes via build.args",
+      "verification_steps": [
+        {
+          "step": "fix",
+          "detail": "Dockerfile: ARG + ENV in builder stage for NEXT_PUBLIC_ vars"
+        },
+        {
+          "step": "fix",
+          "detail": "docker-compose: changed to build.args with localhost URLs"
+        }
+      ],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 8,
+      "lines_removed": 4,
+      "group_id": "t024-verify",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-090",
+      "task_id": "T-031",
+      "action": "create",
+      "file_path": "forge-web/components/execution/ContextView.tsx",
+      "reasoning_trace": "Standalone context viewer with collapsible sections, token count badges, truncation warnings, expand/collapse all controls.",
+      "before_snapshot": null,
+      "after_snapshot": "ContextView component with section rendering, token color coding, truncation notices",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 120,
+      "lines_removed": 0,
+      "group_id": "t031-context",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-091",
+      "task_id": "T-031",
+      "action": "create",
+      "file_path": "forge-web/app/projects/[slug]/execution/context/[taskId]/page.tsx",
+      "reasoning_trace": "Standalone context preview page fetching from tasks.context API with back nav, refresh button, task header with status/type badges.",
+      "before_snapshot": null,
+      "after_snapshot": "Context preview page at /projects/{slug}/execution/context/{taskId}",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 90,
+      "lines_removed": 0,
+      "group_id": "t031-context",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-092",
+      "task_id": "T-031",
+      "action": "edit",
+      "file_path": "forge-api/app/routers/tasks.py",
+      "reasoning_trace": "Enhanced context endpoint to return rich assembled context with 6 sections: task brief, dependencies, decisions, guidelines, knowledge, dependency changes. Token estimates and truncation info.",
+      "before_snapshot": "Basic context endpoint returning raw data",
+      "after_snapshot": "Rich context with sections, token estimates, truncation support",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 80,
+      "lines_removed": 10,
+      "group_id": "t031-context",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-093",
+      "task_id": "T-032",
+      "action": "create",
+      "file_path": "forge-api/app/routers/maintenance.py",
+      "reasoning_trace": "Knowledge maintenance API: staleness detection with configurable threshold, usage tracking across tasks/ideas/objectives, review suggestion generation with priority levels.",
+      "before_snapshot": null,
+      "after_snapshot": "Two endpoints: GET maintenance (full report), GET maintenance/stale (focused). Registered in main.py.",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 200,
+      "lines_removed": 0,
+      "group_id": "t032-maintenance",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-094",
+      "task_id": "T-032",
+      "action": "edit",
+      "file_path": "forge-web/app/projects/[slug]/knowledge/page.tsx",
+      "reasoning_trace": "Added maintenance panel with summary stats, review suggestions, usage overview table. Lazy loads on panel open. Stale indicators passed to KnowledgeCard.",
+      "before_snapshot": "Knowledge list with filters",
+      "after_snapshot": "Knowledge list with collapsible maintenance panel, stale indicators on cards",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 100,
+      "lines_removed": 5,
+      "group_id": "t032-maintenance",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-095",
+      "task_id": "T-033",
+      "action": "edit",
+      "file_path": "forge-web/app/projects/[slug]/guidelines/page.tsx",
+      "reasoning_trace": "Enhanced with inline create form (title, scope, weight, content, rationale, tags) and edit mode toggle per guideline card.",
+      "before_snapshot": "Read-only guideline list with filters",
+      "after_snapshot": "Full CRUD: create form, edit mode on cards, re-fetch after save",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 120,
+      "lines_removed": 5,
+      "group_id": "t033-pages",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-096",
+      "task_id": "T-033",
+      "action": "create",
+      "file_path": "forge-web/app/projects/[slug]/ac-templates/page.tsx",
+      "reasoning_trace": "AC template library page with category/status filters, create form with parameter definitions, instantiate modal flow (fill params → generate AC text).",
+      "before_snapshot": null,
+      "after_snapshot": "Full CRUD page with instantiation flow at /projects/{slug}/ac-templates",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 350,
+      "lines_removed": 0,
+      "group_id": "t033-pages",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-097",
+      "task_id": "T-033",
+      "action": "create",
+      "file_path": "forge-web/components/entities/GuidelineChip.tsx",
+      "reasoning_trace": "Compact guideline chip with weight color dot, scope label, truncated title. For embedding in other entity views.",
+      "before_snapshot": null,
+      "after_snapshot": "GuidelineChip with weight indicator, scope, tooltip",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 35,
+      "lines_removed": 0,
+      "group_id": "t033-pages",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-098",
+      "task_id": "T-033",
+      "action": "create",
+      "file_path": "forge-web/components/entities/ACTemplateCard.tsx",
+      "reasoning_trace": "AC template card with display/edit modes, parameter highlighting in template text, category badges, instantiation button.",
+      "before_snapshot": null,
+      "after_snapshot": "ACTemplateCard with edit form, instantiate trigger, category colors",
+      "verification_steps": [],
+      "decision_ids": [],
+      "guidelines_checked": [],
+      "lines_added": 180,
+      "lines_removed": 0,
+      "group_id": "t033-pages",
+      "recorded_at": "2026-03-11T10:30:00Z"
+    },
+    {
+      "id": "C-099",
+      "task_id": "T-026",
+      "file": "forge-api/app/routers/ai.py",
+      "action": "CREATE",
+      "description": "5 AI suggestion endpoints (suggest-knowledge, suggest-guidelines, suggest-ac, evaluate-lesson, assess-impact) with heuristic scoring in mock LLM mode",
+      "reasoning_trace": "Implements Section 8.1 AI endpoints using heuristic-based matching (word overlap, tag overlap, scope overlap) as mock LLM mode. Real LLM integration to be added when providers are configured.",
+      "lines_added": 760,
+      "lines_removed": 0,
+      "group_id": "t026-ai-endpoints",
+      "recorded_at": "2026-03-11T11:00:00Z"
+    },
+    {
+      "id": "C-100",
+      "task_id": "T-026",
+      "file": "forge-api/app/main.py",
+      "action": "EDIT",
+      "description": "Register AI suggestion router with auth dependencies",
+      "reasoning_trace": "Added ai router import and registration in main app",
+      "lines_added": 2,
+      "lines_removed": 0,
+      "group_id": "t026-ai-endpoints",
+      "recorded_at": "2026-03-11T11:00:00Z"
+    },
+    {
+      "id": "C-101",
+      "task_id": "T-028",
+      "file": "forge-api/app/routers/execution.py",
+      "action": "CREATE",
+      "description": "Execution streaming backend: start/status/cancel/history endpoints + WebSocket stream + mock LLM runner",
+      "reasoning_trace": "Implements Section 8.1 execution endpoints with background asyncio tasks, Redis Pub/Sub for WS streaming, in-memory + persisted execution state",
+      "lines_added": 550,
+      "lines_removed": 0,
+      "group_id": "t028-execution",
+      "recorded_at": "2026-03-11T11:00:00Z"
+    },
+    {
+      "id": "C-102",
+      "task_id": "T-028",
+      "file": "forge-api/app/main.py",
+      "action": "EDIT",
+      "description": "Register execution router with auth dependencies",
+      "reasoning_trace": "Added execution router import and registration",
+      "lines_added": 2,
+      "lines_removed": 0,
+      "group_id": "t028-execution",
+      "recorded_at": "2026-03-11T11:00:00Z"
+    },
+    {
+      "id": "C-103",
+      "task_id": "T-026",
+      "file": "forge-api/app/routers/ai.py",
+      "action": "EDIT",
+      "description": "Deep-verify fix: empty suggested_category defaults to 'technical-context' in all code paths",
+      "reasoning_trace": "F-002 CRITICAL: suggested_category was empty string in already-promoted and minor-no-detail paths, causing potential validation issues",
+      "lines_added": 2,
+      "lines_removed": 0,
+      "group_id": "deep-verify-t026-t028",
+      "recorded_at": "2026-03-11T11:30:00Z"
+    },
+    {
+      "id": "C-104",
+      "task_id": "T-028",
+      "file": "forge-api/app/routers/execution.py",
+      "action": "EDIT",
+      "description": "Deep-verify fixes: cancellation event emission, error message, JSON decode logging, event_bus null check, done callback error handling, WS error logging",
+      "reasoning_trace": "Fixed 4 CRITICAL (F-001/F-002/F-003/F-004) and 3 IMPORTANT issues: race conditions, missing events, silent failures",
+      "lines_added": 25,
+      "lines_removed": 8,
+      "group_id": "deep-verify-t026-t028",
+      "recorded_at": "2026-03-11T11:30:00Z"
+    },
+    {
+      "id": "C-105",
+      "task_id": "T-032",
+      "file": "forge-api/app/routers/maintenance.py",
+      "action": "EDIT",
+      "description": "Deep-verify fix: priority calculation handles None days_since correctly",
+      "reasoning_trace": "F-009 CRITICAL: items with missing timestamps got medium priority instead of high; now None days_since triggers high priority",
+      "lines_added": 2,
+      "lines_removed": 2,
+      "group_id": "deep-verify-t031-t033",
+      "recorded_at": "2026-03-11T11:30:00Z"
+    },
+    {
+      "id": "C-106",
+      "task_id": "T-031",
+      "file": "forge-api/app/routers/tasks.py",
+      "action": "EDIT",
+      "description": "Deep-verify fix: guideline scope matching uses direct comparison instead of comma-split",
+      "reasoning_trace": "F-002 IMPORTANT: scope field is a single string, not comma-separated; split() would never match correctly",
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "deep-verify-t031-t033",
+      "recorded_at": "2026-03-11T11:30:00Z"
+    },
+    {
+      "id": "C-107",
+      "task_id": "T-029",
+      "file": "forge-web/hooks/useAISuggestions.ts",
+      "action": "CREATE",
+      "description": "Custom React hook for fetching AI suggestions (knowledge, guidelines, AC) from API endpoints",
+      "reasoning_trace": "Encapsulates suggestion fetching logic with loading/error state and refetch capability",
+      "lines_added": 60,
+      "lines_removed": 0,
+      "group_id": "t029-suggestion-panel",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-108",
+      "task_id": "T-029",
+      "file": "forge-web/components/ai/SuggestionPanel.tsx",
+      "action": "CREATE",
+      "description": "Floating AI suggestion panel with tabbed interface for knowledge/guidelines/AC suggestions",
+      "reasoning_trace": "Main orchestration component: toggle open/close, tabs for suggestion types, accept/dismiss actions",
+      "lines_added": 200,
+      "lines_removed": 0,
+      "group_id": "t029-suggestion-panel",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-109",
+      "task_id": "T-029",
+      "file": "forge-web/components/ai/SuggestionChip.tsx",
+      "action": "CREATE",
+      "description": "Individual suggestion chip with confidence badge, accept/dismiss buttons, color-coded by score",
+      "reasoning_trace": "Green >0.7, yellow >0.4, gray otherwise; accept creates knowledge link via API",
+      "lines_added": 80,
+      "lines_removed": 0,
+      "group_id": "t029-suggestion-panel",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-110",
+      "task_id": "T-029",
+      "file": "forge-web/components/ai/ImpactAlert.tsx",
+      "action": "CREATE",
+      "description": "Warning banner for knowledge change impact with expandable entity list and severity colors",
+      "reasoning_trace": "Red for high impact, yellow for medium, blue for low; shows affected entity count",
+      "lines_added": 90,
+      "lines_removed": 0,
+      "group_id": "t029-suggestion-panel",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-111",
+      "task_id": "T-029",
+      "file": "forge-web/lib/api.ts",
+      "action": "EDIT",
+      "description": "Added ai API namespace with 5 typed methods: suggestKnowledge, suggestGuidelines, suggestAC, evaluateLesson, assessImpact",
+      "reasoning_trace": "Maps to the 5 AI suggestion endpoints in forge-api/app/routers/ai.py",
+      "lines_added": 30,
+      "lines_removed": 0,
+      "group_id": "t029-suggestion-panel",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-112",
+      "task_id": "T-029",
+      "file": "forge-web/lib/types.ts",
+      "action": "EDIT",
+      "description": "Added AI suggestion TypeScript types: KnowledgeSuggestion, GuidelineSuggestion, ACSuggestion, PromotionRecommendation, ImpactItem",
+      "reasoning_trace": "Types match Pydantic response models from forge-api/app/routers/ai.py",
+      "lines_added": 50,
+      "lines_removed": 0,
+      "group_id": "t029-suggestion-panel",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-113",
+      "task_id": "T-029",
+      "file": "forge-web/app/projects/[slug]/tasks/page.tsx",
+      "action": "EDIT",
+      "description": "Integrated SuggestionPanel into tasks page: task selection state, panel toggle on click",
+      "reasoning_trace": "Click task card to select and show floating AI suggestion panel with all 3 suggestion types",
+      "lines_added": 15,
+      "lines_removed": 2,
+      "group_id": "t029-suggestion-panel",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-114",
+      "task_id": "T-030",
+      "file": "forge-web/components/execution/ExecutionStream.tsx",
+      "action": "CREATE",
+      "description": "Real-time LLM output display with WebSocket, syntax highlighting for code blocks, auto-scroll, copy button",
+      "reasoning_trace": "Connects to WS stream, renders chunks with terminal-style dark background, handles all message types",
+      "lines_added": 180,
+      "lines_removed": 0,
+      "group_id": "t030-execution-view",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-115",
+      "task_id": "T-030",
+      "file": "forge-web/components/execution/ProgressTracker.tsx",
+      "action": "CREATE",
+      "description": "Execution progress display: status badge, live duration timer, token usage, cancel button",
+      "reasoning_trace": "Color-coded status with ping animation when running, auto-updating duration timer",
+      "lines_added": 120,
+      "lines_removed": 0,
+      "group_id": "t030-execution-view",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-116",
+      "task_id": "T-030",
+      "file": "forge-web/app/projects/[slug]/execution/[taskId]/page.tsx",
+      "action": "CREATE",
+      "description": "Execution view page: side-by-side context + stream layout, start execution, bottom progress bar",
+      "reasoning_trace": "Grid layout with ContextView on left, ExecutionStream on right, ProgressTracker at bottom",
+      "lines_added": 200,
+      "lines_removed": 0,
+      "group_id": "t030-execution-view",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-117",
+      "task_id": "T-030",
+      "file": "forge-web/lib/api.ts",
+      "action": "EDIT",
+      "description": "Added execution API methods: start, status, cancel",
+      "reasoning_trace": "Maps to POST start, GET status, POST cancel endpoints in execution router",
+      "lines_added": 15,
+      "lines_removed": 0,
+      "group_id": "t030-execution-view",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-118",
+      "task_id": "T-030",
+      "file": "forge-web/lib/types.ts",
+      "action": "EDIT",
+      "description": "Added ExecutionState, ExecutionStreamChunk, TokenUsage types",
+      "reasoning_trace": "TypeScript types matching backend ExecutionState Pydantic model",
+      "lines_added": 20,
+      "lines_removed": 0,
+      "group_id": "t030-execution-view",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-119",
+      "task_id": "T-030",
+      "file": "forge-web/app/projects/[slug]/layout.tsx",
+      "action": "EDIT",
+      "description": "Added contextual Execution nav link (only visible on execution routes)",
+      "reasoning_trace": "Navigation shows Execution tab only when route matches /execution/",
+      "lines_added": 5,
+      "lines_removed": 1,
+      "group_id": "t030-execution-view",
+      "recorded_at": "2026-03-11T12:30:00Z"
+    },
+    {
+      "id": "C-120",
+      "task_id": "T-034",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "EDIT",
+      "description": "T-034 Phase 2 integration verification: PASSED — all 10 routers, DB schema, auth, WS events, Docker, CLI remote mode verified",
+      "reasoning_trace": "Read-only verification of all Phase 2 components. No critical issues found.",
+      "lines_added": 0,
+      "lines_removed": 0,
+      "group_id": "t034-phase2-verify",
+      "recorded_at": "2026-03-11T12:00:00Z"
+    },
+    {
+      "id": "C-121",
+      "task_id": "T-035",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "EDIT",
+      "description": "T-035 Phase 3 integration verification: PASSED — all 9 entity pages, 10 cards, DnD, DAG, WS updates, Docker verified",
+      "reasoning_trace": "Read-only verification of all Phase 3 components. 100% coverage, no critical issues.",
+      "lines_added": 0,
+      "lines_removed": 0,
+      "group_id": "t035-phase3-verify",
+      "recorded_at": "2026-03-11T12:00:00Z"
+    },
+    {
+      "id": "C-122",
+      "task_id": "T-029",
+      "file": "forge-web/components/ai/SuggestionPanel.tsx",
+      "action": "EDIT",
+      "description": "Deep-verify fix: error handling in handleAccept and deterministic getSuggestionKey fallback",
+      "reasoning_trace": "F-001 CRITICAL: API failure silently dismissed suggestion; F-004 IMPORTANT: Math.random() key broke dismissed state",
+      "lines_added": 4,
+      "lines_removed": 2,
+      "group_id": "deep-verify-t029-t030",
+      "recorded_at": "2026-03-11T13:00:00Z"
+    },
+    {
+      "id": "C-123",
+      "task_id": "T-030",
+      "file": "forge-web/components/execution/ExecutionStream.tsx",
+      "action": "EDIT",
+      "description": "Deep-verify fix: WebSocket cleanup checks readyState before close to prevent race condition",
+      "reasoning_trace": "F-005 CRITICAL: cleanup could close WebSocket in CONNECTING state causing resource leak",
+      "lines_added": 3,
+      "lines_removed": 1,
+      "group_id": "deep-verify-t029-t030",
+      "recorded_at": "2026-03-11T13:00:00Z"
+    },
+    {
+      "id": "C-124",
+      "task_id": "T-036",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "EDIT",
+      "description": "T-036 Phase 4 integration verification: PASSED — all 8 areas verified (providers, contracts, AI endpoints, execution, UI, maintenance)",
+      "reasoning_trace": "Read-only verification of all Phase 4 components. All 12 contracts, 3 providers, 5 AI endpoints, execution streaming, UI components verified.",
+      "lines_added": 0,
+      "lines_removed": 0,
+      "group_id": "t036-phase4-verify",
+      "recorded_at": "2026-03-11T13:00:00Z"
+    },
+    {
+      "id": "C-125",
+      "task_id": "T-037",
+      "file": "forge-api/app/debug_capture.py",
+      "action": "CREATE",
+      "summary": "DebugCapture service + DebugSession class — captures full LLM request/response data with lifecycle management, in-memory session cache, persistent storage, and EventBus integration",
+      "reasoning_trace": "Core service for the LLM Debug Monitor — wraps LLM calls to capture request payloads, responses, validation results, token usage, and latency. Provides enable/disable per project, session lifecycle (start/response/validation/error/finalize), and persistence to debug_sessions.json.",
+      "lines_added": 397,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-126",
+      "task_id": "T-037",
+      "file": "forge-api/app/routers/debug.py",
+      "action": "CREATE",
+      "summary": "Debug API router with 6 endpoints: enable, disable, status, list sessions (with filters/pagination), session detail, clear sessions",
+      "reasoning_trace": "REST API for the LLM Debug Monitor. Follows existing router patterns: check_project_exists guard, Depends(get_storage), _get_lock for writes, emit_event for notifications, Pydantic response models.",
+      "lines_added": 246,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-127",
+      "task_id": "T-037",
+      "file": "forge-api/app/routers/execution.py",
+      "action": "EDIT",
+      "summary": "Integrated debug capture into _run_mock_execution — creates debug session on start, records response/validation on completion, records errors on cancel/failure",
+      "reasoning_trace": "Wrap the mock execution runner with debug capture lifecycle calls when debug is enabled. All debug operations wrapped in try/except to never break execution flow.",
+      "lines_added": 65,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-128",
+      "task_id": "T-037",
+      "file": "forge-api/app/events.py",
+      "action": "EDIT",
+      "summary": "Added 'debug.session' to EVENT_TYPES set",
+      "reasoning_trace": "New event type for debug session notifications via Redis Pub/Sub.",
+      "lines_added": 1,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-129",
+      "task_id": "T-037",
+      "file": "forge-api/app/main.py",
+      "action": "EDIT",
+      "summary": "Registered debug router, initialized DebugCapture service in lifespan",
+      "reasoning_trace": "Added debug import to routers, DebugCapture init after EventBus creation, and router registration with auth deps.",
+      "lines_added": 5,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-130",
+      "task_id": "T-037",
+      "file": "forge-web/lib/types.ts",
+      "action": "EDIT",
+      "summary": "Added Debug Monitor TypeScript types: DebugSessionSummary, DebugContextSection, DebugValidationResult, DebugSession, DebugStatus",
+      "reasoning_trace": "Frontend type definitions matching backend response schemas.",
+      "lines_added": 45,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-131",
+      "task_id": "T-037",
+      "file": "forge-web/lib/api.ts",
+      "action": "EDIT",
+      "summary": "Added debug API namespace with 6 typed methods: enable, disable, status, sessions (with filters), session detail, clear",
+      "reasoning_trace": "API client methods matching the new debug router endpoints.",
+      "lines_added": 30,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-132",
+      "task_id": "T-037",
+      "file": "forge-web/hooks/useDebugSessions.ts",
+      "action": "CREATE",
+      "summary": "Custom hook for fetching debug sessions with list/detail state management",
+      "reasoning_trace": "Follows useAISuggestions pattern — fetch, fetchDetail, clearSelection with loading/error states.",
+      "lines_added": 75,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-133",
+      "task_id": "T-037",
+      "file": "forge-web/components/debug/DebugToggle.tsx",
+      "action": "CREATE",
+      "summary": "Debug toggle button for project layout header — enable/disable debug capture with status indicator",
+      "reasoning_trace": "Compact button with magnifier icon, green/gray state, loading spinner. Placed in layout header next to WebSocket indicator.",
+      "lines_added": 70,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-134",
+      "task_id": "T-037",
+      "file": "forge-web/components/debug/DebugMonitor.tsx",
+      "action": "CREATE",
+      "summary": "Main Debug Monitor panel with session list, filters, expandable detail view with Request/Response/Metrics tabs, collapsible sections, code blocks, auto-refresh",
+      "reasoning_trace": "Developer-tool-like panel following Chrome DevTools network panel design. Three-tab detail view covering full request/response inspection, validation results, and token metrics.",
+      "lines_added": 450,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-135",
+      "task_id": "T-037",
+      "file": "forge-web/app/projects/[slug]/debug/page.tsx",
+      "action": "CREATE",
+      "summary": "Debug page using DebugMonitor component in full-page mode",
+      "reasoning_trace": "Simple page wrapper following existing pattern from lessons page.",
+      "lines_added": 20,
+      "lines_removed": 0,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "id": "C-136",
+      "task_id": "T-037",
+      "file": "forge-web/app/projects/[slug]/layout.tsx",
+      "action": "EDIT",
+      "summary": "Added Debug nav tab and DebugToggle component in header bar",
+      "reasoning_trace": "Debug tab in entityNav array after Lessons, DebugToggle next to WebSocket status indicator.",
+      "lines_added": 10,
+      "lines_removed": 2,
+      "group_id": "t037-llm-debug-monitor",
+      "recorded_at": "2026-03-11T14:00:00Z"
+    },
+    {
+      "task_id": "T-083",
+      "file": "forge-web/stores/skillStore.ts",
+      "action": "created",
+      "summary": "Zustand store for global skills entity with factory pattern",
+      "timestamp": "2026-03-11T20:03:01.142Z"
+    },
+    {
+      "task_id": "T-083",
+      "file": "forge-web/stores/wsDispatcher.ts",
+      "action": "modified",
+      "summary": "Added skill store, GLOBAL_ENTITIES set for SWR revalidation, promoted→updated normalization",
+      "timestamp": "2026-03-11T20:03:01.142Z"
+    },
+    {
+      "task_id": "T-083",
+      "file": "forge-api/app/events.py",
+      "action": "modified",
+      "summary": "Added skill.created/updated/deleted/promoted to EVENT_TYPES whitelist",
+      "timestamp": "2026-03-11T20:03:01.142Z"
+    },
+    {
+      "task_id": "T-083",
+      "file": "forge-api/app/routers/ws.py",
+      "action": "modified",
+      "summary": "Subscribe WS connections to _global channel for global entity events",
+      "timestamp": "2026-03-11T20:03:01.142Z"
+    },
+    {
+      "task_id": "T-088",
+      "file": "forge-api/app/routers/tasks.py",
+      "action": "modified",
+      "summary": "Added skill_id to TaskCreate, validation, usage_count increment/decrement, linked skill in context",
+      "timestamp": "2026-03-11T20:03:01.142Z"
+    },
+    {
+      "task_id": "T-088",
+      "file": "forge-api/app/routers/skills.py",
+      "action": "modified",
+      "summary": "Fixed _check_skill_in_use to use skill_id field only",
+      "timestamp": "2026-03-11T20:03:01.142Z"
+    },
+    {
+      "task_id": "T-088",
+      "file": "forge-web/components/forms/TaskForm.tsx",
+      "action": "modified",
+      "summary": "Hide skill dropdown in edit mode, show read-only skill_id",
+      "timestamp": "2026-03-11T20:03:01.142Z"
+    }
+  ]
+}
