@@ -490,16 +490,24 @@ async def git_init(git_svc=Depends(get_git_sync)):
 # Config endpoints
 # ---------------------------------------------------------------------------
 
-_SKILLS_CONFIG_PATH = "forge_output/_global/skills_config.json"
+_CONFIG_FILENAME = "skills_config.json"
+
+
+def _get_config_path(storage) -> "Path":
+    """Resolve skills_config.json path using storage base directory."""
+    from pathlib import Path
+    base = getattr(storage, "base_dir", None)
+    if base:
+        return Path(base) / "_global" / _CONFIG_FILENAME
+    return Path("forge_output/_global") / _CONFIG_FILENAME
 
 
 @router.get("/config")
-async def get_skills_config():
+async def get_skills_config(storage=Depends(get_storage)):
     """Get skills configuration (repo URL, etc.)."""
     import os
-    from pathlib import Path
 
-    config_path = Path(_SKILLS_CONFIG_PATH)
+    config_path = _get_config_path(storage)
     persisted: dict = {}
     if config_path.exists():
         try:
@@ -517,11 +525,13 @@ async def get_skills_config():
 
 
 @router.put("/config")
-async def update_skills_config(body: SkillsConfigUpdate, request: Request):
+async def update_skills_config(
+    body: SkillsConfigUpdate,
+    request: Request,
+    storage=Depends(get_storage),
+):
     """Update skills configuration. Resets cached git sync service."""
-    from pathlib import Path
-
-    config_path = Path(_SKILLS_CONFIG_PATH)
+    config_path = _get_config_path(storage)
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     existing: dict = {}

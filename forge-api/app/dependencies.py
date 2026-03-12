@@ -130,11 +130,23 @@ def get_skill_storage(request: Request):
     return svc
 
 
-def _load_skills_config() -> dict:
+def _load_skills_config(request=None) -> dict:
     """Load persisted skills config from _global/skills_config.json."""
     import json
     from pathlib import Path
-    config_path = Path("forge_output/_global/skills_config.json")
+
+    # Try to get base_dir from storage
+    base = None
+    if request:
+        storage = getattr(request.app.state, "storage", None)
+        if storage:
+            base = getattr(storage, "base_dir", None)
+
+    if base:
+        config_path = Path(base) / "_global" / "skills_config.json"
+    else:
+        config_path = Path("forge_output/_global/skills_config.json")
+
     if config_path.exists():
         try:
             return json.loads(config_path.read_text(encoding="utf-8"))
@@ -153,7 +165,7 @@ def get_git_sync(request: Request):
         import os
 
         # Check persisted config, then env var
-        config = _load_skills_config()
+        config = _load_skills_config(request)
         url = config.get("repo_url", "") or os.environ.get("FORGE_SKILLS_REPO_URL", "")
         if not url:
             return None

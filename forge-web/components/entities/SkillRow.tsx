@@ -40,7 +40,7 @@ export function SkillRow({ skill: s, selected, onSelect, syncIndicator }: SkillR
         href={`/skills/${s.name}`}
         className="font-semibold text-sm truncate min-w-0 hover:text-forge-600 flex-shrink-0 max-w-[200px]"
       >
-        {s.name}
+        {s.display_name || s.name}
       </Link>
 
       {/* Category badges (max 2, +N) */}

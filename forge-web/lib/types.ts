@@ -778,6 +778,7 @@ export interface SkillFile {
 
 export interface Skill {
   name: string;
+  display_name?: string;
   description: string;
   categories: string[];
   status: SkillStatus;

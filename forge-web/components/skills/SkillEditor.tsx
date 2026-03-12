@@ -658,9 +658,9 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                     Frontmatter
                   </h4>
                   {parsed.valid ? (
-                    <div className="space-y-2.5">
+                    <div className="space-y-2.5" key={`fm-${parsed.name}-${parsed.version}-${parsed.description?.slice(0, 20)}`}>
                       <div>
-                        <label className="block text-xs text-gray-400 mb-0.5">Name</label>
+                        <label className="block text-xs text-gray-400 mb-0.5">Name (display)</label>
                         <input
                           type="text"
                           defaultValue={parsed.name ?? ""}

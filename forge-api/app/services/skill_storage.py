@@ -133,7 +133,8 @@ class SkillStorageService:
         fm = parse_frontmatter(md_content)
         return {
             "name": name,
-            "description": fm.description or "",
+            "display_name": fm.name or name,
+            "description": fm.description or config.get("description", ""),
             "categories": config.get("categories", []),
             "tags": config.get("tags", []),
             "status": config.get("status", "DRAFT"),
@@ -199,8 +200,9 @@ class SkillStorageService:
         """Merge _config.json + SKILL.md frontmatter into a unified skill dict."""
         fm = parse_frontmatter(md_content)
         return {
-            "name": fm.name or name,
-            "description": fm.description or "",
+            "name": name,  # Always the directory slug, never frontmatter name
+            "display_name": fm.name or name,
+            "description": fm.description or config.get("description", ""),
             "version": fm.raw.get("version", "1.0.0"),
             "allowed_tools": fm.allowed_tools,
             "skill_md_content": md_content,
