@@ -6,13 +6,20 @@ cost estimation, and a 24h TTL. Events are emitted on lifecycle changes.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 import redis.asyncio as aioredis
+
+logger = logging.getLogger(__name__)
+
+# Per-session locks for concurrent access protection
+_session_locks: dict[str, asyncio.Lock] = {}
 
 SESSION_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 SESSION_KEY_PREFIX = "chat:session:"
@@ -69,11 +76,15 @@ class ChatSession:
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ChatSession:
-        """Deserialize from Redis-stored dict."""
-        messages_raw = data.pop("messages", [])
-        messages = [ChatMessage(**m) for m in messages_raw]
-        return cls(messages=messages, **data)
+    def from_dict(cls, data: dict[str, Any]) -> ChatSession | None:
+        """Deserialize from Redis-stored dict. Returns None on malformed data."""
+        try:
+            messages_raw = data.pop("messages", [])
+            messages = [ChatMessage(**m) for m in messages_raw if isinstance(m, dict)]
+            return cls(messages=messages, **data)
+        except (TypeError, KeyError) as e:
+            logger.warning("Failed to deserialize ChatSession: %s", e)
+            return None
 
 
 class SessionManager:
@@ -94,6 +105,11 @@ class SessionManager:
     def _key(self, session_id: str) -> str:
         """Build Redis key for a session."""
         return f"{SESSION_KEY_PREFIX}{session_id}"
+
+    @staticmethod
+    def _get_lock(session_id: str) -> asyncio.Lock:
+        """Get or create a per-session asyncio lock."""
+        return _session_locks.setdefault(session_id, asyncio.Lock())
 
     async def create(
         self,

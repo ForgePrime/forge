@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from app.dependencies import get_llm_config, get_provider_registry, get_redis
+from app.dependencies import get_llm_config, get_provider_registry, get_session_manager
 from app.models.llm_config import LLMConfigUpdate
 
 router = APIRouter(prefix="/llm", tags=["llm"])
@@ -179,15 +179,10 @@ async def update_config(
 
 @router.get("/sessions")
 async def list_sessions(
-    request: Request,
     limit: int = 50,
-    redis_client=Depends(get_redis),
+    manager=Depends(get_session_manager),
 ) -> dict[str, Any]:
     """List active LLM chat sessions."""
-    from app.llm.session_manager import SessionManager
-
-    event_bus = getattr(request.app.state, "event_bus", None)
-    manager = SessionManager(redis_client, event_bus)
     sessions = await manager.list_sessions(limit=limit)
     return {"sessions": sessions, "count": len(sessions)}
 
@@ -195,15 +190,11 @@ async def list_sessions(
 @router.get("/sessions/{session_id}")
 async def get_session(
     session_id: str,
-    request: Request,
-    redis_client=Depends(get_redis),
+    manager=Depends(get_session_manager),
 ) -> dict[str, Any]:
     """Get a chat session with full message history."""
-    from app.llm.session_manager import SessionManager
     from fastapi import HTTPException
 
-    event_bus = getattr(request.app.state, "event_bus", None)
-    manager = SessionManager(redis_client, event_bus)
     session = await manager.load(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found or expired")
@@ -213,16 +204,12 @@ async def get_session(
 @router.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: str,
-    request: Request,
-    redis_client=Depends(get_redis),
+    manager=Depends(get_session_manager),
 ) -> dict[str, Any]:
     """Delete a chat session."""
-    from app.llm.session_manager import SessionManager
+    from fastapi import HTTPException
 
-    event_bus = getattr(request.app.state, "event_bus", None)
-    manager = SessionManager(redis_client, event_bus)
     deleted = await manager.delete(session_id)
     if not deleted:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     return {"deleted": True, "session_id": session_id}
