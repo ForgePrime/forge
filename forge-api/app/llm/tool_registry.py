@@ -92,20 +92,35 @@ class ToolRegistry:
 
     def get_tools(
         self,
-        context_type: str = "global",
+        context_type: str | list[str] = "global",
         permissions: dict[str, dict[str, bool]] | None = None,
+        disabled_tools: list[str] | None = None,
     ) -> list[ToolDef]:
-        """Return tools available for a context type, filtered by permissions.
+        """Return tools available for context type(s), filtered by permissions.
 
         Args:
-            context_type: The entity context ("global", "skill", "task", etc.)
+            context_type: The entity context(s). A single string or list of strings.
+                          When a list, returns the union of tools matching ANY type.
             permissions: Module permission map {module: {read, write, delete}}.
                          If None, all tools are returned.
+            disabled_tools: Tool names to exclude from results.
         """
+        # Normalize to set for efficient lookup
+        if isinstance(context_type, str):
+            ctx_set = {context_type}
+        else:
+            ctx_set = set(context_type)
+
+        disabled = set(disabled_tools) if disabled_tools else set()
+
         result = []
         for tool in self._tools.values():
-            # Filter by context type
-            if "global" not in tool.context_types and context_type not in tool.context_types:
+            # Skip disabled tools
+            if tool.name in disabled:
+                continue
+
+            # Filter by context type — "global" tools always match
+            if "global" not in tool.context_types and not ctx_set.intersection(tool.context_types):
                 continue
 
             # Filter by permissions
@@ -128,6 +143,7 @@ class ToolRegistry:
         args: dict[str, Any],
         storage: Any,
         context: dict[str, Any] | None = None,
+        permissions: dict[str, dict[str, bool]] | None = None,
     ) -> dict[str, Any]:
         """Execute a tool by name with the given arguments.
 
@@ -136,6 +152,7 @@ class ToolRegistry:
             args: Tool input arguments.
             storage: The storage adapter.
             context: Optional execution context (project, entity info, etc.)
+            permissions: Module permission map for defense-in-depth check.
 
         Returns:
             Structured result dict. On error, returns {"error": "..."}.
@@ -149,6 +166,17 @@ class ToolRegistry:
         if tool.handler is None:
             raise ValueError(f"Tool {tool_name} has no handler")
 
+        # Defense-in-depth: check permissions at execution time
+        if permissions is not None and tool.required_permission is not None:
+            module, action = tool.required_permission
+            module_perms = permissions.get(module, {})
+            if not module_perms.get(action, False):
+                logger.warning(
+                    "Permission denied for tool %s: requires %s.%s",
+                    tool_name, module, action,
+                )
+                return {"error": f"Permission denied: {tool_name} requires {module}.{action}"}
+
         try:
             return await tool.handler(args=args, storage=storage, context=context or {})
         except Exception as e:
@@ -157,11 +185,15 @@ class ToolRegistry:
 
     def get_llm_definitions(
         self,
-        context_type: str = "global",
+        context_type: str | list[str] = "global",
         permissions: dict[str, dict[str, bool]] | None = None,
+        disabled_tools: list[str] | None = None,
     ) -> list[ToolDefinition]:
         """Get ToolDefinition list for LLM provider calls."""
-        return [t.to_llm_definition() for t in self.get_tools(context_type, permissions)]
+        return [
+            t.to_llm_definition()
+            for t in self.get_tools(context_type, permissions, disabled_tools)
+        ]
 
 
 # ---------------------------------------------------------------------------

@@ -78,6 +78,7 @@ class AgentLoop:
         tool_registry: Any,
         storage: Any,
         permissions: dict[str, dict[str, bool]] | None = None,
+        disabled_tools: list[str] | None = None,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         max_total_tokens: int = DEFAULT_MAX_TOTAL_TOKENS,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
@@ -86,6 +87,7 @@ class AgentLoop:
         self._tool_registry = tool_registry
         self._storage = storage
         self._permissions = permissions
+        self._disabled_tools = disabled_tools
         self._max_iterations = max_iterations
         self._max_total_tokens = max_total_tokens
         self._timeout = timeout_seconds
@@ -118,9 +120,12 @@ class AgentLoop:
 
         # Resolve available tools for this context
         context_type = context.get("context_type", "global")
+        # Support list of context types (scopes → context_types mapping)
+        context_types = context.get("context_types", context_type)
         tool_defs = self._tool_registry.get_llm_definitions(
-            context_type=context_type,
+            context_type=context_types,
             permissions=self._permissions,
+            disabled_tools=self._disabled_tools,
         )
         if tool_defs:
             config = replace(config, tools=tool_defs)
@@ -223,13 +228,14 @@ class AgentLoop:
                             "input": tool_input,
                         }))
 
-                    # Execute tool
+                    # Execute tool (with defense-in-depth permission check)
                     try:
                         tool_result = await self._tool_registry.execute(
                             tool_name=tool_name,
                             args=tool_input,
                             storage=self._storage,
                             context=context,
+                            permissions=self._permissions,
                         )
                     except Exception as e:
                         logger.warning("Tool %s execution error: %s", tool_name, e)
