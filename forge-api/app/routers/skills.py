@@ -808,42 +808,33 @@ async def promote_skill(
         ),
     })
 
-    # Advisory gates — failures don't block promotion
-    evals = skill.get("evals_json", [])
-    gate2_passed = len(evals) >= 1
-    gate_results.append({
-        "gate": "evals",
-        "passed": gate2_passed,
-        "required": False,
-        "detail": f"{len(evals)} eval(s) defined" if gate2_passed else "No evals defined (optional)",
-    })
-
-    gate3_passed = False
-    teslint_error_count = 0
-    teslint_warning_count = 0
+    # Advisory gate — lint (failures don't block promotion)
+    lint_passed = False
+    lint_error_count = 0
+    lint_warning_count = 0
     if content.strip():
         lint_result = await asyncio.to_thread(
             run_teslint, name, content, skill.get("teslint_config"),
         )
-        gate3_passed = lint_result.passed
-        teslint_error_count = lint_result.error_count
-        teslint_warning_count = lint_result.warning_count
+        lint_passed = lint_result.passed
+        lint_error_count = lint_result.error_count
+        lint_warning_count = lint_result.warning_count
         gate_results.append({
-            "gate": "teslint",
-            "passed": gate3_passed,
+            "gate": "lint",
+            "passed": lint_passed,
             "required": False,
             "detail": (
-                f"TESLint passed ({teslint_warning_count} warnings)"
-                if gate3_passed
-                else lint_result.error_message or f"TESLint: {teslint_error_count} error(s)"
+                f"Lint passed ({lint_warning_count} warnings)"
+                if lint_passed
+                else lint_result.error_message or f"Lint: {lint_error_count} error(s)"
             ),
         })
     else:
-        gate_results.append({"gate": "teslint", "passed": False, "required": False, "detail": "No content to lint"})
+        gate_results.append({"gate": "lint", "passed": False, "required": False, "detail": "No content to lint"})
 
     # Only required gates block promotion (agentskills-io + frontmatter)
     required_passed = gate0_passed and gate1_passed
-    all_passed = required_passed and gate2_passed and gate3_passed
+    all_passed = required_passed and lint_passed
     can_promote = required_passed or body.force
 
     if not can_promote:
@@ -857,8 +848,8 @@ async def promote_skill(
     promotion_history = skill.get("promotion_history", [])
     promotion_history.append({
         "promoted_at": now,
-        "error_count": teslint_error_count,
-        "warning_count": teslint_warning_count,
+        "error_count": lint_error_count,
+        "warning_count": lint_warning_count,
         "forced": body.force and not all_passed,
         "gates": gate_results,
     })

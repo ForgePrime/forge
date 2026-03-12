@@ -21,7 +21,7 @@ import type {
   ValidationResult,
 } from "@/lib/types";
 
-type Tab = "metadata" | "evals" | "lint" | "history" | "usage" | "files";
+type Tab = "metadata" | "lint" | "history" | "usage" | "files";
 
 const CATEGORIES = [
   "workflow", "analysis", "generation", "validation", "integration",
@@ -435,8 +435,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     { key: "metadata", label: "Metadata" },
     { key: "files", label: `Files (${files.length})` },
     ...(skill ? [
-      { key: "evals" as Tab, label: `Evals (${skill.evals_json.length})` },
-      { key: "lint" as Tab, label: "TESLint" },
+      { key: "lint" as Tab, label: "Lint" },
       { key: "history" as Tab, label: `History (${skill.promotion_history.length})` },
       { key: "usage" as Tab, label: `Usage (${skill.usage_count})` },
     ] : []),
@@ -996,38 +995,14 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
               </div>
             )}
 
-            {/* Evals tab */}
-            {tab === "evals" && skill && (
-              <div>
-                <p className="text-xs text-gray-400 mb-3">
-                  Evals are test cases that verify your skill produces correct output.
-                  They are optional for promotion — only spec compliance and frontmatter are required.
-                </p>
-                {skill.evals_json.length === 0 ? (
-                  <p className="text-xs text-gray-400">No evals defined.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {skill.evals_json.map((ev, i) => (
-                      <div key={i} className="rounded border bg-white p-2">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge>Eval #{i + 1}</Badge>
-                          {"name" in ev && ev.name ? <span className="text-xs font-medium">{String(ev.name)}</span> : null}
-                        </div>
-                        <pre className="text-[10px] bg-gray-50 rounded p-2 overflow-x-auto">
-                          {JSON.stringify(ev, null, 2)}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TESLint tab */}
+            {/* Lint tab */}
             {tab === "lint" && skill && (
               <div>
+                <p className="text-xs text-gray-400 mb-3">
+                  Validates SKILL.md structure: frontmatter fields, instruction quality, naming conventions, and best practices.
+                </p>
                 <Button size="sm" onClick={runLint} disabled={lintLoading} className="mb-3">
-                  {lintLoading ? "Running..." : "Run Lint"}
+                  {lintLoading ? "Checking..." : "Run Lint Check"}
                 </Button>
                 {lintError && <p className="text-xs text-amber-600 mb-2">{lintError}</p>}
                 {lintRan && lintFindings.length === 0 && !lintError && (
@@ -1057,7 +1032,8 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                           >
                             {f.severity}
                           </Badge>
-                          <span className="text-gray-500">{f.rule_id}</span>
+                          <span className="text-gray-500 font-mono">{f.rule_id}</span>
+                          {f.line && <span className="text-gray-400 ml-auto">line {f.line}</span>}
                         </div>
                         <p className="mt-1">{f.message}</p>
                       </div>
