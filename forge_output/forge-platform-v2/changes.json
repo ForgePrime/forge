@@ -3,6 +3,59 @@
   "updated": "2026-03-10T19:45:00Z",
   "changes": [
     {
+      "id": "C-143",
+      "task_id": "T-103",
+      "timestamp": "2026-03-12T20:20:00Z",
+      "files": [
+        {"path": "forge-api/app/llm/session_manager.py", "action": "created", "reasoning": "SessionManager with Redis persistence: ChatSession/ChatMessage dataclasses, create/load/save/add_message/update_tokens/delete/list_sessions. Per-session asyncio locks, 24h TTL, event emission, cost estimation."},
+        {"path": "forge-api/app/routers/llm_chat.py", "action": "modified", "reasoning": "Added GET /llm/sessions, GET /llm/sessions/{id}, DELETE /llm/sessions/{id} endpoints"},
+        {"path": "forge-api/app/main.py", "action": "modified", "reasoning": "Initialize SessionManager in lifespan"},
+        {"path": "forge-api/app/dependencies.py", "action": "modified", "reasoning": "Added get_session_manager dependency"}
+      ],
+      "reasoning": "T-103: LLM session manager with Redis persistence, token tracking, cost estimation. Deep-verify found 1 critical (race condition) + 3 important (error handling, event symmetry) — all fixed.",
+      "decision_ids": [],
+      "guidelines": []
+    },
+    {
+      "id": "C-142",
+      "task_id": "T-102",
+      "timestamp": "2026-03-12T19:50:00Z",
+      "files": [
+        {"path": "forge-api/app/llm/permissions.py", "action": "created", "reasoning": "PermissionEngine with 3-layer merge (defaults → global config → project overrides), PermissionSet.check(), deny_response(). Conservative defaults."},
+        {"path": "forge-api/app/llm/tool_registry.py", "action": "modified", "reasoning": "Integrated permission check in execute() — denied tools return structured error, handler never runs"}
+      ],
+      "reasoning": "T-102: Permission engine with module-level read/write/delete control. Deep-verify: all 5 ACs passed, type annotation improved.",
+      "decision_ids": [],
+      "guidelines": []
+    },
+    {
+      "id": "C-141",
+      "task_id": "T-101",
+      "timestamp": "2026-03-12T19:30:00Z",
+      "files": [
+        {"path": "forge-api/app/llm/tool_registry.py", "action": "created", "reasoning": "ToolRegistry with 4 global tools (search, get, list, getProject) + 4 skill tools (updateContent, updateMetadata, runLint, getOther). Tools wrap real storage calls with JSON Schema definitions and context-type filtering."},
+        {"path": "forge-api/app/main.py", "action": "modified", "reasoning": "Initialize tool_registry in lifespan via create_default_registry()"},
+        {"path": "forge-api/app/dependencies.py", "action": "modified", "reasoning": "Added get_tool_registry dependency for DI"}
+      ],
+      "reasoning": "T-101: LLM tool registry foundation. Deep-verify found 2 critical bugs (TESLint call signature, missing score field) and 1 important issue (no concurrency locks on writes) — all fixed.",
+      "decision_ids": [],
+      "guidelines": []
+    },
+    {
+      "id": "C-140",
+      "task_id": "T-100",
+      "timestamp": "2026-03-12T19:00:00Z",
+      "files": [
+        {"path": "forge-api/app/main.py", "action": "modified", "reasoning": "ProviderRegistry initialization in lifespan — loads from providers.toml, stores on app.state"},
+        {"path": "forge-api/app/dependencies.py", "action": "modified", "reasoning": "Added get_provider_registry, get_llm_config, get_llm_provider FastAPI dependencies"},
+        {"path": "forge-api/app/models/llm_config.py", "action": "created", "reasoning": "LLM config models: LLMConfig, LLMFeatureFlags, LLMModulePermission, LLMConfigUpdate"},
+        {"path": "forge-api/app/routers/llm_chat.py", "action": "created", "reasoning": "LLM chat router: GET /providers, POST /providers/test, GET/PUT /config"}
+      ],
+      "reasoning": "T-100 foundation: LLM provider activation and config model. All code was implemented in prior sessions — verified all 6 AC met.",
+      "decision_ids": [],
+      "guidelines": []
+    },
+    {
       "id": "C-139",
       "task_id": "T-114",
       "timestamp": "2026-03-12T18:45:00Z",
