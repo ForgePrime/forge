@@ -6,9 +6,9 @@ import type { SkillFile, SkillFileType } from "@/lib/types";
 const DEFAULT_FOLDERS = ["scripts/", "references/", "assets/"] as const;
 
 const FOLDER_ICONS: Record<string, string> = {
-  "scripts/": "\u{1F4DC}",   // 📜
-  "references/": "\u{1F4D6}", // 📖
-  "assets/": "\u{1F4E6}",     // 📦
+  "scripts/": "\u{1F4DC}",
+  "references/": "\u{1F4D6}",
+  "assets/": "\u{1F4E6}",
 };
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -60,26 +60,33 @@ export function SkillFileTree({
   readOnly,
 }: SkillFileTreeProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [adding, setAdding] = useState<string | null>(null);
-  const [addingFolder, setAddingFolder] = useState<string | null>(null);
+  const [adding, setAdding] = useState<string | null>(null); // folder prefix for new file
+  const [addingFolder, setAddingFolder] = useState<string | null>(null); // parent prefix for new folder
   const [newName, setNewName] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
   const [draggingFile, setDraggingFile] = useState<string | null>(null);
   const [overwritePrompt, setOverwritePrompt] = useState<OverwritePrompt | null>(null);
+  // Custom folders (created by user, not derived from files)
+  const [customFolders, setCustomFolders] = useState<Set<string>>(new Set());
   const uploadRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const rootUploadRef = useRef<HTMLInputElement | null>(null);
 
-  // Compute all folders dynamically: defaults + any from file paths
+  // Filter out .keep files from display
+  const visibleFiles = useMemo(() =>
+    files.filter((f) => !f.path.endsWith("/.keep") && f.path !== ".keep"),
+  [files]);
+
+  // Compute all folders dynamically: defaults + from file paths + custom
   const allFolders = useMemo(() => {
     const folderSet = new Set<string>(DEFAULT_FOLDERS);
+    customFolders.forEach((f) => folderSet.add(f));
     for (const f of files) {
       const lastSlash = f.path.lastIndexOf("/");
       if (lastSlash > 0) {
-        // Add the folder and any parent folders
         const folder = f.path.substring(0, lastSlash + 1);
         folderSet.add(folder);
-        // Add parent folder too (e.g., "scripts/lib/" → "scripts/")
         const parts = folder.split("/").filter(Boolean);
         for (let i = 1; i < parts.length; i++) {
           folderSet.add(parts.slice(0, i).join("/") + "/");
@@ -87,9 +94,8 @@ export function SkillFileTree({
       }
     }
     return Array.from(folderSet).sort();
-  }, [files]);
+  }, [files, customFolders]);
 
-  // Build tree structure: only top-level folders shown at root
   const topFolders = useMemo(() => {
     return allFolders.filter((f) => {
       const parts = f.split("/").filter(Boolean);
@@ -97,11 +103,10 @@ export function SkillFileTree({
     });
   }, [allFolders]);
 
-  const subFolders = useCallback((parentPrefix: string) => {
+  const getSubFolders = useCallback((parentPrefix: string) => {
     return allFolders.filter((f) => {
       if (f === parentPrefix) return false;
       if (!f.startsWith(parentPrefix)) return false;
-      // Direct child only
       const rest = f.substring(parentPrefix.length);
       const parts = rest.split("/").filter(Boolean);
       return parts.length === 1;
@@ -113,16 +118,13 @@ export function SkillFileTree({
   };
 
   const filesInFolder = (prefix: string) =>
-    files.filter((f) => {
+    visibleFiles.filter((f) => {
       if (!f.path.startsWith(prefix)) return false;
-      // Only direct children (not in deeper subfolder)
       const rest = f.path.substring(prefix.length);
       return !rest.includes("/");
     });
 
-  const rootFiles = files.filter(
-    (f) => !f.path.includes("/"),
-  );
+  const rootFiles = visibleFiles.filter((f) => !f.path.includes("/"));
 
   const handleAdd = (folder: string) => {
     const trimmed = newName.trim();
@@ -135,18 +137,13 @@ export function SkillFileTree({
   const handleAddFolder = (parentPrefix: string) => {
     const trimmed = newName.trim().replace(/\//g, "");
     if (!trimmed) return;
-    // Create a placeholder file to establish the folder
-    // Actually we just need to trigger a re-render with the new folder
-    // We'll create an empty file that the user can then add to
     const folderPath = `${parentPrefix}${trimmed}/`;
-    // Add a .gitkeep-like file to establish the folder
-    onAdd(folderPath, ".keep");
+    setCustomFolders((prev) => new Set(prev).add(folderPath));
     setNewName("");
     setAddingFolder(null);
   };
 
   const canDeleteFolder = useCallback((prefix: string) => {
-    // Can delete if not a default root and is empty
     const isDefault = (DEFAULT_FOLDERS as readonly string[]).includes(prefix);
     if (isDefault) return false;
     const children = files.filter((f) => f.path.startsWith(prefix));
@@ -154,13 +151,17 @@ export function SkillFileTree({
   }, [files]);
 
   const handleDeleteFolder = useCallback((prefix: string) => {
-    // Remove any .keep files
-    const keepFiles = files.filter(
+    // Remove any hidden files (.keep)
+    const hiddenFiles = files.filter(
       (f) => f.path.startsWith(prefix) && f.path.endsWith(".keep"),
     );
-    for (const f of keepFiles) {
-      onDelete(f.path);
-    }
+    for (const f of hiddenFiles) onDelete(f.path);
+    // Remove from custom folders
+    setCustomFolders((prev) => {
+      const next = new Set(prev);
+      next.delete(prefix);
+      return next;
+    });
   }, [files, onDelete]);
 
   const cancelAdd = () => {
@@ -169,7 +170,7 @@ export function SkillFileTree({
     setAddingFolder(null);
   };
 
-  // Upload handler for per-folder upload button
+  // Upload handler
   const handleUpload = useCallback(async (folder: string, fileList: FileList | null) => {
     if (!fileList || !onDropFiles) return;
     const existingPaths = new Set(files.map((f) => f.path));
@@ -220,7 +221,7 @@ export function SkillFileTree({
     if (newFiles.length > 0) onDropFiles(newFiles);
   }, [files, onDropFiles]);
 
-  // Drag-and-drop from external files (top-level: auto-classify)
+  // Top-level drag-and-drop (auto-classify)
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -242,12 +243,10 @@ export function SkillFileTree({
     setDragOver(false);
     setDragOverFolder(null);
     setDropError(null);
-
     if (readOnly || !onDropFiles) return;
 
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (droppedFiles.length === 0) return;
-
     if (droppedFiles.length > MAX_DROP_FILES) {
       setDropError(`Max ${MAX_DROP_FILES} files per drop`);
       return;
@@ -259,37 +258,23 @@ export function SkillFileTree({
 
     for (const file of droppedFiles) {
       const ext = file.name.includes(".") ? "." + file.name.split(".").pop()!.toLowerCase() : "";
-      if (!ALLOWED_EXTENSIONS.has(ext)) {
-        errors.push(`${file.name}: unsupported extension`);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        errors.push(`${file.name}: too large (max 1MB)`);
-        continue;
-      }
-
+      if (!ALLOWED_EXTENSIONS.has(ext)) { errors.push(`${file.name}: unsupported`); continue; }
+      if (file.size > MAX_FILE_SIZE) { errors.push(`${file.name}: too large`); continue; }
       const { folder, file_type } = classifyFile(file.name);
       const path = `${folder}${file.name}`;
-
-      if (existingPaths.has(path)) {
-        errors.push(`${path}: already exists (use folder upload to overwrite)`);
-        continue;
-      }
-
+      if (existingPaths.has(path)) { errors.push(`${path}: exists`); continue; }
       try {
         const content = await file.text();
         newFiles.push({ path, content, file_type });
         existingPaths.add(path);
-      } catch {
-        errors.push(`${file.name}: read error`);
-      }
+      } catch { errors.push(`${file.name}: read error`); }
     }
 
     if (errors.length > 0) setDropError(errors.join("; "));
     if (newFiles.length > 0) onDropFiles(newFiles);
   }, [readOnly, onDropFiles, files]);
 
-  // Drag-to-move within tree
+  // Internal drag-to-move
   const handleFileDragStart = useCallback((e: React.DragEvent, path: string) => {
     e.dataTransfer.setData("text/plain", path);
     e.dataTransfer.effectAllowed = "move";
@@ -301,7 +286,6 @@ export function SkillFileTree({
     setDragOverFolder(null);
   }, []);
 
-  // Accept both internal moves AND external files dropped on folders
   const handleFolderDragOver = useCallback((e: React.DragEvent, prefix: string) => {
     if (!onMoveFile && !onDropFiles) return;
     e.preventDefault();
@@ -315,7 +299,6 @@ export function SkillFileTree({
     e.stopPropagation();
     setDragOverFolder(null);
 
-    // Internal file move
     if (draggingFile && onMoveFile) {
       setDraggingFile(null);
       const sourcePath = e.dataTransfer.getData("text/plain");
@@ -331,16 +314,11 @@ export function SkillFileTree({
       return;
     }
 
-    // External files dropped on specific folder
     if (!onDropFiles) return;
     setDraggingFile(null);
-
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (droppedFiles.length === 0) return;
-    if (droppedFiles.length > MAX_DROP_FILES) {
-      setDropError(`Max ${MAX_DROP_FILES} files per drop`);
-      return;
-    }
+    if (droppedFiles.length > MAX_DROP_FILES) { setDropError(`Max ${MAX_DROP_FILES} files`); return; }
 
     const errors: string[] = [];
     const newFiles: SkillFile[] = [];
@@ -349,40 +327,44 @@ export function SkillFileTree({
 
     for (const file of droppedFiles) {
       const ext = file.name.includes(".") ? "." + file.name.split(".").pop()!.toLowerCase() : "";
-      if (!ALLOWED_EXTENSIONS.has(ext)) {
-        errors.push(`${file.name}: unsupported extension`);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        errors.push(`${file.name}: too large (max 1MB)`);
-        continue;
-      }
+      if (!ALLOWED_EXTENSIONS.has(ext)) { errors.push(`${file.name}: unsupported`); continue; }
+      if (file.size > MAX_FILE_SIZE) { errors.push(`${file.name}: too large`); continue; }
       const path = `${targetPrefix}${file.name}`;
-      if (existingPaths.has(path)) {
-        errors.push(`${path}: already exists`);
-        continue;
-      }
+      if (existingPaths.has(path)) { errors.push(`${path}: exists`); continue; }
       try {
         const content = await file.text();
         newFiles.push({ path, content, file_type });
         existingPaths.add(path);
-      } catch {
-        errors.push(`${file.name}: read error`);
-      }
+      } catch { errors.push(`${file.name}: read error`); }
     }
-
     if (errors.length > 0) setDropError(errors.join("; "));
     if (newFiles.length > 0) onDropFiles(newFiles);
   }, [draggingFile, onMoveFile, onDropFiles, files]);
 
+  // -- Icon button helper --
+  const IconBtn = ({ onClick, title, children, className = "" }: {
+    onClick: () => void; title: string; children: React.ReactNode; className?: string;
+  }) => (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`p-0.5 rounded hover:bg-gray-200 transition-colors text-sm ${className}`}
+    >
+      {children}
+    </button>
+  );
+
   // Render a folder and its contents recursively
   const renderFolder = (prefix: string, depth: number = 0) => {
     const folderFiles = filesInFolder(prefix);
-    const children = subFolders(prefix);
+    const children = getSubFolders(prefix);
     const isCollapsed = collapsed[prefix];
     const isDragTarget = dragOverFolder === prefix;
     const folderName = prefix.split("/").filter(Boolean).pop() ?? prefix;
     const icon = FOLDER_ICONS[prefix] ?? "\u{1F4C1}"; // 📁
+    const totalFiles = folderFiles.length + children.reduce(
+      (sum, c) => sum + filesInFolder(c).length, 0
+    );
 
     return (
       <div key={prefix}>
@@ -397,61 +379,36 @@ export function SkillFileTree({
             className="flex-1 flex items-center gap-1.5 py-1.5 text-left hover:bg-gray-100 transition-colors"
             style={{ paddingLeft: `${8 + depth * 12}px` }}
           >
-            <span className="text-xs">{isCollapsed ? "\u25B6" : "\u25BC"}</span>
+            <span className="text-[11px]">{isCollapsed ? "\u25B6" : "\u25BC"}</span>
             <span className="text-sm">{icon}</span>
             <span className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
               {folderName}
             </span>
-            <span className="text-[10px] text-gray-400 ml-auto pr-1">
-              {folderFiles.length + children.reduce((sum, c) => sum + filesInFolder(c).length, 0)}
-            </span>
+            <span className="text-[10px] text-gray-400 ml-auto pr-1">{totalFiles}</span>
           </button>
           {!readOnly && (
             <div className="hidden group-hover:flex items-center gap-0.5 pr-1">
-              {/* Upload button */}
-              <button
-                onClick={() => uploadRefs.current[prefix]?.click()}
-                className="px-1 text-blue-500 hover:text-blue-700 text-xs"
-                title={`Upload to ${folderName}/`}
-              >
-                &#8679;
-              </button>
+              <IconBtn onClick={() => uploadRefs.current[prefix]?.click()} title={`Upload to ${folderName}/`}>
+                <span className="text-blue-500">{"\u2B06\uFE0F"}</span>
+              </IconBtn>
               <input
                 ref={(el) => { uploadRefs.current[prefix] = el; }}
                 type="file"
                 multiple
                 accept={Array.from(ALLOWED_EXTENSIONS).join(",")}
                 className="hidden"
-                onChange={(e) => {
-                  handleUpload(prefix, e.target.files);
-                  e.target.value = "";
-                }}
+                onChange={(e) => { handleUpload(prefix, e.target.files); e.target.value = ""; }}
               />
-              {/* Add file button */}
-              <button
-                onClick={() => { setAdding(prefix); setAddingFolder(null); setNewName(""); }}
-                className="px-1 text-green-500 hover:text-green-700 text-xs"
-                title={`Add file to ${folderName}/`}
-              >
-                +
-              </button>
-              {/* Add subfolder button */}
-              <button
-                onClick={() => { setAddingFolder(prefix); setAdding(null); setNewName(""); }}
-                className="px-1 text-indigo-500 hover:text-indigo-700 text-[10px]"
-                title={`New subfolder in ${folderName}/`}
-              >
-                +&#128193;
-              </button>
-              {/* Delete folder (only empty non-default) */}
+              <IconBtn onClick={() => { setAdding(prefix); setAddingFolder(null); setNewName(""); }} title={`New file in ${folderName}/`}>
+                <span className="text-green-600">{"\uD83D\uDCC4"}</span>
+              </IconBtn>
+              <IconBtn onClick={() => { setAddingFolder(prefix); setAdding(null); setNewName(""); }} title={`New subfolder in ${folderName}/`}>
+                <span className="text-indigo-500">{"\uD83D\uDCC2"}</span>
+              </IconBtn>
               {canDeleteFolder(prefix) && (
-                <button
-                  onClick={() => handleDeleteFolder(prefix)}
-                  className="px-1 text-red-400 hover:text-red-600 text-xs"
-                  title="Delete empty folder"
-                >
-                  &times;
-                </button>
+                <IconBtn onClick={() => handleDeleteFolder(prefix)} title="Delete empty folder" className="text-red-400 hover:text-red-600">
+                  <span>{"\uD83D\uDDD1"}</span>
+                </IconBtn>
               )}
             </div>
           )}
@@ -464,50 +421,34 @@ export function SkillFileTree({
               autoFocus
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleAdd(prefix);
-                if (e.key === "Escape") cancelAdd();
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAdd(prefix); if (e.key === "Escape") cancelAdd(); }}
               className="flex-1 min-w-0 border rounded px-1 py-0.5 text-xs focus:border-forge-500 focus:outline-none"
               placeholder="filename"
             />
-            <button onClick={() => handleAdd(prefix)} className="text-green-600 hover:text-green-800 text-xs">
-              &#10003;
-            </button>
-            <button onClick={cancelAdd} className="text-gray-400 hover:text-gray-600 text-xs pr-1">
-              &times;
-            </button>
+            <button onClick={() => handleAdd(prefix)} className="text-green-600 hover:text-green-800 text-xs px-1">&#10003;</button>
+            <button onClick={cancelAdd} className="text-gray-400 hover:text-gray-600 text-xs px-1">&times;</button>
           </div>
         )}
 
         {/* Inline add subfolder input */}
         {addingFolder === prefix && (
           <div className="flex items-center gap-1 py-1 bg-indigo-50" style={{ paddingLeft: `${20 + depth * 12}px` }}>
-            <span className="text-[10px] text-indigo-400">{prefix}</span>
             <input
               autoFocus
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleAddFolder(prefix);
-                if (e.key === "Escape") cancelAdd();
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddFolder(prefix); if (e.key === "Escape") cancelAdd(); }}
               className="flex-1 min-w-0 border rounded px-1 py-0.5 text-xs focus:border-indigo-500 focus:outline-none"
               placeholder="folder name"
             />
-            <button onClick={() => handleAddFolder(prefix)} className="text-indigo-600 hover:text-indigo-800 text-xs">
-              &#10003;
-            </button>
-            <button onClick={cancelAdd} className="text-gray-400 hover:text-gray-600 text-xs pr-1">
-              &times;
-            </button>
+            <button onClick={() => handleAddFolder(prefix)} className="text-indigo-600 hover:text-indigo-800 text-xs px-1">&#10003;</button>
+            <button onClick={cancelAdd} className="text-gray-400 hover:text-gray-600 text-xs px-1">&times;</button>
           </div>
         )}
 
-        {/* Contents (files + subfolders) */}
+        {/* Contents */}
         {!isCollapsed && (
           <>
-            {/* Direct files */}
             {folderFiles.map((f) => {
               const fileName = f.path.substring(prefix.length);
               return (
@@ -537,7 +478,6 @@ export function SkillFileTree({
                 </div>
               );
             })}
-            {/* Subfolders */}
             {children.map((child) => renderFolder(child, depth + 1))}
           </>
         )}
@@ -554,7 +494,7 @@ export function SkillFileTree({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Drop overlay (external files only) */}
+      {/* Drop overlay */}
       {dragOver && !draggingFile && (
         <div className="absolute inset-0 flex items-center justify-center bg-forge-50/80 z-10 pointer-events-none">
           <div className="text-center">
@@ -575,42 +515,79 @@ export function SkillFileTree({
       {/* Overwrite prompt */}
       {overwritePrompt && (
         <div className="px-2 py-2 bg-amber-50 border-b border-amber-200 space-y-1">
-          <p className="text-[10px] text-amber-700 font-medium">
-            {overwritePrompt.existingPath} already exists
-          </p>
+          <p className="text-[10px] text-amber-700 font-medium">{overwritePrompt.existingPath} already exists</p>
           <div className="flex gap-1">
-            <button
-              onClick={() => overwritePrompt.resolve("overwrite")}
-              className="px-1.5 py-0.5 text-[10px] bg-amber-200 text-amber-800 rounded hover:bg-amber-300"
-            >
-              Overwrite
-            </button>
-            <button
-              onClick={() => overwritePrompt.resolve("rename")}
-              className="px-1.5 py-0.5 text-[10px] bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-            >
-              Rename
-            </button>
-            <button
-              onClick={() => overwritePrompt.resolve("cancel")}
-              className="px-1.5 py-0.5 text-[10px] text-gray-500 hover:text-gray-700"
-            >
-              Cancel
-            </button>
+            <button onClick={() => overwritePrompt.resolve("overwrite")} className="px-1.5 py-0.5 text-[10px] bg-amber-200 text-amber-800 rounded hover:bg-amber-300">Overwrite</button>
+            <button onClick={() => overwritePrompt.resolve("rename")} className="px-1.5 py-0.5 text-[10px] bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Rename</button>
+            <button onClick={() => overwritePrompt.resolve("cancel")} className="px-1.5 py-0.5 text-[10px] text-gray-500 hover:text-gray-700">Cancel</button>
           </div>
         </div>
       )}
 
-      {/* SKILL.md — always first, not deletable */}
+      {/* SKILL.md — always first */}
       <button
         onClick={() => onSelect("SKILL.md")}
         className={`flex items-center gap-1.5 px-2 py-1.5 text-left hover:bg-gray-100 transition-colors ${
           activeFile === "SKILL.md" ? "bg-forge-50 text-forge-700 font-medium" : "text-gray-700"
         }`}
       >
-        <span className="text-sm text-forge-500">&#128220;</span>
+        <span className="text-sm">{"\uD83D\uDCDD"}</span>
         <span className="truncate text-sm font-medium">SKILL.md</span>
       </button>
+
+      {/* Root-level actions bar */}
+      {!readOnly && (
+        <div className="group flex items-center gap-1 px-2 py-1 border-b border-gray-200 bg-gray-50/50">
+          <span className="text-[10px] text-gray-400 flex-1">Root</span>
+          <IconBtn onClick={() => rootUploadRef.current?.click()} title="Upload file to root">
+            <span className="text-blue-500">{"\u2B06\uFE0F"}</span>
+          </IconBtn>
+          <input
+            ref={rootUploadRef}
+            type="file"
+            multiple
+            accept={Array.from(ALLOWED_EXTENSIONS).join(",")}
+            className="hidden"
+            onChange={(e) => { handleUpload("", e.target.files); e.target.value = ""; }}
+          />
+          <IconBtn onClick={() => { setAdding("__root__"); setAddingFolder(null); setNewName(""); }} title="New file in root">
+            <span className="text-green-600">{"\uD83D\uDCC4"}</span>
+          </IconBtn>
+          <IconBtn onClick={() => { setAddingFolder("__root__"); setAdding(null); setNewName(""); }} title="New folder">
+            <span className="text-indigo-500">{"\uD83D\uDCC2"}</span>
+          </IconBtn>
+        </div>
+      )}
+
+      {/* Root-level add inputs */}
+      {adding === "__root__" && (
+        <div className="flex items-center gap-1 px-2 py-1 bg-gray-50">
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { handleAdd(""); } if (e.key === "Escape") cancelAdd(); }}
+            className="flex-1 min-w-0 border rounded px-1 py-0.5 text-xs focus:border-forge-500 focus:outline-none"
+            placeholder="filename"
+          />
+          <button onClick={() => handleAdd("")} className="text-green-600 hover:text-green-800 text-xs px-1">&#10003;</button>
+          <button onClick={cancelAdd} className="text-gray-400 hover:text-gray-600 text-xs px-1">&times;</button>
+        </div>
+      )}
+      {addingFolder === "__root__" && (
+        <div className="flex items-center gap-1 px-2 py-1 bg-indigo-50">
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddFolder(""); if (e.key === "Escape") cancelAdd(); }}
+            className="flex-1 min-w-0 border rounded px-1 py-0.5 text-xs focus:border-indigo-500 focus:outline-none"
+            placeholder="folder name"
+          />
+          <button onClick={() => handleAddFolder("")} className="text-indigo-600 hover:text-indigo-800 text-xs px-1">&#10003;</button>
+          <button onClick={cancelAdd} className="text-gray-400 hover:text-gray-600 text-xs px-1">&times;</button>
+        </div>
+      )}
 
       {/* Root-level files */}
       {rootFiles.map((f) => (

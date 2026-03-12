@@ -8,6 +8,8 @@ import { Button } from "@/components/shared/Button";
 import { SkillFileTree } from "./SkillFileTree";
 import { parseFrontmatter, serializeFrontmatter } from "@/lib/utils/parseFrontmatter";
 import { getCategoryColor, categoryLabel } from "@/lib/utils/categoryColors";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type {
   Skill,
   SkillStatus,
@@ -607,9 +609,39 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
             const currentContent = isSkillMd ? content : (fileContents[activeFile] ?? "");
 
             if (preview) {
+              // Strip YAML frontmatter for preview
+              const previewBody = currentContent.replace(/^---[\s\S]*?---\n*/, "");
               return (
-                <div className="flex-1 overflow-auto p-4">
-                  <pre className="whitespace-pre-wrap font-mono text-sm">{currentContent}</pre>
+                <div className="flex-1 overflow-auto p-6">
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        pre: ({ children }) => (
+                          <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100">
+                            {children}
+                          </pre>
+                        ),
+                        code: ({ children, className }) => {
+                          const isBlock = className?.startsWith("language-");
+                          if (isBlock) return <code className={className}>{children}</code>;
+                          return (
+                            <code className="rounded px-1.5 py-0.5 text-xs bg-gray-100 text-gray-800">
+                              {children}
+                            </code>
+                          );
+                        },
+                        a: ({ href, children }) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer"
+                            className="text-forge-600 underline hover:text-forge-800">
+                            {children}
+                          </a>
+                        ),
+                      }}
+                    >
+                      {previewBody}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               );
             }

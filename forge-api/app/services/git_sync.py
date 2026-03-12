@@ -140,10 +140,11 @@ class GitSyncService:
         """Pull latest from remote: fetch + reset --hard origin/main.
 
         Then resync the skill index if storage service is available.
+        Auto-initializes the repository if not yet cloned.
         """
         self._check_configured()
         if not (self.skills_dir / ".git").is_dir():
-            raise GitSyncError("Not a git repository — run init_or_clone first")
+            await self.init_or_clone()
 
         async with self._sync_lock:
             # Fetch
@@ -170,10 +171,11 @@ class GitSyncService:
         """Push synced skills to remote.
 
         Only stages files from skills that have sync:true in _config.json.
+        Auto-initializes the repository if not yet cloned.
         """
         self._check_configured()
         if not (self.skills_dir / ".git").is_dir():
-            raise GitSyncError("Not a git repository — run init_or_clone first")
+            await self.init_or_clone()
 
         async with self._sync_lock:
             # Find skills with sync:true
