@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { skills as skillsApi, ApiError, fetchBlob, llm } from "@/lib/api";
+import { skills as skillsApi, ApiError, fetchBlob } from "@/lib/api";
 import { Badge, statusVariant } from "@/components/shared/Badge";
 import { Button } from "@/components/shared/Button";
 import { GenerateSkillModal } from "@/components/skills/GenerateSkillModal";
@@ -87,11 +87,11 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
   const [showGenerate, setShowGenerate] = useState(false);
 
   // AI chat panel
-  const [aiOpen, setAiOpen] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(AI_PANEL_KEY) === "1";
-  });
-  const { data: llmConfig } = useSWR<LLMConfig>("llm-config", () => llm.getConfig());
+  const [aiOpen, setAiOpen] = useState(false);
+  useEffect(() => {
+    if (localStorage.getItem(AI_PANEL_KEY) === "1") setAiOpen(true);
+  }, []);
+  const { data: llmConfig } = useSWR<LLMConfig>("/llm/config");
   const aiEnabled = llmConfig?.feature_flags?.skills ?? false;
 
   const toggleAi = useCallback(() => {
@@ -101,6 +101,16 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
       return next;
     });
   }, []);
+
+  // Close AI overlay on Escape
+  useEffect(() => {
+    if (!aiOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") toggleAi();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [aiOpen, toggleAi]);
 
   // Auto-parse frontmatter on content change (debounced)
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -703,10 +713,6 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
             <div className="xl:hidden fixed inset-0 z-50 flex">
               <div className="flex-1 bg-black/30" onClick={toggleAi} />
               <div className="w-96 max-w-full flex flex-col bg-white shadow-xl">
-                <div className="flex items-center justify-between border-b px-3 py-2">
-                  <span className="text-sm font-medium text-gray-700">AI Chat</span>
-                  <button onClick={toggleAi} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
-                </div>
                 <LLMChat
                   contextType="skill"
                   contextId={skill.id}
