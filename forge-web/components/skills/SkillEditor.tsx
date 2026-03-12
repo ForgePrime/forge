@@ -16,6 +16,7 @@ import type {
   SkillUsageEntry,
   TESLintFinding,
   PromotionHistoryEntry,
+  ValidationResult,
 } from "@/lib/types";
 
 type Tab = "metadata" | "evals" | "lint" | "history" | "usage";
@@ -78,6 +79,10 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
   // Usage tab
   const [usageData, setUsageData] = useState<SkillUsageEntry[]>([]);
   const [usageLoading, setUsageLoading] = useState(false);
+
+  // Validation state
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [validating, setValidating] = useState(false);
 
   // Multi-file state
   const [activeFile, setActiveFile] = useState("SKILL.md");
@@ -173,6 +178,20 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     });
   }, []);
 
+  // Validate
+  const handleValidate = useCallback(async () => {
+    if (!skill) return;
+    setValidating(true);
+    try {
+      const result = await skillsApi.validate(skill.id);
+      setValidation(result);
+    } catch {
+      setValidation({ skill_id: skill.id, valid: false, errors: ["Validation request failed"], warnings: [], error_count: 1, warning_count: 0 });
+    } finally {
+      setValidating(false);
+    }
+  }, [skill]);
+
   // Save
   const handleSave = async () => {
     setSaving(true);
@@ -217,6 +236,12 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
 
         setDirty(false);
         onSaved?.();
+
+        // Run validation after save (non-blocking, informational)
+        try {
+          const v = await skillsApi.validate(skill.id);
+          setValidation(v);
+        } catch { /* ignore validation errors on save */ }
       }
     } catch (e) {
       setSaveError((e as Error).message);
@@ -534,6 +559,59 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                     </div>
                   )}
                 </div>
+
+                {/* Validation section */}
+                {skill && (
+                  <>
+                    <hr />
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Spec Validation
+                        </h4>
+                        <Button size="sm" variant="secondary" onClick={handleValidate} disabled={validating}>
+                          {validating ? "Checking..." : "Validate"}
+                        </Button>
+                      </div>
+
+                      {/* Line count indicator */}
+                      {content && (() => {
+                        const lineCount = content.split("\n").length;
+                        const warn = lineCount > 500;
+                        return (
+                          <p className={`text-[10px] mb-1.5 ${warn ? "text-amber-600" : "text-gray-400"}`}>
+                            SKILL.md: {lineCount} lines{warn ? " (recommended max 500)" : ""}
+                          </p>
+                        );
+                      })()}
+
+                      {validation && (
+                        <div className="space-y-1.5">
+                          {/* Overall status */}
+                          <div className={`flex items-center gap-1.5 text-xs font-medium ${
+                            validation.valid ? "text-green-600" : "text-red-600"
+                          }`}>
+                            <span>{validation.valid ? "\u2713" : "\u2717"}</span>
+                            <span>{validation.valid ? "Valid" : `${validation.error_count} error(s)`}</span>
+                            {validation.warning_count > 0 && (
+                              <span className="text-amber-500 font-normal ml-1">
+                                {validation.warning_count} warning(s)
+                              </span>
+                            )}
+                          </div>
+                          {/* Errors */}
+                          {validation.errors.map((e, i) => (
+                            <p key={`e-${i}`} className="text-[10px] text-red-600 pl-4">{e}</p>
+                          ))}
+                          {/* Warnings */}
+                          {validation.warnings.map((w, i) => (
+                            <p key={`w-${i}`} className="text-[10px] text-amber-500 pl-4">{w}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 <hr />
 

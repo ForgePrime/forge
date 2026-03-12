@@ -248,7 +248,7 @@ import type {
   EvaluateLessonResponse,
   AssessImpactResponse,
   DebugStatus, DebugSessionSummary, DebugSession,
-  Skill, SkillCreate, SkillUpdate, SkillFile, LintResult, PromoteResult,
+  Skill, SkillCreate, SkillUpdate, SkillFile, ValidationResult, LintResult, PromoteResult,
   SkillGenerateRequest, SkillImportRequest, BulkLintResult, SkillCategoryDef, SkillUsageEntry,
   ChatSendRequest, ChatSendResponse, ChatSession,
   LLMProvider, LLMProviderTestResult, LLMConfig,
@@ -495,6 +495,8 @@ export const skills = {
     update<Skill>(`/skills/${id}`, data),
   remove: (id: string) =>
     remove<{ removed: string }>(`/skills/${id}`),
+  validate: (id: string) =>
+    create<ValidationResult>(`/skills/${id}/validate`, {}),
   lint: (id: string) =>
     create<LintResult>(`/skills/${id}/lint`, {}),
   lintAll: (params?: Record<string, string>) =>

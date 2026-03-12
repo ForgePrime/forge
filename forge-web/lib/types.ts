@@ -822,6 +822,15 @@ export interface SkillUpdate {
   scopes?: string[];
 }
 
+export interface ValidationResult {
+  skill_id: string;
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  error_count: number;
+  warning_count: number;
+}
+
 export interface LintResult {
   skill_id: string;
   success: boolean;
