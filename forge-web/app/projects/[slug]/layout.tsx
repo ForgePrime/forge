@@ -9,7 +9,7 @@ import { dispatchWsEvent, setLastEventTimestamp } from "@/stores/wsDispatcher";
 import { DebugToggle } from "@/components/debug/DebugToggle";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
-import { BottomPanel } from "@/components/debug/BottomPanel";
+
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { useDebugPanelStore } from "@/stores/debugPanelStore";
 import { useLeftPanel } from "@/components/layout/LeftPanelProvider";
@@ -123,8 +123,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         {children}
       </div>
 
-      {/* Debug bottom panel */}
-      <BottomPanel />
+      {/* Debug bottom panel is now in root layout */}
     </div>
   );
 }

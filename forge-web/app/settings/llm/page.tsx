@@ -6,6 +6,7 @@ import { llm } from "@/lib/api";
 import { Badge } from "@/components/shared/Badge";
 import { Button } from "@/components/shared/Button";
 import { useToastStore } from "@/stores/toastStore";
+import { useDebugPanelStore } from "@/stores/debugPanelStore";
 import type {
   LLMConfig,
   LLMProvider,
@@ -53,6 +54,7 @@ export default function LLMSettingsPage() {
       <FeatureFlagsSection />
       <PermissionsSection />
       <LimitsSection />
+      <DebugConsoleSection />
     </div>
   );
 }
@@ -419,6 +421,41 @@ function LimitsSection() {
         <Button size="sm" onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save Limits"}
         </Button>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Debug Console
+// ---------------------------------------------------------------------------
+
+function DebugConsoleSection() {
+  const { panelState, toggle } = useDebugPanelStore();
+  const isOpen = panelState !== "collapsed";
+
+  return (
+    <section className="border rounded-lg p-4">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Debug Console</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        View API requests, LLM calls, and WebSocket events.
+        Toggle with <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">Ctrl+`</kbd>
+      </p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={toggle}
+          className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-forge-500 focus:ring-offset-2"
+          style={{ backgroundColor: isOpen ? "#2563eb" : "#d1d5db" }}
+        >
+          <span
+            className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+              isOpen ? "translate-x-[18px]" : "translate-x-[2px]"
+            }`}
+          />
+        </button>
+        <span className="text-sm text-gray-600">
+          {isOpen ? "Open" : "Closed"}
+        </span>
       </div>
     </section>
   );

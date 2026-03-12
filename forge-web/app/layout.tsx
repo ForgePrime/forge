@@ -7,6 +7,7 @@ import { RightSidebarSlot } from "@/components/layout/RightSidebarSlot";
 import { SWRProvider } from "@/lib/swr-config";
 import { ToastContainer } from "@/components/shared/ToastContainer";
 import { DebugInit } from "@/components/debug/DebugInit";
+import { BottomPanel } from "@/components/debug/BottomPanel";
 
 export const metadata: Metadata = {
   title: "Forge Platform",
@@ -32,6 +33,7 @@ export default function RootLayout({
             </div>
           </LeftPanelProvider>
           <ToastContainer />
+          <BottomPanel />
         </SWRProvider>
       </body>
     </html>
