@@ -7,7 +7,8 @@ import { SkillRow } from "@/components/entities/SkillRow";
 import { LintResultsMatrix } from "@/components/skills/LintResultsMatrix";
 import { StatusFilter } from "@/components/shared/StatusFilter";
 import { Button } from "@/components/shared/Button";
-import { getCategoryColor, categoryLabel } from "@/lib/utils/categoryColors";
+import { SkillsCategoryPanel } from "@/components/skills/SkillsCategoryPanel";
+import { useLeftPanel } from "@/components/layout/LeftPanelProvider";
 import type { Skill, BulkLintResult, SkillCategoryDef } from "@/lib/types";
 
 const STATUSES = ["DRAFT", "ACTIVE", "DEPRECATED", "ARCHIVED"];
@@ -73,6 +74,17 @@ export default function SkillsPage() {
     items.forEach((s) => keys.add(s.category));
     return Array.from(keys);
   }, [categories, items]);
+
+  // Register category panel in left panel
+  useLeftPanel(
+    <SkillsCategoryPanel
+      categoryFilter={categoryFilter}
+      setCategoryFilter={setCategoryFilter}
+      allCategoryKeys={allCategoryKeys}
+      categoryCounts={categoryCounts}
+      totalCount={items.length}
+    />
+  );
 
   const filtered = useMemo(() => {
     return items
@@ -154,49 +166,7 @@ export default function SkillsPage() {
   };
 
   return (
-    <div className="flex gap-6 p-6">
-      {/* Category sidebar */}
-      <aside className="w-48 flex-shrink-0 hidden lg:block">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Categories
-        </h3>
-        <nav className="space-y-0.5">
-          <button
-            onClick={() => setCategoryFilter("")}
-            className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-              !categoryFilter
-                ? "bg-forge-50 text-forge-700 font-medium"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-          >
-            All
-            <span className="float-right text-xs text-gray-400">{items.length}</span>
-          </button>
-          {allCategoryKeys.map((key) => {
-            const cat = getCategoryColor(key);
-            return (
-              <button
-                key={key}
-                onClick={() => setCategoryFilter(key === categoryFilter ? "" : key)}
-                className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 ${
-                  categoryFilter === key
-                    ? "bg-forge-50 text-forge-700 font-medium"
-                    : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full ${cat.dot} flex-shrink-0`} />
-                <span className="flex-1">{categoryLabel(key)}</span>
-                <span className="text-xs text-gray-400">
-                  {categoryCounts[key] || 0}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-
-      {/* Main content */}
-      <div className="flex-1 min-w-0">
+    <div className="p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">
@@ -205,14 +175,6 @@ export default function SkillsPage() {
           </h1>
           <div className="flex items-center gap-2">
             <StatusFilter options={STATUSES} value={statusFilter} onChange={setStatusFilter} />
-            <div className="lg:hidden">
-              <StatusFilter
-                options={allCategoryKeys}
-                value={categoryFilter}
-                onChange={setCategoryFilter}
-                label="Category"
-              />
-            </div>
           </div>
         </div>
 
@@ -296,7 +258,6 @@ export default function SkillsPage() {
               : "No skills matching filters."}
           </p>
         )}
-      </div>
 
       {/* Lint results modal */}
       {lintResult && (

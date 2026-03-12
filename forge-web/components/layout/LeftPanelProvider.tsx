@@ -29,13 +29,16 @@ export function LeftPanelProvider({ children }: { children: ReactNode }) {
 
 /**
  * Hook for pages to declare left panel content.
- * Content is set on mount and cleared on unmount.
+ * Content is updated on every render and cleared on unmount.
  */
 export function useLeftPanel(content: ReactNode) {
   const { setContent } = useContext(LeftPanelContext);
 
   useEffect(() => {
     setContent(content);
+  });
+
+  useEffect(() => {
     return () => setContent(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setContent]);
