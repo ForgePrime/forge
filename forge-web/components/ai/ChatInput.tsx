@@ -42,6 +42,8 @@ export default function ChatInput({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragCounter = useRef(0);
+  // Stable pre-session ID for file uploads before a chat session is created
+  const preSessionId = useRef(`pre-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim();
@@ -110,9 +112,10 @@ export default function ChatInput({
 
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
+      if (uploading) return; // Guard against concurrent drops
 
-      // Session ID check
-      const sid = sessionId ?? "pending";
+      // Use real session ID if available, otherwise stable pre-session ID
+      const sid = sessionId ?? preSessionId.current;
 
       // Check session limit
       const remaining = MAX_FILES_PER_SESSION - attachments.length;

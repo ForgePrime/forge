@@ -536,23 +536,16 @@ async def upload_chat_file(
     file: UploadFile,
     session_id: str = Form(...),
     redis=Depends(get_redis),
-    manager=Depends(get_session_manager),
 ) -> FileUploadResponse:
     """Upload a file for LLM context injection.
 
-    The file is stored in Redis with a 1h TTL and associated with the
-    given chat session. Max 1MB per file, max 10 files per session.
+    The file is stored in Redis with a 1h TTL. The session_id is used
+    as a grouping key for per-session file limits (max 10).
+    Files can be uploaded before a chat session is formally created.
 
     Allowed extensions: .md, .txt, .py, .js, .ts, .json, .yaml, .yml,
     .sh, .css, .html, .pdf
     """
-    # --- Validate session exists ---
-    session = await manager.load(session_id)
-    if session is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{session_id}' not found or expired",
-        )
 
     # --- Validate file extension ---
     filename = file.filename or "unnamed"
@@ -567,20 +560,31 @@ async def upload_chat_file(
             ),
         )
 
-    # --- Read and validate file size ---
-    content_bytes = await file.read()
-    if len(content_bytes) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large ({len(content_bytes)} bytes). Maximum: {MAX_FILE_SIZE} bytes (1MB)",
-        )
+    # --- Read file with size limit (chunk-based to avoid buffering huge files) ---
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(64 * 1024)  # 64KB chunks
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large (>{MAX_FILE_SIZE} bytes). Maximum: 1MB",
+            )
+        chunks.append(chunk)
+    content_bytes = b"".join(chunks)
 
-    # --- Check per-session file limit ---
+    # --- Atomic session file limit (optimistic SADD + rollback) ---
     session_files_key = f"{SESSION_FILES_KEY_PREFIX}{session_id}{SESSION_FILES_KEY_SUFFIX}"
+    temp_file_id = str(uuid.uuid4())
+    await redis.sadd(session_files_key, temp_file_id)
     current_count = await redis.scard(session_files_key)
-    if current_count >= MAX_FILES_PER_SESSION:
+    if current_count > MAX_FILES_PER_SESSION:
+        await redis.srem(session_files_key, temp_file_id)
         raise HTTPException(
-            status_code=429,
+            status_code=422,
             detail=f"Maximum {MAX_FILES_PER_SESSION} files per session reached",
         )
 
@@ -600,8 +604,8 @@ async def upload_chat_file(
                     detail="File content could not be decoded as text",
                 )
 
-    # --- Store in Redis ---
-    file_id = str(uuid.uuid4())
+    # --- Store in Redis (reuse temp_file_id from the optimistic SADD) ---
+    file_id = temp_file_id
     file_key = f"{FILE_KEY_PREFIX}{file_id}"
 
     file_data = {
@@ -617,8 +621,7 @@ async def upload_chat_file(
     # Store file data with 1h TTL
     await redis.setex(file_key, FILE_TTL_SECONDS, json.dumps(file_data))
 
-    # Track file in session's file set (also with 1h TTL)
-    await redis.sadd(session_files_key, file_id)
+    # Session set already has this file_id from optimistic SADD — refresh TTL
     await redis.expire(session_files_key, FILE_TTL_SECONDS)
 
     # Build content preview
@@ -799,6 +802,8 @@ def _extract_pdf_text(content_bytes: bytes) -> str:
         return "[PDF uploaded but no extractable text found]"
     except ImportError:
         pass
+    except Exception as e:
+        return f"[PDF text extraction failed: {type(e).__name__}]"
 
     try:
         import PyPDF2  # noqa: N813
