@@ -140,6 +140,9 @@ def run_teslint(
         # Extract findings
         findings = []
         for item in (parsed if isinstance(parsed, list) else parsed.get("findings", [])):
+            if not isinstance(item, dict):
+                logger.warning(f"Skipping malformed TESLint finding: {type(item).__name__}")
+                continue
             findings.append(TESLintFinding(
                 rule_id=item.get("rule_id", item.get("rule", "unknown")),
                 severity=item.get("severity", "warning"),
