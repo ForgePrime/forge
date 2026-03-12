@@ -313,20 +313,23 @@ async def _handle_update_skill_content(
     context: dict[str, Any],
 ) -> dict[str, Any]:
     """Update a skill's content (the SKILL.md body)."""
+    from app.routers._helpers import _get_lock
+
     skill_id = args.get("skill_id") or context.get("entity_id")
     content = args.get("content", "")
 
     if not skill_id:
         return {"error": "skill_id is required"}
 
-    data = await asyncio.to_thread(storage.load_global, "skills")
-    skills = data.get("skills", [])
+    async with _get_lock("_global", "skills"):
+        data = await asyncio.to_thread(storage.load_global, "skills")
+        skills = data.get("skills", [])
 
-    for skill in skills:
-        if skill.get("id") == skill_id:
-            skill["content"] = content
-            await asyncio.to_thread(storage.save_global, "skills", data)
-            return {"updated": True, "skill_id": skill_id}
+        for skill in skills:
+            if skill.get("id") == skill_id:
+                skill["content"] = content
+                await asyncio.to_thread(storage.save_global, "skills", data)
+                return {"updated": True, "skill_id": skill_id}
 
     return {"error": f"Skill {skill_id} not found"}
 
@@ -337,23 +340,26 @@ async def _handle_update_skill_metadata(
     context: dict[str, Any],
 ) -> dict[str, Any]:
     """Update a skill's metadata (category, tags, scopes)."""
+    from app.routers._helpers import _get_lock
+
     skill_id = args.get("skill_id") or context.get("entity_id")
     if not skill_id:
         return {"error": "skill_id is required"}
 
-    data = await asyncio.to_thread(storage.load_global, "skills")
-    skills = data.get("skills", [])
+    async with _get_lock("_global", "skills"):
+        data = await asyncio.to_thread(storage.load_global, "skills")
+        skills = data.get("skills", [])
 
-    for skill in skills:
-        if skill.get("id") == skill_id:
-            if "category" in args and args["category"] is not None:
-                skill["category"] = args["category"]
-            if "tags" in args and args["tags"] is not None:
-                skill["tags"] = args["tags"]
-            if "scopes" in args and args["scopes"] is not None:
-                skill["scopes"] = args["scopes"]
-            await asyncio.to_thread(storage.save_global, "skills", data)
-            return {"updated": True, "skill_id": skill_id, "skill": skill}
+        for skill in skills:
+            if skill.get("id") == skill_id:
+                if "category" in args and args["category"] is not None:
+                    skill["category"] = args["category"]
+                if "tags" in args and args["tags"] is not None:
+                    skill["tags"] = args["tags"]
+                if "scopes" in args and args["scopes"] is not None:
+                    skill["scopes"] = args["scopes"]
+                await asyncio.to_thread(storage.save_global, "skills", data)
+                return {"updated": True, "skill_id": skill_id, "skill": skill}
 
     return {"error": f"Skill {skill_id} not found"}
 
@@ -386,11 +392,14 @@ async def _handle_run_skill_lint(
 
     try:
         from app.services.teslint import run_teslint
-        result = await asyncio.to_thread(run_teslint, content)
+        skill_name = skill.get("name", skill_id)
+        teslint_config = skill.get("teslint_config")
+        result = await asyncio.to_thread(run_teslint, skill_name, content, teslint_config)
         return {
             "skill_id": skill_id,
             "success": result.success,
-            "score": result.score,
+            "error_count": result.error_count,
+            "warning_count": result.warning_count,
             "findings": [
                 {"rule": f.rule, "severity": f.severity, "message": f.message, "line": f.line}
                 for f in (result.findings or [])
@@ -462,7 +471,7 @@ def create_default_registry() -> ToolRegistry:
                     "additionalProperties": True,
                 },
             },
-            "required": ["entity_type", "query"],
+            "required": ["entity_type"],
         },
         context_types=["global"],
         required_permission=None,  # read-only, no permission needed
