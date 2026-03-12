@@ -2,7 +2,7 @@
   "project": "forge-platform-v2",
   "goal": "Implement Forge Platform v2 Phases 2-4: Database & API, Web UI, AI Features — per docs/FORGE-PLATFORM-V2.md Sections 7-11. Builds on completed Phase 1 (forge-platform-v2-phase1).",
   "created": "2026-03-10T19:00:00Z",
-  "updated": "2026-03-12T18:40:10Z",
+  "updated": "2026-03-12T19:21:24Z",
   "config": {},
   "tasks": [
     {
@@ -4686,6 +4686,433 @@
       "failed_reason": null,
       "agent": "default",
       "started_at_commit": "1e88be615b689df6c628dace9e70cfc83e4bff4b"
+    },
+    {
+      "id": "T-153",
+      "name": "skill-storage-service",
+      "description": "Nowy SkillStorageService operujacy na katalogach _global/skills/{name}/ zamiast monolitycznego skills.json. Obsluguje: list, get, save, delete, create. Parsowanie frontmattera SKILL.md jako source of truth. Walidacja unikalnosci nazwy. Per-skill asyncio lock.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Utworz forge-api/app/services/skill_storage.py z klasa SkillStorageService.\n2. Konstruktor: skills_dir: Path (domyslnie forge_output/_global/skills/).\n3. Metody: list_skills()->list[dict], get_skill(name)->dict, save_skill(name, config, content?)->None, delete_skill(name)->None, create_skill(name, initial_config)->dict, get_file(name, path)->str, save_file(name, path, content)->None, delete_file(name, path)->None, move_file(name, old_path, new_path)->None, list_files(name)->list[dict].\n4. _config.json schema: {categories:[], tags:[], status, scopes:[], evals_json:[], teslint_config, sync:bool, promoted_with_warnings, promotion_history:[], usage_count, created_by, created_at, updated_at}.\n5. Parsuj frontmatter z SKILL.md (reuse app/services/frontmatter.py).\n6. Walidacja: nazwa=slug (lowercase, hyphens), unikalna w skills_dir.\n7. Per-skill asyncio.Lock via dict[name, Lock].\n8. Auto-create skills_dir jesli nie istnieje.",
+      "acceptance_criteria": [
+        "SkillStorageService czyta/zapisuje _config.json per skill directory",
+        "SKILL.md frontmatter parsowany jako source of truth dla name/description",
+        "Unikalnosc nazwy walidowana przy create",
+        "Per-skill locking dziala",
+        "Auto-create katalogu skills_dir przy pierwszym uzyciu",
+        "Pliki w scripts/, references/, assets/ obslugiwane (CRUD + move)"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-12T19:01:08Z",
+      "completed_at": "2026-03-12T19:02:37Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "95164d84ce1ef35448ec4eaf0761a44de633eeee"
+    },
+    {
+      "id": "T-154",
+      "name": "db-skill-index",
+      "description": "Indeks w _global/skills/_index.json do szybkiego wyszukiwania skills: name, categories[], tags[], status, description, path. Aktualizowany przy create/edit/delete. Metoda resync_index() odbudowuje ze skanowania katalogow.",
+      "depends_on": [
+        "T-153"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Rozszerz SkillStorageService o _index.json.\n2. list_skills() czyta z indeksu (szybko).\n3. Przy create/save/delete - aktualizuj indeks atomicznie.\n4. resync_index() - skanuje katalogi, parsuje _config.json + frontmatter, przebudowuje indeks.\n5. Filtrowanie: by category, tags, status, search (substring).",
+      "acceptance_criteria": [
+        "_index.json trzyma name, categories, tags, status, description per skill",
+        "list_skills() czyta z indeksu",
+        "Indeks aktualizowany przy create/save/delete",
+        "resync_index() odbudowuje indeks",
+        "Filtrowanie po category, tags, status, search dziala"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-12T19:02:40Z",
+      "completed_at": "2026-03-12T19:03:38Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "ca32d7013f1637be2ff0615c5106b320d1eebef0"
+    },
+    {
+      "id": "T-155",
+      "name": "git-sync-service",
+      "description": "GitSyncService do zarzadzania git clone forge-skills.git. Operacje: init_or_clone, pull (fetch+reset --hard), push (add synced+commit+push), status. Graceful degradation bez git.",
+      "depends_on": [
+        "T-154"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Utworz forge-api/app/services/git_sync.py.\n2. Konstruktor: skills_dir, remote_url (env FORGE_SKILLS_REPO_URL).\n3. init_or_clone(): clone lub verify .git.\n4. pull(): git fetch && git reset --hard origin/main, then resync_index().\n5. push(message): git add tylko sync:true skills, commit, push.\n6. status(): git status --porcelain + rev-list HEAD..origin/main.\n7. asyncio.to_thread(subprocess.run, ...).\n8. Graceful: brak git/repo -> error, nie crash. Brak FORGE_SKILLS_REPO_URL -> 503.",
+      "acceptance_criteria": [
+        "init_or_clone() klonuje lub weryfikuje repo",
+        "pull() robi fetch+reset, potem resync indeksu",
+        "push() commituje tylko sync:true skills",
+        "status() zwraca local changes i behind/ahead",
+        "Graceful degradation gdy git brak"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-12T19:03:41Z",
+      "completed_at": "2026-03-12T19:04:38Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "105b9dc2f38a1e8c5ba20cf4510e030ff5cbbed9"
+    },
+    {
+      "id": "T-156",
+      "name": "refactor-skills-router",
+      "description": "Przebudowa skills.py: zamiana na SkillStorageService, routing /{name} zamiast /{skill_id}, categories[], git sync endpoints, file move endpoint.",
+      "depends_on": [
+        "T-155"
+      ],
+      "parallel": false,
+      "conflicts_with": [
+        "T-157"
+      ],
+      "skill": null,
+      "instruction": "1. Inject SkillStorageService i GitSyncService jako dependencies.\n2. CRUD: GET/POST /skills, GET/PATCH/DELETE /skills/{name}.\n3. SkillCreate/SkillUpdate: category->categories:list[str].\n4. File endpoints: PUT/GET/DELETE /skills/{name}/files/{path}, POST /skills/{name}/files/move.\n5. Git sync: POST /skills/git/pull, POST /skills/git/push, GET /skills/git/status, POST /skills/git/scan.\n6. Lint/promote/validate/export adaptuj do plikowego storage.\n7. Import: parsuj SKILL.md, utworz katalog.\n8. Zachowaj emit_event dla WS.",
+      "acceptance_criteria": [
+        "CRUD endpointy na SkillStorageService",
+        "Routing po nazwie (slug)",
+        "categories: list[str] w create/update",
+        "File move endpoint",
+        "Git sync endpoints: pull, push, status, scan",
+        "Lint/promote/validate dzialaja z plikowym storage",
+        "WebSocket events emitowane"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "skills",
+        "api"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-12T19:04:42Z",
+      "completed_at": "2026-03-12T19:08:09Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "44befc34567f1e6084cb0fa3244830298766e3d5"
+    },
+    {
+      "id": "T-157",
+      "name": "frontend-types-api-skills",
+      "description": "Aktualizacja typow TS, API client: name-based routing, categories[], nowe endpointy (git sync, file move).",
+      "depends_on": [
+        "T-156"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. lib/types.ts: category->categories:string[]. Dodaj SkillGitStatus, SkillSyncResult.\n2. lib/api.ts: routing /skills/${name}. Dodaj gitPull, gitPush, gitStatus, gitScan, moveFile.\n3. SkillCreate/SkillUpdate: category->categories.\n4. Skill.id usuniety - name jest identyfikatorem.",
+      "acceptance_criteria": [
+        "Skill.categories: string[] w typach",
+        "API client na name zamiast id",
+        "Nowe typy: SkillGitStatus, SkillSyncResult",
+        "Nowe API: gitPull, gitPush, gitStatus, gitScan, moveFile",
+        "Build przechodzi"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-12T19:08:15Z",
+      "completed_at": "2026-03-12T19:11:34Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "2856c612c076444cd6e83f6603aafeb35c247b44"
+    },
+    {
+      "id": "T-158",
+      "name": "skill-store-ws-update",
+      "description": "Aktualizacja Zustand store: klucz name zamiast id, WS events, git sync state.",
+      "depends_on": [
+        "T-157"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. skillStore.ts: getItemId -> item.name.\n2. WS events: skill.synced.\n3. Operacje na name.\n4. Git sync state: syncStatus, lastSynced, syncing flag.",
+      "acceptance_criteria": [
+        "Store na name jako kluczu",
+        "WS skill.synced",
+        "Git sync state w storze"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-12T19:11:51Z",
+      "completed_at": "2026-03-12T19:12:50Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "d24cb669371a1bab6f742f41f88b060a609384f3"
+    },
+    {
+      "id": "T-159",
+      "name": "skill-editor-unified",
+      "description": "Ujednolicenie SkillEditor: create = edit (pelny edytor z file tree, metadata, lint). Auto-generowany SKILL.md. Category multi-select. Usuwanie plikow z panelu po prawej z confirm.",
+      "depends_on": [
+        "T-158"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. SkillEditor.tsx create mode: auto-generuj SKILL.md frontmatter.\n2. Create mode: file tree, metadata panel, lint tab.\n3. Save create: redirect na /skills/{name}.\n4. Category -> multi-select (categories[]).\n5. Usuwanie plikow: przenies do panelu po prawej, confirm dialog.\n6. Routing: /skills/[name] zamiast /skills/[id].",
+      "acceptance_criteria": [
+        "Create mode z pelnym edytorem",
+        "Auto-generowany SKILL.md frontmatter",
+        "Category multi-select",
+        "Usuwanie z confirm w panelu po prawej",
+        "Redirect na /skills/{name}",
+        "Routing [name]"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-12T19:12:57Z",
+      "completed_at": "2026-03-12T19:18:59Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "b2d35dc7f6b2f611d2899a8cac5d894a501006ae"
+    },
+    {
+      "id": "T-160",
+      "name": "file-management-enhanced",
+      "description": "Upload przycisk, drag-to-move miedzy katalogami, overwrite detection, ZIP/folder upload nowego skilla.",
+      "depends_on": [
+        "T-159"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Upload button przy folderach.\n2. Drag-to-move: przenosiny pliku miedzy folderami, zmiana path+file_type, call move_file.\n3. Overwrite: jesli plik istnieje -> confirm: Overwrite/Rename/Cancel.\n4. ZIP upload: Import Skill button, .zip z SKILL.md -> nowy skill.\n5. Folder upload: webkitdirectory input.\n6. handleDropFiles: overwrite logic.",
+      "acceptance_criteria": [
+        "Upload przycisk przy folderach",
+        "Drag-to-move miedzy katalogami",
+        "Overwrite detection z confirm",
+        "ZIP upload tworzy nowy skill",
+        "Folder upload tworzy nowy skill"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-12T19:19:06Z",
+      "completed_at": "2026-03-12T19:21:20Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "d90c9c12129793c6400ea62868ee72cbd986a96e"
+    },
+    {
+      "id": "T-161",
+      "name": "skills-list-git-sync-ui",
+      "description": "Strona /skills: panel git sync (Pull/Push/Scan), status indicator, per-skill sync/local badge.",
+      "depends_on": [
+        "T-158"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Git Sync sekcja nad lista skills.\n2. Pull: gitPull(), refresh listy.\n3. Push: dialog z commit message, gitPush().\n4. Scan: gitScan(), resync.\n5. Status: connected/disconnected, behind/ahead, last sync.\n6. Per-skill badge: sync/local z _config.json.sync.\n7. Brak FORGE_SKILLS_REPO_URL: info, ukryj przyciski.",
+      "acceptance_criteria": [
+        "Pull/Push/Scan na /skills",
+        "Push z commit message",
+        "Status: connected, behind/ahead, last sync",
+        "Per-skill sync/local badge",
+        "Graceful bez git config"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "IN_PROGRESS",
+      "started_at": "2026-03-12T19:21:24Z",
+      "completed_at": null,
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "393595edef6fe5ab9d6ceecf5caf6216e8233506"
+    },
+    {
+      "id": "T-162",
+      "name": "skill-editor-sync-controls",
+      "description": "W edytorze: Sync to Repo button, toggle sync/local, wskaznik sync status.",
+      "depends_on": [
+        "T-159",
+        "T-161"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Metadata tab: toggle Sync (switch) -> _config.json.sync.\n2. Header: Sync to Repo button (sync=true). Save then gitPush.\n3. Wskaznik: cloud/cloud-off/cloud-alert ikona.\n4. Tooltip: last synced.",
+      "acceptance_criteria": [
+        "Toggle sync/local w metadata",
+        "Sync to Repo button w header",
+        "Cloud ikona sync status",
+        "Auto commit message"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-163",
+      "name": "category-multi-select-filter",
+      "description": "SkillsCategoryPanel i filtrowanie adaptacja do multi-category. Skill card badges.",
+      "depends_on": [
+        "T-158"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. SkillsCategoryPanel: categoryCounts z includes zamiast ==.\n2. Backend filtrowanie: categories array contains.\n3. SkillEditor: multi-select dropdown/checkboxes, min 1.\n4. Skill card: categories badges (max 3, +N).",
+      "acceptance_criteria": [
+        "Filtrowanie z categories[]",
+        "Multi-select w edytorze",
+        "Badges na skill card"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-164",
+      "name": "skills-migration-script",
+      "description": "Skrypt migracyjny: skills.json -> katalogi. category->categories[]. Backup. Dry-run.",
+      "depends_on": [
+        "T-154"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. forge-api/scripts/migrate_skills.py.\n2. Czytaj _global/skills.json.\n3. Dla kazdego: slug, mkdir, SKILL.md, _config.json, pliki.\n4. category->categories:[category].\n5. resync_index() po migracji.\n6. Backup: skills.json.bak.\n7. --dry-run flag.",
+      "acceptance_criteria": [
+        "Skrypt tworzy katalogi z skills.json",
+        "category->categories[]",
+        "SKILL.md + _config.json + pliki",
+        "resync_index() po migracji",
+        "Backup + dry-run"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-165",
+      "name": "deep-verify-skills-storage",
+      "description": "Deep-verify calej implementacji O-016.",
+      "depends_on": [
+        "T-156",
+        "T-159",
+        "T-160",
+        "T-161",
+        "T-162",
+        "T-163",
+        "T-164"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "",
+      "acceptance_criteria": [
+        "Deep-verify score ACCEPT",
+        "Znalezione bugi naprawione",
+        "KRs O-016 zaktualizowane"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend",
+        "skills"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
     }
   ]
 }

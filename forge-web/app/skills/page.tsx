@@ -9,7 +9,7 @@ import { StatusFilter } from "@/components/shared/StatusFilter";
 import { Button } from "@/components/shared/Button";
 import { SkillsCategoryPanel } from "@/components/skills/SkillsCategoryPanel";
 import { useLeftPanel } from "@/components/layout/LeftPanelProvider";
-import type { Skill, BulkLintResult, SkillCategoryDef } from "@/lib/types";
+import type { Skill, BulkLintResult, SkillCategoryDef, SkillGitStatus } from "@/lib/types";
 
 const STATUSES = ["DRAFT", "ACTIVE", "DEPRECATED", "ARCHIVED"];
 
@@ -30,6 +30,12 @@ export default function SkillsPage() {
 
   // Import state
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Git sync state
+  const [gitStatus, setGitStatus] = useState<SkillGitStatus | null>(null);
+  const [gitSyncing, setGitSyncing] = useState(false);
+  const [pushDialogOpen, setPushDialogOpen] = useState(false);
+  const [pushMessage, setPushMessage] = useState("Sync skills");
 
   const fetchSkills = useCallback(async () => {
     setLoading(true);
@@ -53,10 +59,20 @@ export default function SkillsPage() {
     }
   }, []);
 
+  const fetchGitStatus = useCallback(async () => {
+    try {
+      const status = await skillsApi.gitStatus();
+      setGitStatus(status);
+    } catch {
+      // Non-critical
+    }
+  }, []);
+
   useEffect(() => {
     fetchSkills();
     fetchCategories();
-  }, [fetchSkills, fetchCategories]);
+    fetchGitStatus();
+  }, [fetchSkills, fetchCategories, fetchGitStatus]);
 
   // Category counts (multi-category: each skill can be in multiple)
   const categoryCounts = useMemo(() => {
@@ -150,6 +166,47 @@ export default function SkillsPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // Git sync actions
+  const handleGitPull = async () => {
+    setGitSyncing(true);
+    try {
+      await skillsApi.gitPull();
+      await fetchSkills();
+      await fetchGitStatus();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setGitSyncing(false);
+    }
+  };
+
+  const handleGitPush = async () => {
+    setGitSyncing(true);
+    setPushDialogOpen(false);
+    try {
+      await skillsApi.gitPush(pushMessage);
+      await fetchGitStatus();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setGitSyncing(false);
+      setPushMessage("Sync skills");
+    }
+  };
+
+  const handleGitScan = async () => {
+    setGitSyncing(true);
+    try {
+      await skillsApi.gitScan();
+      await fetchSkills();
+      await fetchGitStatus();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setGitSyncing(false);
+    }
+  };
+
   const handleExportSelected = async () => {
     if (selected.size === 0) return;
     try {
@@ -212,6 +269,104 @@ export default function SkillsPage() {
             + New Skill
           </Button>
         </div>
+
+        {/* Git sync bar */}
+        {gitStatus?.configured && (
+          <div className="flex items-center gap-3 mb-3 px-3 py-2 rounded-md bg-blue-50 border border-blue-200 text-sm">
+            <span className="text-blue-600 font-medium">
+              {gitStatus.initialized ? (
+                <>
+                  {gitStatus.branch ?? "git"}
+                  {(gitStatus.behind ?? 0) > 0 && (
+                    <span className="ml-1 text-amber-600">{gitStatus.behind} behind</span>
+                  )}
+                  {(gitStatus.ahead ?? 0) > 0 && (
+                    <span className="ml-1 text-green-600">{gitStatus.ahead} ahead</span>
+                  )}
+                  {gitStatus.local_changes && (
+                    <span className="ml-1 text-amber-500">*</span>
+                  )}
+                </>
+              ) : (
+                <span className="text-gray-500">Git not initialized</span>
+              )}
+            </span>
+            <div className="flex-1" />
+            {gitStatus.initialized ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleGitPull}
+                  disabled={gitSyncing}
+                >
+                  Pull
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setPushDialogOpen(true)}
+                  disabled={gitSyncing}
+                >
+                  Push
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleGitScan}
+                  disabled={gitSyncing}
+                >
+                  Scan
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  setGitSyncing(true);
+                  try {
+                    await skillsApi.gitInit();
+                    await fetchGitStatus();
+                    await fetchSkills();
+                  } catch (e) {
+                    setError((e as Error).message);
+                  } finally {
+                    setGitSyncing(false);
+                  }
+                }}
+                disabled={gitSyncing}
+              >
+                Initialize
+              </Button>
+            )}
+            {gitSyncing && <span className="text-xs text-blue-400">Syncing...</span>}
+          </div>
+        )}
+
+        {/* Push dialog */}
+        {pushDialogOpen && (
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-white border border-blue-300 text-sm">
+            <label className="text-gray-600 text-xs whitespace-nowrap">Commit message:</label>
+            <input
+              type="text"
+              value={pushMessage}
+              onChange={(e) => setPushMessage(e.target.value)}
+              className="flex-1 rounded-md border px-2 py-1 text-sm focus:border-forge-500 focus:ring-1 focus:ring-forge-500"
+              onKeyDown={(e) => { if (e.key === "Enter") handleGitPush(); }}
+              autoFocus
+            />
+            <Button size="sm" onClick={handleGitPush} disabled={!pushMessage.trim()}>
+              Push
+            </Button>
+            <button
+              onClick={() => { setPushDialogOpen(false); setPushMessage("Sync skills"); }}
+              className="text-xs text-gray-400 hover:text-gray-600"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
 
         {/* Bulk selection bar */}
         {selected.size > 0 && (

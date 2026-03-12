@@ -1,6 +1,6 @@
 {
   "project": "forge-platform-v2",
-  "updated": "2026-03-12T18:40:10Z",
+  "updated": "2026-03-12T19:24:41Z",
   "changes": [
     {
       "id": "C-143",
@@ -3980,6 +3980,614 @@
       "group_id": "T-140",
       "guidelines_checked": [],
       "timestamp": "2026-03-12T18:40:10Z"
+    },
+    {
+      "id": "C-209",
+      "task_id": "T-153",
+      "file": "forge-api/app/services/skill_storage.py",
+      "action": "create",
+      "summary": "Created SkillStorageService in forge-api/app/services/skill_storage.py. Implements: list_skills (dir scan), get_skill, create_skill (slug validation, uniqueness check, auto-generated SKILL.md), save_skill (merge config + optional content), delete_skill (shutil.rmtree). File ops: list_files, get_file, save_file, delete_file, move_file with path prefix validation and traversal protection. Per-skill asyncio.Lock via dict. Auto-creates skills_dir. Reuses frontmatter.py for SKILL.md parsing.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created SkillStorageService in forge-api/app/services/skill_storage.py. Implements: list_skills (dir scan), get_skill, create_skill (slug validation, uniqueness check, auto-generated SKILL.md), save_skill (merge config + optional content), delete_skill (shutil.rmtree). File ops: list_files, get_file, save_file, delete_file, move_file with path prefix validation and traversal protection. Per-skill asyncio.Lock via dict. Auto-creates skills_dir. Reuses frontmatter.py for SKILL.md parsing."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 351,
+      "lines_removed": 0,
+      "group_id": "T-153",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:02:37Z"
+    },
+    {
+      "id": "C-210",
+      "task_id": "T-153",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Created SkillStorageService in forge-api/app/services/skill_storage.py. Implements: list_skills (dir scan), get_skill, create_skill (slug validation, uniqueness check, auto-generated SKILL.md), save_skill (merge config + optional content), delete_skill (shutil.rmtree). File ops: list_files, get_file, save_file, delete_file, move_file with path prefix validation and traversal protection. Per-skill asyncio.Lock via dict. Auto-creates skills_dir. Reuses frontmatter.py for SKILL.md parsing.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created SkillStorageService in forge-api/app/services/skill_storage.py. Implements: list_skills (dir scan), get_skill, create_skill (slug validation, uniqueness check, auto-generated SKILL.md), save_skill (merge config + optional content), delete_skill (shutil.rmtree). File ops: list_files, get_file, save_file, delete_file, move_file with path prefix validation and traversal protection. Per-skill asyncio.Lock via dict. Auto-creates skills_dir. Reuses frontmatter.py for SKILL.md parsing."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 412,
+      "lines_removed": 1,
+      "group_id": "T-153",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:02:37Z"
+    },
+    {
+      "id": "C-211",
+      "task_id": "T-154",
+      "file": "forge-api/app/services/skill_storage.py",
+      "action": "edit",
+      "summary": "Extended SkillStorageService with _index.json support. list_skills() reads from index with filtering (category, tags, status, search substring). Index auto-updated on create/save/delete via _update_index_entry/_remove_index_entry. resync_index() rebuilds by scanning all skill directories. Falls back to resync if index empty.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Extended SkillStorageService with _index.json support. list_skills() reads from index with filtering (category, tags, status, search substring). Index auto-updated on create/save/delete via _update_index_entry/_remove_index_entry. resync_index() rebuilds by scanning all skill directories. Falls back to resync if index empty."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 119,
+      "lines_removed": 10,
+      "group_id": "T-154",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:03:38Z"
+    },
+    {
+      "id": "C-212",
+      "task_id": "T-154",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Extended SkillStorageService with _index.json support. list_skills() reads from index with filtering (category, tags, status, search substring). Index auto-updated on create/save/delete via _update_index_entry/_remove_index_entry. resync_index() rebuilds by scanning all skill directories. Falls back to resync if index empty.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Extended SkillStorageService with _index.json support. list_skills() reads from index with filtering (category, tags, status, search substring). Index auto-updated on create/save/delete via _update_index_entry/_remove_index_entry. resync_index() rebuilds by scanning all skill directories. Falls back to resync if index empty."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 39,
+      "lines_removed": 1,
+      "group_id": "T-154",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:03:38Z"
+    },
+    {
+      "id": "C-213",
+      "task_id": "T-154",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Extended SkillStorageService with _index.json support. list_skills() reads from index with filtering (category, tags, status, search substring). Index auto-updated on create/save/delete via _update_index_entry/_remove_index_entry. resync_index() rebuilds by scanning all skill directories. Falls back to resync if index empty.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Extended SkillStorageService with _index.json support. list_skills() reads from index with filtering (category, tags, status, search substring). Index auto-updated on create/save/delete via _update_index_entry/_remove_index_entry. resync_index() rebuilds by scanning all skill directories. Falls back to resync if index empty."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 414,
+      "lines_removed": 1,
+      "group_id": "T-154",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:03:38Z"
+    },
+    {
+      "id": "C-214",
+      "task_id": "T-155",
+      "file": "forge-api/app/services/git_sync.py",
+      "action": "create",
+      "summary": "Created GitSyncService in forge-api/app/services/git_sync.py. init_or_clone: clones or verifies .git, handles existing content via init+remote add. pull: fetch+reset --hard origin/{branch}, calls resync_index. push: stages only sync:true skill dirs, commits, pushes. status: local changes, ahead/behind counts, branch info. Graceful: GitSyncNotConfigured when no URL, GitSyncError for git issues.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created GitSyncService in forge-api/app/services/git_sync.py. init_or_clone: clones or verifies .git, handles existing content via init+remote add. pull: fetch+reset --hard origin/{branch}, calls resync_index. push: stages only sync:true skill dirs, commits, pushes. status: local changes, ahead/behind counts, branch info. Graceful: GitSyncNotConfigured when no URL, GitSyncError for git issues."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 319,
+      "lines_removed": 0,
+      "group_id": "T-155",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:04:38Z"
+    },
+    {
+      "id": "C-215",
+      "task_id": "T-155",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Created GitSyncService in forge-api/app/services/git_sync.py. init_or_clone: clones or verifies .git, handles existing content via init+remote add. pull: fetch+reset --hard origin/{branch}, calls resync_index. push: stages only sync:true skill dirs, commits, pushes. status: local changes, ahead/behind counts, branch info. Graceful: GitSyncNotConfigured when no URL, GitSyncError for git issues.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created GitSyncService in forge-api/app/services/git_sync.py. init_or_clone: clones or verifies .git, handles existing content via init+remote add. pull: fetch+reset --hard origin/{branch}, calls resync_index. push: stages only sync:true skill dirs, commits, pushes. status: local changes, ahead/behind counts, branch info. Graceful: GitSyncNotConfigured when no URL, GitSyncError for git issues."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 96,
+      "lines_removed": 1,
+      "group_id": "T-155",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:04:38Z"
+    },
+    {
+      "id": "C-216",
+      "task_id": "T-155",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Created GitSyncService in forge-api/app/services/git_sync.py. init_or_clone: clones or verifies .git, handles existing content via init+remote add. pull: fetch+reset --hard origin/{branch}, calls resync_index. push: stages only sync:true skill dirs, commits, pushes. status: local changes, ahead/behind counts, branch info. Graceful: GitSyncNotConfigured when no URL, GitSyncError for git issues.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created GitSyncService in forge-api/app/services/git_sync.py. init_or_clone: clones or verifies .git, handles existing content via init+remote add. pull: fetch+reset --hard origin/{branch}, calls resync_index. push: stages only sync:true skill dirs, commits, pushes. status: local changes, ahead/behind counts, branch info. Graceful: GitSyncNotConfigured when no URL, GitSyncError for git issues."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 416,
+      "lines_removed": 1,
+      "group_id": "T-155",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:04:38Z"
+    },
+    {
+      "id": "C-217",
+      "task_id": "T-156",
+      "file": "forge-api/app/dependencies.py",
+      "action": "edit",
+      "summary": "Complete rewrite of skills.py router. SkillStorageService injected as dependency via get_skill_storage. GitSyncService injected via get_git_sync. Routing changed from /{skill_id} to /{name}. category changed to categories[]. Added git endpoints: GET /git/status, POST /git/pull, POST /git/push, POST /git/scan, POST /git/init. File move: POST /{name}/files/move. File CRUD now uses real files on disk. Lint/promote/validate adapted to file-based storage. WebSocket events emitted via emit_event.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Complete rewrite of skills.py router. SkillStorageService injected as dependency via get_skill_storage. GitSyncService injected via get_git_sync. Routing changed from /{skill_id} to /{name}. category changed to categories[]. Added git endpoints: GET /git/status, POST /git/pull, POST /git/push, POST /git/scan, POST /git/init. File move: POST /{name}/files/move. File CRUD now uses real files on disk. Lint/promote/validate adapted to file-based storage. WebSocket events emitted via emit_event."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 46,
+      "lines_removed": 0,
+      "group_id": "T-156",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:08:08Z"
+    },
+    {
+      "id": "C-218",
+      "task_id": "T-156",
+      "file": "forge-api/app/routers/skills.py",
+      "action": "edit",
+      "summary": "Complete rewrite of skills.py router. SkillStorageService injected as dependency via get_skill_storage. GitSyncService injected via get_git_sync. Routing changed from /{skill_id} to /{name}. category changed to categories[]. Added git endpoints: GET /git/status, POST /git/pull, POST /git/push, POST /git/scan, POST /git/init. File move: POST /{name}/files/move. File CRUD now uses real files on disk. Lint/promote/validate adapted to file-based storage. WebSocket events emitted via emit_event.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Complete rewrite of skills.py router. SkillStorageService injected as dependency via get_skill_storage. GitSyncService injected via get_git_sync. Routing changed from /{skill_id} to /{name}. category changed to categories[]. Added git endpoints: GET /git/status, POST /git/pull, POST /git/push, POST /git/scan, POST /git/init. File move: POST /{name}/files/move. File CRUD now uses real files on disk. Lint/promote/validate adapted to file-based storage. WebSocket events emitted via emit_event."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 564,
+      "lines_removed": 556,
+      "group_id": "T-156",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:08:08Z"
+    },
+    {
+      "id": "C-219",
+      "task_id": "T-156",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Complete rewrite of skills.py router. SkillStorageService injected as dependency via get_skill_storage. GitSyncService injected via get_git_sync. Routing changed from /{skill_id} to /{name}. category changed to categories[]. Added git endpoints: GET /git/status, POST /git/pull, POST /git/push, POST /git/scan, POST /git/init. File move: POST /{name}/files/move. File CRUD now uses real files on disk. Lint/promote/validate adapted to file-based storage. WebSocket events emitted via emit_event.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Complete rewrite of skills.py router. SkillStorageService injected as dependency via get_skill_storage. GitSyncService injected via get_git_sync. Routing changed from /{skill_id} to /{name}. category changed to categories[]. Added git endpoints: GET /git/status, POST /git/pull, POST /git/push, POST /git/scan, POST /git/init. File move: POST /{name}/files/move. File CRUD now uses real files on disk. Lint/promote/validate adapted to file-based storage. WebSocket events emitted via emit_event."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 153,
+      "lines_removed": 1,
+      "group_id": "T-156",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:08:08Z"
+    },
+    {
+      "id": "C-220",
+      "task_id": "T-156",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Complete rewrite of skills.py router. SkillStorageService injected as dependency via get_skill_storage. GitSyncService injected via get_git_sync. Routing changed from /{skill_id} to /{name}. category changed to categories[]. Added git endpoints: GET /git/status, POST /git/pull, POST /git/push, POST /git/scan, POST /git/init. File move: POST /{name}/files/move. File CRUD now uses real files on disk. Lint/promote/validate adapted to file-based storage. WebSocket events emitted via emit_event.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Complete rewrite of skills.py router. SkillStorageService injected as dependency via get_skill_storage. GitSyncService injected via get_git_sync. Routing changed from /{skill_id} to /{name}. category changed to categories[]. Added git endpoints: GET /git/status, POST /git/pull, POST /git/push, POST /git/scan, POST /git/init. File move: POST /{name}/files/move. File CRUD now uses real files on disk. Lint/promote/validate adapted to file-based storage. WebSocket events emitted via emit_event."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 418,
+      "lines_removed": 1,
+      "group_id": "T-156",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:08:08Z"
+    },
+    {
+      "id": "C-221",
+      "task_id": "T-157",
+      "file": "forge-web/lib/api.ts",
+      "action": "edit",
+      "summary": "Updated types.ts: Skill.id removed, category→categories[], added version/allowed_tools/sync/files fields, added SkillGitStatus and SkillSyncResult types. Updated api.ts: all endpoints route by name instead of id, create takes single SkillCreate (not array), added gitStatus/gitPull/gitPush/gitScan/gitInit, added moveFile/saveFile, removed replaceFiles (individual ops now).",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Updated types.ts: Skill.id removed, category→categories[], added version/allowed_tools/sync/files fields, added SkillGitStatus and SkillSyncResult types. Updated api.ts: all endpoints route by name instead of id, create takes single SkillCreate (not array), added gitStatus/gitPull/gitPush/gitScan/gitInit, added moveFile/saveFile, removed replaceFiles (individual ops now)."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 45,
+      "lines_removed": 32,
+      "group_id": "T-157",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:11:34Z"
+    },
+    {
+      "id": "C-222",
+      "task_id": "T-157",
+      "file": "forge-web/lib/types.ts",
+      "action": "edit",
+      "summary": "Updated types.ts: Skill.id removed, category→categories[], added version/allowed_tools/sync/files fields, added SkillGitStatus and SkillSyncResult types. Updated api.ts: all endpoints route by name instead of id, create takes single SkillCreate (not array), added gitStatus/gitPull/gitPush/gitScan/gitInit, added moveFile/saveFile, removed replaceFiles (individual ops now).",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Updated types.ts: Skill.id removed, category→categories[], added version/allowed_tools/sync/files fields, added SkillGitStatus and SkillSyncResult types. Updated api.ts: all endpoints route by name instead of id, create takes single SkillCreate (not array), added gitStatus/gitPull/gitPush/gitScan/gitInit, added moveFile/saveFile, removed replaceFiles (individual ops now)."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 32,
+      "lines_removed": 14,
+      "group_id": "T-157",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:11:34Z"
+    },
+    {
+      "id": "C-223",
+      "task_id": "T-157",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Updated types.ts: Skill.id removed, category→categories[], added version/allowed_tools/sync/files fields, added SkillGitStatus and SkillSyncResult types. Updated api.ts: all endpoints route by name instead of id, create takes single SkillCreate (not array), added gitStatus/gitPull/gitPush/gitScan/gitInit, added moveFile/saveFile, removed replaceFiles (individual ops now).",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Updated types.ts: Skill.id removed, category→categories[], added version/allowed_tools/sync/files fields, added SkillGitStatus and SkillSyncResult types. Updated api.ts: all endpoints route by name instead of id, create takes single SkillCreate (not array), added gitStatus/gitPull/gitPush/gitScan/gitInit, added moveFile/saveFile, removed replaceFiles (individual ops now)."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 229,
+      "lines_removed": 1,
+      "group_id": "T-157",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:11:34Z"
+    },
+    {
+      "id": "C-224",
+      "task_id": "T-157",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Updated types.ts: Skill.id removed, category→categories[], added version/allowed_tools/sync/files fields, added SkillGitStatus and SkillSyncResult types. Updated api.ts: all endpoints route by name instead of id, create takes single SkillCreate (not array), added gitStatus/gitPull/gitPush/gitScan/gitInit, added moveFile/saveFile, removed replaceFiles (individual ops now).",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Updated types.ts: Skill.id removed, category→categories[], added version/allowed_tools/sync/files fields, added SkillGitStatus and SkillSyncResult types. Updated api.ts: all endpoints route by name instead of id, create takes single SkillCreate (not array), added gitStatus/gitPull/gitPush/gitScan/gitInit, added moveFile/saveFile, removed replaceFiles (individual ops now)."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 420,
+      "lines_removed": 1,
+      "group_id": "T-157",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:11:34Z"
+    },
+    {
+      "id": "C-225",
+      "task_id": "T-158",
+      "file": "forge-web/stores/skillStore.ts",
+      "action": "edit",
+      "summary": "Updated skillStore.ts: getItemId uses item.name, WS events use idKey:'name', added skill.synced event. New useGitSyncStore with status/syncing/lastSynced/error state. Actions: gitPull (pulls + refetches), gitPush (pushes + updates lastSynced), gitScan (resync + refetch). createSkill takes single SkillCreate.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Updated skillStore.ts: getItemId uses item.name, WS events use idKey:'name', added skill.synced event. New useGitSyncStore with status/syncing/lastSynced/error state. Actions: gitPull (pulls + refetches), gitPush (pushes + updates lastSynced), gitScan (resync + refetch). createSkill takes single SkillCreate."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 106,
+      "lines_removed": 16,
+      "group_id": "T-158",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:12:50Z"
+    },
+    {
+      "id": "C-226",
+      "task_id": "T-158",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Updated skillStore.ts: getItemId uses item.name, WS events use idKey:'name', added skill.synced event. New useGitSyncStore with status/syncing/lastSynced/error state. Actions: gitPull (pulls + refetches), gitPush (pushes + updates lastSynced), gitScan (resync + refetch). createSkill takes single SkillCreate.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Updated skillStore.ts: getItemId uses item.name, WS events use idKey:'name', added skill.synced event. New useGitSyncStore with status/syncing/lastSynced/error state. Actions: gitPull (pulls + refetches), gitPush (pushes + updates lastSynced), gitScan (resync + refetch). createSkill takes single SkillCreate."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 305,
+      "lines_removed": 1,
+      "group_id": "T-158",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:12:50Z"
+    },
+    {
+      "id": "C-227",
+      "task_id": "T-158",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Updated skillStore.ts: getItemId uses item.name, WS events use idKey:'name', added skill.synced event. New useGitSyncStore with status/syncing/lastSynced/error state. Actions: gitPull (pulls + refetches), gitPush (pushes + updates lastSynced), gitScan (resync + refetch). createSkill takes single SkillCreate.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Updated skillStore.ts: getItemId uses item.name, WS events use idKey:'name', added skill.synced event. New useGitSyncStore with status/syncing/lastSynced/error state. Actions: gitPull (pulls + refetches), gitPush (pushes + updates lastSynced), gitScan (resync + refetch). createSkill takes single SkillCreate."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 422,
+      "lines_removed": 1,
+      "group_id": "T-158",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:12:50Z"
+    },
+    {
+      "id": "C-228",
+      "task_id": "T-159",
+      "file": "forge-web/app/skills/page.tsx",
+      "action": "edit",
+      "summary": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 17,
+      "lines_removed": 14,
+      "group_id": "T-159",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:18:59Z"
+    },
+    {
+      "id": "C-229",
+      "task_id": "T-159",
+      "file": "forge-web/app/skills/{[id] => [name]}/page.tsx",
+      "action": "edit",
+      "summary": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 3,
+      "lines_removed": 3,
+      "group_id": "T-159",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:18:59Z"
+    },
+    {
+      "id": "C-230",
+      "task_id": "T-159",
+      "file": "forge-web/components/entities/SkillRow.tsx",
+      "action": "edit",
+      "summary": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 29,
+      "lines_removed": 18,
+      "group_id": "T-159",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:18:59Z"
+    },
+    {
+      "id": "C-231",
+      "task_id": "T-159",
+      "file": "forge-web/components/skills/SkillEditor.tsx",
+      "action": "edit",
+      "summary": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 170,
+      "lines_removed": 92,
+      "group_id": "T-159",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:18:59Z"
+    },
+    {
+      "id": "C-232",
+      "task_id": "T-159",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 362,
+      "lines_removed": 1,
+      "group_id": "T-159",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:18:59Z"
+    },
+    {
+      "id": "C-233",
+      "task_id": "T-159",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Unified skill editor: create mode now shows full editor with file tree, metadata panel, and lint tab. Auto-generated SKILL.md frontmatter. Route renamed from [id] to [name]. category→categories[] multi-select toggle buttons. File delete moved to Files tab in right panel with confirm dialog. SkillRow shows category badges (max 3, +N) and sync indicator. All API calls use name instead of id."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 424,
+      "lines_removed": 1,
+      "group_id": "T-159",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:18:59Z"
+    },
+    {
+      "id": "C-234",
+      "task_id": "T-160",
+      "file": "forge-web/components/skills/SkillEditor.tsx",
+      "action": "edit",
+      "summary": "Enhanced file management: per-folder upload button (arrow icon) with file input, drag-to-move between folders with visual highlighting (bg-forge-100), overwrite detection with Overwrite/Rename/Cancel prompt in tree. SkillEditor handleMoveFile calls API moveFile for existing skills and updates local state. handleDropFiles updated to handle overwrites by replacing existing entries.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Enhanced file management: per-folder upload button (arrow icon) with file input, drag-to-move between folders with visual highlighting (bg-forge-100), overwrite detection with Overwrite/Rename/Cancel prompt in tree. SkillEditor handleMoveFile calls API moveFile for existing skills and updates local state. handleDropFiles updated to handle overwrites by replacing existing entries."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 34,
+      "lines_removed": 1,
+      "group_id": "T-160",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:21:20Z"
+    },
+    {
+      "id": "C-235",
+      "task_id": "T-160",
+      "file": "forge-web/components/skills/SkillFileTree.tsx",
+      "action": "edit",
+      "summary": "Enhanced file management: per-folder upload button (arrow icon) with file input, drag-to-move between folders with visual highlighting (bg-forge-100), overwrite detection with Overwrite/Rename/Cancel prompt in tree. SkillEditor handleMoveFile calls API moveFile for existing skills and updates local state. handleDropFiles updated to handle overwrites by replacing existing entries.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Enhanced file management: per-folder upload button (arrow icon) with file input, drag-to-move between folders with visual highlighting (bg-forge-100), overwrite detection with Overwrite/Rename/Cancel prompt in tree. SkillEditor handleMoveFile calls API moveFile for existing skills and updates local state. handleDropFiles updated to handle overwrites by replacing existing entries."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 197,
+      "lines_removed": 24,
+      "group_id": "T-160",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:21:20Z"
+    },
+    {
+      "id": "C-236",
+      "task_id": "T-160",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Enhanced file management: per-folder upload button (arrow icon) with file input, drag-to-move between folders with visual highlighting (bg-forge-100), overwrite detection with Overwrite/Rename/Cancel prompt in tree. SkillEditor handleMoveFile calls API moveFile for existing skills and updates local state. handleDropFiles updated to handle overwrites by replacing existing entries.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Enhanced file management: per-folder upload button (arrow icon) with file input, drag-to-move between folders with visual highlighting (bg-forge-100), overwrite detection with Overwrite/Rename/Cancel prompt in tree. SkillEditor handleMoveFile calls API moveFile for existing skills and updates local state. handleDropFiles updated to handle overwrites by replacing existing entries."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 476,
+      "lines_removed": 1,
+      "group_id": "T-160",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:21:20Z"
+    },
+    {
+      "id": "C-237",
+      "task_id": "T-160",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Enhanced file management: per-folder upload button (arrow icon) with file input, drag-to-move between folders with visual highlighting (bg-forge-100), overwrite detection with Overwrite/Rename/Cancel prompt in tree. SkillEditor handleMoveFile calls API moveFile for existing skills and updates local state. handleDropFiles updated to handle overwrites by replacing existing entries.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Enhanced file management: per-folder upload button (arrow icon) with file input, drag-to-move between folders with visual highlighting (bg-forge-100), overwrite detection with Overwrite/Rename/Cancel prompt in tree. SkillEditor handleMoveFile calls API moveFile for existing skills and updates local state. handleDropFiles updated to handle overwrites by replacing existing entries."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 426,
+      "lines_removed": 1,
+      "group_id": "T-160",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:21:20Z"
+    },
+    {
+      "id": "C-238",
+      "task_id": "T-161",
+      "file": "forge-web/app/skills/page.tsx",
+      "action": "edit",
+      "summary": "Added git sync UI panel to skills list page: status bar showing branch/ahead/behind/local changes, Pull/Push/Scan buttons, push commit message dialog, Initialize button for unconfigured repos. Graceful handling when git not configured (panel hidden).",
+      "reasoning_trace": [
+        {
+          "step": "auto",
+          "detail": "Added git sync UI panel to skills list page: status bar showing branch/ahead/behind/local changes, Pull/Push/Scan buttons, push commit message dialog, Initialize button for unconfigured repos. Graceful handling when git not configured (panel hidden)."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 157,
+      "lines_removed": 2,
+      "group_id": "T-161",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:24:41Z"
+    },
+    {
+      "id": "C-239",
+      "task_id": "T-161",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Added git sync UI panel to skills list page: status bar showing branch/ahead/behind/local changes, Pull/Push/Scan buttons, push commit message dialog, Initialize button for unconfigured repos. Graceful handling when git not configured (panel hidden).",
+      "reasoning_trace": [
+        {
+          "step": "auto",
+          "detail": "Added git sync UI panel to skills list page: status bar showing branch/ahead/behind/local changes, Pull/Push/Scan buttons, push commit message dialog, Initialize button for unconfigured repos. Graceful handling when git not configured (panel hidden)."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 552,
+      "lines_removed": 1,
+      "group_id": "T-161",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:24:41Z"
+    },
+    {
+      "id": "C-240",
+      "task_id": "T-161",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Added git sync UI panel to skills list page: status bar showing branch/ahead/behind/local changes, Pull/Push/Scan buttons, push commit message dialog, Initialize button for unconfigured repos. Graceful handling when git not configured (panel hidden).",
+      "reasoning_trace": [
+        {
+          "step": "auto",
+          "detail": "Added git sync UI panel to skills list page: status bar showing branch/ahead/behind/local changes, Pull/Push/Scan buttons, push commit message dialog, Initialize button for unconfigured repos. Graceful handling when git not configured (panel hidden)."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 428,
+      "lines_removed": 1,
+      "group_id": "T-161",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-12T19:24:41Z"
     }
   ]
 }
