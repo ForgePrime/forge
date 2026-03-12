@@ -7,6 +7,12 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      spacing: {
+        "topnav": "var(--topnav-height)",
+        "left-panel": "var(--left-panel-width)",
+        "right-sidebar": "var(--right-sidebar-width)",
+        "right-sidebar-collapsed": "var(--right-sidebar-collapsed-width)",
+      },
       keyframes: {
         "slide-in-right": {
           from: { transform: "translateX(100%)" },

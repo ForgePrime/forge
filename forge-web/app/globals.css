@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 :root {
+  --topnav-height: 48px;
+  --left-panel-width: 224px;
+  --right-sidebar-width: 420px;
+  --right-sidebar-collapsed-width: 40px;
+  /* deprecated: remove after T-118 swaps Sidebar → TopNavBar */
   --sidebar-width: 240px;
 }
 
