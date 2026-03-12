@@ -7,7 +7,7 @@ import { SkillEditor } from "@/components/skills/SkillEditor";
 import type { Skill } from "@/lib/types";
 
 export default function SkillDetailPage() {
-  const { id } = useParams() as { id: string };
+  const { name } = useParams() as { name: string };
   const [skill, setSkill] = useState<Skill | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,14 +16,14 @@ export default function SkillDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await skillsApi.get(id);
+      const data = await skillsApi.get(name);
       setSkill(data);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [name]);
 
   useEffect(() => {
     fetchSkill();

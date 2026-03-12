@@ -58,11 +58,13 @@ export default function SkillsPage() {
     fetchCategories();
   }, [fetchSkills, fetchCategories]);
 
-  // Category counts
+  // Category counts (multi-category: each skill can be in multiple)
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const s of items) {
-      counts[s.category] = (counts[s.category] || 0) + 1;
+      for (const cat of (s.categories ?? [])) {
+        counts[cat] = (counts[cat] || 0) + 1;
+      }
     }
     return counts;
   }, [items]);
@@ -71,7 +73,9 @@ export default function SkillsPage() {
   const allCategoryKeys = useMemo(() => {
     const keys = new Set<string>();
     categories.forEach((c) => keys.add(c.key));
-    items.forEach((s) => keys.add(s.category));
+    items.forEach((s) => {
+      for (const cat of (s.categories ?? [])) keys.add(cat);
+    });
     return Array.from(keys);
   }, [categories, items]);
 
@@ -89,31 +93,30 @@ export default function SkillsPage() {
   const filtered = useMemo(() => {
     return items
       .filter((s) => !statusFilter || s.status === statusFilter)
-      .filter((s) => !categoryFilter || s.category === categoryFilter)
+      .filter((s) => !categoryFilter || (s.categories ?? []).includes(categoryFilter))
       .filter((s) => {
         if (!search) return true;
         const q = search.toLowerCase();
         return (
           s.name.toLowerCase().includes(q) ||
-          s.description.toLowerCase().includes(q) ||
-          s.id.toLowerCase().includes(q) ||
-          s.tags.some((t) => t.toLowerCase().includes(q))
+          (s.description ?? "").toLowerCase().includes(q) ||
+          (s.tags ?? []).some((t) => t.toLowerCase().includes(q))
         );
       });
   }, [items, statusFilter, categoryFilter, search]);
 
   // Selection handlers
-  const toggleSelect = (id: string, checked: boolean) => {
+  const toggleSelect = (name: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
+      if (checked) next.add(name);
+      else next.delete(name);
       return next;
     });
   };
 
   const selectAll = () => {
-    setSelected(new Set(filtered.map((s) => s.id)));
+    setSelected(new Set(filtered.map((s) => s.name)));
   };
 
   const deselectAll = () => {
@@ -139,7 +142,7 @@ export default function SkillsPage() {
     try {
       const content = await file.text();
       const res = await skillsApi.importSkill({ content, filename: file.name });
-      router.push(`/skills/${res.skill_id}`);
+      router.push(`/skills/${res.name}`);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -243,9 +246,9 @@ export default function SkillsPage() {
         <div className="space-y-1">
           {filtered.map((skill) => (
             <SkillRow
-              key={skill.id}
+              key={skill.name}
               skill={skill}
-              selected={selected.has(skill.id)}
+              selected={selected.has(skill.name)}
               onSelect={toggleSelect}
             />
           ))}

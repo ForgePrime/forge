@@ -19,7 +19,7 @@ import type {
   ValidationResult,
 } from "@/lib/types";
 
-type Tab = "metadata" | "evals" | "lint" | "history" | "usage";
+type Tab = "metadata" | "evals" | "lint" | "history" | "usage" | "files";
 
 const CATEGORIES = [
   "workflow", "analysis", "generation", "validation", "integration",
@@ -50,8 +50,10 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
   // Metadata from frontmatter (auto-parsed)
   const [parsed, setParsed] = useState(() => parseFrontmatter(content));
 
-  // Editable fields (not from frontmatter)
-  const [formCategory, setFormCategory] = useState(skill?.category ?? "workflow");
+  // Editable fields
+  const [formCategories, setFormCategories] = useState<string[]>(
+    skill?.categories ?? ["workflow"]
+  );
   const [formTags, setFormTags] = useState(skill?.tags?.join(", ") ?? "");
   const [formScopes, setFormScopes] = useState(skill?.scopes?.join(", ") ?? "");
 
@@ -86,18 +88,16 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
 
   // Multi-file state
   const [activeFile, setActiveFile] = useState("SKILL.md");
-  const [files, setFiles] = useState<SkillFile[]>(() => {
-    const res = skill?.resources as Record<string, unknown> | undefined;
-    return (res?.files as SkillFile[] | undefined) ?? [];
-  });
+  const [files, setFiles] = useState<SkillFile[]>(skill?.files ?? []);
   const [fileContents, setFileContents] = useState<Record<string, string>>(() => {
-    const res = skill?.resources as Record<string, unknown> | undefined;
-    const fs = (res?.files as SkillFile[] | undefined) ?? [];
     const map: Record<string, string> = {};
-    for (const f of fs) map[f.path] = f.content;
+    for (const f of (skill?.files ?? [])) map[f.path] = f.content;
     return map;
   });
   const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set());
+
+  // Pending file deletes (for confirm in right panel)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   // Auto-parse frontmatter on content change (debounced)
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -113,11 +113,20 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
   useEffect(() => {
     if (tab !== "usage" || !skill) return;
     setUsageLoading(true);
-    skillsApi.usage(skill.id)
+    skillsApi.usage(skill.name)
       .then((res) => setUsageData(res.usage))
       .catch(() => setUsageData([]))
       .finally(() => setUsageLoading(false));
   }, [tab, skill]);
+
+  // Auto-generate SKILL.md frontmatter for create mode
+  useEffect(() => {
+    if (!isCreate || content) return;
+    // Generate initial frontmatter
+    setContent(
+      `---\nname: new-skill\nversion: "1.0.0"\ndescription: "Describe what this skill does"\nallowed-tools: [Read, Glob, Grep]\n---\n\n# New Skill\n\n## Procedure\n\n1. First step...\n\n## Output Format\n\n...\n\n## Success Criteria\n\n- [ ] ...\n\n## Rules\n\n- ...\n`
+    );
+  }, [isCreate, content]);
 
   const handleContentChange = (val: string) => {
     if (activeFile === "SKILL.md") {
@@ -136,7 +145,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
 
   const handleFileAdd = useCallback((folder: string, name: string) => {
     const path = `${folder}${name}`;
-    if (files.some((f) => f.path === path)) return; // duplicate
+    if (files.some((f) => f.path === path)) return;
     const fileType = folder === "scripts/" ? "script" as const
       : folder === "references/" ? "reference" as const
       : folder === "assets/" ? "asset" as const
@@ -149,20 +158,31 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
   }, [files]);
 
   const handleFileDelete = useCallback((path: string) => {
-    if (!confirm(`Delete ${path}?`)) return;
+    // Move delete to right panel for confirmation
+    setPendingDelete(path);
+    setTab("files");
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    const path = pendingDelete;
+    // Delete via API if editing existing skill
+    if (skill) {
+      try {
+        await skillsApi.deleteFile(skill.name, path);
+      } catch {
+        // Ignore — file may not exist on server yet
+      }
+    }
     setFiles((prev) => prev.filter((f) => f.path !== path));
     setFileContents((prev) => {
       const next = { ...prev };
       delete next[path];
       return next;
     });
-    setDirtyFiles((prev) => {
-      const next = new Set(prev);
-      next.add("__deleted__"); // mark dirty to trigger save
-      return next;
-    });
     if (activeFile === path) setActiveFile("SKILL.md");
-  }, [activeFile]);
+    setPendingDelete(null);
+  }, [pendingDelete, skill, activeFile]);
 
   const handleDropFiles = useCallback((newFiles: SkillFile[]) => {
     setFiles((prev) => [...prev, ...newFiles]);
@@ -178,15 +198,27 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     });
   }, []);
 
+  // Toggle category in multi-select
+  const toggleCategory = useCallback((cat: string) => {
+    setFormCategories((prev) => {
+      if (prev.includes(cat)) {
+        if (prev.length <= 1) return prev; // min 1
+        return prev.filter((c) => c !== cat);
+      }
+      return [...prev, cat];
+    });
+    setDirty(true);
+  }, []);
+
   // Validate
   const handleValidate = useCallback(async () => {
     if (!skill) return;
     setValidating(true);
     try {
-      const result = await skillsApi.validate(skill.id);
+      const result = await skillsApi.validate(skill.name);
       setValidation(result);
     } catch {
-      setValidation({ skill_id: skill.id, valid: false, errors: ["Validation request failed"], warnings: [], error_count: 1, warning_count: 0 });
+      setValidation({ name: skill.name, valid: false, errors: ["Validation request failed"], warnings: [], error_count: 1, warning_count: 0 });
     } finally {
       setValidating(false);
     }
@@ -198,50 +230,55 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     setSaveError(null);
     try {
       if (isCreate) {
-        // Create new skill
-        const name = parsed.name || "Untitled Skill";
+        const name = parsed.name || "new-skill";
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
         const description = parsed.description || "";
         const tags = formTags.split(",").map((t) => t.trim()).filter(Boolean);
         const scopes = formScopes.split(",").map((s) => s.trim()).filter(Boolean);
-        await skillsApi.create([{
-          name,
+        const result = await skillsApi.create({
+          name: slug,
           description,
-          category: formCategory,
+          categories: formCategories,
           skill_md_content: content || null,
           tags,
           scopes,
-        }]);
+        });
+        // Save any bundled files
+        for (const f of files) {
+          const fc = fileContents[f.path];
+          if (fc !== undefined) {
+            await skillsApi.saveFile(result.name, f.path, fc);
+          }
+        }
         onSaved?.();
-        router.push("/skills");
+        router.push(`/skills/${result.name}`);
       } else {
         // Update existing skill
         const data: SkillUpdate = {
           skill_md_content: content || null,
-          category: formCategory,
+          categories: formCategories,
           tags: formTags.split(",").map((t) => t.trim()).filter(Boolean),
           scopes: formScopes.split(",").map((s) => s.trim()).filter(Boolean),
         };
-        await skillsApi.update(skill.id, data);
+        await skillsApi.update(skill.name, data);
 
-        // Save bundled files if any changed
-        if (dirtyFiles.size > 0) {
-          const updatedFiles: SkillFile[] = files.map((f) => ({
-            ...f,
-            content: fileContents[f.path] ?? f.content,
-          }));
-          await skillsApi.replaceFiles(skill.id, updatedFiles);
-          setFiles(updatedFiles);
-          setDirtyFiles(new Set());
+        // Save dirty files individually
+        for (const path of dirtyFiles) {
+          if (path === "__deleted__") continue;
+          const fc = fileContents[path];
+          if (fc !== undefined) {
+            await skillsApi.saveFile(skill.name, path, fc);
+          }
         }
-
+        setDirtyFiles(new Set());
         setDirty(false);
         onSaved?.();
 
-        // Run validation after save (non-blocking, informational)
+        // Run validation after save (non-blocking)
         try {
-          const v = await skillsApi.validate(skill.id);
+          const v = await skillsApi.validate(skill.name);
           setValidation(v);
-        } catch { /* ignore validation errors on save */ }
+        } catch { /* ignore */ }
       }
     } catch (e) {
       setSaveError((e as Error).message);
@@ -256,7 +293,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     setLintLoading(true);
     setLintError(null);
     try {
-      const res = await skillsApi.lint(skill.id);
+      const res = await skillsApi.lint(skill.name);
       setLintFindings(res.findings);
       setLintRan(true);
       if (res.error_message) setLintError(res.error_message);
@@ -274,7 +311,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     setPromoteError(null);
     setShowForceConfirm(false);
     try {
-      await skillsApi.promote(skill.id, force);
+      await skillsApi.promote(skill.name, force);
       router.refresh();
     } catch (e) {
       const msg = (e as Error).message;
@@ -292,7 +329,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     if (!skill) return;
     setChangingStatus(true);
     try {
-      await skillsApi.update(skill.id, { status: newStatus });
+      await skillsApi.update(skill.name, { status: newStatus });
       router.refresh();
     } catch (e) {
       setSaveError((e as Error).message);
@@ -305,11 +342,11 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
   const handleExport = async () => {
     if (!skill) return;
     try {
-      const blob = await fetchBlob(`/skills/${skill.id}/export`);
+      const blob = await fetchBlob(`/skills/${skill.name}/export`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${skill.id}-SKILL.md`;
+      a.download = `${skill.name}-SKILL.md`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -322,7 +359,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     if (!skill) return;
     if (!confirm("Are you sure you want to delete this skill? This cannot be undone.")) return;
     try {
-      await skillsApi.remove(skill.id);
+      await skillsApi.remove(skill.name);
       router.push("/skills");
     } catch (e) {
       setSaveError((e as Error).message);
@@ -330,10 +367,10 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
   };
 
   const transitions = skill ? (validTransitions[skill.status] || []) : [];
-  const catColor = getCategoryColor(formCategory);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "metadata", label: "Metadata" },
+    { key: "files", label: `Files (${files.length})` },
     ...(skill ? [
       { key: "evals" as Tab, label: `Evals (${skill.evals_json.length})` },
       { key: "lint" as Tab, label: "TESLint" },
@@ -355,8 +392,13 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
 
         {skill && (
           <>
-            <span className="text-xs text-gray-400 font-mono">{skill.id}</span>
+            <span className="text-xs text-gray-500 font-mono">{skill.name}</span>
             <Badge variant={statusVariant(skill.status)}>{skill.status}</Badge>
+            {skill.sync && (
+              <span className="text-[10px] text-blue-500" title="Synced to repo">
+                &#9729;
+              </span>
+            )}
           </>
         )}
         {!skill && <span className="text-xs text-gray-500">New Skill</span>}
@@ -420,22 +462,20 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
 
       {/* Three-column layout: file tree | editor | tabs panel */}
       <div className="flex flex-1 min-h-0">
-        {/* Left: File tree (edit mode only, not create) */}
-        {!isCreate && (
-          <div className="w-48 flex-shrink-0 border-r bg-gray-50 overflow-y-auto">
-            <div className="px-2 py-1.5 border-b text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-              Files
-            </div>
-            <SkillFileTree
-              files={files}
-              activeFile={activeFile}
-              onSelect={handleFileSelect}
-              onAdd={handleFileAdd}
-              onDelete={handleFileDelete}
-              onDropFiles={handleDropFiles}
-            />
+        {/* Left: File tree (always visible — both create and edit) */}
+        <div className="w-48 flex-shrink-0 border-r bg-gray-50 overflow-y-auto">
+          <div className="px-2 py-1.5 border-b text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+            Files
           </div>
-        )}
+          <SkillFileTree
+            files={files}
+            activeFile={activeFile}
+            onSelect={handleFileSelect}
+            onAdd={handleFileAdd}
+            onDelete={handleFileDelete}
+            onDropFiles={handleDropFiles}
+          />
+        </div>
 
         {/* Center: Editor */}
         <div className="flex-1 flex flex-col border-r min-w-0">
@@ -453,9 +493,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
             >
               Preview
             </button>
-            {!isCreate && (
-              <span className="text-gray-400 ml-2 font-mono">{activeFile}</span>
-            )}
+            <span className="text-gray-400 ml-2 font-mono">{activeFile}</span>
             {(dirty || dirtyFiles.size > 0) && (
               <span className="text-amber-500 ml-2">Unsaved changes</span>
             )}
@@ -492,7 +530,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
         {/* Right: Tabs panel */}
         <div className="w-80 flex-shrink-0 flex flex-col bg-gray-50">
           {/* Tabs */}
-          <div className="flex gap-1 px-2 pt-2 border-b bg-gray-50">
+          <div className="flex gap-1 px-2 pt-2 border-b bg-gray-50 flex-wrap">
             {tabs.map((t) => (
               <button
                 key={t.key}
@@ -574,7 +612,6 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                         </Button>
                       </div>
 
-                      {/* Line count indicator */}
                       {content && (() => {
                         const lineCount = content.split("\n").length;
                         const warn = lineCount > 500;
@@ -587,7 +624,6 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
 
                       {validation && (
                         <div className="space-y-1.5">
-                          {/* Overall status */}
                           <div className={`flex items-center gap-1.5 text-xs font-medium ${
                             validation.valid ? "text-green-600" : "text-red-600"
                           }`}>
@@ -599,11 +635,9 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                               </span>
                             )}
                           </div>
-                          {/* Errors */}
                           {validation.errors.map((e, i) => (
                             <p key={`e-${i}`} className="text-[10px] text-red-600 pl-4">{e}</p>
                           ))}
-                          {/* Warnings */}
                           {validation.warnings.map((w, i) => (
                             <p key={`w-${i}`} className="text-[10px] text-amber-500 pl-4">{w}</p>
                           ))}
@@ -621,24 +655,28 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                     Skill Settings
                   </h4>
                   <div className="space-y-3">
+                    {/* Categories multi-select */}
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">Category</label>
-                      <select
-                        value={formCategory}
-                        onChange={(e) => { setFormCategory(e.target.value); setDirty(true); }}
-                        className="w-full rounded-md border px-2 py-1.5 text-sm focus:border-forge-500 focus:ring-1 focus:ring-forge-500"
-                      >
-                        {CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {categoryLabel(c)}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className={`w-2 h-2 rounded-full ${catColor.dot}`} />
-                        <span className={`text-[10px] ${catColor.text}`}>
-                          {categoryLabel(formCategory)}
-                        </span>
+                      <label className="block text-xs text-gray-500 mb-1">Categories</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {CATEGORIES.map((c) => {
+                          const active = formCategories.includes(c);
+                          const color = getCategoryColor(c);
+                          return (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => toggleCategory(c)}
+                              className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                                active
+                                  ? `${color.bg} ${color.text} border-current font-medium`
+                                  : "bg-white text-gray-400 border-gray-200 hover:border-gray-400"
+                              }`}
+                            >
+                              {categoryLabel(c)}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -698,6 +736,46 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                       </div>
                     </div>
                   </>
+                )}
+              </div>
+            )}
+
+            {/* Files tab (with delete confirmation) */}
+            {tab === "files" && (
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Bundled Files
+                </h4>
+                {files.length === 0 && (
+                  <p className="text-xs text-gray-400 italic">No bundled files yet.</p>
+                )}
+                {files.map((f) => (
+                  <div key={f.path} className="flex items-center justify-between text-xs bg-white rounded border p-2">
+                    <span className="font-mono text-gray-700 truncate">{f.path}</span>
+                    <button
+                      onClick={() => setPendingDelete(f.path)}
+                      className="text-red-400 hover:text-red-600 ml-2 flex-shrink-0"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+
+                {/* Delete confirmation */}
+                {pendingDelete && (
+                  <div className="rounded border border-red-200 bg-red-50 p-3 space-y-2">
+                    <p className="text-xs text-red-700">
+                      Delete <span className="font-mono font-medium">{pendingDelete}</span>?
+                    </p>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="danger" onClick={confirmDelete}>
+                        Confirm Delete
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setPendingDelete(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
