@@ -35,6 +35,7 @@ ALLOWED_FILE_PREFIXES = ("scripts/", "references/", "assets/")
 _SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _CONFIG_FILE = "_config.json"
 _SKILL_MD = "SKILL.md"
+_INDEX_FILE = "_index.json"
 
 
 def _default_config() -> dict:
@@ -97,6 +98,70 @@ class SkillStorageService:
             self._locks[name] = asyncio.Lock()
         return self._locks[name]
 
+    # -- index operations -------------------------------------------------
+
+    def _index_path(self) -> Path:
+        return self.skills_dir / _INDEX_FILE
+
+    def _read_index(self) -> list[dict]:
+        """Read _index.json.  Returns [] if missing or corrupt."""
+        path = self._index_path()
+        if not path.exists():
+            return []
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, list) else []
+        except (json.JSONDecodeError, OSError):
+            return []
+
+    def _write_index(self, entries: list[dict]) -> None:
+        """Write _index.json atomically."""
+        self._ensure_dir()
+        path = self._index_path()
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(entries, f, indent=2, ensure_ascii=False)
+        os.replace(str(tmp), str(path))
+
+    def _build_index_entry(self, name: str) -> dict | None:
+        """Build one index entry by reading skill directory on disk."""
+        skill_dir = self._skill_dir(name)
+        if not skill_dir.is_dir():
+            return None
+        config = self._read_config(skill_dir)
+        md_content = self._read_skill_md(skill_dir)
+        fm = parse_frontmatter(md_content)
+        return {
+            "name": name,
+            "description": fm.description or "",
+            "categories": config.get("categories", []),
+            "tags": config.get("tags", []),
+            "status": config.get("status", "DRAFT"),
+            "scopes": config.get("scopes", []),
+            "sync": config.get("sync", False),
+            "path": name,
+            "updated_at": config.get("updated_at", ""),
+        }
+
+    def _update_index_entry(self, name: str) -> None:
+        """Add or update a single skill in the index."""
+        entries = self._read_index()
+        new_entry = self._build_index_entry(name)
+        if new_entry is None:
+            return
+        # Replace existing or append
+        entries = [e for e in entries if e.get("name") != name]
+        entries.append(new_entry)
+        entries.sort(key=lambda e: e.get("name", ""))
+        self._write_index(entries)
+
+    def _remove_index_entry(self, name: str) -> None:
+        """Remove a skill from the index."""
+        entries = self._read_index()
+        entries = [e for e in entries if e.get("name") != name]
+        self._write_index(entries)
+
     def _read_config(self, skill_dir: Path) -> dict:
         """Read _config.json from a skill directory."""
         config_path = skill_dir / _CONFIG_FILE
@@ -156,19 +221,55 @@ class SkillStorageService:
 
     # -- public API -------------------------------------------------------
 
-    async def list_skills(self) -> list[dict]:
-        """List all skills by scanning directories."""
+    async def list_skills(
+        self,
+        *,
+        category: str | None = None,
+        tags: list[str] | None = None,
+        status: str | None = None,
+        search: str | None = None,
+    ) -> list[dict]:
+        """List skills from the index with optional filtering.
+
+        Falls back to a full resync if the index is empty / missing.
+        """
         self._ensure_dir()
-        skills = []
+        entries = self._read_index()
+        if not entries:
+            entries = await self.resync_index()
+
+        # Apply filters
+        if category:
+            entries = [e for e in entries if category in e.get("categories", [])]
+        if tags:
+            entries = [
+                e for e in entries
+                if any(t in e.get("tags", []) for t in tags)
+            ]
+        if status:
+            entries = [e for e in entries if e.get("status") == status]
+        if search:
+            q = search.lower()
+            entries = [
+                e for e in entries
+                if q in e.get("name", "").lower()
+                or q in e.get("description", "").lower()
+            ]
+
+        return entries
+
+    async def resync_index(self) -> list[dict]:
+        """Rebuild _index.json by scanning all skill directories."""
+        self._ensure_dir()
+        entries: list[dict] = []
         for entry in sorted(self.skills_dir.iterdir()):
-            if not entry.is_dir():
+            if not entry.is_dir() or entry.name.startswith((".", "_")):
                 continue
-            if entry.name.startswith((".", "_")):
-                continue
-            config = self._read_config(entry)
-            md_content = self._read_skill_md(entry)
-            skills.append(self._build_skill_dict(entry.name, config, md_content))
-        return skills
+            idx_entry = self._build_index_entry(entry.name)
+            if idx_entry:
+                entries.append(idx_entry)
+        self._write_index(entries)
+        return entries
 
     async def get_skill(self, name: str) -> dict:
         """Get a single skill by directory name.
@@ -226,6 +327,9 @@ class SkillStorageService:
             for sub in ("scripts", "references", "assets"):
                 (skill_dir / sub).mkdir(exist_ok=True)
 
+            # Update index
+            self._update_index_entry(name)
+
             return self._build_skill_dict(name, config, md_content)
 
     async def save_skill(
@@ -253,6 +357,9 @@ class SkillStorageService:
             if content is not None:
                 self._write_skill_md(skill_dir, content)
 
+            # Update index
+            self._update_index_entry(name)
+
     async def delete_skill(self, name: str) -> None:
         """Delete a skill directory entirely."""
         skill_dir = self._skill_dir(name)
@@ -263,6 +370,8 @@ class SkillStorageService:
             shutil.rmtree(skill_dir)
             # Clean up lock
             self._locks.pop(name, None)
+            # Update index
+            self._remove_index_entry(name)
 
     # -- file operations --------------------------------------------------
 
