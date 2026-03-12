@@ -589,7 +589,7 @@ async def update_skill(
             "DRAFT": {"DEPRECATED"},
             "ACTIVE": {"DEPRECATED"},
             "DEPRECATED": {"ARCHIVED", "ACTIVE"},
-            "ARCHIVED": set(),
+            "ARCHIVED": {"DRAFT"},
         }
         if new_status not in valid_transitions.get(current_status, set()):
             raise HTTPException(
@@ -719,13 +719,14 @@ async def promote_skill(
     gate0_detail = "agentskills.io compliant" if gate0_passed else "; ".join(spec_result.errors)
     if spec_result.warnings:
         gate0_detail += " (warnings: " + "; ".join(spec_result.warnings) + ")"
-    gate_results.append({"gate": "agentskills-io", "passed": gate0_passed, "detail": gate0_detail})
+    gate_results.append({"gate": "agentskills-io", "passed": gate0_passed, "detail": gate0_detail, "required": True})
 
     fm = parse_frontmatter(content)
     gate1_passed = fm.valid and bool(skill.get("name")) and bool(skill.get("description"))
     gate_results.append({
         "gate": "frontmatter",
         "passed": gate1_passed,
+        "required": True,
         "detail": (
             "Valid SKILL.md frontmatter with name and description"
             if gate1_passed
@@ -733,12 +734,14 @@ async def promote_skill(
         ),
     })
 
+    # Advisory gates — failures don't block promotion
     evals = skill.get("evals_json", [])
     gate2_passed = len(evals) >= 1
     gate_results.append({
         "gate": "evals",
         "passed": gate2_passed,
-        "detail": f"{len(evals)} eval(s) defined" if gate2_passed else "At least 1 eval required",
+        "required": False,
+        "detail": f"{len(evals)} eval(s) defined" if gate2_passed else "No evals defined (optional)",
     })
 
     gate3_passed = False
@@ -754,6 +757,7 @@ async def promote_skill(
         gate_results.append({
             "gate": "teslint",
             "passed": gate3_passed,
+            "required": False,
             "detail": (
                 f"TESLint passed ({teslint_warning_count} warnings)"
                 if gate3_passed
@@ -761,16 +765,18 @@ async def promote_skill(
             ),
         })
     else:
-        gate_results.append({"gate": "teslint", "passed": False, "detail": "No content to lint"})
+        gate_results.append({"gate": "teslint", "passed": False, "required": False, "detail": "No content to lint"})
 
-    all_passed = gate0_passed and gate1_passed and gate2_passed and gate3_passed
-    can_promote = all_passed or (gate0_passed and gate1_passed and gate2_passed and body.force)
+    # Only required gates block promotion (agentskills-io + frontmatter)
+    required_passed = gate0_passed and gate1_passed
+    all_passed = required_passed and gate2_passed and gate3_passed
+    can_promote = required_passed or body.force
 
     if not can_promote:
-        failed = [g for g in gate_results if not g["passed"]]
+        failed = [g for g in gate_results if not g["passed"] and g.get("required")]
         msg = "Promotion blocked: " + "; ".join(f"{g['gate']}: {g['detail']}" for g in failed)
-        if not body.force and not gate3_passed and gate1_passed and gate2_passed:
-            msg += ". Use force=true to override TESLint."
+        if not body.force:
+            msg += ". Use force=true to override."
         raise HTTPException(422, msg)
 
     now = _now_iso()

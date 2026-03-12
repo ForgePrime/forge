@@ -30,7 +30,7 @@ const validTransitions: Record<string, SkillStatus[]> = {
   DRAFT: ["DEPRECATED"],
   ACTIVE: ["DEPRECATED"],
   DEPRECATED: ["ARCHIVED", "ACTIVE"],
-  ARCHIVED: [],
+  ARCHIVED: ["DRAFT"],
 };
 
 interface SkillEditorProps {
@@ -349,7 +349,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     setShowForceConfirm(false);
     try {
       await skillsApi.promote(skill.name, force);
-      router.refresh();
+      onSaved?.();
     } catch (e) {
       const msg = (e as Error).message;
       setPromoteError(msg);
@@ -367,7 +367,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
     setChangingStatus(true);
     try {
       await skillsApi.update(skill.name, { status: newStatus });
-      router.refresh();
+      onSaved?.();
     } catch (e) {
       setSaveError((e as Error).message);
     } finally {
@@ -793,7 +793,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                         >
                           <span
                             className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                              formSync ? "translate-x-4.5" : "translate-x-0.5"
+                              formSync ? "translate-x-[18px]" : "translate-x-[2px]"
                             }`}
                           />
                         </button>
@@ -813,11 +813,12 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                       <div className="flex flex-wrap gap-2">
                         {transitions.map((ts) => {
                           const isDestructive = ts === "ARCHIVED" || ts === "DEPRECATED";
+                          const isActivating = ts === "ACTIVE" || ts === "DRAFT";
                           return (
                             <Button
                               key={ts}
                               size="sm"
-                              variant={isDestructive ? "danger" : "secondary"}
+                              variant={isDestructive ? "danger" : isActivating ? "success" : "secondary"}
                               onClick={() => {
                                 if (isDestructive) {
                                   const label = ts === "DEPRECATED" ? "deprecate" : "archive";
@@ -827,7 +828,11 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
                               }}
                               disabled={changingStatus}
                             >
-                              {ts === "DEPRECATED" ? "Deprecate" : ts === "ARCHIVED" ? "Archive" : `Set ${ts}`}
+                              {ts === "DEPRECATED" ? "Deprecate"
+                                : ts === "ARCHIVED" ? "Archive"
+                                : ts === "ACTIVE" ? "Set ACTIVE"
+                                : ts === "DRAFT" ? "Reactivate"
+                                : `Set ${ts}`}
                             </Button>
                           );
                         })}
@@ -881,6 +886,10 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
             {/* Evals tab */}
             {tab === "evals" && skill && (
               <div>
+                <p className="text-xs text-gray-400 mb-3">
+                  Evals are test cases that verify your skill produces correct output.
+                  They are optional for promotion — only spec compliance and frontmatter are required.
+                </p>
                 {skill.evals_json.length === 0 ? (
                   <p className="text-xs text-gray-400">No evals defined.</p>
                 ) : (
