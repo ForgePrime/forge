@@ -90,6 +90,64 @@ export function parseFrontmatter(content: string): ParsedFrontmatter {
   return result;
 }
 
+/**
+ * Serialize frontmatter fields + body back into SKILL.md content.
+ * Preserves unknown/extra keys from `raw`.
+ */
+export function serializeFrontmatter(
+  fields: {
+    name?: string | null;
+    description?: string | null;
+    version?: string | null;
+    allowedTools?: string[];
+  },
+  raw: Record<string, string | string[]>,
+  body: string,
+): string {
+  // Merge fields into raw, preserving unknown keys
+  const merged: Record<string, string | string[]> = { ...raw };
+
+  if (fields.name != null) merged.name = fields.name;
+  if (fields.description != null) merged.description = fields.description;
+  if (fields.version != null) merged.version = fields.version;
+  if (fields.allowedTools != null) merged["allowed-tools"] = fields.allowedTools;
+
+  // Remove old key variant if present
+  delete merged["allowed_tools"];
+
+  const yamlLines: string[] = [];
+
+  // Emit known keys first in order, then extras
+  const knownOrder = ["name", "version", "description", "allowed-tools", "id"];
+  const emitted = new Set<string>();
+
+  for (const key of knownOrder) {
+    if (key in merged) {
+      yamlLines.push(serializeYamlLine(key, merged[key]));
+      emitted.add(key);
+    }
+  }
+
+  for (const [key, val] of Object.entries(merged)) {
+    if (!emitted.has(key)) {
+      yamlLines.push(serializeYamlLine(key, val));
+    }
+  }
+
+  return `---\n${yamlLines.join("\n")}\n---\n${body}`;
+}
+
+function serializeYamlLine(key: string, val: string | string[]): string {
+  if (Array.isArray(val)) {
+    return `${key}: [${val.join(", ")}]`;
+  }
+  // Quote if contains special characters
+  if (val.includes(":") || val.includes("#") || val.includes("'") || val.includes('"') || val.includes("\n")) {
+    return `${key}: "${val.replace(/"/g, '\\"')}"`;
+  }
+  return `${key}: ${val}`;
+}
+
 function strOrNull(val: unknown): string | null {
   if (val == null) return null;
   const s = String(val).trim();

@@ -6,7 +6,7 @@ import { skills as skillsApi, ApiError, fetchBlob } from "@/lib/api";
 import { Badge, statusVariant } from "@/components/shared/Badge";
 import { Button } from "@/components/shared/Button";
 import { SkillFileTree } from "./SkillFileTree";
-import { parseFrontmatter } from "@/lib/utils/parseFrontmatter";
+import { parseFrontmatter, serializeFrontmatter } from "@/lib/utils/parseFrontmatter";
 import { getCategoryColor, categoryLabel } from "@/lib/utils/categoryColors";
 import type {
   Skill,
@@ -623,39 +623,91 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
             {/* Metadata tab */}
             {tab === "metadata" && (
               <div className="space-y-4">
-                {/* Parsed frontmatter (read-only) */}
+                {/* Editable frontmatter fields */}
                 <div>
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    From Frontmatter
+                    Frontmatter
                   </h4>
                   {parsed.valid ? (
-                    <div className="space-y-2 text-sm">
+                    <div className="space-y-2.5">
                       <div>
-                        <span className="text-xs text-gray-400">Name</span>
-                        <p className="font-medium">{parsed.name}</p>
+                        <label className="block text-xs text-gray-400 mb-0.5">Name</label>
+                        <input
+                          type="text"
+                          defaultValue={parsed.name ?? ""}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val && val !== parsed.name) {
+                              const newContent = serializeFrontmatter(
+                                { name: val },
+                                parsed.raw,
+                                parsed.body,
+                              );
+                              setContent(newContent);
+                              setDirty(true);
+                            }
+                          }}
+                          className="w-full text-lg font-bold border-b border-gray-200 focus:border-forge-500 outline-none pb-0.5 bg-transparent"
+                        />
                       </div>
                       <div>
-                        <span className="text-xs text-gray-400">Description</span>
-                        <p className="text-gray-600 text-xs">{parsed.description}</p>
+                        <label className="block text-xs text-gray-400 mb-0.5">Description</label>
+                        <textarea
+                          defaultValue={parsed.description ?? ""}
+                          rows={2}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== (parsed.description ?? "")) {
+                              const newContent = serializeFrontmatter(
+                                { description: val },
+                                parsed.raw,
+                                parsed.body,
+                              );
+                              setContent(newContent);
+                              setDirty(true);
+                            }
+                          }}
+                          className="w-full rounded-md border px-2 py-1.5 text-xs text-gray-600 focus:border-forge-500 focus:ring-1 focus:ring-forge-500"
+                        />
                       </div>
-                      {parsed.version && (
-                        <div>
-                          <span className="text-xs text-gray-400">Version</span>
-                          <p>{parsed.version}</p>
-                        </div>
-                      )}
-                      {parsed.allowedTools.length > 0 && (
-                        <div>
-                          <span className="text-xs text-gray-400">Allowed Tools</span>
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {parsed.allowedTools.map((t) => (
-                              <span key={t} className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-0.5">Version</label>
+                        <input
+                          type="text"
+                          defaultValue={parsed.version ?? ""}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== (parsed.version ?? "")) {
+                              const newContent = serializeFrontmatter(
+                                { version: val || undefined },
+                                parsed.raw,
+                                parsed.body,
+                              );
+                              setContent(newContent);
+                              setDirty(true);
+                            }
+                          }}
+                          className="w-full rounded-md border px-2 py-1.5 text-sm focus:border-forge-500 focus:ring-1 focus:ring-forge-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-0.5">Allowed Tools (comma-separated)</label>
+                        <input
+                          type="text"
+                          defaultValue={parsed.allowedTools.join(", ")}
+                          onBlur={(e) => {
+                            const tools = e.target.value.split(",").map((t) => t.trim()).filter(Boolean);
+                            const newContent = serializeFrontmatter(
+                              { allowedTools: tools },
+                              parsed.raw,
+                              parsed.body,
+                            );
+                            setContent(newContent);
+                            setDirty(true);
+                          }}
+                          className="w-full rounded-md border px-2 py-1.5 text-sm focus:border-forge-500 focus:ring-1 focus:ring-forge-500"
+                        />
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-1">
