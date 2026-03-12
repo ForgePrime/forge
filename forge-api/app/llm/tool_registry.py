@@ -95,6 +95,7 @@ class ToolRegistry:
         args: dict[str, Any],
         storage: Any,
         context: dict[str, Any] | None = None,
+        permission_set: Any | None = None,
     ) -> dict[str, Any]:
         """Execute a tool by name with the given arguments.
 
@@ -103,6 +104,7 @@ class ToolRegistry:
             args: Tool input arguments.
             storage: The storage adapter.
             context: Optional execution context (project, entity info, etc.)
+            permission_set: Optional PermissionSet for permission checking.
 
         Returns:
             Structured result dict.
@@ -115,6 +117,14 @@ class ToolRegistry:
             raise ValueError(f"Unknown tool: {tool_name}")
         if tool.handler is None:
             raise ValueError(f"Tool {tool_name} has no handler")
+
+        # Permission check for tools that require it
+        if tool.required_permission is not None and permission_set is not None:
+            module, action = tool.required_permission
+            if not permission_set.check(module, action):
+                from app.llm.permissions import PermissionEngine
+                return PermissionEngine.deny_response(module, action)
+
         return await tool.handler(args=args, storage=storage, context=context or {})
 
     def get_llm_definitions(
