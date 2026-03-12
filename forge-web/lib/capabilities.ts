@@ -46,6 +46,10 @@ export const CAPABILITY_CONTRACTS: Record<string, CapabilityDef[]> = {
     { id: "skills-delete", label: "Delete skill", description: "Remove a skill definition", action: "DELETE", scope: "skills", toolName: null, available: false },
     { id: "skills-promote", label: "Promote skill", description: "Promote skill to production", action: "WRITE", scope: "skills", toolName: null, available: false },
     { id: "skills-export", label: "Export skill", description: "Export skill as file", action: "READ", scope: "skills", toolName: null, available: false },
+    { id: "skills-add-file", label: "Add file", description: "Add a bundled file to the skill", action: "WRITE", scope: "skills", toolName: "addSkillFile", available: true },
+    { id: "skills-remove-file", label: "Remove file", description: "Remove a bundled file from the skill", action: "DELETE", scope: "skills", toolName: "removeSkillFile", available: true },
+    { id: "skills-list-files", label: "List files", description: "List bundled files in the skill", action: "READ", scope: "skills", toolName: "listSkillFiles", available: true },
+    { id: "skills-get-file", label: "Get file content", description: "Read content of a bundled file", action: "READ", scope: "skills", toolName: "getSkillFileContent", available: true },
   ],
   tasks: [
     { id: "tasks-list", label: "List tasks", description: "View all tasks in project", action: "READ", scope: "tasks", toolName: "listEntities", available: true },

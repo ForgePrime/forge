@@ -491,6 +491,148 @@ async def _handle_get_other_skill(
 
 
 # ---------------------------------------------------------------------------
+# Skill file tool handlers (multi-file support)
+# ---------------------------------------------------------------------------
+
+_ALLOWED_FILE_PREFIXES = ("scripts/", "references/", "assets/")
+
+
+def _validate_skill_file_path(path: str) -> str | None:
+    """Validate file path. Returns error string or None."""
+    if not path:
+        return "Empty file path"
+    if ".." in path:
+        return f"Path traversal not allowed: {path}"
+    if "/" in path and not any(path.startswith(p) for p in _ALLOWED_FILE_PREFIXES):
+        return f"Files must be in scripts/, references/, assets/, or at root level: {path}"
+    return None
+
+
+async def _handle_add_skill_file(
+    args: dict[str, Any],
+    storage: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Add a file to a skill's bundled resources."""
+    skill_id = args.get("skill_id") or context.get("entity_id")
+    path = args.get("path", "")
+    content = args.get("content", "")
+    file_type = args.get("file_type", "other")
+
+    if not skill_id:
+        return {"error": "skill_id is required"}
+    err = _validate_skill_file_path(path)
+    if err:
+        return {"error": err}
+
+    data = await asyncio.to_thread(storage.load_global, "skills")
+    skills = data.get("skills", [])
+
+    for skill in skills:
+        if skill.get("id") == skill_id:
+            resources = skill.get("resources") or {}
+            files = resources.get("files", [])
+            # Check duplicate
+            if any(f["path"] == path for f in files):
+                return {"error": f"File already exists: {path}"}
+            if len(files) >= 50:
+                return {"error": "Maximum 50 files per skill"}
+            if len(content) > 100 * 1024:
+                return {"error": f"File too large (max 100KB): {path}"}
+            files.append({"path": path, "content": content, "file_type": file_type})
+            resources["files"] = files
+            skill["resources"] = resources
+            await asyncio.to_thread(storage.save_global, "skills", data)
+            return {"added": True, "skill_id": skill_id, "path": path}
+
+    return {"error": f"Skill {skill_id} not found"}
+
+
+async def _handle_remove_skill_file(
+    args: dict[str, Any],
+    storage: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Remove a file from a skill's bundled resources."""
+    skill_id = args.get("skill_id") or context.get("entity_id")
+    path = args.get("path", "")
+
+    if not skill_id:
+        return {"error": "skill_id is required"}
+
+    data = await asyncio.to_thread(storage.load_global, "skills")
+    skills = data.get("skills", [])
+
+    for skill in skills:
+        if skill.get("id") == skill_id:
+            resources = skill.get("resources") or {}
+            files = resources.get("files", [])
+            original_count = len(files)
+            files = [f for f in files if f["path"] != path]
+            if len(files) == original_count:
+                return {"error": f"File not found: {path}"}
+            resources["files"] = files
+            skill["resources"] = resources
+            await asyncio.to_thread(storage.save_global, "skills", data)
+            return {"removed": True, "skill_id": skill_id, "path": path}
+
+    return {"error": f"Skill {skill_id} not found"}
+
+
+async def _handle_list_skill_files(
+    args: dict[str, Any],
+    storage: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """List all files in a skill's bundled resources."""
+    skill_id = args.get("skill_id") or context.get("entity_id")
+    if not skill_id:
+        return {"error": "skill_id is required"}
+
+    data = await asyncio.to_thread(storage.load_global, "skills")
+    skills = data.get("skills", [])
+
+    for skill in skills:
+        if skill.get("id") == skill_id:
+            resources = skill.get("resources") or {}
+            files = resources.get("files", [])
+            return {
+                "skill_id": skill_id,
+                "files": [{"path": f["path"], "file_type": f.get("file_type", "other")} for f in files],
+                "count": len(files),
+            }
+
+    return {"error": f"Skill {skill_id} not found"}
+
+
+async def _handle_get_skill_file_content(
+    args: dict[str, Any],
+    storage: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Get the content of a specific file in a skill."""
+    skill_id = args.get("skill_id") or context.get("entity_id")
+    path = args.get("path", "")
+
+    if not skill_id:
+        return {"error": "skill_id is required"}
+
+    data = await asyncio.to_thread(storage.load_global, "skills")
+    skills = data.get("skills", [])
+
+    for skill in skills:
+        if skill.get("id") == skill_id:
+            resources = skill.get("resources") or {}
+            files = resources.get("files", [])
+            for f in files:
+                if f["path"] == path:
+                    return {"skill_id": skill_id, "path": path, "content": f["content"], "file_type": f.get("file_type", "other")}
+            return {"error": f"File not found: {path}"}
+
+    return {"error": f"Skill {skill_id} not found"}
+
+
+# ---------------------------------------------------------------------------
 # Default registry factory
 # ---------------------------------------------------------------------------
 
@@ -694,6 +836,100 @@ def create_default_registry() -> ToolRegistry:
         context_types=["skill"],
         required_permission=("skills", "read"),
         handler=_handle_get_other_skill,
+    ))
+
+    # --- Skill file tools (multi-file support) ---
+
+    registry.register(ToolDef(
+        name="addSkillFile",
+        description="Add a bundled file to the skill (scripts/, references/, assets/, or root level).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "skill_id": {
+                    "type": "string",
+                    "description": "The skill ID. If omitted, uses the current skill context.",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "File path (e.g., 'scripts/helper.py', 'references/spec.md').",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "File content.",
+                },
+                "file_type": {
+                    "type": "string",
+                    "enum": ["script", "reference", "asset", "other"],
+                    "description": "Type of file.",
+                },
+            },
+            "required": ["path", "content"],
+        },
+        context_types=["skill"],
+        required_permission=("skills", "write"),
+        handler=_handle_add_skill_file,
+    ))
+
+    registry.register(ToolDef(
+        name="removeSkillFile",
+        description="Remove a bundled file from the skill.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "skill_id": {
+                    "type": "string",
+                    "description": "The skill ID. If omitted, uses the current skill context.",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Path of the file to remove.",
+                },
+            },
+            "required": ["path"],
+        },
+        context_types=["skill"],
+        required_permission=("skills", "delete"),
+        handler=_handle_remove_skill_file,
+    ))
+
+    registry.register(ToolDef(
+        name="listSkillFiles",
+        description="List all bundled files in the skill with their types.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "skill_id": {
+                    "type": "string",
+                    "description": "The skill ID. If omitted, uses the current skill context.",
+                },
+            },
+        },
+        context_types=["skill"],
+        required_permission=("skills", "read"),
+        handler=_handle_list_skill_files,
+    ))
+
+    registry.register(ToolDef(
+        name="getSkillFileContent",
+        description="Get the content of a specific bundled file in the skill.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "skill_id": {
+                    "type": "string",
+                    "description": "The skill ID. If omitted, uses the current skill context.",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Path of the file to read.",
+                },
+            },
+            "required": ["path"],
+        },
+        context_types=["skill"],
+        required_permission=("skills", "read"),
+        handler=_handle_get_skill_file_content,
     ))
 
     return registry
