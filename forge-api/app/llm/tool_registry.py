@@ -470,24 +470,42 @@ async def _handle_get_other_skill(
     context: dict[str, Any],
 ) -> dict[str, Any]:
     """Get another skill's content (read-only reference)."""
-    skill_id = args.get("skill_id", "")
-    if not skill_id:
-        return {"error": "skill_id is required"}
+    skill_name = args.get("skill_id", "") or args.get("skill_name", "")
+    if not skill_name:
+        return {"error": "skill_id or skill_name is required"}
 
+    # Try new file-based storage first
+    try:
+        from app.services.skill_storage import SkillStorageService
+        skills_dir = storage.base_dir / "_global" / "skills" if hasattr(storage, "base_dir") else None
+        if skills_dir and skills_dir.is_dir():
+            svc = SkillStorageService(skills_dir=skills_dir)
+            skill = await svc.get_skill(skill_name)
+            return {
+                "skill_id": skill_name,
+                "name": skill.get("name", ""),
+                "categories": skill.get("categories", []),
+                "content": skill.get("skill_md_content", ""),
+                "tags": skill.get("tags", []),
+            }
+    except (FileNotFoundError, Exception):
+        pass
+
+    # Fallback: old skills.json format
     data = await asyncio.to_thread(storage.load_global, "skills")
     skills = data.get("skills", [])
 
     for skill in skills:
-        if skill.get("id") == skill_id:
+        if skill.get("name") == skill_name or skill.get("id") == skill_name:
             return {
-                "skill_id": skill_id,
+                "skill_id": skill_name,
                 "name": skill.get("name", ""),
-                "category": skill.get("category", ""),
+                "categories": skill.get("categories", skill.get("category", "")),
                 "content": skill.get("skill_md_content", ""),
                 "tags": skill.get("tags", []),
             }
 
-    return {"error": f"Skill {skill_id} not found"}
+    return {"error": f"Skill {skill_name} not found"}
 
 
 # ---------------------------------------------------------------------------
@@ -750,8 +768,8 @@ async def _handle_preview_skill(
 
     # Metadata summary
     meta_lines: list[str] = []
-    if skill.get("category"):
-        meta_lines.append(f"**Category**: {skill['category']}")
+    if skill.get("categories"):
+        meta_lines.append(f"**Categories**: {', '.join(skill['categories'])}")
     if skill.get("tags"):
         meta_lines.append(f"**Tags**: {', '.join(skill['tags'])}")
     if skill.get("scopes"):

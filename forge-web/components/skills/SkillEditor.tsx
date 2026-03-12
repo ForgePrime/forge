@@ -300,7 +300,7 @@ export function SkillEditor({ skill, onSaved }: SkillEditorProps) {
         await skillsApi.update(skill.name, data);
 
         // Save dirty files individually
-        for (const path of dirtyFiles) {
+        for (const path of Array.from(dirtyFiles)) {
           if (path === "__deleted__") continue;
           const fc = fileContents[path];
           if (fc !== undefined) {

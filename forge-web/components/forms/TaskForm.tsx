@@ -177,8 +177,8 @@ export function TaskForm({ slug, open, onClose, task, onSuccess }: TaskFormProps
 
       {/* Linked Skill — only on create (not updatable via PATCH) */}
       {!isEdit && (activeSkills.length > 0 || allActiveSkills.length > 0) && (() => {
-        const matchedIds = new Set(activeSkills.map((s) => s.id));
-        const otherSkills = allActiveSkills.filter((s) => !matchedIds.has(s.id));
+        const matchedIds = new Set(activeSkills.map((s) => s.name));
+        const otherSkills = allActiveSkills.filter((s) => !matchedIds.has(s.name));
         const hasScopes = watchedScopes && watchedScopes.length > 0;
         return (
           <Controller
@@ -198,19 +198,19 @@ export function TaskForm({ slug, open, onClose, task, onSuccess }: TaskFormProps
                   {hasScopes && activeSkills.length > 0 && (
                     <optgroup label="Recommended (matching scopes)">
                       {activeSkills.map((s) => (
-                        <option key={s.id} value={s.id}>{s.id} — {s.name}</option>
+                        <option key={s.name} value={s.name}>{s.name}</option>
                       ))}
                     </optgroup>
                   )}
                   {hasScopes && otherSkills.length > 0 && (
                     <optgroup label="All skills">
                       {otherSkills.map((s) => (
-                        <option key={s.id} value={s.id}>{s.id} — {s.name}</option>
+                        <option key={s.name} value={s.name}>{s.name}</option>
                       ))}
                     </optgroup>
                   )}
                   {!hasScopes && activeSkills.map((s) => (
-                    <option key={s.id} value={s.id}>{s.id} — {s.name}</option>
+                    <option key={s.name} value={s.name}>{s.name}</option>
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-gray-400">

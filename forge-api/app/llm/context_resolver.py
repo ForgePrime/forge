@@ -121,7 +121,7 @@ async def _resolve_skill(
 
             data: dict[str, Any] = {
                 "content": _truncate(content, MAX_CONTENT_LENGTH),
-                "category": skill.get("category", ""),
+                "categories": skill.get("categories", []),
                 "tags": skill.get("tags", []),
                 "scopes": skill.get("scopes", []),
                 "status": skill.get("status", ""),

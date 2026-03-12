@@ -44,9 +44,8 @@ export function LintResultsMatrix({ data, onClose }: LintResultsMatrixProps) {
             </thead>
             <tbody className="divide-y">
               {data.results.map((r) => (
-                <tr key={r.skill_id} className="hover:bg-gray-50">
+                <tr key={r.skill_name} className="hover:bg-gray-50">
                   <td className="px-4 py-2">
-                    <span className="text-xs text-gray-400 mr-2">{r.skill_id}</span>
                     <span className="font-medium">{r.skill_name}</span>
                   </td>
                   <td className="px-4 py-2">

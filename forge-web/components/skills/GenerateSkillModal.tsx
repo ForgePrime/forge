@@ -27,7 +27,7 @@ export function GenerateSkillModal({ onGenerated, onClose }: GenerateSkillModalP
     try {
       const res = await skillsApi.generate({
         description: description.trim(),
-        category,
+        categories: [category],
       });
       onGenerated(res.skill_md_content);
     } catch (e) {
