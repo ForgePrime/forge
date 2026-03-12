@@ -12,6 +12,7 @@ import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { BottomPanel } from "@/components/debug/BottomPanel";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { useDebugPanelStore } from "@/stores/debugPanelStore";
+import { useLeftPanel } from "@/components/layout/LeftPanelProvider";
 
 type ConnectionState = "connected" | "stale" | "disconnected";
 
@@ -66,6 +67,9 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
     if (slug) selectProject(slug);
   }, [slug, selectProject]);
 
+  // Register ProjectSidebar in the LeftPanel
+  useLeftPanel(<ProjectSidebar slug={slug} />);
+
   // Forward all WebSocket events to per-entity stores + count events + track timestamps
   useEffect(() => {
     const unsub = onAny((event) => {
@@ -80,53 +84,47 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   }, [onAny, incrementEvents]);
 
   return (
-    <div className="flex h-full -m-6">
+    <div className="flex flex-col h-full">
       {/* Command palette (Cmd+K / Ctrl+K) */}
       <CommandPalette />
 
-      {/* Project sidebar */}
-      <ProjectSidebar slug={slug} />
-
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Project header bar */}
-        <div className="flex-shrink-0 px-6 pt-4 pb-2 border-b bg-white">
-          <div className="flex items-center gap-2 text-sm">
-            <Link href="/projects" className="text-gray-400 hover:text-gray-600">
-              Projects
-            </Link>
-            <span className="text-gray-300">/</span>
-            <span className="text-gray-700 font-medium">{slug}</span>
-            {detail && (
-              <span className="text-gray-400 ml-2 truncate hidden sm:inline">
-                — {detail.goal}
-              </span>
-            )}
-            <div className="ml-auto flex items-center gap-3">
-              <DebugToggle slug={slug} />
-              <div className="flex items-center gap-1.5" title={connStyle.label}>
-                <span
-                  className={`inline-block h-2.5 w-2.5 rounded-full ${connStyle.color}`}
-                />
-                {lastEventTime && connectionState === "connected" && (
-                  <span className="text-[10px] text-gray-400 hidden sm:inline">
-                    {formatTimeAgo(lastEventTime)}
-                  </span>
-                )}
-              </div>
+      {/* Project header bar */}
+      <div className="flex-shrink-0 px-6 pt-4 pb-2 border-b bg-white">
+        <div className="flex items-center gap-2 text-sm">
+          <Link href="/projects" className="text-gray-400 hover:text-gray-600">
+            Projects
+          </Link>
+          <span className="text-gray-300">/</span>
+          <span className="text-gray-700 font-medium">{slug}</span>
+          {detail && (
+            <span className="text-gray-400 ml-2 truncate hidden sm:inline">
+              — {detail.goal}
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            <DebugToggle slug={slug} />
+            <div className="flex items-center gap-1.5" title={connStyle.label}>
+              <span
+                className={`inline-block h-2.5 w-2.5 rounded-full ${connStyle.color}`}
+              />
+              {lastEventTime && connectionState === "connected" && (
+                <span className="text-[10px] text-gray-400 hidden sm:inline">
+                  {formatTimeAgo(lastEventTime)}
+                </span>
+              )}
             </div>
           </div>
         </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <Breadcrumb />
-          {children}
-        </div>
-
-        {/* Debug bottom panel */}
-        <BottomPanel />
       </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <Breadcrumb />
+        {children}
+      </div>
+
+      {/* Debug bottom panel */}
+      <BottomPanel />
     </div>
   );
 }
