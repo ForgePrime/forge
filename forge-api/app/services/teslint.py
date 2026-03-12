@@ -113,6 +113,14 @@ def run_teslint(
                 error_message=f"TESLint timed out after {timeout_seconds} seconds",
             )
 
+        # Check for "module not found" (teslint package not installed)
+        if result.returncode != 0 and "No module named" in (result.stderr or ""):
+            logger.warning("TESLint package not installed (python -m teslint module not found)")
+            return TESLintResult(
+                success=False,
+                error_message="TESLint is not installed. Install with: pip install teslint",
+            )
+
         raw_output = result.stdout or ""
 
         # Parse JSON output
@@ -173,3 +181,26 @@ def run_teslint(
                 shutil.rmtree(tmp_dir)
             except Exception:
                 logger.warning(f"Failed to clean up temp dir: {tmp_dir}")
+
+
+def check_teslint_available() -> dict:
+    """Check if TESLint CLI is available (python -m teslint)."""
+    try:
+        result = subprocess.run(
+            ["python", "-m", "teslint", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return {"available": True, "version": result.stdout.strip()}
+        if "No module named" in (result.stderr or ""):
+            return {"available": False, "reason": "TESLint package not installed"}
+        return {
+            "available": False,
+            "reason": result.stderr.strip() or f"Exit code {result.returncode}",
+        }
+    except FileNotFoundError:
+        return {"available": False, "reason": "Python not found"}
+    except subprocess.TimeoutExpired:
+        return {"available": False, "reason": "Timeout checking TESLint"}

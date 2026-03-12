@@ -27,7 +27,7 @@ from app.services.frontmatter import (
     merge_frontmatter_to_metadata,
     parse_frontmatter,
 )
-from app.services.teslint import run_teslint
+from app.services.teslint import check_teslint_available, run_teslint
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -214,6 +214,13 @@ async def _check_skill_in_use(storage, skill_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Fixed-path endpoints (MUST be before parameterized /{skill_id} routes)
 # ---------------------------------------------------------------------------
+
+@router.get("/health")
+async def skills_health():
+    """Health check for skills subsystem including TESLint availability."""
+    teslint_status = await asyncio.to_thread(check_teslint_available)
+    return {"status": "ok", "teslint": teslint_status}
+
 
 @router.post("/lint-all")
 async def lint_all_skills(
