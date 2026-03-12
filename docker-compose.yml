@@ -11,7 +11,7 @@ services:
       FORGE_LLM_CONFIG_PATH: /config/providers.toml
       FORGE_HOST: "0.0.0.0"
       FORGE_PORT: "8000"
-      FORGE_CORS_ORIGINS: ${FORGE_CORS_ORIGINS:-'["http://localhost:3000"]'}
+      FORGE_CORS_ORIGINS: ${FORGE_CORS_ORIGINS:-["http://localhost:3000"]}
       FORGE_JWT_SECRET: ${FORGE_JWT_SECRET:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

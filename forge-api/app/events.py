@@ -27,6 +27,13 @@ EVENT_TYPES = {
     "skill.updated",
     "skill.deleted",
     "skill.promoted",
+    "llm.session_started",
+    "llm.session_ended",
+    "chat.token",
+    "chat.tool_call",
+    "chat.tool_result",
+    "chat.complete",
+    "chat.error",
 }
 
 

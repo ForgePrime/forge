@@ -1,10 +1,21 @@
 # Forge LLM Provider Configuration
 # Configure API keys and model preferences for LLM providers.
+# API keys: set via environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY).
 
 [anthropic]
-api_key = ""  # Set via ANTHROPIC_API_KEY env var
-default_model = "claude-sonnet-4-20250514"
+provider = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+model = "claude-sonnet-4-20250514"
 
 [openai]
-api_key = ""  # Set via OPENAI_API_KEY env var
-default_model = "gpt-4o"
+provider = "openai"
+api_key_env = "OPENAI_API_KEY"
+model = "gpt-4o"
+
+# Uncomment for local Ollama:
+# [local]
+# provider = "ollama"
+# model = "llama3.1"
+# base_url = "http://localhost:11434"
+# context_window = 8192
+# max_output = 4096

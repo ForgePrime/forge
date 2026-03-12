@@ -75,15 +75,14 @@ async def get_llm_config(request: Request):
 async def get_llm_provider(request: Request):
     """Return the default LLM provider instance.
 
-    Returns None if no provider is configured or API key is missing.
+    Returns None if no provider is configured, API key is missing,
+    or provider package is not installed.
     """
-    from core.llm.provider import ProviderError
-
     registry = request.app.state.provider_registry
     config = request.app.state.llm_config
     try:
         return registry.get(config.default_provider)
-    except ProviderError:
+    except Exception:
         return None
 
 
