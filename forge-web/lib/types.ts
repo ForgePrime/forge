@@ -984,6 +984,13 @@ export interface ChatSession {
   updated_at: string;
 }
 
+export interface ChatFileAttachment {
+  file_id: string;
+  filename: string;
+  size: number;
+  content_preview?: string;
+}
+
 export interface ChatSendRequest {
   message: string;
   context_type?: string;
@@ -993,6 +1000,7 @@ export interface ChatSendRequest {
   model?: string | null;
   scopes?: string[];
   disabled_capabilities?: string[];
+  file_ids?: string[];
 }
 
 export interface ChatSendResponse {

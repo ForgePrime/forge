@@ -56,9 +56,9 @@ export default function LLMChat({
   }, [contextType, contextId, slug, startConversation]);
 
   const handleSend = useCallback(
-    (message: string) => {
+    (message: string, fileIds?: string[]) => {
       clearError();
-      sendMessage(message, contextType, contextId, slug);
+      sendMessage(message, contextType, contextId, slug, null, undefined, undefined, fileIds);
     },
     [contextType, contextId, slug, sendMessage, clearError],
   );
@@ -121,9 +121,10 @@ export default function LLMChat({
       <ChatInput
         onSend={handleSend}
         disabled={streaming}
+        sessionId={activeSessionId}
         placeholder={
           contextType === "global"
-            ? "Type a message..."
+            ? "Type a message or drop files..."
             : `Ask about this ${contextType}...`
         }
       />

@@ -250,7 +250,7 @@ import type {
   DebugStatus, DebugSessionSummary, DebugSession,
   Skill, SkillCreate, SkillUpdate, SkillFile, ValidationResult, LintResult, PromoteResult,
   SkillGenerateRequest, SkillImportRequest, BulkLintResult, SkillCategoryDef, SkillUsageEntry,
-  ChatSendRequest, ChatSendResponse, ChatSession,
+  ChatSendRequest, ChatSendResponse, ChatSession, ChatFileAttachment,
   LLMProvider, LLMProviderTestResult, LLMConfig,
 } from "./types";
 
@@ -534,6 +534,23 @@ export const skills = {
 export const llm = {
   send: (data: ChatSendRequest) =>
     create<ChatSendResponse>("/llm/chat", data),
+  uploadFile: async (file: File, sessionId: string): Promise<ChatFileAttachment> => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("session_id", sessionId);
+    const headers: Record<string, string> = {};
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    const res = await fetch(`${API_BASE}/llm/chat/files`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => res.statusText);
+      throw new ApiError(res.status, body);
+    }
+    return res.json();
+  },
   getSession: (sessionId: string) =>
     get<ChatSession>(`/llm/sessions/${sessionId}`),
   listSessions: (limit?: number) =>

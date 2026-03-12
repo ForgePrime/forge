@@ -100,6 +100,7 @@ class ChatRequest(BaseModel):
     model: str | None = Field(default=None, description="Override model")
     scopes: list[str] | None = Field(default=None, description="Frontend scopes (mapped to context_types)")
     disabled_capabilities: list[str] | None = Field(default=None, description="Tool names to disable")
+    file_ids: list[str] | None = Field(default=None, description="Uploaded file IDs to include as context")
 
 
 class ChatResponse(BaseModel):
@@ -129,6 +130,7 @@ async def chat(
     session_manager=Depends(get_session_manager),
     storage=Depends(get_storage),
     event_bus=Depends(get_event_bus),
+    redis=Depends(get_redis),
 ) -> ChatResponse:
     """Send a message to LLM and get a response with tool-use support.
 
@@ -188,8 +190,24 @@ async def chat(
             model=model,
         )
 
+    # --- Inject uploaded file content into user message ---
+    user_content = body.message
+    if body.file_ids and redis:
+        file_parts: list[str] = []
+        for fid in body.file_ids:
+            file_key = f"{FILE_KEY_PREFIX}{fid}"
+            raw = await redis.get(file_key)
+            if raw is None:
+                continue
+            file_data = json.loads(raw)
+            fname = file_data.get("filename", fid)
+            content = file_data.get("content", "")
+            file_parts.append(f"[Attached file: {fname}]\n{content}")
+        if file_parts:
+            user_content = "\n\n".join(file_parts) + "\n\n" + user_content
+
     # --- Add user message to session and build conversation ---
-    session.messages.append(ChatMessage(role="user", content=body.message))
+    session.messages.append(ChatMessage(role="user", content=user_content))
     await session_manager.save(session)
 
     messages: list[Message] = [
