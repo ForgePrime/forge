@@ -57,6 +57,7 @@ export default function BoardPage() {
   const [view, setView] = useState<ViewMode>("kanban");
   const [scopeFilter, setScopeFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
   // Collect unique scopes and types for filters
   const { allScopes, allTypes } = useMemo(() => {
@@ -76,8 +77,9 @@ export default function BoardPage() {
     let result = tasks;
     if (scopeFilter) result = result.filter((t) => t.scopes.includes(scopeFilter));
     if (typeFilter) result = result.filter((t) => t.type === typeFilter);
+    if (statusFilter) result = result.filter((t) => t.status === statusFilter);
     return result;
-  }, [tasks, scopeFilter, typeFilter]);
+  }, [tasks, scopeFilter, typeFilter, statusFilter]);
 
   // Status counts
   const statusCounts = useMemo(() => {
@@ -130,6 +132,15 @@ export default function BoardPage() {
               {allTypes.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           )}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="text-xs border rounded px-2 py-1 bg-white"
+          >
+            <option value="">All statuses</option>
+            {KANBAN_COLUMNS.map((s) => <option key={s} value={s}>{s}</option>)}
+            <option value="SKIPPED">SKIPPED</option>
+          </select>
           <div className="flex gap-2 text-[10px] text-gray-400 ml-2">
             {(Object.entries(statusCounts) as [TaskStatus, number][]).map(([s, c]) => (
               <span key={s} className="flex items-center gap-1">
@@ -385,6 +396,10 @@ function DagView({ tasks, slug }: { tasks: Task[]; slug: string }) {
   const router = useRouter();
   const [tooltip, setTooltip] = useState<{ task: Task; x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
   const taskMap = useMemo(() => {
     const m = new Map<string, Task>();
@@ -395,7 +410,7 @@ function DagView({ tasks, slug }: { tasks: Task[]; slug: string }) {
   const { nodes, width, height, cycleNodes } = useMemo(() => computeLayout(tasks), [tasks]);
 
   const edges = useMemo(() => {
-    const result: { from: string; to: string; blocked: boolean }[] = [];
+    const result: { from: string; to: string; blocked: boolean; isConflict?: boolean }[] = [];
     for (const t of tasks) {
       for (const dep of t.depends_on) {
         if (nodes.has(dep) && nodes.has(t.id)) {
@@ -404,9 +419,41 @@ function DagView({ tasks, slug }: { tasks: Task[]; slug: string }) {
           result.push({ from: dep, to: t.id, blocked });
         }
       }
+      // conflicts_with as dashed gray edges (bidirectional, deduplicate)
+      for (const cId of t.conflicts_with ?? []) {
+        if (nodes.has(cId) && nodes.has(t.id) && t.id < cId) {
+          result.push({ from: t.id, to: cId, blocked: false, isConflict: true });
+        }
+      }
     }
     return result;
   }, [tasks, nodes, taskMap]);
+
+  // Zoom with mouse wheel
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom((z) => Math.max(0.2, Math.min(3, z * delta)));
+  }, []);
+
+  // Pan with mouse drag
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    isPanning.current = true;
+    panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+  }, [pan]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning.current) return;
+    setPan({
+      x: panStart.current.panX + (e.clientX - panStart.current.x),
+      y: panStart.current.panY + (e.clientY - panStart.current.y),
+    });
+  }, []);
+
+  const handleMouseUp = useCallback(() => { isPanning.current = false; }, []);
+
+  const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, []);
 
   const handleNodeClick = useCallback(
     (task: Task) => { router.push(`/projects/${slug}/tasks/${task.id}`); },
@@ -425,12 +472,31 @@ function DagView({ tasks, slug }: { tasks: Task[]; slug: string }) {
   );
 
   return (
-    <div className="flex-1 overflow-auto border rounded-lg bg-gray-50 relative">
+    <div className="flex-1 overflow-hidden border rounded-lg bg-gray-50 relative"
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      {/* Zoom controls */}
+      <div className="absolute top-2 right-2 z-10 flex gap-1">
+        <button onClick={() => setZoom((z) => Math.min(3, z * 1.2))}
+          className="w-7 h-7 bg-white border rounded text-xs hover:bg-gray-50 font-bold">+</button>
+        <button onClick={() => setZoom((z) => Math.max(0.2, z * 0.8))}
+          className="w-7 h-7 bg-white border rounded text-xs hover:bg-gray-50 font-bold">&minus;</button>
+        <button onClick={resetView}
+          className="h-7 px-2 bg-white border rounded text-[10px] hover:bg-gray-50">Reset</button>
+        <span className="h-7 flex items-center px-1 text-[10px] text-gray-400">{Math.round(zoom * 100)}%</span>
+      </div>
+
       <svg
         ref={svgRef}
-        width={Math.max(width, 600)}
-        height={Math.max(height, 200)}
+        width="100%"
+        height="100%"
+        viewBox={`${-pan.x / zoom} ${-pan.y / zoom} ${Math.max(width, 600) / zoom} ${Math.max(height, 200) / zoom}`}
         className="select-none"
+        style={{ cursor: isPanning.current ? "grabbing" : "grab" }}
       >
         <defs>
           <marker id="arrow" markerWidth={ARROW_SIZE} markerHeight={ARROW_SIZE}
@@ -444,9 +510,20 @@ function DagView({ tasks, slug }: { tasks: Task[]; slug: string }) {
         </defs>
 
         {/* Edges */}
-        {edges.map(({ from, to, blocked }) => {
+        {edges.map(({ from, to, blocked, isConflict }) => {
           const a = nodes.get(from)!;
           const b = nodes.get(to)!;
+          if (isConflict) {
+            // Conflict edges: dashed orange line between node centers
+            const x1 = a.x + NODE_W / 2, y1 = a.y + NODE_H / 2;
+            const x2 = b.x + NODE_W / 2, y2 = b.y + NODE_H / 2;
+            return (
+              <line key={`conflict-${from}-${to}`}
+                x1={x1} y1={y1} x2={x2} y2={y2}
+                stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 4" opacity={0.6}
+              />
+            );
+          }
           const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2;
           const x2 = b.x, y2 = b.y + NODE_H / 2;
           const cx1 = x1 + (x2 - x1) * 0.4, cx2 = x2 - (x2 - x1) * 0.4;
@@ -497,6 +574,12 @@ function DagView({ tasks, slug }: { tasks: Task[]; slug: string }) {
                 fontSize={10} fontFamily="system-ui, sans-serif">
                 {task.name.length > 22 ? task.name.slice(0, 20) + "\u2026" : task.name}
               </text>
+              {hasBlockedDecisions && (
+                <g>
+                  <circle cx={NODE_W - 4} cy={4} r={8} fill="#ef4444" />
+                  <text x={NODE_W - 4} y={8} textAnchor="middle" fill="#fff" fontSize={11} fontWeight={700}>!</text>
+                </g>
+              )}
             </g>
           );
         })}
