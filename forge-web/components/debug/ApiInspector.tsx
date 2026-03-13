@@ -2,8 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useDebugStore, type ApiEntry } from "@/stores/debugStore";
-import { ErrorDetail } from "./ErrorDetail";
-import { ApiError } from "@/lib/api";
+import { RequestDetailPanel } from "./RequestDetailPanel";
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "bg-green-100 text-green-700",
@@ -258,36 +257,7 @@ function EntryRow({
         <span className="text-[10px] text-gray-300 w-4">{expanded ? "▼" : "▶"}</span>
       </button>
 
-      {expanded && (
-        <div className="px-2 pb-2 space-y-2">
-          {entry.error && (
-            <ErrorDetail
-              error={
-                entry.status
-                  ? new ApiError(entry.status, entry.error, { method: entry.method, url: entry.url })
-                  : new Error(entry.error)
-              }
-              id={`api-entry-error-${entry.id}`}
-            />
-          )}
-          {entry.requestBody !== undefined && (
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 block mb-0.5">Request Body</span>
-              <pre className="text-[10px] bg-white border rounded p-2 overflow-x-auto max-h-40 overflow-y-auto font-mono">
-                {JSON.stringify(entry.requestBody, null, 2)}
-              </pre>
-            </div>
-          )}
-          {entry.responseBody !== undefined && (
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 block mb-0.5">Response Body</span>
-              <pre className="text-[10px] bg-white border rounded p-2 overflow-x-auto max-h-40 overflow-y-auto font-mono">
-                {JSON.stringify(entry.responseBody, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
+      {expanded && <RequestDetailPanel entry={entry} />}
     </div>
   );
 }

@@ -58,7 +58,8 @@ function buildHeaders(hasBody: boolean, extra?: Record<string, string>): Record<
 type AddEntryFn = (entry: {
   method: string; url: string; status: number | null;
   duration: number; timestamp: number;
-  requestBody?: unknown; responseBody?: unknown; error?: string;
+  requestBody?: unknown; responseBody?: unknown;
+  requestHeaders?: Record<string, string>; error?: string;
 }) => void;
 
 let _addEntry: AddEntryFn | null = null;
@@ -93,10 +94,12 @@ async function request<T>(
     try { requestBody = JSON.parse(init.body); } catch { requestBody = init.body; }
   }
 
+  const requestHeaders = buildHeaders(hasBody, initHeaders);
+
   try {
     const res = await fetch(url, {
       ...init,
-      headers: buildHeaders(hasBody, initHeaders),
+      headers: requestHeaders,
     });
 
     const duration = Date.now() - startTime;
@@ -106,7 +109,7 @@ async function request<T>(
       _addEntry?.({
         method, url: path, status: res.status, duration,
         timestamp: startTime, requestBody: truncateBody(requestBody), responseBody: truncateBody(body),
-        error: typeof body === "string" ? body : JSON.stringify(body),
+        requestHeaders, error: typeof body === "string" ? body : JSON.stringify(body),
       });
       throw new ApiError(res.status, body, { method, url: path });
     }
@@ -115,6 +118,7 @@ async function request<T>(
       _addEntry?.({
         method, url: path, status: 204, duration,
         timestamp: startTime, requestBody: truncateBody(requestBody),
+        requestHeaders,
       });
       return undefined as T;
     }
@@ -123,6 +127,7 @@ async function request<T>(
     _addEntry?.({
       method, url: path, status: res.status, duration,
       timestamp: startTime, requestBody: truncateBody(requestBody), responseBody: truncateBody(responseBody),
+      requestHeaders,
     });
     return responseBody;
   } catch (e) {
@@ -130,7 +135,7 @@ async function request<T>(
     const duration = Date.now() - startTime;
     _addEntry?.({
       method, url: path, status: null, duration,
-      timestamp: startTime, requestBody,
+      timestamp: startTime, requestBody, requestHeaders,
       error: (e as Error).message,
     });
     throw e;

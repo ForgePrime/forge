@@ -9,6 +9,7 @@ export interface ApiEntry {
   timestamp: number;
   requestBody?: unknown;
   responseBody?: unknown;
+  requestHeaders?: Record<string, string>;
   error?: string;
 }
 
