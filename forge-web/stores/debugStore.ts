@@ -34,7 +34,7 @@ export const useDebugStore = create<DebugStoreState>((set, get) => ({
   addEntry: (entry) => {
     const id = ++_nextId;
     const full: ApiEntry = { ...entry, id };
-    const isError = full.status !== null && full.status >= 400;
+    const isError = full.status === null || full.status >= 400;
 
     set((state) => {
       const entries = [...state.entries, full];

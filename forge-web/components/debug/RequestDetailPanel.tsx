@@ -35,9 +35,12 @@ function Section({
 
   return (
     <div className="border rounded bg-white">
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-gray-50 transition-colors"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); } }}
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-gray-50 transition-colors cursor-pointer"
       >
         <span className="text-[10px] text-gray-400">{open ? "▼" : "▶"}</span>
         <span className="text-[11px] font-medium text-gray-700">{title}</span>
@@ -52,7 +55,7 @@ function Section({
             {copied ? "Copied" : "Copy"}
           </button>
         )}
-      </button>
+      </div>
       {open && (
         <div className="border-t px-2.5 py-2">
           {children}
@@ -120,7 +123,10 @@ function parseQueryParams(url: string): Record<string, string> {
   const qIdx = url.indexOf("?");
   if (qIdx === -1) return {};
   const params: Record<string, string> = {};
-  const search = url.slice(qIdx + 1);
+  let search = url.slice(qIdx + 1);
+  // Strip fragment if present
+  const hashIdx = search.indexOf("#");
+  if (hashIdx !== -1) search = search.slice(0, hashIdx);
   for (const pair of search.split("&")) {
     const eqIdx = pair.indexOf("=");
     if (eqIdx === -1) {
