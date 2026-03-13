@@ -200,6 +200,17 @@ export const CAPABILITY_CONTRACTS: Record<string, CapabilityDef[]> = {
       contract: { params: [P_ENTITY_ID, P_PROJECT], returns: "Full task object including acceptance_criteria, scopes, instruction" },
     },
     {
+      id: "tasks-context", label: "Get task context", description: "Load full execution context (guidelines, knowledge, deps, risks, business context)",
+      action: "READ", scope: "tasks", toolName: "getTaskContext", available: true,
+      contract: {
+        params: [
+          { name: "task_id", type: "string", required: true, description: "Task ID (e.g., T-001)" },
+          P_PROJECT,
+        ],
+        returns: "Full context: scoped guidelines, knowledge, dependency chain, active risks, business context from origin",
+      },
+    },
+    {
       id: "tasks-create", label: "Create task", description: "Add a new task to the pipeline",
       action: "WRITE", scope: "tasks", toolName: "createTask", available: true,
       contract: {

@@ -1654,6 +1654,179 @@ async def _handle_approve_plan(
 
 
 # ---------------------------------------------------------------------------
+# Task context handler (full execution context)
+# ---------------------------------------------------------------------------
+
+async def _handle_get_task_context(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Load full execution context for a task: guidelines, knowledge, deps, risks, business context."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+    task_id = args.get("task_id")
+    if not task_id:
+        return {"error": "task_id is required"}
+
+    tracker = await asyncio.to_thread(storage.load_data, project, "tracker")
+    tasks = tracker.get("tasks", [])
+
+    task = None
+    for t in tasks:
+        if t.get("id") == task_id:
+            task = t
+            break
+    if task is None:
+        return {"error": f"Task {task_id} not found"}
+
+    result: dict[str, Any] = {
+        "task_id": task_id,
+        "name": task.get("name", ""),
+        "description": task.get("description", ""),
+        "status": task.get("status", ""),
+        "scopes": task.get("scopes", []),
+        "origin": task.get("origin", ""),
+        "acceptance_criteria": task.get("acceptance_criteria", []),
+    }
+
+    # 1. Scoped guidelines
+    scopes = set(task.get("scopes", [])) | {"general"}
+    try:
+        g_data = await asyncio.to_thread(storage.load_data, project, "guidelines")
+        guidelines = [
+            {"id": g.get("id"), "title": g.get("title"), "weight": g.get("weight"),
+             "scope": g.get("scope"), "content": g.get("content", "")[:300]}
+            for g in g_data.get("guidelines", [])
+            if g.get("status", "ACTIVE") == "ACTIVE" and g.get("scope") in scopes
+        ]
+        result["guidelines"] = guidelines
+    except Exception:
+        result["guidelines"] = []
+
+    # 2. Knowledge objects
+    k_ids = task.get("knowledge_ids", [])
+    if k_ids:
+        try:
+            k_data = await asyncio.to_thread(storage.load_data, project, "knowledge")
+            result["knowledge"] = [
+                {"id": k.get("id"), "title": k.get("title"), "category": k.get("category"),
+                 "content": k.get("content", "")[:500]}
+                for k in k_data.get("knowledge", [])
+                if k.get("id") in k_ids and k.get("status", "ACTIVE") != "ARCHIVED"
+            ]
+        except Exception:
+            result["knowledge"] = []
+    else:
+        result["knowledge"] = []
+
+    # 3. Completed dependencies (changes + decisions)
+    deps = task.get("depends_on", [])
+    dep_info: list[dict[str, Any]] = []
+    if deps:
+        task_map = {t.get("id"): t for t in tasks}
+        try:
+            changes_data = await asyncio.to_thread(storage.load_data, project, "changes")
+            all_changes = changes_data.get("changes", [])
+        except Exception:
+            all_changes = []
+        try:
+            decisions_data = await asyncio.to_thread(storage.load_data, project, "decisions")
+            all_decisions = decisions_data.get("decisions", [])
+        except Exception:
+            all_decisions = []
+
+        for dep_id in deps:
+            dep_task = task_map.get(dep_id)
+            if not dep_task:
+                continue
+            dep_changes = [
+                {"file": c.get("file"), "action": c.get("action"), "summary": c.get("summary")}
+                for c in all_changes if c.get("task_id") == dep_id
+            ][:10]
+            dep_decisions = [
+                {"id": d.get("id"), "type": d.get("type"), "issue": d.get("issue"),
+                 "recommendation": d.get("recommendation"), "status": d.get("status")}
+                for d in all_decisions if d.get("task_id") == dep_id
+            ]
+            dep_info.append({
+                "id": dep_id,
+                "name": dep_task.get("name", ""),
+                "status": dep_task.get("status", ""),
+                "changes": dep_changes,
+                "decisions": dep_decisions,
+            })
+    result["dependencies"] = dep_info
+
+    # 4. Active risks from origin idea/objective
+    origin = task.get("origin", "")
+    risks: list[dict[str, Any]] = []
+    if origin:
+        try:
+            decisions_data = await asyncio.to_thread(storage.load_data, project, "decisions")
+            all_decisions = decisions_data.get("decisions", [])
+            for d in all_decisions:
+                if (d.get("type") == "risk"
+                        and d.get("status") not in ("CLOSED",)
+                        and (d.get("task_id") == origin or d.get("linked_entity_id") == origin)):
+                    risks.append({
+                        "id": d.get("id"), "issue": d.get("issue"),
+                        "severity": d.get("severity"), "likelihood": d.get("likelihood"),
+                        "status": d.get("status"),
+                        "mitigation_plan": d.get("mitigation_plan", ""),
+                    })
+        except Exception:
+            pass
+    result["risks"] = risks
+
+    # 5. Business context from origin objective/idea
+    business_ctx: dict[str, Any] = {}
+    if origin and origin.startswith("O-"):
+        try:
+            obj_data = await asyncio.to_thread(storage.load_data, project, "objectives")
+            for o in obj_data.get("objectives", []):
+                if o.get("id") == origin:
+                    business_ctx = {
+                        "type": "objective", "id": origin,
+                        "title": o.get("title", ""), "status": o.get("status", ""),
+                        "key_results": o.get("key_results", []),
+                    }
+                    break
+        except Exception:
+            pass
+    elif origin and origin.startswith("I-"):
+        try:
+            ideas_data = await asyncio.to_thread(storage.load_data, project, "ideas")
+            for i in ideas_data.get("ideas", []):
+                if i.get("id") == origin:
+                    business_ctx = {
+                        "type": "idea", "id": origin,
+                        "title": i.get("title", ""), "status": i.get("status", ""),
+                        "advances_key_results": i.get("advances_key_results", []),
+                    }
+                    # Also load the linked objective
+                    akr = i.get("advances_key_results", [])
+                    if akr:
+                        obj_id = akr[0].split("/")[0]
+                        obj_data = await asyncio.to_thread(storage.load_data, project, "objectives")
+                        for o in obj_data.get("objectives", []):
+                            if o.get("id") == obj_id:
+                                business_ctx["objective"] = {
+                                    "id": obj_id, "title": o.get("title", ""),
+                                    "key_results": o.get("key_results", []),
+                                }
+                                break
+                    break
+        except Exception:
+            pass
+    result["business_context"] = business_ctx
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Default registry factory
 # ---------------------------------------------------------------------------
 
@@ -1766,6 +1939,28 @@ def create_default_registry() -> ToolRegistry:
         context_types=["global"],
         required_permission=None,
         handler=_handle_get_project,
+    ))
+
+    # --- Task context tool (read-only, rich execution context) ---
+
+    registry.register(ToolDef(
+        name="getTaskContext",
+        description=(
+            "Load full execution context for a task: scoped guidelines, knowledge objects, "
+            "dependency outputs (changes + decisions), active risks, and business context from origin objective/idea."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Task ID (e.g., T-001)."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["task_id"],
+        },
+        context_types=["task", "global"],
+        required_permission=None,  # read-only
+        handler=_handle_get_task_context,
+        scope="tasks",
     ))
 
     # --- Skill-specific tools ---

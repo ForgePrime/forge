@@ -459,7 +459,7 @@ async def _resolve_global(
             "**Objectives**: createObjective, updateObjective\n"
             "**Ideas**: createIdea, updateIdea\n"
             "**Planning**: draftPlan, showDraft, approvePlan\n"
-            "**Tasks**: createTask, updateTask, completeTask\n"
+            "**Tasks**: createTask, updateTask, completeTask, getTaskContext\n"
             "**Decisions**: createDecision, updateDecision\n"
             "**Knowledge**: createKnowledge, updateKnowledge\n"
             "**Guidelines**: createGuideline, updateGuideline\n"
