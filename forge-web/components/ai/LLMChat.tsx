@@ -17,6 +17,8 @@ interface LLMChatProps {
   scopes?: string[];
   /** Disabled capability IDs to forward to sendMessage. */
   disabledCapabilities?: string[];
+  /** Serialized AI page context to include with messages. */
+  pageContext?: string;
 }
 
 export default function LLMChat({
@@ -28,6 +30,7 @@ export default function LLMChat({
   embedded = false,
   scopes,
   disabledCapabilities,
+  pageContext,
 }: LLMChatProps) {
   const {
     conversations,
@@ -69,9 +72,9 @@ export default function LLMChat({
   const handleSend = useCallback(
     (message: string, fileIds?: string[]) => {
       clearError();
-      sendMessage(message, contextType, contextId, slug, null, scopes, disabledCapabilities, fileIds);
+      sendMessage(message, contextType, contextId, slug, null, scopes, disabledCapabilities, fileIds, pageContext);
     },
-    [contextType, contextId, slug, sendMessage, clearError, scopes, disabledCapabilities],
+    [contextType, contextId, slug, sendMessage, clearError, scopes, disabledCapabilities, pageContext],
   );
 
   // Token counter

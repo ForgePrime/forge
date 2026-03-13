@@ -104,6 +104,7 @@ class ChatRequest(BaseModel):
     scopes: list[str] | None = Field(default=None, description="Frontend scopes (mapped to context_types)")
     disabled_capabilities: list[str] | None = Field(default=None, description="Tool names to disable")
     file_ids: list[str] | None = Field(default=None, description="Uploaded file IDs to include as context")
+    page_context: str | None = Field(default=None, max_length=8000, description="Serialized UI page context from AI annotations")
 
 
 class ChatResponse(BaseModel):
@@ -230,6 +231,10 @@ async def chat(
         project=body.project,
     )
     system_prompt = context_payload.to_system_prompt()
+
+    # --- Append page context from UI annotations (if provided) ---
+    if body.page_context:
+        system_prompt += f"\n\n## Current Page (what the user sees)\n\n{body.page_context}"
 
     # --- Build permissions ---
     permissions = PermissionEngine.load_permissions(config)
@@ -500,10 +505,18 @@ async def test_provider(
         )
     except Exception as e:
         logger.exception("Provider test failed for %s", body.provider)
+        # Extract clean error message
+        err_msg = str(e)
+        # ProviderError wraps SDK errors — try to extract the inner message
+        if "'message':" in err_msg:
+            import re
+            match = re.search(r"'message':\s*'([^']+)'", err_msg)
+            if match:
+                err_msg = match.group(1)
         return ProviderTestResponse(
             provider=body.provider,
             status="error",
-            error=f"Connection failed: {type(e).__name__}",
+            error=err_msg or f"Connection failed: {type(e).__name__}",
         )
 
 

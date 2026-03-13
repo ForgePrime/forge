@@ -1020,6 +1020,7 @@ export interface ChatSendRequest {
   scopes?: string[];
   disabled_capabilities?: string[];
   file_ids?: string[];
+  page_context?: string;
 }
 
 export interface ChatSendResponse {

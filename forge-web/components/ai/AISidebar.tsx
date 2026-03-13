@@ -3,6 +3,7 @@
 import { useEffect, useCallback } from "react";
 import { useScopeResolver, SCOPE_TO_CONTEXT_TYPE } from "@/hooks/useScopeResolver";
 import { CAPABILITY_CONTRACTS, getCapabilitiesForScopes, getPermissionStatus, type CapabilityDef } from "@/lib/capabilities";
+import { useAIPageContextSafe, serializePageContext, deriveScopesFromElements } from "@/lib/ai-context";
 import { useSidebarStore } from "@/stores/sidebarStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useSkillStore, fetchSkills } from "@/stores/skillStore";
@@ -392,10 +393,23 @@ export default function AISidebar() {
   }, [hydrate]);
 
   // Resolve scopes from URL + overrides
-  const { scopes, projectSlug, contextTypes } = useScopeResolver({
+  const { scopes: urlScopes, projectSlug, contextTypes } = useScopeResolver({
     addedScopes,
     removedScopes,
   });
+
+  // AI page context from annotations
+  const aiCtx = useAIPageContextSafe();
+  const pageSnapshot = aiCtx?.getSnapshot() ?? null;
+  const pageContextText = pageSnapshot && pageSnapshot.elements.size > 0
+    ? serializePageContext(pageSnapshot)
+    : undefined;
+
+  // Merge URL scopes with annotation-derived scopes
+  const annotationScopes = pageSnapshot && pageSnapshot.elements.size > 0
+    ? deriveScopesFromElements(pageSnapshot.elements.values())
+    : [];
+  const scopes = Array.from(new Set([...urlScopes, ...annotationScopes]));
 
   // Load LLM config for permissions
   const { data: llmConfig } = useSWR<LLMConfig>("llm-config", () => llm.getConfig());
@@ -441,6 +455,7 @@ export default function AISidebar() {
               embedded
               scopes={scopes}
               disabledCapabilities={disabledToolNames}
+              pageContext={pageContextText}
               className="flex-1 min-h-0"
             />
             <div className="px-2 py-1 border-t">
