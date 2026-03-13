@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { objectives as objectivesApi, ideas as ideasApi, guidelines as guidelinesApi, knowledge as knowledgeApi } from "@/lib/api";
+import { objectives as objectivesApi, ideas as ideasApi, guidelines as guidelinesApi, knowledge as knowledgeApi, tasks as tasksApi } from "@/lib/api";
 import { Badge, statusVariant } from "@/components/shared/Badge";
-import type { Objective, Idea, Guideline, KeyResult, ObjectiveRelation, ObjectiveStatus } from "@/lib/types";
+import type { Objective, Idea, Guideline, Task, KeyResult, ObjectiveRelation, ObjectiveStatus } from "@/lib/types";
 
 const KR_STATUS_OPTIONS = ["NOT_STARTED", "IN_PROGRESS", "ACHIEVED"] as const;
 
@@ -68,6 +68,7 @@ export default function ObjectiveDetailPage() {
   const [assignedGuidelines, setAssignedGuidelines] = useState<Guideline[]>([]);
   const [allObjectives, setAllObjectives] = useState<Objective[]>([]);
   const [allKnowledge, setAllKnowledge] = useState<any[]>([]);
+  const [linkedTasks, setLinkedTasks] = useState<Task[]>([]);
 
   // Inline KR edit state
   const [editingKR, setEditingKR] = useState<number | null>(null);
@@ -102,11 +103,21 @@ export default function ObjectiveDetailPage() {
     if (!objective) return;
     const fetchRelated = async () => {
       try {
-        // Ideas
+        // Ideas advancing this objective's KRs
         const ideaRes = await ideasApi.list(slug);
-        setLinkedIdeas(ideaRes.ideas.filter((idea) =>
+        const matchedIdeas = ideaRes.ideas.filter((idea) =>
           idea.advances_key_results.some((akr) => akr.startsWith(id))
-        ));
+        );
+        setLinkedIdeas(matchedIdeas);
+
+        // Tasks originated from this objective or its linked ideas
+        const taskRes = await tasksApi.list(slug);
+        const ideaIds = new Set(matchedIdeas.map((i) => i.id));
+        setLinkedTasks(
+          taskRes.tasks.filter((t) =>
+            t.origin === id || (t.origin && ideaIds.has(t.origin))
+          )
+        );
 
         // Guidelines
         const glRes = await guidelinesApi.list(slug);
@@ -362,15 +373,15 @@ export default function ObjectiveDetailPage() {
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">From scopes ({scopeGuidelines.length})</p>
               <div className="space-y-1">
                 {scopeGuidelines.map((g) => (
-                  <div key={g.id} className="flex items-center gap-2 p-2 rounded border bg-white text-xs">
-                    <span className="font-mono text-gray-400">{g.id}</span>
+                  <Link key={g.id} href={`/projects/${slug}/guidelines`} className="flex items-center gap-2 p-2 rounded border bg-white text-xs hover:border-forge-300 transition-colors">
+                    <span className="font-mono text-forge-600">{g.id}</span>
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                       g.weight === "must" ? "bg-red-100 text-red-700" :
                       g.weight === "should" ? "bg-yellow-100 text-yellow-700" :
                       "bg-gray-100 text-gray-600"
                     }`}>{g.weight}</span>
                     <span className="text-gray-700 truncate">{g.title || g.content?.slice(0, 60)}</span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -380,15 +391,15 @@ export default function ObjectiveDetailPage() {
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Explicitly assigned ({assignedGuidelines.length})</p>
               <div className="space-y-1">
                 {assignedGuidelines.map((g) => (
-                  <div key={g.id} className="flex items-center gap-2 p-2 rounded border bg-forge-50 border-forge-200 text-xs">
-                    <span className="font-mono text-gray-400">{g.id}</span>
+                  <Link key={g.id} href={`/projects/${slug}/guidelines`} className="flex items-center gap-2 p-2 rounded border bg-forge-50 border-forge-200 text-xs hover:border-forge-300 transition-colors">
+                    <span className="font-mono text-forge-600">{g.id}</span>
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                       g.weight === "must" ? "bg-red-100 text-red-700" :
                       g.weight === "should" ? "bg-yellow-100 text-yellow-700" :
                       "bg-gray-100 text-gray-600"
                     }`}>{g.weight}</span>
                     <span className="text-gray-700 truncate">{g.title || g.content?.slice(0, 60)}</span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -479,14 +490,48 @@ export default function ObjectiveDetailPage() {
           </h3>
           <div className="space-y-2">
             {derivedGuidelines.map((g) => (
-              <div key={g.id} className="rounded-lg border bg-white p-3">
+              <Link
+                key={g.id}
+                href={`/projects/${slug}/guidelines`}
+                className="block rounded-lg border bg-white p-3 hover:border-forge-300 transition-colors"
+              >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 font-mono">{g.id}</span>
+                  <span className="text-xs text-forge-600 font-mono">{g.id}</span>
                   <Badge>{g.weight}</Badge>
                   <Badge>{g.scope}</Badge>
                 </div>
                 <p className="text-sm text-gray-700 mt-1">{g.content}</p>
-              </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Linked Tasks */}
+      {linkedTasks.length > 0 && (
+        <section className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">
+            Tasks ({linkedTasks.length})
+          </h3>
+          <div className="space-y-2">
+            {linkedTasks.map((task) => (
+              <Link
+                key={task.id}
+                href={`/projects/${slug}/execution/${task.id}`}
+                className="block rounded-lg border bg-white p-3 hover:border-forge-300 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 font-mono">{task.id}</span>
+                  <Badge variant={statusVariant(task.status)}>{task.status}</Badge>
+                  <Badge>{task.type}</Badge>
+                  <span className="text-sm text-gray-700 truncate">{task.name}</span>
+                </div>
+                {task.origin && (
+                  <span className="text-[10px] text-gray-400 mt-1 block">
+                    Origin: {task.origin}
+                  </span>
+                )}
+              </Link>
             ))}
           </div>
         </section>

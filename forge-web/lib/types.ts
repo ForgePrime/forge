@@ -92,6 +92,7 @@ export interface Task {
   completed_at: string | null;
   failed_reason: string | null;
   agent?: string;
+  origin?: string;
 }
 
 export interface TaskCreate {
