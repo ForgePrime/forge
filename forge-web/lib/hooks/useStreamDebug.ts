@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useChatStore } from "@/stores/chatStore";
 import type { ForgeEvent } from "@/lib/ws";
 
 // ---------------------------------------------------------------------------
@@ -75,21 +74,22 @@ const EMPTY_METADATA: StreamMetadata = {
   startTime: null,
 };
 
+const THROTTLE_MS = 100;
+
 /**
  * useStreamDebug — subscribes to WS chat events and parses them into
  * structured content blocks for the Debug tab stream view.
  *
  * Uses ref+subscription pattern (L-018, D-063) to avoid infinite re-renders:
  * - Raw events accumulate in useRef
- * - React state is updated at most every 100ms via requestAnimationFrame
+ * - React state is updated at most every 100ms via setTimeout
  */
 export function useStreamDebug() {
   // --- Ref-based accumulation (no re-renders per token) ---
   const blocksRef = useRef<ContentBlock[]>([]);
   const metadataRef = useRef<StreamMetadata>({ ...EMPTY_METADATA });
   const streamingRef = useRef(false);
-  const rafIdRef = useRef<number | null>(null);
-  const dirtyRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFlushRef = useRef(0);
 
   // --- React state (updated at throttled intervals) ---
@@ -99,34 +99,27 @@ export function useStreamDebug() {
     streaming: false,
   });
 
-  // Flush ref state to React state (throttled)
+  // Flush ref state to React state (shallow-clone each block for React.memo safety)
   const flush = useCallback(() => {
+    timerRef.current = null;
     setState({
-      blocks: [...blocksRef.current],
+      blocks: blocksRef.current.map((b) => ({ ...b })),
       metadata: { ...metadataRef.current },
       streaming: streamingRef.current,
     });
-    dirtyRef.current = false;
     lastFlushRef.current = Date.now();
-    rafIdRef.current = null;
   }, []);
 
+  // Schedule a throttled flush — at most once per THROTTLE_MS
   const scheduleFlush = useCallback(() => {
-    if (rafIdRef.current !== null) return; // Already scheduled
-    dirtyRef.current = true;
+    if (timerRef.current !== null) return; // Already scheduled
     const elapsed = Date.now() - lastFlushRef.current;
-    if (elapsed >= 100) {
-      // Enough time passed, flush on next frame
-      rafIdRef.current = requestAnimationFrame(flush);
+    if (elapsed >= THROTTLE_MS) {
+      // Enough time passed, flush immediately
+      flush();
     } else {
-      // Throttle: wait until 100ms since last flush
-      const delay = 100 - elapsed;
-      rafIdRef.current = requestAnimationFrame(() => {
-        rafIdRef.current = setTimeout(() => {
-          rafIdRef.current = null;
-          requestAnimationFrame(flush);
-        }, delay) as unknown as number;
-      });
+      // Wait until THROTTLE_MS since last flush
+      timerRef.current = setTimeout(flush, THROTTLE_MS - elapsed);
     }
   }, [flush]);
 
@@ -177,15 +170,14 @@ export function useStreamDebug() {
       case "chat.tool_result": {
         const toolId = p.id as string | undefined;
         const name = p.name as string | undefined;
-        // Find matching tool_use block and add result
+        // Find matching tool_use block and replace with updated copy
         const blocks = blocksRef.current;
         for (let i = blocks.length - 1; i >= 0; i--) {
           const b = blocks[i];
           if (b.type === "tool_use" && b.status === "pending") {
             const meta = b.metadata as Record<string, unknown>;
             if ((toolId && meta?.toolId === toolId) || (name && meta?.name === name)) {
-              b.status = "done";
-              b.metadata = { ...meta, result: p.result };
+              blocks[i] = { ...b, status: "done", metadata: { ...meta, result: p.result } };
               break;
             }
           }
@@ -229,9 +221,9 @@ export function useStreamDebug() {
     const unsub = subscribeToStreamEvents(handleEvent);
     return () => {
       unsub();
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
     };
   }, [handleEvent]);
@@ -241,7 +233,10 @@ export function useStreamDebug() {
     blocksRef.current = [];
     metadataRef.current = { ...EMPTY_METADATA };
     streamingRef.current = false;
-    dirtyRef.current = false;
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     setState({
       blocks: [],
       metadata: { ...EMPTY_METADATA },
