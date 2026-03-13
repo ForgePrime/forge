@@ -217,7 +217,7 @@ class ToolRegistry:
             Dict mapping scope name to list of {name, description} dicts.
         """
         groups: dict[str, list[dict[str, str]]] = {}
-        scope_set = set(scopes) if scopes else None
+        scope_set = set(scopes) if scopes is not None else None
 
         for tool in self._tools.values():
             tool_scope = tool.scope or "global"
@@ -276,7 +276,7 @@ class ToolRegistry:
             scope = tool.scope or "global"
             scope_tools.setdefault(scope, []).append(tool.name)
 
-        scope_set = set(session_scopes) if session_scopes else None
+        scope_set = set(session_scopes) if session_scopes is not None else None
 
         lines = ["## Forge App Map"]
         for scope_name in sorted(scope_tools.keys()):
@@ -2072,7 +2072,7 @@ async def _handle_list_available_tools(
         return {"error": "Tool registry not available in context"}
 
     session_scopes = context.get("session_scopes")
-    groups = registry.get_tools_by_scope(scopes=session_scopes if session_scopes else None)
+    groups = registry.get_tools_by_scope(scopes=session_scopes)
 
     # Format as readable text
     lines = ["## Available Tools\n"]
@@ -2110,7 +2110,7 @@ async def _handle_get_tool_contract(
 
     # Scope enforcement: if session has scopes, check tool is accessible
     session_scopes = context.get("session_scopes")
-    if session_scopes and contract["scope"] and contract["scope"] not in session_scopes:
+    if session_scopes is not None and contract["scope"] and contract["scope"] not in session_scopes:
         return {
             "error": f"Tool '{tool_name}' requires the '{contract['scope']}' scope to be enabled. "
             f"Ask the user to enable it in the Scopes tab.",

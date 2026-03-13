@@ -61,6 +61,7 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/projects\/([^/]+)\/decisions$/, scopes: ["decisions"], hasProject: true },
   { pattern: /^\/projects\/([^/]+)\/knowledge\/([^/]+)$/, scopes: ["knowledge"], hasProject: true },
   { pattern: /^\/projects\/([^/]+)\/knowledge$/, scopes: ["knowledge"], hasProject: true },
+  { pattern: /^\/projects\/([^/]+)\/guidelines\/([^/]+)$/, scopes: ["guidelines"], hasProject: true },
   { pattern: /^\/projects\/([^/]+)\/guidelines$/, scopes: ["guidelines"], hasProject: true },
   { pattern: /^\/projects\/([^/]+)\/changes$/, scopes: ["changes"], hasProject: true },
   { pattern: /^\/projects\/([^/]+)\/lessons$/, scopes: ["lessons"], hasProject: true },

@@ -288,7 +288,7 @@ async def chat(
 
     # --- Build system prompt (SKILL-like format) ---
     # 1. Base instructions (identity, capability discovery, tool usage)
-    active_scopes = session.scopes if session.scopes else None
+    active_scopes = session.scopes  # Keep [] as-is (empty = no tools allowed)
     system_prompt = _build_base_prompt(active_scopes)
 
     # 2. Entity context (supplementary — what user is working on)
@@ -391,7 +391,7 @@ async def chat(
         storage=storage,
         permissions=permissions.permissions,
         disabled_tools=body.disabled_capabilities,
-        session_scopes=session.scopes if session.scopes else None,
+        session_scopes=session.scopes,  # [] = enforce no scopes, None = no enforcement
         max_iterations=config.max_iterations_per_turn,
         max_total_tokens=config.max_tokens_per_session,
     )
@@ -407,7 +407,7 @@ async def chat(
                 "entity_id": body.context_id,  # alias for skill tool handlers
                 "project": body.project,
                 "_tool_registry": tool_registry,
-                "session_scopes": session.scopes if session.scopes else None,
+                "session_scopes": session.scopes,
             },
             on_event=on_event,
         )
