@@ -27,6 +27,8 @@ description: "Decompose a high-level goal into a tracked, dependency-aware task 
 | R6 | `skills/deep-align/SKILL.md` | Alignment procedure | Step 3 — before decomposition |
 | R7 | `python -m core.research context {project} --entity {id}` | Research linked to entity | Step 2 — load research context |
 | R8 | `python -m core.objectives show {project} {objective_id}` | Objective details + KRs | Step 2 — if planning from objective |
+| R9 | `python -m core.knowledge read {project}` | Available knowledge objects | Step 2 — for task knowledge assignment |
+| R10 | `python -m core.guidelines scopes {project}` | Available guideline scopes | Step 2 — for task scope assignment |
 
 ## Write Commands
 
@@ -104,24 +106,29 @@ python -m core.guidelines read {project} --weight must
 
 Note any lessons and `must` guidelines that apply to the current goal. Guidelines inform decomposition — e.g., if a guideline says "every endpoint needs rate limiting", that affects task structure.
 
-When decomposing (Step 5), assign `scopes` to each task based on which guidelines apply.
+When decomposing (Step 6), assign `scopes` to each task based on which guidelines apply.
 
-If planning from an idea (`/plan I-001`), load the idea's scopes and use them to filter guidelines:
+Load available scopes and knowledge so you can assign them to tasks (R9, R10):
+```bash
+python -m core.guidelines scopes {project}
+python -m core.knowledge read {project}
+```
+This gives you the full list of available scopes (e.g., `backend`, `frontend`, `database`) and knowledge objects (K-NNN). Use these when assigning `scopes` and `knowledge_ids` to tasks in Step 6. **Do not assign scopes that don't exist in guidelines** — backend tasks get backend scopes, frontend tasks get frontend scopes.
+
+If planning from an idea (`/plan I-001`), load the idea's scopes, knowledge, and research:
 ```bash
 python -m core.ideas show {project} {idea_id}
 python -m core.guidelines context {project} --scopes "{idea_scopes}"
-```
-
-Load research linked to the idea (R7):
-```bash
 python -m core.research context {project} --entity {idea_id}
 ```
+The idea's `scopes` and `knowledge_ids` are the baseline — propagate them to tasks that implement this idea. Tasks may have narrower scopes (e.g., idea has `["backend", "frontend"]` but a task only touches backend).
 
-If planning from an objective (`/plan O-001`), load the objective context (R8):
+If planning from an objective (`/plan O-001`), load the objective context, knowledge, and research:
 ```bash
 python -m core.objectives show {project} {objective_id}
 python -m core.research context {project} --entity {objective_id}
 ```
+The objective's `scopes` and `knowledge_ids` are the baseline for all tasks. Propagate relevant knowledge to tasks — if K-001 is about API patterns and K-002 about database schema, backend tasks get K-001, database tasks get K-002.
 
 **Scope resolution for objectives**: Build the full scope set by combining:
 1. `objective.scopes` — the objective's own scopes
@@ -145,7 +152,7 @@ Also check for approved ideas advancing this objective:
 ```bash
 python -m core.ideas read {project} --status APPROVED
 ```
-Filter to ideas with `advances_key_results` referencing this objective's KRs. If found, their research and exploration notes provide additional context for decomposition.
+Filter to ideas with `advances_key_results` referencing this objective's KRs. If found, their research and exploration notes provide additional context for decomposition. Inherit their `knowledge_ids` where relevant.
 
 **Must-guidelines are non-negotiable during decomposition:**
 - If a must-guideline says "all endpoints need rate limiting" → include a rate limiting task or subtask
@@ -295,8 +302,8 @@ For each task, specify:
 - `depends_on`: list of prerequisite task IDs
 - `parallel`: true if this task can run alongside siblings
 - `conflicts_with`: list of task IDs modifying same files
-- `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). Inherit from idea scopes where applicable. `general` is always included automatically during execution.
-- `knowledge_ids`: list of Knowledge IDs (K-001, etc.) that provide context for this task. Inherit from source idea where applicable. Loaded by `pipeline context` for LLM assembly.
+- `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). **Only use scopes that exist in the project** (loaded via R10 in Step 2). Inherit from idea/objective scopes but narrow per task — a backend-only task should NOT get frontend scopes. `general` is always included automatically during execution.
+- `knowledge_ids`: list of Knowledge IDs (K-001, etc.) that provide context for this task. **Only assign knowledge relevant to the task** — if K-001 is about API patterns and the task is pure CSS, don't assign K-001. Inherit from source idea/objective but distribute selectively. Loaded by `pipeline context` for LLM assembly.
 - `test_requirements`: dict with boolean keys `unit`, `integration`, `e2e` indicating which test types this task needs.
 
 Store as draft plan for review (W2):

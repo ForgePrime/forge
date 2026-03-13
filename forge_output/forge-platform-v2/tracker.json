@@ -2,7 +2,7 @@
   "project": "forge-platform-v2",
   "goal": "Implement Forge Platform v2 Phases 2-4: Database & API, Web UI, AI Features — per docs/FORGE-PLATFORM-V2.md Sections 7-11. Builds on completed Phase 1 (forge-platform-v2-phase1).",
   "created": "2026-03-10T19:00:00Z",
-  "updated": "2026-03-13T11:00:10Z",
+  "updated": "2026-03-13T11:11:18Z",
   "config": {},
   "tasks": [
     {
@@ -5717,7 +5717,7 @@
   "draft_plan": {
     "source_idea_id": null,
     "source_objective_id": "O-022",
-    "created": "2026-03-13T11:00:10Z",
+    "created": "2026-03-13T11:11:18Z",
     "tasks": [
       {
         "id": "T-182",
@@ -5737,26 +5737,6 @@
           "LLM system prompt includes full task description, acceptance criteria, and scoped guidelines",
           "Opening /projects/foo/objectives/O-001 sends objective context with KR progress",
           "Global pages (dashboard, projects list) still send context_type='global'"
-        ]
-      },
-      {
-        "id": "T-183",
-        "name": "entity-link-component",
-        "description": "Create reusable EntityLink component that renders entity IDs (T-001, D-003, O-001, K-005, I-002, G-010, L-001, R-001) as clickable links navigating to their detail pages.",
-        "instruction": "1. Create forge-web/components/EntityLink.tsx. 2. Parse entity prefix to determine route: T-→tasks, D-→decisions, O-→objectives, I-→ideas, K-→knowledge, G-→guidelines, L-→lessons, R-→research. 3. Accept project slug as prop (or infer from route). 4. Style as inline link with entity-type color coding. 5. Handle unknown prefixes gracefully (render as plain text).",
-        "depends_on": [],
-        "parallel": true,
-        "type": "feature",
-        "scopes": [
-          "frontend",
-          "ux"
-        ],
-        "origin": "O-021",
-        "acceptance_criteria": [
-          "EntityLink renders T-001 as clickable link to /projects/{slug}/tasks/T-001",
-          "Supports all entity prefixes: T, D, O, I, K, G, L, R",
-          "Entity IDs in descriptions and lists throughout UI can use EntityLink",
-          "Unknown prefixes render as plain text without error"
         ]
       },
       {
@@ -5848,10 +5828,8 @@
         "id": "T-188",
         "name": "objective-detail-enrichment",
         "description": "Enrich objective detail page with linked entities: derived guidelines, research objects, ideas advancing KRs, tasks from those ideas, and KR progress visualization.",
-        "instruction": "1. Read existing objective detail page (app/projects/[slug]/objectives/[id]/page.tsx). 2. Add sections: (a) Derived Guidelines — load guidelines where derived_from matches this objective ID, (b) Research — load research with linked_entity_id matching, (c) Ideas — load ideas with advances_key_results referencing this objective's KRs, (d) Tasks — load tasks with origin matching idea IDs or objective ID. 3. Use EntityLink for all entity IDs. 4. Show KR progress bars with current/target.",
-        "depends_on": [
-          "T-183"
-        ],
+        "instruction": "1. Read existing objective detail page (app/projects/[slug]/objectives/[id]/page.tsx). 2. Add sections: (a) Derived Guidelines — load guidelines where derived_from matches this objective ID, (b) Research — load research with linked_entity_id matching, (c) Ideas — load ideas with advances_key_results referencing this objective's KRs, (d) Tasks — load tasks with origin matching idea IDs or objective ID. 3. Use existing EntityLink component (forge-web/components/shared/EntityLink.tsx) for all entity IDs. 4. Show KR progress bars with current/target.",
+        "depends_on": [],
         "parallel": true,
         "type": "feature",
         "scopes": [
@@ -5870,10 +5848,8 @@
         "id": "T-189",
         "name": "task-detail-enrichment",
         "description": "Enrich task detail page with inherited context: scoped guidelines, knowledge objects, dependency chain (upstream tasks with status), origin idea/objective, and related decisions.",
-        "instruction": "1. Read existing task detail page (app/projects/[slug]/tasks/[id]/page.tsx). 2. Add sections: (a) Guidelines — load guidelines matching task scopes + general, (b) Knowledge — load knowledge by task.knowledge_ids, (c) Dependencies — render depends_on tasks with status and links, (d) Origin — link to idea or objective, (e) Decisions — load decisions with task_id matching this task. 3. Use EntityLink component throughout.",
-        "depends_on": [
-          "T-183"
-        ],
+        "instruction": "1. Read existing task detail page (app/projects/[slug]/tasks/[id]/page.tsx). 2. Add sections: (a) Guidelines — load guidelines matching task scopes + general, (b) Knowledge — load knowledge by task.knowledge_ids, (c) Dependencies — render depends_on tasks with status and links, (d) Origin — link to idea or objective, (e) Decisions — load decisions with task_id matching this task. 3. Use existing EntityLink component (forge-web/components/shared/EntityLink.tsx) throughout.",
+        "depends_on": [],
         "parallel": true,
         "type": "feature",
         "scopes": [
@@ -5893,10 +5869,8 @@
         "id": "T-190",
         "name": "idea-detail-enrichment",
         "description": "Enrich idea detail page with relationships: research, exploration/risk decisions, child ideas, parent idea, relations (depends_on, related_to, supersedes), and advances_key_results with progress.",
-        "instruction": "1. Read existing idea detail page (app/projects/[slug]/ideas/[id]/page.tsx). 2. Add sections: (a) Research — load research with linked_entity_id=idea.id, (b) Decisions — exploration and risk decisions linked to this idea, (c) Children — load ideas with parent_id matching, (d) Parent — link to parent idea if exists, (e) Relations — render relations array with entity links, (f) KR Links — show advances_key_results with objective KR progress. 3. Use EntityLink throughout.",
-        "depends_on": [
-          "T-183"
-        ],
+        "instruction": "1. Read existing idea detail page (app/projects/[slug]/ideas/[id]/page.tsx). 2. Add sections: (a) Research — load research with linked_entity_id=idea.id, (b) Decisions — exploration and risk decisions linked to this idea, (c) Children — load ideas with parent_id matching, (d) Parent — link to parent idea if exists, (e) Relations — render relations array with entity links, (f) KR Links — show advances_key_results with objective KR progress. 3. Use existing EntityLink component throughout.",
+        "depends_on": [],
         "parallel": true,
         "type": "feature",
         "scopes": [
@@ -5914,9 +5888,9 @@
       },
       {
         "id": "T-191",
-        "name": "enhanced-task-dag",
-        "description": "Enhance existing task DAG visualization with status-based colors, scope/type filtering, click-to-navigate, and blocked-task indicators.",
-        "instruction": "1. Find existing DAG component (likely in app/projects/[slug]/ or components/). 2. Add color coding by status: TODO=gray, IN_PROGRESS=blue, DONE=green, FAILED=red, SKIPPED=yellow. 3. Add filter dropdowns: by status, by type (feature/bug/chore), by scope. 4. Make nodes clickable — navigate to task detail page. 5. Show blocked_by_decisions as red warning icon on node. 6. Show conflicts_with as dashed edges.",
+        "name": "create-task-dag-visualization",
+        "description": "Create task DAG (directed acyclic graph) visualization from scratch. No existing DAG component exists. Show task dependency graph with status colors, filtering, click-to-navigate, and blocked indicators.",
+        "instruction": "1. Choose a lightweight graph library (recommend: @dagrejs/dagre for layout + custom SVG/Canvas rendering, or reactflow if bundle size is acceptable — record decision). 2. Create forge-web/components/projects/TaskDAG.tsx. 3. Build graph from tracker tasks: nodes = tasks, edges = depends_on. 4. Color nodes by status: TODO=gray, IN_PROGRESS=blue, DONE=green, FAILED=red, SKIPPED=yellow. 5. Add filter dropdowns: by status, by type, by scope. 6. Make nodes clickable — navigate to task detail page. 7. Show blocked_by_decisions as red warning icon. 8. Show conflicts_with as dashed edges. 9. Add to project overview or status page. 10. Handle large graphs gracefully (100+ tasks) with zoom/pan.",
         "depends_on": [],
         "parallel": true,
         "type": "feature",
@@ -5926,10 +5900,12 @@
         ],
         "origin": "O-021",
         "acceptance_criteria": [
-          "DAG nodes colored by task status (green=DONE, blue=IN_PROGRESS, etc.)",
+          "DAG renders task dependency graph with nodes and edges",
+          "Nodes colored by task status (green=DONE, blue=IN_PROGRESS, etc.)",
           "Filter dropdowns allow filtering by status, type, and scope",
           "Clicking a node navigates to task detail page",
-          "Blocked tasks show warning indicator"
+          "Blocked tasks show warning indicator",
+          "Graph supports zoom/pan for large task sets"
         ]
       },
       {
@@ -6047,8 +6023,8 @@
       {
         "id": "T-197",
         "name": "session-dashboard-page",
-        "description": "Create session dashboard page showing all active LLM sessions with real-time status, context information, message count, token usage, and duration.",
-        "instruction": "1. Create forge-web/app/sessions/page.tsx. 2. Fetch sessions from /llm/sessions endpoint. 3. Render as card grid: each card shows session_type badge, target entity, message count, token usage, status indicator, duration. 4. Cards clickable — navigate to session detail. 5. Add filters: by type, by status, by project. 6. Real-time updates: listen for chat.* WS events to update card status. 7. Add 'Sessions' link to main navigation.",
+        "description": "Create session dashboard page showing all active LLM sessions with real-time status, context information, message count, token usage, and duration. Also add session routes to scope resolver and Sessions link to navigation.",
+        "instruction": "1. Create forge-web/app/sessions/page.tsx. 2. Fetch sessions from /llm/sessions endpoint. 3. Render as card grid: each card shows session_type badge, target entity, message count, token usage, status indicator, duration. 4. Cards clickable — navigate to session detail. 5. Add filters: by type, by status, by project. 6. Real-time updates: listen for chat.* WS events to update card status. 7. Add 'Sessions' link to TopNavBar.tsx navigation. 8. Register /sessions and /sessions/[id] routes in useScopeResolver.ts (map to 'sessions' or 'global' scope).",
         "depends_on": [
           "T-196"
         ],
@@ -6064,7 +6040,8 @@
           "Each card displays: type, status, target entity, messages, tokens",
           "Cards update in real-time via WebSocket events",
           "Filters work for type, status, and project",
-          "Navigation includes 'Sessions' link"
+          "Navigation includes 'Sessions' link in TopNavBar",
+          "Session routes registered in useScopeResolver.ts"
         ]
       },
       {
@@ -6095,10 +6072,9 @@
         "id": "T-199",
         "name": "session-detail-page",
         "description": "Create session detail page showing full conversation history, tool calls with results, entities created/modified during session, token usage, and session metadata.",
-        "instruction": "1. Create forge-web/app/sessions/[id]/page.tsx. 2. Load session from GET /llm/sessions/{id}. 3. Render messages as chat bubbles (reuse LLMChat rendering). 4. Show tool calls expanded with input/output. 5. Add sidebar panel: session metadata (type, status, model, tokens, cost, duration). 6. List entities modified (extract from tool_result payloads — entity IDs from createTask, updateDecision results). 7. Use EntityLink for all entity references.",
+        "instruction": "1. Create forge-web/app/sessions/[id]/page.tsx. 2. Load session from GET /llm/sessions/{id}. 3. Render messages as chat bubbles (reuse LLMChat rendering). 4. Show tool calls expanded with input/output. 5. Add sidebar panel: session metadata (type, status, model, tokens, cost, duration). 6. List entities modified (extract from tool_result payloads — entity IDs from createTask, updateDecision results). 7. Use existing EntityLink component (forge-web/components/shared/EntityLink.tsx) for all entity references.",
         "depends_on": [
-          "T-197",
-          "T-183"
+          "T-197"
         ],
         "parallel": false,
         "type": "feature",
@@ -6118,10 +6094,8 @@
         "id": "T-200",
         "name": "decision-notification-popup",
         "description": "When a decision is created (via WS event decision.created), show a notification popup with the decision issue, context (session, task), and quick actions (Close, Defer, View).",
-        "instruction": "1. In wsDispatcher.ts, detect decision.created events. 2. Show a persistent notification (not just toast) using a new NotificationPopup component. 3. Popup shows: decision ID, issue text, related task, severity (for risks). 4. Quick actions: 'View' navigates to decision detail, 'Close' calls updateDecision, 'Defer' calls updateDecision with status=DEFERRED. 5. Popup stays visible until dismissed or action taken. 6. Multiple decisions queue (show count badge).",
-        "depends_on": [
-          "T-183"
-        ],
+        "instruction": "1. In wsDispatcher.ts, detect decision.created events. 2. Show a persistent notification (not just toast) using a new NotificationPopup component. 3. Popup shows: decision ID, issue text, related task, severity (for risks). 4. Quick actions: 'View' navigates to decision detail, 'Close' calls updateDecision, 'Defer' calls updateDecision with status=DEFERRED. 5. Popup stays visible until dismissed or action taken. 6. Multiple decisions queue (show count badge). 7. Use existing EntityLink for entity references.",
+        "depends_on": [],
         "parallel": true,
         "type": "feature",
         "scopes": [
@@ -6142,10 +6116,8 @@
         "id": "T-201",
         "name": "decision-detail-context-links",
         "description": "Enhance decision detail page with full context links: source session, related task, origin objective, applicable guidelines, and LLM reasoning chain.",
-        "instruction": "1. Read existing decision detail page. 2. Add sections: (a) Source — link to session that created this decision (if created by LLM), (b) Related Task — link to task_id with task description, (c) Objective — trace task.origin → idea → objective, show objective title and KRs, (d) Guidelines — show guidelines matching task scopes that were loaded when decision was made, (e) Reasoning — display reasoning_trace with formatting. 3. Use EntityLink for all cross-references.",
-        "depends_on": [
-          "T-183"
-        ],
+        "instruction": "1. Read existing decision detail page (app/projects/[slug]/decisions/[id]/page.tsx). 2. Add sections: (a) Source — link to session that created this decision (if created by LLM), (b) Related Task — link to task_id with task description, (c) Objective — trace task.origin → idea → objective, show objective title and KRs, (d) Guidelines — show guidelines matching task scopes that were loaded when decision was made, (e) Reasoning — display reasoning_trace with formatting. 3. Use existing EntityLink for all cross-references.",
+        "depends_on": [],
         "parallel": true,
         "type": "feature",
         "scopes": [
@@ -6188,7 +6160,7 @@
         "id": "T-203",
         "name": "notification-center",
         "description": "Create notification center showing all pending decisions, paused sessions, and action items across all projects. Accessible via bell icon in top navigation.",
-        "instruction": "1. Create forge-web/components/NotificationCenter.tsx — dropdown panel from nav bell icon. 2. Fetch: (a) OPEN decisions from /projects/{slug}/decisions?status=OPEN for each active project, (b) paused sessions from /llm/sessions?status=paused. 3. Render as list: each item shows entity type icon, title/issue, project, age. 4. Click navigates to entity. 5. Show unread count badge on bell icon. 6. Store dismissed notifications in localStorage. 7. Add bell icon to top navigation bar (layout.tsx or nav component).",
+        "instruction": "1. Create forge-web/components/NotificationCenter.tsx — dropdown panel from nav bell icon. 2. Fetch: (a) OPEN decisions from /projects/{slug}/decisions?status=OPEN for each active project, (b) paused sessions from /llm/sessions?status=paused. 3. Render as list: each item shows entity type icon, title/issue, project, age. 4. Click navigates to entity. 5. Show unread count badge on bell icon. 6. Store dismissed notifications in localStorage. 7. Add bell icon to TopNavBar.tsx.",
         "depends_on": [
           "T-200",
           "T-197"
@@ -6201,11 +6173,53 @@
         ],
         "origin": "O-020",
         "acceptance_criteria": [
-          "Bell icon in navigation shows unread count badge",
+          "Bell icon in TopNavBar shows unread count badge",
           "Clicking bell opens dropdown with pending decisions and paused sessions",
           "Each item shows type icon, title, project, and age",
           "Clicking item navigates to the relevant entity/session",
           "Dismissed notifications tracked in localStorage"
+        ]
+      },
+      {
+        "id": "T-204",
+        "name": "guideline-detail-page",
+        "description": "Create guideline detail page at /projects/[slug]/guidelines/[id]. Currently only a list page exists. EntityLink already supports G-NNN links but they have no target page.",
+        "instruction": "1. Create forge-web/app/projects/[slug]/guidelines/[id]/page.tsx. 2. Load guideline by ID from GET /projects/{slug}/guidelines (filter client-side or add API endpoint). 3. Show: title, scope, weight (must/should/may), content (markdown rendered), rationale, derived_from (link to objective if set), status. 4. Add edit button opening GuidelineForm in edit mode. 5. Show linked tasks that reference this guideline's scope. 6. Use EntityLink for derived_from objective reference.",
+        "depends_on": [],
+        "parallel": true,
+        "type": "feature",
+        "scopes": [
+          "frontend",
+          "ux"
+        ],
+        "origin": "O-021",
+        "acceptance_criteria": [
+          "Navigating to /projects/foo/guidelines/G-001 shows guideline detail",
+          "Detail page shows title, scope, weight, content, rationale",
+          "derived_from renders as clickable EntityLink to objective",
+          "Edit button opens GuidelineForm for editing",
+          "EntityLink G-NNN links throughout UI now have a valid target"
+        ]
+      },
+      {
+        "id": "T-205",
+        "name": "ai-annotations-remaining-pages",
+        "description": "Add useAIPage/useAIElement annotations to entity pages that don't have them yet: guidelines, knowledge, lessons. Currently only tasks, decisions, ideas, objectives have AI annotations.",
+        "instruction": "1. forge-web/app/projects/[slug]/guidelines/page.tsx — add useAIPage (id='guidelines', title, route) + useAIElement for filter, guideline-list (with actions: createGuideline, updateGuideline), and form. 2. forge-web/app/projects/[slug]/knowledge/page.tsx — add useAIPage + useAIElement for knowledge-list (with actions: createKnowledge, updateKnowledge). 3. forge-web/app/projects/[slug]/lessons/page.tsx — add useAIPage + useAIElement for lesson-list (with actions: createLesson). 4. Follow exact pattern from tasks/decisions/ideas/objectives pages — toolName + toolParams format. 5. Verify deriveScopes picks up the new tool names.",
+        "depends_on": [],
+        "parallel": true,
+        "type": "feature",
+        "scopes": [
+          "frontend",
+          "ai"
+        ],
+        "origin": "O-015",
+        "acceptance_criteria": [
+          "Guidelines page has useAIPage + useAIElement with createGuideline/updateGuideline tools",
+          "Knowledge page has useAIPage + useAIElement with createKnowledge/updateKnowledge tools",
+          "Lessons page has useAIPage + useAIElement with createLesson tool",
+          "AI sidebar shows correct page context and scopes when on these pages",
+          "Serialized page_context sent to LLM includes these annotations"
         ]
       }
     ]
