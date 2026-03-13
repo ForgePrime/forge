@@ -321,3 +321,70 @@ class SessionManager:
         # Sort by updated_at descending
         summaries.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
         return summaries[:limit]
+
+    async def search_sessions(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
+        """Search sessions by query string across message content.
+
+        Returns matching session summaries with a context snippet showing
+        where the match was found.
+
+        Args:
+            query: Text to search for (case-insensitive).
+            limit: Max results to return.
+
+        Returns:
+            List of session summaries with 'snippet' field, sorted by relevance.
+        """
+        if not query.strip():
+            return await self.list_sessions(limit)
+
+        query_lower = query.lower().strip()
+        session_ids = await self._redis.smembers(SESSION_INDEX_KEY)
+        results = []
+
+        for sid in session_ids:
+            raw = await self._redis.get(self._key(sid))
+            if raw is None:
+                await self._redis.srem(SESSION_INDEX_KEY, sid)
+                continue
+
+            data = json.loads(raw)
+            messages = data.get("messages", [])
+
+            # Search through message content
+            snippet = ""
+            for msg in messages:
+                content = msg.get("content", "")
+                idx = content.lower().find(query_lower)
+                if idx >= 0:
+                    # Extract snippet around match (60 chars before, 60 after)
+                    start = max(0, idx - 60)
+                    end = min(len(content), idx + len(query_lower) + 60)
+                    snippet = content[start:end]
+                    if start > 0:
+                        snippet = "..." + snippet
+                    if end < len(content):
+                        snippet = snippet + "..."
+                    break
+
+            if not snippet:
+                continue
+
+            results.append({
+                "session_id": data.get("session_id"),
+                "context_type": data.get("context_type"),
+                "context_id": data.get("context_id"),
+                "project": data.get("project"),
+                "model_used": data.get("model_used"),
+                "message_count": len(messages),
+                "total_tokens_in": data.get("total_tokens_in", 0),
+                "total_tokens_out": data.get("total_tokens_out", 0),
+                "estimated_cost": data.get("estimated_cost", 0.0),
+                "created_at": data.get("created_at"),
+                "updated_at": data.get("updated_at"),
+                "snippet": snippet,
+            })
+
+        # Sort by updated_at descending
+        results.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
+        return results[:limit]

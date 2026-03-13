@@ -576,6 +576,11 @@ export const llm = {
       "/llm/sessions", limit ? { limit: String(limit) } : undefined),
   deleteSession: (sessionId: string) =>
     remove<{ deleted: boolean; session_id: string }>(`/llm/sessions/${sessionId}`),
+  searchSessions: (query: string, searchLimit?: number) =>
+    list<{ sessions: ChatSession[]; count: number; query: string }>(
+      "/llm/sessions/search",
+      { q: query, ...(searchLimit ? { limit: String(searchLimit) } : {}) },
+    ),
   getProviders: () =>
     get<{ providers: LLMProvider[] }>("/llm/providers"),
   getProviderModels: (name: string) =>

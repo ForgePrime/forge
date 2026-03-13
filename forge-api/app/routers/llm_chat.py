@@ -651,6 +651,21 @@ async def list_sessions(
     return {"sessions": sessions, "count": len(sessions)}
 
 
+@router.get("/sessions/search")
+async def search_sessions(
+    q: str = "",
+    limit: int = 50,
+    manager=Depends(get_session_manager),
+) -> dict[str, Any]:
+    """Search sessions by query string across message content.
+
+    Returns matching sessions with a context snippet showing where the
+    match was found. Empty query returns all sessions (same as list).
+    """
+    results = await manager.search_sessions(query=q, limit=limit)
+    return {"sessions": results, "count": len(results), "query": q}
+
+
 @router.get("/sessions/{session_id}")
 async def get_session(
     session_id: str,

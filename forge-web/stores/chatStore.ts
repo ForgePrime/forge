@@ -41,6 +41,8 @@ export interface ChatSessionSummary {
   estimated_cost: number;
   created_at: string;
   updated_at: string;
+  /** Context snippet from search (only present in search results). */
+  snippet?: string;
 }
 
 interface ChatState {
@@ -95,6 +97,8 @@ interface ChatActions {
   resumeSession: (sessionId: string) => Promise<void>;
   /** Delete a session from backend and local state. */
   deleteSession: (sessionId: string) => Promise<void>;
+  /** Search sessions by query string. */
+  searchSessions: (query: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -467,6 +471,16 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : "Failed to delete session" });
+    }
+  },
+
+  searchSessions: async (query) => {
+    set({ sessionsLoading: true });
+    try {
+      const result = await llm.searchSessions(query);
+      set({ sessionList: result.sessions as ChatSessionSummary[], sessionsLoading: false });
+    } catch (e) {
+      set({ sessionsLoading: false, error: e instanceof Error ? e.message : "Search failed" });
     }
   },
 }));

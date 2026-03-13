@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import { useScopeResolver, SCOPE_TO_CONTEXT_TYPE } from "@/hooks/useScopeResolver";
 import { CAPABILITY_CONTRACTS, getCapabilitiesForScopes, getPermissionStatus, type CapabilityDef } from "@/lib/capabilities";
 import { useAIPageContextSafe, serializePageContext, deriveScopesFromElements } from "@/lib/ai-context";
@@ -313,11 +313,33 @@ function ConversationsTab({
 }: {
   onResume: (sessionId: string) => void;
 }) {
-  const { sessionList, sessionsLoading, loadSessions, deleteSession } = useChatStore();
+  const { sessionList, sessionsLoading, loadSessions, deleteSession, searchSessions } = useChatStore();
+  const [searchQuery, setSearchQuery] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
+
+  const handleSearch = useCallback(
+    (value: string) => {
+      setSearchQuery(value);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        if (value.trim()) {
+          searchSessions(value.trim());
+        } else {
+          loadSessions();
+        }
+      }, 300);
+    },
+    [searchSessions, loadSessions],
+  );
+
+  // Cleanup debounce on unmount
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
 
   const handleNew = useCallback(() => {
     useChatStore.getState().startConversation("global", "");
@@ -334,7 +356,7 @@ function ConversationsTab({
           + New conversation
         </button>
         <button
-          onClick={() => loadSessions()}
+          onClick={() => { setSearchQuery(""); loadSessions(); }}
           disabled={sessionsLoading}
           className="text-[10px] text-gray-500 hover:text-gray-700"
           title="Refresh"
@@ -342,9 +364,23 @@ function ConversationsTab({
           {sessionsLoading ? "..." : "Refresh"}
         </button>
       </div>
+
+      {/* Search input */}
+      <div className="px-3 py-1.5 border-b">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.target.value)}
+          placeholder="Search conversations..."
+          className="w-full rounded border border-gray-200 px-2 py-1 text-xs
+            focus:border-forge-400 focus:outline-none focus:ring-1 focus:ring-forge-400
+            placeholder:text-gray-400"
+        />
+      </div>
+
       {sessionList.length === 0 ? (
         <div className="flex items-center justify-center h-24 text-sm text-gray-400">
-          {sessionsLoading ? "Loading..." : "No conversations yet"}
+          {sessionsLoading ? "Loading..." : searchQuery ? "No matching conversations" : "No conversations yet"}
         </div>
       ) : (
         <div className="divide-y">
@@ -365,6 +401,12 @@ function ConversationsTab({
                   {formatTimeAgo(session.updated_at)}
                 </span>
               </div>
+              {/* Snippet from search results */}
+              {session.snippet && (
+                <div className="mt-0.5 text-[10px] text-gray-500 italic truncate" title={session.snippet}>
+                  {session.snippet}
+                </div>
+              )}
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[11px] text-gray-600">
                   {session.message_count} messages
