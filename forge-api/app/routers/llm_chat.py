@@ -254,6 +254,12 @@ async def chat(
             target_entity_id=body.target_entity_id or "",
             scopes=body.scopes or [],
         )
+    else:
+        # Sync scopes if request scopes differ from session scopes
+        request_scopes = body.scopes or []
+        if request_scopes and sorted(request_scopes) != sorted(session.scopes):
+            await session_manager.update_scopes(session.session_id, request_scopes)
+            session.scopes = request_scopes
 
     # --- Inject uploaded file content into user message ---
     user_content = body.message
@@ -398,6 +404,7 @@ async def chat(
                 "context_type": body.context_type,
                 "context_types": context_types,
                 "context_id": body.context_id,
+                "entity_id": body.context_id,  # alias for skill tool handlers
                 "project": body.project,
                 "_tool_registry": tool_registry,
                 "session_scopes": session.scopes if session.scopes else None,

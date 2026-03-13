@@ -312,7 +312,7 @@ class AgentLoop:
 
                             conversation.append(Message(
                                 role="tool",
-                                content=json.dumps(tool_result),
+                                content=json.dumps(tool_result, ensure_ascii=False, default=str),
                                 tool_call_id=tool_id,
                                 name=tool_name,
                             ))
