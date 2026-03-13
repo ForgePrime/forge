@@ -38,6 +38,8 @@ export interface ChatSessionSummary {
   session_status?: string;         // "active" | "paused" | "completed" | "failed"
   target_entity_type?: string;     // "objective" | "task" | "idea" | etc.
   target_entity_id?: string;       // Target entity ID (e.g., O-001, T-003)
+  pause_reason?: string;           // "blocked_by_decision" | ""
+  blocked_by_decision_id?: string; // Decision ID that caused pause
   model_used: string;
   message_count: number;
   total_tokens_in: number;

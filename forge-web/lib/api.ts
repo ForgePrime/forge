@@ -541,9 +541,15 @@ export const skills = {
       ...(skillNames?.length ? { skill_names: skillNames } : {}),
     }),
   gitScan: () =>
-    create<{ resynced: number; skills: string[] }>("/skills/git/scan", {}),
+    create<{ resynced: number; skills: string[]; remote_only?: string[]; remote_only_count?: number }>("/skills/git/scan", {}),
   gitInit: () =>
     create<import("@/lib/types").SkillSyncResult>("/skills/git/init", {}),
+  gitRemoteSkills: () =>
+    get<{ skills: import("@/lib/types").RemoteSkill[]; total: number; repo_only: number }>("/skills/git/remote-skills"),
+  gitCheckout: (name: string) =>
+    create<import("@/lib/types").SkillSyncResult>(`/skills/git/checkout/${name}`, {}),
+  gitDeleteRemote: (name: string, message?: string) =>
+    remove<import("@/lib/types").SkillSyncResult>(`/skills/git/remote/${name}${message ? `?message=${encodeURIComponent(message)}` : ""}`),
   // Config
   getConfig: () =>
     get<{
@@ -585,6 +591,8 @@ export const llm = {
       "/llm/sessions", limit ? { limit: String(limit) } : undefined),
   deleteSession: (sessionId: string) =>
     remove<{ deleted: boolean; session_id: string }>(`/llm/sessions/${sessionId}`),
+  resumeSession: (sessionId: string) =>
+    create<{ resumed: boolean; session_id: string }>(`/llm/sessions/${sessionId}/resume`, {}),
   searchSessions: (query: string, searchLimit?: number) =>
     list<{ sessions: ChatSession[]; count: number; query: string }>(
       "/llm/sessions/search",

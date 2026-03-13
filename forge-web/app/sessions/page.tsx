@@ -214,6 +214,14 @@ export default function SessionsPage() {
               )}
             </div>
 
+            {/* Paused: awaiting decision indicator */}
+            {session.session_status === "paused" && session.blocked_by_decision_id && (
+              <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                Awaiting decision <span className="font-mono">{session.blocked_by_decision_id}</span>
+              </div>
+            )}
+
             {/* Snippet (search results) */}
             {session.snippet && (
               <p className="text-xs text-gray-500 italic mb-2 truncate">{session.snippet}</p>

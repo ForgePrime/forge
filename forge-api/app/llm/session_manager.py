@@ -62,6 +62,8 @@ class ChatSession:
     total_tokens_out: int = 0
     estimated_cost: float = 0.0
     model_used: str = ""
+    pause_reason: str = ""             # "blocked_by_decision" | "" (empty = not paused)
+    blocked_by_decision_id: str = ""   # Decision ID that caused pause (e.g., D-005)
     created_at: str = ""
     updated_at: str = ""
 

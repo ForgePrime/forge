@@ -1016,6 +1016,8 @@ export interface ChatSession {
   session_status?: string;
   target_entity_type?: string;
   target_entity_id?: string;
+  pause_reason?: string;
+  blocked_by_decision_id?: string;
   created_at: string;
   updated_at: string;
 }

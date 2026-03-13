@@ -28,6 +28,25 @@ from core.llm.provider import (
 
 logger = logging.getLogger(__name__)
 
+# Blocking decision criteria: risk decisions with critical/high severity
+_BLOCKING_SEVERITIES = {"critical", "high"}
+
+
+def _extract_blocking_decision(tool_name: str, tool_result: dict) -> str:
+    """Return decision ID if this tool result created a blocking decision, else ''."""
+    if tool_name != "createDecision":
+        return ""
+    if not tool_result.get("created"):
+        return ""
+    decision = tool_result.get("decision", {})
+    if not isinstance(decision, dict):
+        return ""
+    # A risk decision with critical/high severity blocks the session
+    if decision.get("type") == "risk" and decision.get("severity", "").lower() in _BLOCKING_SEVERITIES:
+        return decision.get("id", "")
+    return ""
+
+
 # Safety limits
 DEFAULT_MAX_ITERATIONS = 10
 DEFAULT_MAX_TOTAL_TOKENS = 50_000
@@ -62,7 +81,8 @@ class AgentResult:
     total_output_tokens: int = 0
     iterations: int = 0
     model: str = ""
-    stop_reason: str = ""  # "complete" | "max_iterations" | "max_tokens" | "timeout" | "error" | "cancelled"
+    stop_reason: str = ""  # "complete" | "max_iterations" | "max_tokens" | "timeout" | "error" | "cancelled" | "blocked_by_decision"
+    blocked_by_decision_id: str = ""  # Decision ID if stop_reason == "blocked_by_decision"
 
 
 class AgentLoop:
@@ -285,6 +305,26 @@ class AgentLoop:
                         tool_call_id=tool_id,
                         name=tool_name,
                     ))
+
+                    # --- Check for blocking decision ---
+                    blocking_id = _extract_blocking_decision(tool_name, tool_result)
+                    if blocking_id:
+                        if on_event:
+                            await on_event(StreamEvent("paused", {
+                                "reason": "blocked_by_decision",
+                                "decision_id": blocking_id,
+                            }))
+                        return AgentResult(
+                            content=f"[Session paused: waiting for decision {blocking_id}]",
+                            messages=conversation,
+                            tool_calls_made=all_tool_calls,
+                            total_input_tokens=total_input,
+                            total_output_tokens=total_output,
+                            iterations=iteration,
+                            model=model,
+                            stop_reason="blocked_by_decision",
+                            blocked_by_decision_id=blocking_id,
+                        )
 
             # Max iterations exhausted
             return await self._stop(

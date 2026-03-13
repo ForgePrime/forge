@@ -371,6 +371,26 @@ async def chat(
         cost_per_1k_output=caps.cost_per_1k_output,
     )
 
+    # --- Handle blocked_by_decision: pause the session ---
+    if result.stop_reason == "blocked_by_decision" and result.blocked_by_decision_id:
+        loaded = await session_manager.load(session.session_id)
+        if loaded:
+            loaded.session_status = "paused"
+            loaded.pause_reason = "blocked_by_decision"
+            loaded.blocked_by_decision_id = result.blocked_by_decision_id
+            await session_manager.save(loaded)
+
+        if event_bus:
+            try:
+                slug = body.project or "_global"
+                await event_bus.emit(slug, "chat.paused", {
+                    "session_id": session.session_id,
+                    "reason": "blocked_by_decision",
+                    "decision_id": result.blocked_by_decision_id,
+                })
+            except Exception:
+                logger.debug("Failed to emit chat.paused event", exc_info=True)
+
     return ChatResponse(
         session_id=session.session_id,
         content=result.content,
@@ -698,6 +718,43 @@ async def delete_session(
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     return {"deleted": True, "session_id": session_id}
+
+
+@router.post("/sessions/{session_id}/resume")
+async def resume_session(
+    session_id: str,
+    manager=Depends(get_session_manager),
+    event_bus=Depends(get_event_bus),
+) -> dict[str, Any]:
+    """Resume a paused session (e.g., after a blocking decision is resolved).
+
+    Clears the pause_reason and blocked_by_decision_id fields,
+    sets session_status back to 'active', and emits chat.resumed event.
+    """
+    session = await manager.load(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+
+    if session.session_status != "paused":
+        return {"resumed": False, "session_id": session_id, "reason": "not_paused"}
+
+    session.session_status = "active"
+    decision_id = session.blocked_by_decision_id
+    session.pause_reason = ""
+    session.blocked_by_decision_id = ""
+    await manager.save(session)
+
+    if event_bus:
+        slug = session.project or "_global"
+        try:
+            await event_bus.emit(slug, "chat.resumed", {
+                "session_id": session_id,
+                "decision_id": decision_id,
+            })
+        except Exception:
+            logger.debug("Failed to emit chat.resumed event", exc_info=True)
+
+    return {"resumed": True, "session_id": session_id}
 
 
 # ---------------------------------------------------------------------------

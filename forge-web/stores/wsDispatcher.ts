@@ -18,6 +18,7 @@ import { useGateStore } from "./gateStore";
 import { useSkillStore } from "./skillStore";
 import { useChatStore } from "./chatStore";
 import { isRecentMutation } from "@/lib/mutationTracker";
+import { llm } from "@/lib/api";
 import { useToastStore } from "./toastStore";
 import { useActivityStore } from "./activityStore";
 import { useNotificationStore } from "./notificationStore";
@@ -194,6 +195,15 @@ export function dispatchWsEvent(event: ForgeEvent): void {
         }
       }
     }
+
+    // Session paused/resumed → revalidate sessions list
+    if (event.event === "chat.paused" || event.event === "chat.resumed") {
+      mutate(
+        (key) => typeof key === "string" && key.startsWith("/llm/sessions"),
+        undefined,
+        { revalidate: true },
+      );
+    }
     return;
   }
 
@@ -216,6 +226,18 @@ export function dispatchWsEvent(event: ForgeEvent): void {
       severity: (payload.severity as string) || undefined,
       project: event.project,
     });
+  }
+
+  // Decision closed → auto-resume any paused session waiting for this decision
+  if (event.event === "decision.closed" || event.event === "decision.status_changed") {
+    const payload = event.payload as Record<string, unknown>;
+    const status = (payload.status as string) || "";
+    if (status === "CLOSED" || status === "MITIGATED" || status === "ACCEPTED" || event.event === "decision.closed") {
+      const decisionId = (payload.decision_id ?? payload.id ?? "") as string;
+      if (decisionId) {
+        _tryResumeBlockedSessions(decisionId);
+      }
+    }
   }
 
   // 2. Trigger SWR revalidation for entity lists (unless it's our own echo)
@@ -293,6 +315,26 @@ function parseAction(eventName: string): string | null {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Try to resume any sessions that were paused waiting for a specific decision.
+ * Fetches sessions list, finds paused ones blocked by the given decision, and resumes them.
+ */
+async function _tryResumeBlockedSessions(decisionId: string): Promise<void> {
+  try {
+    const { sessions } = await llm.listSessions(200);
+    for (const session of sessions) {
+      if (
+        session.session_status === "paused" &&
+        session.blocked_by_decision_id === decisionId
+      ) {
+        await llm.resumeSession(session.session_id);
+      }
+    }
+  } catch {
+    // Best-effort: don't crash on resume failure
+  }
 }
 
 /** Track the last WS event timestamp (for connection status). */
