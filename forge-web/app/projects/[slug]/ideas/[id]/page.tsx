@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ideas as ideasApi, objectives as objectivesApi } from "@/lib/api";
 import { Badge, statusVariant } from "@/components/shared/Badge";
+import { EntityLink } from "@/components/shared/EntityLink";
 import type { Idea, Decision, Objective } from "@/lib/types";
 
 const STATUS_TRANSITIONS: Record<string, Array<{ label: string; target: string; className: string }>> = {
@@ -279,14 +280,7 @@ export default function IdeaDetailPage() {
               return (
                 <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
                   <Badge>{relType}</Badge>
-                  {targetId && (
-                    <Link
-                      href={`/projects/${slug}/ideas/${targetId}`}
-                      className="text-forge-600 hover:underline font-mono text-xs"
-                    >
-                      {targetId}
-                    </Link>
-                  )}
+                  {targetId && <EntityLink id={targetId} />}
                 </div>
               );
             })}
