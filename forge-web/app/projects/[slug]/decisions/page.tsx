@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useEntityData } from "@/hooks/useEntityData";
 import { useDecisionStore, updateDecision as updateDecisionAction } from "@/stores/decisionStore";
 import { DecisionCard } from "@/components/entities/DecisionCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
 import { DecisionForm } from "@/components/forms/DecisionForm";
+import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Decision } from "@/lib/types";
 
 const STATUSES = ["OPEN", "CLOSED", "DEFERRED", "ANALYZING", "MITIGATED", "ACCEPTED"];
@@ -23,6 +24,70 @@ export default function DecisionsPage() {
   const filtered = statusFilter
     ? decisions.filter((d) => d.status === statusFilter)
     : decisions;
+
+  // ---------------------------------------------------------------------------
+  // AI Annotations
+  // ---------------------------------------------------------------------------
+
+  useAIPage({
+    id: "decisions",
+    title: `Decisions (${count})`,
+    description: `Decision log for project ${slug}`,
+    route: `/projects/${slug}/decisions`,
+  });
+
+  const statusDist = useMemo(() => {
+    const dist: Record<string, number> = {};
+    for (const d of decisions) {
+      dist[d.status] = (dist[d.status] ?? 0) + 1;
+    }
+    return dist;
+  }, [decisions]);
+
+  useAIElement({
+    id: "status-filter",
+    type: "filter",
+    label: "Status Filter",
+    value: statusFilter || "All",
+    actions: [{ label: "Filter", description: "Filter decisions by status" }],
+  });
+
+  useAIElement({
+    id: "decision-list",
+    type: "list",
+    label: "Decisions",
+    description: `${filtered.length} shown of ${count} total`,
+    data: {
+      count,
+      filtered: filtered.length,
+      statuses: statusDist,
+    },
+    actions: [
+      { label: "Close", endpoint: `/projects/{slug}/decisions/{id}`, method: "PATCH", availableWhen: "status = OPEN" },
+      { label: "Defer", endpoint: `/projects/{slug}/decisions/{id}`, method: "PATCH", availableWhen: "status = OPEN" },
+      { label: "Mitigate", endpoint: `/projects/{slug}/decisions/{id}`, method: "PATCH", availableWhen: "status = ANALYZING" },
+      { label: "Accept", endpoint: `/projects/{slug}/decisions/{id}`, method: "PATCH", availableWhen: "status = ANALYZING" },
+      { label: "Create", endpoint: `/projects/{slug}/decisions`, method: "POST" },
+    ],
+  });
+
+  useAIElement({
+    id: "decision-form",
+    type: "form",
+    label: "Decision Form",
+    value: formOpen,
+    description: formOpen ? `open (${editingDecision ? `editing ${editingDecision.id}` : "creating"})` : "closed",
+    data: {
+      fields: ["title*", "description", "type*", "status", "reasoning_trace*", "severity", "likelihood", "linked_entity_type", "linked_entity_id"],
+    },
+    actions: [
+      {
+        label: editingDecision ? "Update" : "Create",
+        endpoint: editingDecision ? `/projects/{slug}/decisions/${editingDecision.id}` : `/projects/{slug}/decisions`,
+        method: editingDecision ? "PATCH" : "POST",
+      },
+    ],
+  });
 
   const handleStatusChange = (id: string, status: string) => {
     updateDecisionAction(slug, id, { status: status as Decision["status"] });

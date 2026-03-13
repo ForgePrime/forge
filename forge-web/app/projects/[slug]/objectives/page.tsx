@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { ObjectiveCard } from "@/components/entities/ObjectiveCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
 import { ObjectiveForm } from "@/components/forms/ObjectiveForm";
+import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Objective } from "@/lib/types";
 
 const STATUSES = ["ACTIVE", "ACHIEVED", "ABANDONED", "PAUSED"];
@@ -25,6 +26,70 @@ export default function ObjectivesPage() {
   const filtered = statusFilter
     ? objectives.filter((o) => o.status === statusFilter)
     : objectives;
+
+  // ---------------------------------------------------------------------------
+  // AI Annotations
+  // ---------------------------------------------------------------------------
+
+  useAIPage({
+    id: "objectives",
+    title: `Objectives (${slices.objectives.count})`,
+    description: `Business objectives for project ${slug}`,
+    route: `/projects/${slug}/objectives`,
+  });
+
+  const statusDist = useMemo(() => {
+    const dist: Record<string, number> = {};
+    for (const o of objectives) {
+      dist[o.status] = (dist[o.status] ?? 0) + 1;
+    }
+    return dist;
+  }, [objectives]);
+
+  useAIElement({
+    id: "status-filter",
+    type: "filter",
+    label: "Status Filter",
+    value: statusFilter || "All",
+    actions: [{ label: "Filter", description: "Filter objectives by status" }],
+  });
+
+  useAIElement({
+    id: "objective-list",
+    type: "list",
+    label: "Objectives",
+    description: `${filtered.length} shown of ${slices.objectives.count} total`,
+    data: {
+      count: slices.objectives.count,
+      filtered: filtered.length,
+      statuses: statusDist,
+    },
+    actions: [
+      { label: "Update Progress", endpoint: `/projects/{slug}/objectives/{id}`, method: "PATCH", availableWhen: "status = ACTIVE" },
+      { label: "Achieve", endpoint: `/projects/{slug}/objectives/{id}`, method: "PATCH", availableWhen: "status = ACTIVE" },
+      { label: "Abandon", endpoint: `/projects/{slug}/objectives/{id}`, method: "PATCH", availableWhen: "status = ACTIVE" },
+      { label: "Pause", endpoint: `/projects/{slug}/objectives/{id}`, method: "PATCH", availableWhen: "status = ACTIVE" },
+      { label: "Create", endpoint: `/projects/{slug}/objectives`, method: "POST" },
+    ],
+  });
+
+  useAIElement({
+    id: "objective-form",
+    type: "form",
+    label: "Objective Form",
+    value: formOpen,
+    description: formOpen ? `open (${editingObj ? `editing ${editingObj.id}` : "creating"})` : "closed",
+    data: {
+      fields: ["title*", "description", "key_results*", "appetite", "scope", "assumptions", "tags", "scopes"],
+    },
+    actions: [
+      {
+        label: editingObj ? "Update" : "Create",
+        endpoint: editingObj ? `/projects/{slug}/objectives/${editingObj.id}` : `/projects/{slug}/objectives`,
+        method: editingObj ? "PATCH" : "POST",
+      },
+    ],
+  });
 
   const handleFormSuccess = useCallback(() => {
     fetchEntities(slug, "objectives");
