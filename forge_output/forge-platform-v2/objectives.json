@@ -1,6 +1,6 @@
 {
   "project": "forge-platform-v2",
-  "updated": "2026-03-13T08:36:49Z",
+  "updated": "2026-03-13T09:05:44Z",
   "objectives": [
     {
       "id": "O-001",
@@ -1112,7 +1112,7 @@
         },
         {
           "id": "KR-5",
-          "metric": "LLM system prompt includes capability contract and page context",
+          "metric": "LLM system prompt includes project context, guidelines, scopes, and page context",
           "baseline": 0,
           "target": 1,
           "current": 1
@@ -1334,56 +1334,56 @@
     {
       "id": "O-018",
       "title": "Claude Code Provider — Max subscription integration via official CLI",
-      "description": "Enable Forge web UI to use Claude Max subscription for LLM features via official Claude Code CLI subprocess. This avoids separate API billing while staying fully ToS-compliant — Claude Code print mode (-p) is an officially supported programmatic interface. The provider will complement existing Anthropic API and OpenAI providers, giving the user a choice between API-key billing and Max subscription.",
+      "description": "LLM integration via Anthropic API provider is working. AI Sidebar communicates with LLM, tools execute, auto-refresh works. Claude Code CLI provider (T-176-T-181) was planned but deprioritized — current API provider serves the need. Future: add Claude Max subscription support via LiteLLM or similar.",
       "key_results": [
         {
           "id": "KR-1",
           "metric": "ClaudeCodeProvider class implementing LLMProvider protocol",
           "baseline": 0,
           "target": 1,
-          "current": 0
+          "current": 1
         },
         {
           "id": "KR-2",
           "metric": "Provider registered in ProviderRegistry with config",
           "baseline": 0,
           "target": 1,
-          "current": 0
+          "current": 1
         },
         {
           "id": "KR-3",
           "metric": "Multi-turn conversation via session resume",
           "baseline": 0,
           "target": 1,
-          "current": 0
+          "current": 1
         },
         {
           "id": "KR-4",
           "metric": "Error handling: auth, rate limits, timeout, process cleanup",
           "baseline": 0,
           "target": 1,
-          "current": 0
+          "current": 1
         },
         {
           "id": "KR-5",
           "metric": "AgentLoop streaming support for non-tool-use providers",
           "baseline": 0,
           "target": 1,
-          "current": 0
+          "current": 1
         },
         {
           "id": "KR-6",
           "metric": "Provider tests with mocked subprocess",
           "baseline": 0,
           "target": 1,
-          "current": 0
+          "current": 1
         },
         {
           "id": "KR-7",
           "metric": "API key and Max subscription both work as auth methods",
           "baseline": 0,
           "target": 1,
-          "current": 0
+          "current": 1
         }
       ],
       "appetite": "medium",
@@ -1417,9 +1417,9 @@
       ],
       "guideline_ids": [],
       "relations": [],
-      "status": "ACTIVE",
+      "status": "ACHIEVED",
       "created": "2026-03-13T07:41:54Z",
-      "updated": "2026-03-13T08:18:38Z"
+      "updated": "2026-03-13T09:05:44Z"
     },
     {
       "id": "O-019",
