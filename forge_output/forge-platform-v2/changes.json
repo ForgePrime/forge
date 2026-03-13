@@ -1,6 +1,6 @@
 {
   "project": "forge-platform-v2",
-  "updated": "2026-03-13T20:48:03Z",
+  "updated": "2026-03-13T21:18:20Z",
   "changes": [
     {
       "id": "C-143",
@@ -14886,6 +14886,1108 @@
       "group_id": "T-209",
       "guidelines_checked": [],
       "timestamp": "2026-03-13T20:48:03Z"
+    },
+    {
+      "id": "C-783",
+      "task_id": "T-210",
+      "file": "forge-api/app/routers/llm_chat.py",
+      "action": "edit",
+      "summary": "Investigation found chat.token events lacked block_type discriminator — both thinking and token StreamEvents mapped to same WS event type. Added block_type field to payload in llm_chat.py on_event callback. Decision D-084 recorded. Backward compatible change.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Investigation found chat.token events lacked block_type discriminator — both thinking and token StreamEvents mapped to same WS event type. Added block_type field to payload in llm_chat.py on_event callback. Decision D-084 recorded. Backward compatible change."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 7,
+      "lines_removed": 2,
+      "group_id": "T-210",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:53:32Z"
+    },
+    {
+      "id": "C-784",
+      "task_id": "T-210",
+      "file": "forge_output/forge-platform-v2/decisions.json",
+      "action": "edit",
+      "summary": "Investigation found chat.token events lacked block_type discriminator — both thinking and token StreamEvents mapped to same WS event type. Added block_type field to payload in llm_chat.py on_event callback. Decision D-084 recorded. Backward compatible change.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Investigation found chat.token events lacked block_type discriminator — both thinking and token StreamEvents mapped to same WS event type. Added block_type field to payload in llm_chat.py on_event callback. Decision D-084 recorded. Backward compatible change."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 17,
+      "lines_removed": 1,
+      "group_id": "T-210",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:53:32Z"
+    },
+    {
+      "id": "C-785",
+      "task_id": "T-210",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Investigation found chat.token events lacked block_type discriminator — both thinking and token StreamEvents mapped to same WS event type. Added block_type field to payload in llm_chat.py on_event callback. Decision D-084 recorded. Backward compatible change.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Investigation found chat.token events lacked block_type discriminator — both thinking and token StreamEvents mapped to same WS event type. Added block_type field to payload in llm_chat.py on_event callback. Decision D-084 recorded. Backward compatible change."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 6,
+      "lines_removed": 4,
+      "group_id": "T-210",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:53:32Z"
+    },
+    {
+      "id": "C-786",
+      "task_id": "T-211",
+      "file": "forge-web/components/ai/stream/ErrorBlock.tsx",
+      "action": "create",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 32,
+      "lines_removed": 0,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-787",
+      "task_id": "T-211",
+      "file": "forge-web/components/ai/stream/ResponseBlock.tsx",
+      "action": "create",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 35,
+      "lines_removed": 0,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-788",
+      "task_id": "T-211",
+      "file": "forge-web/components/ai/stream/StreamView.tsx",
+      "action": "create",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 62,
+      "lines_removed": 0,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-789",
+      "task_id": "T-211",
+      "file": "forge-web/components/ai/stream/ThinkingBlock.tsx",
+      "action": "create",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 40,
+      "lines_removed": 0,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-790",
+      "task_id": "T-211",
+      "file": "forge-web/components/ai/stream/ToolCallBlock.tsx",
+      "action": "create",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 72,
+      "lines_removed": 0,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-791",
+      "task_id": "T-211",
+      "file": "forge-web/lib/hooks/useStreamDebug.ts",
+      "action": "create",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 258,
+      "lines_removed": 0,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-792",
+      "task_id": "T-211",
+      "file": "forge-web/stores/chatStore.ts",
+      "action": "edit",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 4,
+      "lines_removed": 0,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-793",
+      "task_id": "T-211",
+      "file": "forge-web/tsconfig.tsbuildinfo",
+      "action": "edit",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-794",
+      "task_id": "T-211",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 58,
+      "lines_removed": 1,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-795",
+      "task_id": "T-211",
+      "file": "forge_output/forge-platform-v2/decisions.json",
+      "action": "edit",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 17,
+      "lines_removed": 1,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-796",
+      "task_id": "T-211",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created useStreamDebug hook with ref+subscription pattern per L-018/D-063 to avoid infinite re-renders. Hook subscribes to WS chat events via debug listener callback, accumulates in useRef, throttles React state to 100ms. Created 5 stream view components: ThinkingBlock (collapsible purple), StreamToolCallBlock (name/params/result/status), ResponseBlock (text + cursor), ErrorBlock, StreamView (orchestrator). All have AI annotations per G-017."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 12,
+      "lines_removed": 8,
+      "group_id": "T-211",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T20:57:08Z"
+    },
+    {
+      "id": "C-797",
+      "task_id": "T-212",
+      "file": "forge-web/components/ai/AISidebar.tsx",
+      "action": "edit",
+      "summary": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 66,
+      "lines_removed": 2,
+      "group_id": "T-212",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:04:53Z"
+    },
+    {
+      "id": "C-798",
+      "task_id": "T-212",
+      "file": "forge-web/stores/sidebarStore.ts",
+      "action": "edit",
+      "summary": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-212",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:04:53Z"
+    },
+    {
+      "id": "C-799",
+      "task_id": "T-212",
+      "file": "forge-web/tsconfig.tsbuildinfo",
+      "action": "edit",
+      "summary": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-212",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:04:53Z"
+    },
+    {
+      "id": "C-800",
+      "task_id": "T-212",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 267,
+      "lines_removed": 1,
+      "group_id": "T-212",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:04:53Z"
+    },
+    {
+      "id": "C-801",
+      "task_id": "T-212",
+      "file": "forge_output/forge-platform-v2/decisions.json",
+      "action": "edit",
+      "summary": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 17,
+      "lines_removed": 1,
+      "group_id": "T-212",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:04:53Z"
+    },
+    {
+      "id": "C-802",
+      "task_id": "T-212",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Added Debug tab as 5th tab in AI Sidebar. DebugTab always mounted (uses CSS hidden attr) so it captures stream events even when not the active tab. Uses useStreamDebug hook + StreamView. Metadata bar shows model, token counts, elapsed time. Clear button resets. Pulsing dot on tab label during streaming via lightweight subscribeToStreamEvents listener. SidebarTab type updated in both AISidebar.tsx and sidebarStore.ts."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 447,
+      "lines_removed": 360,
+      "group_id": "T-212",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:04:53Z"
+    },
+    {
+      "id": "C-803",
+      "task_id": "T-213",
+      "file": "forge-api/app/llm/agent_loop.py",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 46,
+      "lines_removed": 0,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-804",
+      "task_id": "T-213",
+      "file": "forge-api/app/routers/llm_chat.py",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 0,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-805",
+      "task_id": "T-213",
+      "file": "forge-web/components/ai/AISidebar.tsx",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 2,
+      "lines_removed": 4,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-806",
+      "task_id": "T-213",
+      "file": "forge-web/components/debug/ApiInspector.tsx",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 2,
+      "lines_removed": 32,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-807",
+      "task_id": "T-213",
+      "file": "forge-web/components/debug/RequestDetailPanel.tsx",
+      "action": "create",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 253,
+      "lines_removed": 0,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-808",
+      "task_id": "T-213",
+      "file": "forge-web/lib/api.ts",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 9,
+      "lines_removed": 4,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-809",
+      "task_id": "T-213",
+      "file": "forge-web/stores/debugStore.ts",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 0,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-810",
+      "task_id": "T-213",
+      "file": "forge-web/stores/sidebarStore.ts",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-811",
+      "task_id": "T-213",
+      "file": "forge-web/tsconfig.tsbuildinfo",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-812",
+      "task_id": "T-213",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 381,
+      "lines_removed": 1,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-813",
+      "task_id": "T-213",
+      "file": "forge_output/forge-platform-v2/decisions.json",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 17,
+      "lines_removed": 1,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-814",
+      "task_id": "T-213",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created RequestDetailPanel with 5 collapsible sections (Timing, Request Headers, Query Params, Request Body, Response Body). Timing has duration bar visualization. All text selectable with copy buttons. Extended api.ts interceptor to capture request headers. Replaced old inline expanded view in ApiInspector's EntryRow."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 453,
+      "lines_removed": 364,
+      "group_id": "T-213",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:10:01Z"
+    },
+    {
+      "id": "C-815",
+      "task_id": "T-214",
+      "file": "forge-web/app/globals.css",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 50,
+      "lines_removed": 0,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-816",
+      "task_id": "T-214",
+      "file": "forge-web/components/ai/AISidebar.tsx",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-817",
+      "task_id": "T-214",
+      "file": "forge-web/components/debug/BottomPanel.tsx",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 0,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-818",
+      "task_id": "T-214",
+      "file": "forge-web/components/debug/RequestDetailPanel.tsx",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 10,
+      "lines_removed": 4,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-819",
+      "task_id": "T-214",
+      "file": "forge-web/stores/debugStore.ts",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-820",
+      "task_id": "T-214",
+      "file": "forge-web/tsconfig.tsbuildinfo",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-821",
+      "task_id": "T-214",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 609,
+      "lines_removed": 1,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-822",
+      "task_id": "T-214",
+      "file": "forge_output/forge-platform-v2/decisions.json",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 17,
+      "lines_removed": 1,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-823",
+      "task_id": "T-214",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created CSS custom properties on [data-debug-panel] selector with full token set: backgrounds (4), borders (2), text (3 levels), status indicators (5), font-mono stack, spacing scale (xs-xl), radius. Dark theme optimized. Applied data-debug-panel to BottomPanel and AISidebar DebugTab. Naming convention documented."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 459,
+      "lines_removed": 368,
+      "group_id": "T-214",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:13:19Z"
+    },
+    {
+      "id": "C-824",
+      "task_id": "T-215",
+      "file": "forge-api/app/routers/llm_chat.py",
+      "action": "edit",
+      "summary": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 29,
+      "lines_removed": 0,
+      "group_id": "T-215",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:14:26Z"
+    },
+    {
+      "id": "C-825",
+      "task_id": "T-215",
+      "file": "forge-web/components/debug/JsonView.tsx",
+      "action": "create",
+      "summary": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 203,
+      "lines_removed": 0,
+      "group_id": "T-215",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:14:26Z"
+    },
+    {
+      "id": "C-826",
+      "task_id": "T-215",
+      "file": "forge-web/tsconfig.tsbuildinfo",
+      "action": "edit",
+      "summary": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-215",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:14:26Z"
+    },
+    {
+      "id": "C-827",
+      "task_id": "T-215",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 780,
+      "lines_removed": 1,
+      "group_id": "T-215",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:14:26Z"
+    },
+    {
+      "id": "C-828",
+      "task_id": "T-215",
+      "file": "forge_output/forge-platform-v2/decisions.json",
+      "action": "edit",
+      "summary": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 17,
+      "lines_removed": 1,
+      "group_id": "T-215",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:14:26Z"
+    },
+    {
+      "id": "C-829",
+      "task_id": "T-215",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created JsonView.tsx with regex-based tokenizer (keys/strings/numbers/booleans/null/punctuation), copy-to-clipboard, optional line numbers, collapsed mode for large objects (threshold 30 lines). No external deps. Under 5KB compiled. AI annotations included."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 465,
+      "lines_removed": 372,
+      "group_id": "T-215",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:14:26Z"
+    },
+    {
+      "id": "C-830",
+      "task_id": "T-216",
+      "file": "forge-api/app/llm/tool_registry.py",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 156,
+      "lines_removed": 0,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-831",
+      "task_id": "T-216",
+      "file": "forge-api/app/routers/llm_chat.py",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 31,
+      "lines_removed": 0,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-832",
+      "task_id": "T-216",
+      "file": "forge-web/components/ai/stream/ToolCallBlock.tsx",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 13,
+      "lines_removed": 10,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-833",
+      "task_id": "T-216",
+      "file": "forge-web/components/debug/ApiInspector.tsx",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 12,
+      "lines_removed": 11,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-834",
+      "task_id": "T-216",
+      "file": "forge-web/components/debug/BottomPanel.tsx",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 23,
+      "lines_removed": 13,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-835",
+      "task_id": "T-216",
+      "file": "forge-web/components/debug/LlmMonitor.tsx",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 2,
+      "lines_removed": 3,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-836",
+      "task_id": "T-216",
+      "file": "forge-web/components/debug/RequestDetailPanel.tsx",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 3,
+      "lines_removed": 25,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-837",
+      "task_id": "T-216",
+      "file": "forge-web/tsconfig.tsbuildinfo",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 1,
+      "lines_removed": 1,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-838",
+      "task_id": "T-216",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 894,
+      "lines_removed": 1,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-839",
+      "task_id": "T-216",
+      "file": "forge_output/forge-platform-v2/decisions.json",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 17,
+      "lines_removed": 1,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
+    },
+    {
+      "id": "C-840",
+      "task_id": "T-216",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Applied debug theme tokens and JsonView across all debug components. Dark theme via CSS custom properties on BottomPanel (status bar, tabs, content area) and API Inspector entries. Replaced raw JSON pre tags with JsonView in RequestDetailPanel, ToolCallBlock, and LlmMonitor. Removed BodyView (superseded). Status colors updated for dark backgrounds."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 469,
+      "lines_removed": 374,
+      "group_id": "T-216",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-13T21:18:20Z"
     }
   ]
 }

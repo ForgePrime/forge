@@ -1,6 +1,6 @@
 {
   "project": "forge-platform-v2",
-  "updated": "2026-03-13T20:07:57Z",
+  "updated": "2026-03-13T20:53:14Z",
   "decisions": [
     {
       "id": "D-001",
@@ -2872,6 +2872,22 @@
         "security",
         "error-handling"
       ]
+    },
+    {
+      "id": "D-084",
+      "task_id": "T-210",
+      "type": "architecture",
+      "issue": "WS chat.token lacks block_type discriminator for structured stream view",
+      "recommendation": "Add block_type field (values: token, thinking) to chat.token WS payload in llm_chat.py on_event callback",
+      "reasoning": "Both StreamEvent(token) and StreamEvent(thinking) mapped to same chat.token WS event with only session_id+content. Debug tab needs to distinguish thinking from response text. Minimal backward-compatible change.",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-13T20:53:14Z",
+      "tags": []
     }
   ],
   "open_count": 31

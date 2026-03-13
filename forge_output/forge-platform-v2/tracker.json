@@ -2,7 +2,7 @@
   "project": "forge-platform-v2",
   "goal": "Implement Forge Platform v2 Phases 2-4: Database & API, Web UI, AI Features — per docs/FORGE-PLATFORM-V2.md Sections 7-11. Builds on completed Phase 1 (forge-platform-v2-phase1).",
   "created": "2026-03-10T19:00:00Z",
-  "updated": "2026-03-13T20:48:03Z",
+  "updated": "2026-03-13T21:31:23Z",
   "config": {},
   "tasks": [
     {
@@ -6593,10 +6593,12 @@
       "knowledge_ids": [
         "K-006"
       ],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-13T20:51:24Z",
+      "completed_at": "2026-03-13T20:53:32Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "44af171c18b3b6b694ca1a58525d0c38f01f04de"
     },
     {
       "id": "T-211",
@@ -6629,10 +6631,12 @@
       "knowledge_ids": [
         "K-006"
       ],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-13T20:54:10Z",
+      "completed_at": "2026-03-13T20:57:08Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "7cd0a16576fb8e3fcc1ef4b2d708341210359e67"
     },
     {
       "id": "T-212",
@@ -6662,10 +6666,12 @@
       ],
       "origin": "O-023",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-13T21:00:45Z",
+      "completed_at": "2026-03-13T21:04:53Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "2b29d466780f1c5cffaecdf0aa7eb0c96c59aa87"
     },
     {
       "id": "T-213",
@@ -6695,10 +6701,12 @@
       ],
       "origin": "O-023",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-13T21:06:49Z",
+      "completed_at": "2026-03-13T21:10:01Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "3eadd03b64fabfb6fe63f1f0241d4849b094a7f4"
     },
     {
       "id": "T-214",
@@ -6724,10 +6732,12 @@
       ],
       "origin": "O-023",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-13T21:12:17Z",
+      "completed_at": "2026-03-13T21:13:19Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "17c704a5dcd9690d51d485ff3ceda194660790f1"
     },
     {
       "id": "T-215",
@@ -6753,10 +6763,12 @@
       ],
       "origin": "O-023",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-13T21:13:24Z",
+      "completed_at": "2026-03-13T21:14:27Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "a1bec741bff553ed74bcc2caff317d5b629774fe"
     },
     {
       "id": "T-216",
@@ -6789,357 +6801,440 @@
       ],
       "origin": "O-023",
       "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-13T21:14:31Z",
+      "completed_at": "2026-03-13T21:18:20Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "24689a773a06c3526aa3d218d863a3cae4f2fd78"
+    },
+    {
+      "id": "T-217",
+      "name": "session-scope-model",
+      "description": "Add scopes field to ChatSession model and SessionManager. Store per-session allowed scopes in Redis alongside session data. Add update_scopes() method to SessionManager that atomically replaces scope set.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In session_manager.py: add 'scopes: list[str] = []' field to ChatSession dataclass (~line 48). 2. In SessionManager.create(): accept scopes parameter, store in session dict. 3. Add update_scopes(session_id, scopes) method: load session, replace scopes, save back to Redis with existing TTL. 4. Ensure load() deserializes scopes field. 5. Ensure scopes are included in session serialization to Redis. 6. In llm_chat.py chat endpoint: pass body.scopes to session creation when creating new session.",
+      "acceptance_criteria": [
+        "ChatSession has scopes: list[str] field",
+        "SessionManager.create() stores scopes in Redis",
+        "SessionManager.update_scopes() atomically replaces scope set",
+        "load() correctly deserializes scopes",
+        "New sessions created from chat endpoint include request scopes"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:06:44Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-218",
+      "name": "scope-enforcement-backend",
+      "description": "Add server-side scope enforcement in agent_loop tool execution. Before executing any tool, check if the tool's scope is in the session's allowed scopes. Reject unauthorized calls with a clear, non-500 error message that tells the AI which scope to suggest enabling.",
+      "depends_on": [
+        "T-217"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In agent_loop.py run() method: load session scopes at loop start (from session object or Redis). 2. Before tool_registry.execute() call (~line 277): check tool's scope (from ToolDef.scope) against session scopes. 3. If tool scope is not in session scopes and tool is not a global tool (no scope or meta-tool): return tool result with error 'Permission denied: scope [X] is not enabled. Suggest the user enable it in the Scopes tab.' 4. Global/meta tools (searchEntities, getEntity, listEntities, getProject, getProjectStatus, listAvailableTools, getToolContract) always allowed regardless of scope. 5. Add GLOBAL_TOOLS set constant for tools that bypass scope check. 6. Log scope enforcement decisions for audit.",
+      "acceptance_criteria": [
+        "Tool calls outside session scopes are rejected with clear error (not 500)",
+        "Error message includes which scope needs to be enabled",
+        "Global/meta tools are always allowed regardless of scope",
+        "Scope check happens before handler execution (defense in depth)",
+        "Enforcement is logged for audit"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai",
+        "security"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-003",
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:08:10Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-219",
+      "name": "scope-sync-endpoint",
+      "description": "New PATCH endpoint to update session scopes. Frontend calls this when user toggles scopes in the Scopes tab. Endpoint updates Redis session data and returns updated scope list.",
+      "depends_on": [
+        "T-217"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In llm_chat.py: add PATCH /llm/sessions/{session_id}/scopes endpoint. 2. Request body: { scopes: string[] }. 3. Load session via SessionManager.load(). 4. Call SessionManager.update_scopes(session_id, scopes). 5. Return { session_id, scopes, updated_at }. 6. If session not found: 404. 7. Follow G-003 RESTful conventions.",
+      "acceptance_criteria": [
+        "PATCH /api/v1/llm/sessions/{session_id}/scopes updates scopes in Redis",
+        "Returns updated scope list",
+        "404 if session not found",
+        "Scopes are immediately available to next agent_loop iteration"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "api"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:15:56Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-220",
+      "name": "scope-sync-frontend",
+      "description": "Frontend scope toggle in AISidebar calls the new PATCH endpoint to sync scopes to backend. Also listens for localStorage storage events for cross-tab scope propagation.",
+      "depends_on": [
+        "T-219"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In chatStore.ts or sidebarStore.ts: add updateSessionScopes(sessionId, scopes) action that calls PATCH /api/v1/llm/sessions/{id}/scopes. 2. In AISidebar.tsx ScopesTab: when user toggles a scope, call updateSessionScopes with current active session ID and new scope list. 3. Add localStorage event listener in AISidebar for cross-tab scope sync: when scopes change in another tab, update local state and call PATCH if active session exists. 4. Handle case where no active session exists (queue scopes for next session creation).",
+      "acceptance_criteria": [
+        "Scope toggle in Scopes tab calls PATCH endpoint",
+        "Backend receives updated scopes within 1s of toggle",
+        "Cross-tab scope changes propagate via localStorage events",
+        "Scope changes without active session are queued for next session"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "ai"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:21:50Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-221",
+      "name": "list-available-tools",
+      "description": "New meta-tool listAvailableTools() that returns tools grouped by module, filtered by session scopes. Always available (no scope requirement). Returns tool names and one-line descriptions, not full schemas.",
+      "depends_on": [
+        "T-218"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In tool_registry.py: add method get_tools_by_scope(scopes: list[str]) -> dict[str, list[dict]] that returns {module: [{name, description}]} filtered by scopes. 2. Register new tool 'listAvailableTools' with no required_permission, context_types=['global'], no scope. 3. Handler: get session scopes from context, call get_tools_by_scope(), return grouped listing. 4. Format output as clear text: '## Available Tools\\n### tasks\\n- createTask: Create a new task...\\n- updateTask: Update task fields...\\n### decisions\\n...' 5. In context_resolver.py or system prompt: mention that AI can call listAvailableTools() to discover what it can do.",
+      "acceptance_criteria": [
+        "listAvailableTools() returns tools grouped by module",
+        "Only tools within session scopes are listed",
+        "Global tools always included",
+        "Returns name + one-line description per tool (not full schema)",
+        "Tool is always available regardless of scope"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-003",
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:15:58Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-222",
+      "name": "get-tool-contract",
+      "description": "New meta-tool getToolContract(toolName) that returns full JSON Schema, description, examples, and required permissions for a single tool. Scope-enforced: only returns contracts for tools within session scopes.",
+      "depends_on": [
+        "T-218"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In tool_registry.py: add method get_tool_contract(tool_name: str) -> dict|None that returns {name, description, parameters (JSON Schema), required_permission, scope, examples}. 2. Register new tool 'getToolContract' with params: toolName* (required). No required_permission, context_types=['global'], no scope. 3. Handler: validate tool_name exists, check tool scope against session scopes (reject if out of scope), return full contract. 4. Add usage examples to ToolDef (optional field, manually add for top 10 most-used tools). 5. Format output as clear markdown with JSON Schema formatted for readability.",
+      "acceptance_criteria": [
+        "getToolContract(toolName) returns full JSON Schema + description",
+        "Out-of-scope tool requests return permission denied (not tool details)",
+        "Non-existent tool returns clear error",
+        "Top 10 tools have usage examples in contract output",
+        "Tool is always available regardless of scope"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-003",
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:15:59Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-223",
+      "name": "app-map-system-context",
+      "description": "Generate lightweight app map from ToolRegistry and inject into system prompt. Map shows all modules with tool counts and current page highlight. ~500 tokens budget.",
+      "depends_on": [
+        "T-221",
+        "T-222"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In tool_registry.py: add method generate_app_map(session_scopes: list[str]) -> str that builds a compact map: '## Forge App Map\\n[x] tasks (6 tools) — createTask, updateTask, ...\\n[x] decisions (4 tools)\\n[ ] skills (disabled)\\n...' 2. Mark enabled scopes with [x], disabled with [ ]. 3. In llm_chat.py: call generate_app_map() with session scopes and prepend to system prompt before page context. 4. Keep total map under 500 tokens (~2000 chars). 5. Include hint: 'Use listAvailableTools() for details, getToolContract(name) for full schema.'",
+      "acceptance_criteria": [
+        "App map generated from ToolRegistry shows all modules",
+        "Enabled scopes marked with [x], disabled with [ ]",
+        "Map is under 500 tokens (~2000 chars)",
+        "Map includes tool counts and names per module",
+        "Injected into system prompt before page context"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:21:50Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-224",
+      "name": "system-prompt-skill-rewrite",
+      "description": "Rewrite the LLM system prompt to act as a SKILL — instructive text that tells AI what it can do, how to discover tools, how to call them, with examples. Replace current generic prompt with structured capability instructions.",
+      "depends_on": [
+        "T-223"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In llm_chat.py: rewrite the system prompt construction (~line 220-250) to include: (a) Identity section: 'You are Forge AI assistant with access to project tools.', (b) Capability discovery: 'Call listAvailableTools() to see what you can do. Call getToolContract(name) for parameter details.', (c) Tool calling instructions: 'When you need to perform an action, use the appropriate tool call. Always check tool availability first.', (d) Scope awareness: 'You can only use tools in enabled scopes: [list]. If a tool is not available, suggest the user enable the scope.', (e) Error handling: 'If a tool call fails with permission denied, explain which scope needs to be enabled.', (f) Examples section with 2-3 common workflows. 2. In context_resolver.py: keep entity-specific context but make it supplementary to the skill-like prompt. 3. Ensure page context (from serializer) is appended after the skill prompt.",
+      "acceptance_criteria": [
+        "System prompt is instructive (tells AI HOW, not just WHAT)",
+        "Includes capability discovery instructions (listAvailableTools, getToolContract)",
+        "Includes scope awareness with enabled scope list",
+        "Includes 2-3 workflow examples",
+        "AI never says it cannot do something that is actually available"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-005",
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:27:13Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-225",
+      "name": "auto-updating-context",
+      "description": "Ensure AI context auto-updates when user navigates or changes scopes. Page context re-serialized on each message. Scope changes trigger immediate context refresh without manual intervention.",
+      "depends_on": [
+        "T-220",
+        "T-224"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In AISidebar.tsx: verify that pageContextText is recomputed on every render (already uses useMemo with pageSnapshot dependency). 2. When scopes change (after PATCH call succeeds), force re-serialization of page context with new activeScopes. 3. Add scope change to message metadata: when sending a message after scope change, include updated scopes in ChatRequest. 4. In llm_chat.py: if request scopes differ from session scopes, update session scopes before processing message. 5. Ensure the serialized page context in system prompt always reflects current scopes.",
+      "acceptance_criteria": [
+        "Page navigation updates AI context automatically",
+        "Scope toggle immediately affects next message context",
+        "No manual refresh needed after navigation or scope change",
+        "ChatRequest always includes current scopes",
+        "System prompt reflects current scopes on every message"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "backend",
+        "ai"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:31:23Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-226",
+      "name": "e2e-tool-execution-fix",
+      "description": "End-to-end verification and fix of the complete tool execution flow: AI calls tool via tool_call, backend executes via agent_loop + tool_registry, result flows back to conversation. Fix any remaining 500 errors or broken flows.",
+      "depends_on": [
+        "T-218",
+        "T-224"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Test the full flow manually: send a message that should trigger a tool call (e.g., 'Create a task called test'). 2. Verify: (a) AI includes tool_call in response, (b) agent_loop picks up tool_call, (c) scope check passes, (d) tool_registry.execute() runs handler, (e) result is added to conversation, (f) AI responds with tool result. 3. Fix any broken steps. Common issues: tool parameter mapping, context dict missing required fields, handler exceptions not caught. 4. Verify with at least 3 different tools: createTask, searchEntities, getEntity. 5. Verify scope enforcement: try calling a tool outside scope, verify clean error.",
+      "acceptance_criteria": [
+        "createTask tool call works end-to-end (AI calls -> backend executes -> result flows back)",
+        "searchEntities works end-to-end",
+        "Out-of-scope tool call returns clean error (not 500)",
+        "Zero 500 errors from normal tool execution",
+        "Tool results correctly appear in conversation"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-003",
+        "K-005",
+        "K-006"
+      ],
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-13T21:31:23Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": true
+      }
+    },
+    {
+      "id": "T-227",
+      "name": "deep-verify-o024",
+      "description": "Deep-verify the entire O-024 implementation: session scope model, backend enforcement, scope sync, meta-tools, app map, system prompt, auto-updating context, and end-to-end tool execution.",
+      "depends_on": [
+        "T-226",
+        "T-225"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Run deep-verify with 3 parallel agents: (a) Security agent: verify scope enforcement cannot be bypassed, test edge cases (empty scopes, unknown tool, meta-tool access), (b) Data flow agent: verify session scopes persist correctly, scope sync works frontend->backend->Redis->agent_loop, (c) UX agent: verify system prompt is instructive, AI understands capabilities, auto-updating context works. 2. Check all 6 KRs of O-024 are met. 3. Record any issues found as decisions or fix immediately.",
+      "acceptance_criteria": [
+        "Deep-verify passes with no CRITICAL or HIGH issues",
+        "All 6 KRs of O-024 are verified",
+        "Security: scope enforcement cannot be bypassed",
+        "Data flow: scopes persist and sync correctly",
+        "UX: AI understands and uses its capabilities"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend",
+        "ai",
+        "security"
+      ],
+      "origin": "O-024",
+      "knowledge_ids": [
+        "K-003",
+        "K-005",
+        "K-006"
+      ],
       "status": "TODO",
       "started_at": null,
       "completed_at": null,
-      "failed_reason": null
-    }
-  ],
-  "draft_plan": {
-    "source_idea_id": null,
-    "source_objective_id": "O-024",
-    "created": "2026-03-13T20:32:33Z",
-    "tasks": [
-      {
-        "id": "T-206",
-        "name": "session-scope-model",
-        "description": "Add scopes field to ChatSession model and SessionManager. Store per-session allowed scopes in Redis alongside session data. Add update_scopes() method to SessionManager that atomically replaces scope set.",
-        "instruction": "1. In session_manager.py: add 'scopes: list[str] = []' field to ChatSession dataclass (~line 48). 2. In SessionManager.create(): accept scopes parameter, store in session dict. 3. Add update_scopes(session_id, scopes) method: load session, replace scopes, save back to Redis with existing TTL. 4. Ensure load() deserializes scopes field. 5. Ensure scopes are included in session serialization to Redis. 6. In llm_chat.py chat endpoint: pass body.scopes to session creation when creating new session.",
-        "type": "feature",
-        "depends_on": [],
-        "parallel": false,
-        "scopes": [
-          "backend",
-          "ai"
-        ],
-        "knowledge_ids": [
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "ChatSession has scopes: list[str] field",
-          "SessionManager.create() stores scopes in Redis",
-          "SessionManager.update_scopes() atomically replaces scope set",
-          "load() correctly deserializes scopes",
-          "New sessions created from chat endpoint include request scopes"
-        ],
-        "test_requirements": {
-          "unit": true,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-207",
-        "name": "scope-enforcement-backend",
-        "description": "Add server-side scope enforcement in agent_loop tool execution. Before executing any tool, check if the tool's scope is in the session's allowed scopes. Reject unauthorized calls with a clear, non-500 error message that tells the AI which scope to suggest enabling.",
-        "instruction": "1. In agent_loop.py run() method: load session scopes at loop start (from session object or Redis). 2. Before tool_registry.execute() call (~line 277): check tool's scope (from ToolDef.scope) against session scopes. 3. If tool scope is not in session scopes and tool is not a global tool (no scope or meta-tool): return tool result with error 'Permission denied: scope [X] is not enabled. Suggest the user enable it in the Scopes tab.' 4. Global/meta tools (searchEntities, getEntity, listEntities, getProject, getProjectStatus, listAvailableTools, getToolContract) always allowed regardless of scope. 5. Add GLOBAL_TOOLS set constant for tools that bypass scope check. 6. Log scope enforcement decisions for audit.",
-        "type": "feature",
-        "depends_on": [
-          "T-206"
-        ],
-        "parallel": false,
-        "scopes": [
-          "backend",
-          "ai",
-          "security"
-        ],
-        "knowledge_ids": [
-          "K-003",
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "Tool calls outside session scopes are rejected with clear error (not 500)",
-          "Error message includes which scope needs to be enabled",
-          "Global/meta tools are always allowed regardless of scope",
-          "Scope check happens before handler execution (defense in depth)",
-          "Enforcement is logged for audit"
-        ],
-        "test_requirements": {
-          "unit": true,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-208",
-        "name": "scope-sync-endpoint",
-        "description": "New PATCH endpoint to update session scopes. Frontend calls this when user toggles scopes in the Scopes tab. Endpoint updates Redis session data and returns updated scope list.",
-        "instruction": "1. In llm_chat.py: add PATCH /llm/sessions/{session_id}/scopes endpoint. 2. Request body: { scopes: string[] }. 3. Load session via SessionManager.load(). 4. Call SessionManager.update_scopes(session_id, scopes). 5. Return { session_id, scopes, updated_at }. 6. If session not found: 404. 7. Follow G-003 RESTful conventions.",
-        "type": "feature",
-        "depends_on": [
-          "T-206"
-        ],
-        "parallel": true,
-        "scopes": [
-          "backend",
-          "api"
-        ],
-        "knowledge_ids": [
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "PATCH /api/v1/llm/sessions/{session_id}/scopes updates scopes in Redis",
-          "Returns updated scope list",
-          "404 if session not found",
-          "Scopes are immediately available to next agent_loop iteration"
-        ],
-        "test_requirements": {
-          "unit": true,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-209",
-        "name": "scope-sync-frontend",
-        "description": "Frontend scope toggle in AISidebar calls the new PATCH endpoint to sync scopes to backend. Also listens for localStorage storage events for cross-tab scope propagation.",
-        "instruction": "1. In chatStore.ts or sidebarStore.ts: add updateSessionScopes(sessionId, scopes) action that calls PATCH /api/v1/llm/sessions/{id}/scopes. 2. In AISidebar.tsx ScopesTab: when user toggles a scope, call updateSessionScopes with current active session ID and new scope list. 3. Add localStorage event listener in AISidebar for cross-tab scope sync: when scopes change in another tab, update local state and call PATCH if active session exists. 4. Handle case where no active session exists (queue scopes for next session creation).",
-        "type": "feature",
-        "depends_on": [
-          "T-208"
-        ],
-        "parallel": false,
-        "scopes": [
-          "frontend",
-          "ai"
-        ],
-        "knowledge_ids": [],
-        "acceptance_criteria": [
-          "Scope toggle in Scopes tab calls PATCH endpoint",
-          "Backend receives updated scopes within 1s of toggle",
-          "Cross-tab scope changes propagate via localStorage events",
-          "Scope changes without active session are queued for next session"
-        ],
-        "test_requirements": {
-          "unit": false,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-210",
-        "name": "list-available-tools",
-        "description": "New meta-tool listAvailableTools() that returns tools grouped by module, filtered by session scopes. Always available (no scope requirement). Returns tool names and one-line descriptions, not full schemas.",
-        "instruction": "1. In tool_registry.py: add method get_tools_by_scope(scopes: list[str]) -> dict[str, list[dict]] that returns {module: [{name, description}]} filtered by scopes. 2. Register new tool 'listAvailableTools' with no required_permission, context_types=['global'], no scope. 3. Handler: get session scopes from context, call get_tools_by_scope(), return grouped listing. 4. Format output as clear text: '## Available Tools\n### tasks\n- createTask: Create a new task...\n- updateTask: Update task fields...\n### decisions\n...' 5. In context_resolver.py or system prompt: mention that AI can call listAvailableTools() to discover what it can do.",
-        "type": "feature",
-        "depends_on": [
-          "T-207"
-        ],
-        "parallel": true,
-        "scopes": [
-          "backend",
-          "ai"
-        ],
-        "knowledge_ids": [
-          "K-003",
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "listAvailableTools() returns tools grouped by module",
-          "Only tools within session scopes are listed",
-          "Global tools always included",
-          "Returns name + one-line description per tool (not full schema)",
-          "Tool is always available regardless of scope"
-        ],
-        "test_requirements": {
-          "unit": true,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-211",
-        "name": "get-tool-contract",
-        "description": "New meta-tool getToolContract(toolName) that returns full JSON Schema, description, examples, and required permissions for a single tool. Scope-enforced: only returns contracts for tools within session scopes.",
-        "instruction": "1. In tool_registry.py: add method get_tool_contract(tool_name: str) -> dict|None that returns {name, description, parameters (JSON Schema), required_permission, scope, examples}. 2. Register new tool 'getToolContract' with params: toolName* (required). No required_permission, context_types=['global'], no scope. 3. Handler: validate tool_name exists, check tool scope against session scopes (reject if out of scope), return full contract. 4. Add usage examples to ToolDef (optional field, manually add for top 10 most-used tools). 5. Format output as clear markdown with JSON Schema formatted for readability.",
-        "type": "feature",
-        "depends_on": [
-          "T-207"
-        ],
-        "parallel": true,
-        "scopes": [
-          "backend",
-          "ai"
-        ],
-        "knowledge_ids": [
-          "K-003",
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "getToolContract(toolName) returns full JSON Schema + description",
-          "Out-of-scope tool requests return permission denied (not tool details)",
-          "Non-existent tool returns clear error",
-          "Top 10 tools have usage examples in contract output",
-          "Tool is always available regardless of scope"
-        ],
-        "test_requirements": {
-          "unit": true,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-212",
-        "name": "app-map-system-context",
-        "description": "Generate lightweight app map from ToolRegistry and inject into system prompt. Map shows all modules with tool counts and current page highlight. ~500 tokens budget.",
-        "instruction": "1. In tool_registry.py: add method generate_app_map(session_scopes: list[str]) -> str that builds a compact map: '## Forge App Map\n[x] tasks (6 tools) — createTask, updateTask, ...\n[x] decisions (4 tools)\n[ ] skills (disabled)\n...' 2. Mark enabled scopes with [x], disabled with [ ]. 3. In llm_chat.py: call generate_app_map() with session scopes and prepend to system prompt before page context. 4. Keep total map under 500 tokens (~2000 chars). 5. Include hint: 'Use listAvailableTools() for details, getToolContract(name) for full schema.'",
-        "type": "feature",
-        "depends_on": [
-          "T-210",
-          "T-211"
-        ],
-        "parallel": false,
-        "scopes": [
-          "backend",
-          "ai"
-        ],
-        "knowledge_ids": [
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "App map generated from ToolRegistry shows all modules",
-          "Enabled scopes marked with [x], disabled with [ ]",
-          "Map is under 500 tokens (~2000 chars)",
-          "Map includes tool counts and names per module",
-          "Injected into system prompt before page context"
-        ],
-        "test_requirements": {
-          "unit": true,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-213",
-        "name": "system-prompt-skill-rewrite",
-        "description": "Rewrite the LLM system prompt to act as a SKILL — instructive text that tells AI what it can do, how to discover tools, how to call them, with examples. Replace current generic prompt with structured capability instructions.",
-        "instruction": "1. In llm_chat.py: rewrite the system prompt construction (~line 220-250) to include: (a) Identity section: 'You are Forge AI assistant with access to project tools.', (b) Capability discovery: 'Call listAvailableTools() to see what you can do. Call getToolContract(name) for parameter details.', (c) Tool calling instructions: 'When you need to perform an action, use the appropriate tool call. Always check tool availability first.', (d) Scope awareness: 'You can only use tools in enabled scopes: [list]. If a tool is not available, suggest the user enable the scope.', (e) Error handling: 'If a tool call fails with permission denied, explain which scope needs to be enabled.', (f) Examples section with 2-3 common workflows. 2. In context_resolver.py: keep entity-specific context but make it supplementary to the skill-like prompt. 3. Ensure page context (from serializer) is appended after the skill prompt.",
-        "type": "feature",
-        "depends_on": [
-          "T-212"
-        ],
-        "parallel": false,
-        "scopes": [
-          "backend",
-          "ai"
-        ],
-        "knowledge_ids": [
-          "K-005",
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "System prompt is instructive (tells AI HOW, not just WHAT)",
-          "Includes capability discovery instructions (listAvailableTools, getToolContract)",
-          "Includes scope awareness with enabled scope list",
-          "Includes 2-3 workflow examples",
-          "AI never says it cannot do something that is actually available"
-        ],
-        "test_requirements": {
-          "unit": false,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-214",
-        "name": "auto-updating-context",
-        "description": "Ensure AI context auto-updates when user navigates or changes scopes. Page context re-serialized on each message. Scope changes trigger immediate context refresh without manual intervention.",
-        "instruction": "1. In AISidebar.tsx: verify that pageContextText is recomputed on every render (already uses useMemo with pageSnapshot dependency). 2. When scopes change (after PATCH call succeeds), force re-serialization of page context with new activeScopes. 3. Add scope change to message metadata: when sending a message after scope change, include updated scopes in ChatRequest. 4. In llm_chat.py: if request scopes differ from session scopes, update session scopes before processing message. 5. Ensure the serialized page context in system prompt always reflects current scopes.",
-        "type": "feature",
-        "depends_on": [
-          "T-209",
-          "T-213"
-        ],
-        "parallel": false,
-        "scopes": [
-          "frontend",
-          "backend",
-          "ai"
-        ],
-        "knowledge_ids": [
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "Page navigation updates AI context automatically",
-          "Scope toggle immediately affects next message context",
-          "No manual refresh needed after navigation or scope change",
-          "ChatRequest always includes current scopes",
-          "System prompt reflects current scopes on every message"
-        ],
-        "test_requirements": {
-          "unit": false,
-          "integration": false,
-          "e2e": false
-        }
-      },
-      {
-        "id": "T-215",
-        "name": "e2e-tool-execution-fix",
-        "description": "End-to-end verification and fix of the complete tool execution flow: AI calls tool via tool_call, backend executes via agent_loop + tool_registry, result flows back to conversation. Fix any remaining 500 errors or broken flows.",
-        "instruction": "1. Test the full flow manually: send a message that should trigger a tool call (e.g., 'Create a task called test'). 2. Verify: (a) AI includes tool_call in response, (b) agent_loop picks up tool_call, (c) scope check passes, (d) tool_registry.execute() runs handler, (e) result is added to conversation, (f) AI responds with tool result. 3. Fix any broken steps. Common issues: tool parameter mapping, context dict missing required fields, handler exceptions not caught. 4. Verify with at least 3 different tools: createTask, searchEntities, getEntity. 5. Verify scope enforcement: try calling a tool outside scope, verify clean error.",
-        "type": "feature",
-        "depends_on": [
-          "T-207",
-          "T-213"
-        ],
-        "parallel": false,
-        "scopes": [
-          "backend",
-          "ai"
-        ],
-        "knowledge_ids": [
-          "K-003",
-          "K-005",
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "createTask tool call works end-to-end (AI calls -> backend executes -> result flows back)",
-          "searchEntities works end-to-end",
-          "Out-of-scope tool call returns clean error (not 500)",
-          "Zero 500 errors from normal tool execution",
-          "Tool results correctly appear in conversation"
-        ],
-        "test_requirements": {
-          "unit": false,
-          "integration": true,
-          "e2e": true
-        }
-      },
-      {
-        "id": "T-216",
-        "name": "deep-verify-o024",
-        "description": "Deep-verify the entire O-024 implementation: session scope model, backend enforcement, scope sync, meta-tools, app map, system prompt, auto-updating context, and end-to-end tool execution.",
-        "instruction": "1. Run deep-verify with 3 parallel agents: (a) Security agent: verify scope enforcement cannot be bypassed, test edge cases (empty scopes, unknown tool, meta-tool access), (b) Data flow agent: verify session scopes persist correctly, scope sync works frontend->backend->Redis->agent_loop, (c) UX agent: verify system prompt is instructive, AI understands capabilities, auto-updating context works. 2. Check all 6 KRs of O-024 are met. 3. Record any issues found as decisions or fix immediately.",
-        "type": "chore",
-        "depends_on": [
-          "T-215",
-          "T-214"
-        ],
-        "parallel": false,
-        "scopes": [
-          "backend",
-          "frontend",
-          "ai",
-          "security"
-        ],
-        "knowledge_ids": [
-          "K-003",
-          "K-005",
-          "K-006"
-        ],
-        "acceptance_criteria": [
-          "Deep-verify passes with no CRITICAL or HIGH issues",
-          "All 6 KRs of O-024 are verified",
-          "Security: scope enforcement cannot be bypassed",
-          "Data flow: scopes persist and sync correctly",
-          "UX: AI understands and uses its capabilities"
-        ],
-        "test_requirements": {
-          "unit": false,
-          "integration": true,
-          "e2e": true
-        }
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": true
       }
-    ]
-  }
+    }
+  ]
 }
