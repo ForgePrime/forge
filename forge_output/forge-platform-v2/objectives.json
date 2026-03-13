@@ -1,6 +1,6 @@
 {
   "project": "forge-platform-v2",
-  "updated": "2026-03-13T08:18:38Z",
+  "updated": "2026-03-13T08:36:49Z",
   "objectives": [
     {
       "id": "O-001",
@@ -1078,41 +1078,48 @@
     },
     {
       "id": "O-015",
-      "title": "Enhanced AI Chat — slash commands, cross-scope search, and capability-aware LLM",
-      "description": "Upgrade the chat experience inside the AI Sidebar. DEEP-VERIFY FINDINGS: (1) ChatInput.tsx is 72 lines — slash-command autocomplete adds ~150-200 lines of new logic (dropdown state, keyboard nav, fuzzy filtering), consider separate SlashCommandDropdown sub-component, (2) ContextPayload.to_system_prompt() is the correct method (NOT ContextResolver.to_system_prompt()), (3) GET /sessions/search must be registered BEFORE GET /sessions/{session_id} in FastAPI router to avoid route conflict, (4) Streaming requires WS event wiring fix — current sendMessage() blocks on HTTP response showing 'Thinking...', WS handlers exist but may not receive events, (5) Session loading/filtering is O-014's responsibility — this objective handles scope-switching BEHAVIOR and cross-scope search only.",
+      "title": "LLM Deep Context & Chat UX — scope negotiation, entity context, slash commands, streaming",
+      "description": "Upgrade LLM integration so AI understands what the user sees and edits, can negotiate missing scopes, receives entity content (not just page summary), and has polished chat UX (slash commands, WS streaming, conversation search). This is the bridge between O-017 (page annotations) and O-019 (multi-session orchestration).",
       "status": "ACTIVE",
       "key_results": [
         {
           "id": "KR-1",
-          "metric": "Slash-command autocomplete in chat input",
+          "metric": "LLM receives full entity content when user views/edits an entity",
           "baseline": 0,
           "target": 1,
           "current": 0
         },
         {
           "id": "KR-2",
-          "metric": "Cross-scope conversation search",
+          "metric": "Scope negotiation: LLM detects missing scope and proposes adding it",
           "baseline": 0,
           "target": 1,
           "current": 0
         },
         {
           "id": "KR-3",
-          "metric": "Scope switching updates conversation list",
+          "metric": "Slash-command autocomplete in chat input",
           "baseline": 0,
           "target": 1,
           "current": 0
         },
         {
           "id": "KR-4",
+          "metric": "Real-time WS streaming with tool call display",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-5",
           "metric": "LLM system prompt includes capability contract and page context",
           "baseline": 0,
           "target": 1,
           "current": 1
         },
         {
-          "id": "KR-5",
-          "metric": "Real-time WS streaming with tool call display",
+          "id": "KR-6",
+          "metric": "Cross-scope conversation search",
           "baseline": 0,
           "target": 1,
           "current": 0
@@ -1132,18 +1139,18 @@
         "ContextPayload.to_system_prompt() is the correct extension point (NOT ContextResolver — the method lives on the dataclass)"
       ],
       "tags": [
+        "ai",
         "chat",
-        "slash-commands",
-        "autocomplete",
-        "search",
-        "cross-scope",
+        "context",
+        "scopes",
         "streaming",
-        "capability-aware"
+        "slash-commands"
       ],
       "scopes": [
         "frontend",
         "backend",
-        "ai"
+        "ai",
+        "llm"
       ],
       "derived_guidelines": [],
       "knowledge_ids": [],
@@ -1331,38 +1338,52 @@
       "key_results": [
         {
           "id": "KR-1",
-          "description": "ClaudeCodeProvider class implemented with complete() and stream() methods using subprocess claude -p",
-          "status": "NOT_STARTED"
+          "metric": "ClaudeCodeProvider class implementing LLMProvider protocol",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
         },
         {
           "id": "KR-2",
-          "description": "Provider registered in registry as claude-code type with providers.toml configuration",
-          "status": "NOT_STARTED"
+          "metric": "Provider registered in ProviderRegistry with config",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
         },
         {
           "id": "KR-3",
-          "description": "Streaming support via --output-format stream-json for real-time chat responses",
-          "status": "NOT_STARTED"
+          "metric": "Multi-turn conversation via session resume",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
         },
         {
           "id": "KR-4",
-          "description": "Multi-turn conversation support using Claude Code session_id and --resume",
-          "status": "NOT_STARTED"
+          "metric": "Error handling: auth, rate limits, timeout, process cleanup",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
         },
         {
           "id": "KR-5",
-          "description": "Rate limit and error handling (graceful degradation when Max limits reached)",
-          "status": "NOT_STARTED"
+          "metric": "AgentLoop streaming support for non-tool-use providers",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
         },
         {
           "id": "KR-6",
-          "description": "Web UI LLM Settings page allows selecting claude-code provider",
-          "status": "NOT_STARTED"
+          "metric": "Provider tests with mocked subprocess",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
         },
         {
           "id": "KR-7",
-          "description": "Concurrent request support — multiple subprocess invocations without conflicts",
-          "status": "NOT_STARTED"
+          "metric": "API key and Max subscription both work as auth methods",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
         }
       ],
       "appetite": "medium",
@@ -1399,6 +1420,255 @@
       "status": "ACTIVE",
       "created": "2026-03-13T07:41:54Z",
       "updated": "2026-03-13T08:18:38Z"
+    },
+    {
+      "id": "O-019",
+      "title": "Multi-Session LLM Orchestration — concurrent AI agents with monitoring",
+      "description": "Enable multiple concurrent LLM sessions, each executing different work (tasks, planning, verification, compound). User can monitor all active sessions, see what each uses (guidelines, knowledge, objectives), track progress, and navigate to related entities. Sessions can be launched from UI (run tasks, plan objective) or via chat commands.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Multiple concurrent LLM sessions executing independently",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-2",
+          "metric": "Session dashboard showing all active sessions with status and context",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-3",
+          "metric": "Launch session from UI: run task, plan objective, verify, compound",
+          "baseline": 0,
+          "target": 4,
+          "current": 0
+        },
+        {
+          "id": "KR-4",
+          "metric": "Session detail view: see messages, tool calls, entities used",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-5",
+          "metric": "Session uses correct guidelines and knowledge per objective/task scopes",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [],
+      "tags": [
+        "multi-session",
+        "orchestration",
+        "monitoring",
+        "concurrent",
+        "agents"
+      ],
+      "scopes": [
+        "frontend",
+        "backend",
+        "ai",
+        "llm"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-13T08:36:49Z",
+      "updated": "2026-03-13T08:36:49Z"
+    },
+    {
+      "id": "O-020",
+      "title": "Decision Notifications & LLM-Human Handoff — popups, blocking decisions, collaboration",
+      "description": "When LLM encounters something requiring human decision during task execution, it creates a decision and the user gets a popup notification. Decision view shows full context: what objective, which task, related guidelines, LLM reasoning. User can navigate to all related entities. Blocking decisions pause LLM execution until resolved.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "LLM creates decision during task execution and user gets popup",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-2",
+          "metric": "Decision detail view with full context links (objective, task, guidelines)",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-3",
+          "metric": "Blocking decisions pause LLM session until user resolves",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-4",
+          "metric": "Notification center showing pending decisions across all sessions",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [],
+      "tags": [
+        "decisions",
+        "notifications",
+        "handoff",
+        "collaboration",
+        "popups"
+      ],
+      "scopes": [
+        "frontend",
+        "backend",
+        "ai"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-13T08:36:49Z",
+      "updated": "2026-03-13T08:36:49Z"
+    },
+    {
+      "id": "O-021",
+      "title": "Entity Relationship Views & DAG — linked views, visual task graph, traceability",
+      "description": "Rich entity detail views showing full relationship graph: Objective shows its guidelines, research, ideas, linked tasks and their status. Task shows inherited guidelines, assigned knowledge, dependencies. Task dependency DAG visualization. All entities navigable via links. User sees the full picture of WHY something exists and HOW it connects.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Objective detail shows linked guidelines, research, ideas, tasks with status",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-2",
+          "metric": "Task detail shows inherited guidelines, knowledge, dependency chain",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-3",
+          "metric": "Task DAG visualization with dependency arrows and status colors",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-4",
+          "metric": "Cross-entity navigation: click any linked entity to navigate",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-5",
+          "metric": "Idea detail shows research, decisions, risks, child ideas",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [],
+      "tags": [
+        "relationships",
+        "dag",
+        "visualization",
+        "traceability",
+        "navigation"
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-13T08:36:49Z",
+      "updated": "2026-03-13T08:36:49Z"
+    },
+    {
+      "id": "O-022",
+      "title": "LLM Workflow Awareness — AI understands and executes forge process",
+      "description": "LLM knows the full forge workflow: objectives, ideas, discovery, planning, execution, verification, compound. Can plan an objective (decompose into tasks with guidelines), execute tasks respecting dependencies, run deep-verify, extract lessons. Understands guideline inheritance (objective scopes to task scopes). Can assign knowledge to tasks during planning. Knows which research/ideas to consider when planning.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "LLM can plan an objective into task graph respecting guidelines and knowledge",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-2",
+          "metric": "LLM executes tasks with correct context (guidelines, knowledge, dependencies)",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-3",
+          "metric": "LLM can run deep-verify on plans and implementations",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-4",
+          "metric": "LLM assigns knowledge and guidelines to tasks during planning",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        },
+        {
+          "id": "KR-5",
+          "metric": "LLM system prompt includes forge workflow description and available operations",
+          "baseline": 0,
+          "target": 1,
+          "current": 0
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [],
+      "tags": [
+        "workflow",
+        "planning",
+        "execution",
+        "verification",
+        "forge-process"
+      ],
+      "scopes": [
+        "backend",
+        "ai",
+        "llm"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-13T08:36:49Z",
+      "updated": "2026-03-13T08:36:49Z"
     }
   ]
 }

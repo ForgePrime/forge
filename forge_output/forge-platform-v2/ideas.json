@@ -1,0 +1,254 @@
+{
+  "project": "forge-platform-v2",
+  "updated": "2026-03-13T08:37:00Z",
+  "ideas": [
+    {
+      "id": "I-001",
+      "title": "Przebudowa UI Forge Platform - kompletny interfejs wspierajacy workflow",
+      "description": "Idea-parasol obejmujaca calosc przebudowy interfejsu Forge Platform. Cel: z obecnego stanu (30% pokrycia API, brak formularzy dla 6/11 encji, brak widokow szczegolowych, brak ustawien) do pelnego, szybkiego, kontekstowego interfejsu wspierajacego caly workflow: objective -> idea -> discover -> plan -> execute -> lesson. Obejmuje 7 obszarow: (1) Dashboard jako command center, (2) Pelne CRUD dla wszystkich encji, (3) Widoki szczegolowe z nawigacja kontekstowa, (4) Pipeline view (DAG + Kanban), (5) Ustawienia projektu, (6) Real-time WebSocket updates, (7) Debug Console z LLM Monitor. Kazdy obszar to osobna sub-idea do niezaleznego planowania i realizacji.",
+      "category": "improvement",
+      "priority": "HIGH",
+      "status": "COMMITTED",
+      "tags": [
+        "ui",
+        "ux",
+        "frontend",
+        "workflow",
+        "comprehensive"
+      ],
+      "relations": [],
+      "scopes": [
+        "frontend",
+        "ux",
+        "design"
+      ],
+      "advances_key_results": [
+        "O-005/KR-1",
+        "O-005/KR-2",
+        "O-005/KR-3",
+        "O-005/KR-4"
+      ],
+      "knowledge_ids": [],
+      "created": "2026-03-11T13:00:00Z"
+    },
+    {
+      "id": "I-002",
+      "title": "Dashboard & Command Center - centrum dowodzenia projektem",
+      "description": "Przeprojektowac dashboard z obecnego prostego widoku (cel, progress bar, 8 licznikow, top 5 decisions, top 5 changes) na pelne centrum dowodzenia. Nowy dashboard powinien zawierac: (1) Aktywne cele (O-*) z paskami postepu KR i alertami gdy KR stoi, (2) Pipeline zadan - ile TODO/IN_PROGRESS/BLOCKED/DONE z wizualizacja proporcji, (3) Otwarte decyzje wymagajace uwagi (OPEN + ANALYZING) z akcjami inline, (4) Activity feed - ostatnie zdarzenia w czasie rzeczywistym (nowe taski, zamkniete decyzje, zmiany w wiedzy), (5) Quick actions - przyciski: New Task, New Idea, Claim Next, Add Knowledge, New Decision, (6) Blocking alerts - co blokuje postep (taski zablokowane przez decyzje, nierozwiazane ryzyka). Dashboard musi ladowac sie < 1s i dac pelny obraz sytuacji w jednym spojrzeniu.",
+      "category": "improvement",
+      "priority": "HIGH",
+      "status": "REJECTED",
+      "tags": [
+        "dashboard",
+        "command-center",
+        "overview",
+        "quick-actions"
+      ],
+      "parent_id": "I-001",
+      "relations": [],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "advances_key_results": [
+        "O-005/KR-3",
+        "O-005/KR-4"
+      ],
+      "knowledge_ids": [],
+      "created": "2026-03-11T13:00:00Z",
+      "rejection_reason": "Dashboard functionality covered by existing project page + new O-021 entity relationship views",
+      "updated": "2026-03-13T08:37:00Z"
+    },
+    {
+      "id": "I-003",
+      "title": "Entity CRUD Forms - formularze tworzenia i edycji wszystkich encji",
+      "description": "Dodac brakujace formularze tworzenia i edycji dla 6 encji ktore obecnie maja tylko odczyt: Tasks, Decisions, Objectives, Ideas, Lessons, Knowledge. Formularze powinny byc inline (rozwijane na liscie) lub modal - NIE osobna strona. Kazdy formularz musi: (a) walidowac dane przed wyslaniem (required fields, typy, enums), (b) pokazywac bledy z API czytelnie, (c) wypelniac domyslne wartosci inteligentnie (np. scope z kontekstu projektu), (d) wspierac autocomplete dla polaczen (depends_on -> lista taskow, advances_key_results -> lista KR). Formularze UPDATE tez brakuja - trzeba dodac inline edit dla: Task (name, description, status, blocked_by_decisions), Decision (status, recommendation, reasoning), Objective (KR current values, status), Idea (status, priority, description). Istniejace formularze (Guidelines, AC Templates) sa OK - nie ruszac.",
+      "category": "feature",
+      "priority": "HIGH",
+      "status": "REJECTED",
+      "tags": [
+        "forms",
+        "crud",
+        "create",
+        "edit",
+        "validation"
+      ],
+      "parent_id": "I-001",
+      "relations": [],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "advances_key_results": [
+        "O-005/KR-1",
+        "O-005/KR-2"
+      ],
+      "knowledge_ids": [],
+      "created": "2026-03-11T13:00:00Z",
+      "rejection_reason": "Entity CRUD forms already implemented in O-002 (all entity forms exist and work)",
+      "updated": "2026-03-13T08:37:00Z"
+    },
+    {
+      "id": "I-004",
+      "title": "Detail Views & Contextual Navigation - widoki szczegolowe z nawigacja",
+      "description": "Dodac widoki szczegolowe (detail pages) dla encji ktore ich nie maja i wzbogacic nawigacje kontekstowa. Obecnie tylko Knowledge ma detail page z tabami. Potrzebne: (1) Task Detail - taby: Overview (opis, AC, instrukcja), Context (context assembly preview), Dependencies (linked tasks z statusami), Decisions (powiazane decyzje), Changes (zmiany z tego taska), Execution History (historia uruchomien). (2) Decision Detail - pelny widok: issue, recommendation, reasoning, alternatives, powiazane taski, risk fields jesli type=risk. (3) Idea Detail - hierarchia dzieci, powiazane decisions (explorations, risks), linked KRs z postepem, relations graph. (4) Objective Detail - KR progress z mozliwoscia edycji current, powiazane ideas, powiazane tasks (przez ideas), derived guidelines. (5) Lesson Detail - pelny widok z przyciskiem Promote to Guideline/Knowledge. NAWIGACJA KONTEKSTOWA: kazde ID encji (T-001, D-003, K-005, O-001) w calym UI musi byc klikalnym linkiem prowadzacym do detail view. Badge i tagi tez klikalne (filtruja liste).",
+      "category": "feature",
+      "priority": "HIGH",
+      "status": "REJECTED",
+      "tags": [
+        "detail-views",
+        "navigation",
+        "context",
+        "drill-down",
+        "entity-links"
+      ],
+      "parent_id": "I-001",
+      "relations": [
+        {
+          "type": "depends_on",
+          "target_id": "I-003"
+        }
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "advances_key_results": [
+        "O-005/KR-2",
+        "O-005/KR-3",
+        "O-005/KR-4"
+      ],
+      "knowledge_ids": [],
+      "created": "2026-03-11T13:00:00Z",
+      "rejection_reason": "Detail views exist. Enhanced contextual navigation covered by O-021 (entity relationship views)",
+      "updated": "2026-03-13T08:37:00Z"
+    },
+    {
+      "id": "I-005",
+      "title": "Pipeline & Board Views - wizualizacja i zarzadzanie taskami",
+      "description": "Rozbudowac widoki zarzadzania taskami: (1) Kanban Board - kolumny TODO, IN_PROGRESS, DONE, FAILED z drag & drop miedzy kolumnami (zmiana statusu), karty z nazwa, typem, scopami, blocked indicator. (2) Enhanced DAG - obecny DAG zachowac ale dodac: filtrowanie po status/scope/type/agent, kolorowanie wg priorytetu, blokady decyzji widoczne jako czerwone krawedzie, tooltip z pelnym opisem taska, klik otwiera detail view. (3) Timeline View - opcjonalny widok chronologiczny: kiedy taski byly claimowane, ile trwaly, kto pracowal. (4) Blocked Tasks Panel - dedykowany widok pokazujacy TYLKO zablokowane taski z powodem blokady (unresolved decision, dependency not done, conflict with active task) i quick action do odblokowania. (5) Multi-agent view - kto nad czym pracuje (jesli uzywa sie --agent).",
+      "category": "improvement",
+      "priority": "MEDIUM",
+      "status": "REJECTED",
+      "tags": [
+        "kanban",
+        "dag",
+        "pipeline",
+        "board",
+        "visualization"
+      ],
+      "parent_id": "I-001",
+      "relations": [
+        {
+          "type": "depends_on",
+          "target_id": "I-003"
+        }
+      ],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "advances_key_results": [
+        "O-005/KR-3",
+        "O-005/KR-4"
+      ],
+      "knowledge_ids": [],
+      "created": "2026-03-11T13:00:00Z",
+      "rejection_reason": "DAG visualization covered by O-021. Kanban board not prioritized.",
+      "updated": "2026-03-13T08:37:00Z"
+    },
+    {
+      "id": "I-006",
+      "title": "Settings & Configuration - ustawienia projektu i bram jakosci",
+      "description": "Dodac strone ustawien projektu obejmujaca: (1) Project Config - edycja goal, test_cmd, lint_cmd z poziomu UI (PATCH /projects/{slug} jesli endpoint istnieje, lub nowy). (2) Gates Configuration - pelne CRUD dla bram jakosci: dodaj gate (name, command, required), edytuj, usun. Przycisk 'Run Gates' uruchamiajacy check dla wybranego taska. Wyniki gate'ow wyswietlane z kolorowaniem pass/fail. (3) Guideline Scopes Management - przeglad wszystkich scopow uzywanych w projekcie, ile guidelines na scope, mozliwosc bulk assign scope do wielu guidelines. (4) Knowledge Review Settings - ustawienie review_interval_days, threshold staleness. (5) Auth/Connection Info - wyswietlenie aktualnej metody auth (dev mode/API key/JWT), connection status do API, Redis, Postgres. Strona dostepna z nawigacji glownej jako ikona zebatki lub tab 'Settings'.",
+      "category": "feature",
+      "priority": "MEDIUM",
+      "status": "REJECTED",
+      "tags": [
+        "settings",
+        "configuration",
+        "gates",
+        "project-config"
+      ],
+      "parent_id": "I-001",
+      "relations": [],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "advances_key_results": [
+        "O-005/KR-2"
+      ],
+      "knowledge_ids": [],
+      "created": "2026-03-11T13:00:00Z",
+      "rejection_reason": "Settings page exists (LLM config, providers). Gate config covered.",
+      "updated": "2026-03-13T08:37:00Z"
+    },
+    {
+      "id": "I-007",
+      "title": "Real-time Updates & Live UI - WebSocket driven interface",
+      "description": "Uczynic interfejs zywym - obecnie WebSocket jest podlaczony ale listy encji NIE aktualizuja sie w czasie rzeczywistym. Potrzebne: (1) Auto-refresh list - gdy przyjdzie event task.status_changed, lista taskow aktualizuje sie automatycznie (nie trzeba F5). To samo dla decisions, knowledge, changes, itp. (2) Toast notifications - dyskretne powiadomienia w rogu ekranu: 'Task T-005 completed', 'New decision D-003 created', 'Knowledge K-002 needs review'. Klikniecie przenosi do encji. (3) Activity Feed na dashboard - strumien ostatnich zdarzen w czasie rzeczywistym z ikonkami i kolorami. (4) Connection status indicator - obecny zielony/czerwony kropek zachowac ale dodac: reconnecting state (zolty), last event timestamp, event count. (5) Optimistic updates - po wyslaniu POST/PATCH natychmiast aktualizuj UI, cofnij jesli API zwroci blad.",
+      "category": "improvement",
+      "priority": "MEDIUM",
+      "status": "REJECTED",
+      "tags": [
+        "websocket",
+        "realtime",
+        "notifications",
+        "live-updates"
+      ],
+      "parent_id": "I-001",
+      "relations": [],
+      "scopes": [
+        "frontend",
+        "ux"
+      ],
+      "advances_key_results": [
+        "O-005/KR-3",
+        "O-005/KR-4"
+      ],
+      "knowledge_ids": [],
+      "created": "2026-03-11T13:00:00Z",
+      "rejection_reason": "Real-time WS updates already implemented (wsDispatcher, auto-refresh after AI tools). Covered.",
+      "updated": "2026-03-13T08:37:00Z"
+    },
+    {
+      "id": "I-008",
+      "title": "Debug Console - wysuwalny panel z pelnym wgladem w system i LLM",
+      "description": "Zbudowac konsole debugowania jako wysuwalny panel dolny dostepny z KAZDEGO widoku (nie osobna strona jak teraz). Trzy taby: (1) API Inspector - przechwytuje WSZYSTKIE fetch() wywolania: metoda, URL, payload (zwiniety/rozwiniety), response status + body, czas trwania, timestamp. Implementacja: monkey-patch globalnego fetch() w uselayouteffect. Kolorowanie: 2xx zielone, 4xx zolte, 5xx czerwone. (2) LLM Monitor - wykorzystuje istniejacy Debug Capture backend (6 endpointow z T-037). Dla kazdej sesji pokazuje: CO WYSLANO (jaki task z nazwa, jakie objectives i ich KR-y, jakie guidelines z trescia, jakie knowledge items, PELNA tresc system prompt i user prompt - czytelnie sformatowana z kolorowaniem skladni), CO OTRZYMANO (pelna odpowiedz LLM, parsed output, stop_reason, validation results), EFEKTY (jakie encje utworzono/zmieniono w wyniku - linkowane), KOSZTY (input/output tokens, latency_ms, model, provider). (3) Event Stream - real-time WebSocket events z filtrowaniem po event type. Kazdy event z timestamp, payload (rozwijalny JSON tree). Panel: domyslnie zwiniety (tylko pasek z licznikiem nowych zdarzen), klik rozwija do 1/3 ekranu, double-klik pelny ekran. Filtrowanie po: typie, statusie, task_id, tekst. Auto-scroll z pause gdy user scrolluje w gore. Przycisk eksport do JSON. Przycisk clear. Badge z liczba bledow (czerwony) na pasku gdy panel zwiniety.",
+      "category": "feature",
+      "priority": "HIGH",
+      "status": "REJECTED",
+      "tags": [
+        "debug",
+        "console",
+        "devtools",
+        "llm-monitor",
+        "api-inspector"
+      ],
+      "parent_id": "I-001",
+      "relations": [
+        {
+          "type": "related_to",
+          "target_id": "I-007"
+        }
+      ],
+      "scopes": [
+        "frontend",
+        "debug",
+        "ux"
+      ],
+      "advances_key_results": [
+        "O-005/KR-2",
+        "O-007/KR-1",
+        "O-007/KR-2",
+        "O-007/KR-3",
+        "O-007/KR-4"
+      ],
+      "knowledge_ids": [],
+      "created": "2026-03-11T13:00:00Z",
+      "rejection_reason": "Debug console implemented in O-007. Not current priority.",
+      "updated": "2026-03-13T08:37:00Z"
+    }
+  ]
+}
