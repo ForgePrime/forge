@@ -56,7 +56,7 @@ export default function Message({ message }: MessageProps) {
         {/* Error detail (rich rendering for ApiError) */}
         {message.error != null ? (
           <div className="mb-2">
-            <ErrorDetail error={message.error} id={`msg-error-${message.id}`} />
+            <ErrorDetail error={message.error} />
           </div>
         ) : null}
 

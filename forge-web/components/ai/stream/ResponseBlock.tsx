@@ -1,20 +1,8 @@
 "use client";
 
-import { useAIElement } from "@/lib/ai-context/useAIElement";
 import type { ContentBlock } from "@/lib/hooks/useStreamDebug";
 
 export function ResponseBlock({ block, streaming }: { block: ContentBlock; streaming?: boolean }) {
-  const preview = block.content.slice(0, 100).replace(/\n/g, " ");
-
-  useAIElement({
-    id: `response-${block.id}`,
-    type: "display",
-    label: "AI Response Block",
-    description: `Response: ${preview}...`,
-    value: streaming ? "streaming" : "complete",
-    actions: [],
-  });
-
   return (
     <div className="rounded border border-gray-200 bg-white">
       <div className="px-3 py-1.5 flex items-center gap-2 border-b border-gray-100">

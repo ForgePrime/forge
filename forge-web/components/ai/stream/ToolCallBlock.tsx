@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useAIElement } from "@/lib/ai-context/useAIElement";
 import type { ContentBlock } from "@/lib/hooks/useStreamDebug";
 import { JsonView } from "@/components/debug/JsonView";
 
@@ -18,15 +17,6 @@ export function StreamToolCallBlock({ block }: { block: ContentBlock }) {
   const input = meta?.input;
   const result = meta?.result;
   const badge = STATUS_BADGE[block.status ?? "pending"] ?? STATUS_BADGE.pending;
-
-  useAIElement({
-    id: `tool-call-${block.id}`,
-    type: "display",
-    label: `Tool Call: ${toolName}`,
-    description: `Tool ${toolName} — ${block.status ?? "pending"}`,
-    value: block.status ?? "pending",
-    actions: [],
-  });
 
   return (
     <div className={`rounded border text-xs ${
@@ -50,7 +40,7 @@ export function StreamToolCallBlock({ block }: { block: ContentBlock }) {
               <div className="mt-0.5">
                 {typeof input === "string"
                   ? <pre className="overflow-x-auto rounded bg-white p-2 text-[10px] text-gray-700 border border-gray-100 font-mono max-h-32 overflow-y-auto select-text">{input}</pre>
-                  : <JsonView data={input} id={`tool-input-${block.id}`} maxHeight="8rem" />}
+                  : <JsonView data={input} maxHeight="8rem" />}
               </div>
             </div>
           )}
@@ -64,7 +54,7 @@ export function StreamToolCallBlock({ block }: { block: ContentBlock }) {
                   ? <pre className={`overflow-x-auto rounded p-2 text-[10px] border max-h-32 overflow-y-auto font-mono select-text ${
                       block.status === "error" ? "bg-red-50 text-red-800 border-red-100" : "bg-white text-gray-700 border-gray-100"
                     }`}>{result}</pre>
-                  : <JsonView data={result} id={`tool-result-${block.id}`} maxHeight="8rem" />}
+                  : <JsonView data={result} maxHeight="8rem" />}
               </div>
             </div>
           )}

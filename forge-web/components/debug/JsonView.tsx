@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { useAIElement } from "@/lib/ai-context/useAIElement";
 
 // ---------------------------------------------------------------------------
 // Tokenizer — regex-based JSON syntax highlighting
@@ -88,8 +87,6 @@ interface JsonViewProps {
   maxHeight?: string;
   /** Collapse large output (show first/last lines). Threshold in lines. */
   collapseAfter?: number;
-  /** Stable ID for AI annotations. */
-  id?: string;
 }
 
 const COLLAPSE_THRESHOLD = 30;
@@ -100,7 +97,6 @@ export function JsonView({
   lineNumbers = false,
   maxHeight = "16rem",
   collapseAfter,
-  id = "json-view",
 }: JsonViewProps) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -139,15 +135,6 @@ export function JsonView({
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }, [text]);
-
-  useAIElement({
-    id,
-    type: "display",
-    label: "JSON View",
-    description: `JSON: ${lines.length} lines, ${text.length} chars`,
-    value: `${lines.length} lines`,
-    actions: [],
-  });
 
   if (!text) {
     return <span className="text-[10px] text-gray-400 italic">Empty</span>;

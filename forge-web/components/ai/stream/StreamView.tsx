@@ -1,6 +1,5 @@
 "use client";
 
-import { useAIElement } from "@/lib/ai-context/useAIElement";
 import type { ContentBlock } from "@/lib/hooks/useStreamDebug";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { StreamToolCallBlock } from "./ToolCallBlock";
@@ -31,15 +30,6 @@ function renderBlock(block: ContentBlock, streaming: boolean, isLast: boolean) {
 }
 
 export function StreamView({ blocks, streaming }: StreamViewProps) {
-  useAIElement({
-    id: "stream-view",
-    type: "display",
-    label: "Stream View",
-    description: `${blocks.length} blocks, ${streaming ? "streaming" : "idle"}`,
-    value: streaming ? "streaming" : "idle",
-    actions: [],
-  });
-
   if (blocks.length === 0) {
     return (
       <div className="flex items-center justify-center py-8 text-xs text-gray-400">

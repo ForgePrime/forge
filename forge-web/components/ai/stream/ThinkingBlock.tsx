@@ -1,21 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useAIElement } from "@/lib/ai-context/useAIElement";
 import type { ContentBlock } from "@/lib/hooks/useStreamDebug";
 
 export function ThinkingBlock({ block }: { block: ContentBlock }) {
   const [expanded, setExpanded] = useState(false);
   const preview = block.content.slice(0, 80).replace(/\n/g, " ");
-
-  useAIElement({
-    id: `thinking-${block.id}`,
-    type: "display",
-    label: "AI Thinking Block",
-    description: `Thinking: ${preview}...`,
-    value: block.content.length > 0 ? "active" : "empty",
-    actions: [],
-  });
 
   return (
     <div className="rounded border border-purple-200 bg-purple-50/50">

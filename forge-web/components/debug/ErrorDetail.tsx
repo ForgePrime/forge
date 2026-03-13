@@ -1,7 +1,6 @@
 "use client";
 
 import { ApiError } from "@/lib/api";
-import { useAIElement } from "@/lib/ai-context/useAIElement";
 
 function statusBadgeColor(status: number): string {
   if (status >= 500) return "bg-red-100 text-red-700";
@@ -14,20 +13,8 @@ function statusBadgeColor(status: number): string {
  * For ApiError: shows status code, HTTP method + URL, and response body excerpt.
  * For other errors: shows a plain error message.
  */
-export function ErrorDetail({ error, id }: { error: unknown; id?: string }) {
+export function ErrorDetail({ error }: { error: unknown }) {
   const isApiError = error instanceof ApiError;
-  const elementId = id ?? "error-detail";
-
-  useAIElement({
-    id: elementId,
-    type: "display",
-    label: "Error Detail",
-    description: isApiError
-      ? `API error ${(error as ApiError).status} on ${(error as ApiError).method} ${(error as ApiError).url}`
-      : error ? `Error: ${error instanceof Error ? error.message : String(error)}` : "No error",
-    value: isApiError ? `${(error as ApiError).status}` : "error",
-    actions: [],
-  });
 
   if (!error) return null;
 

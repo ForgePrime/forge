@@ -162,7 +162,7 @@ export function LlmMonitor({ slug }: { slug: string | null }) {
       {/* Action error */}
       {actionError != null ? (
         <div className="mb-2">
-          <ErrorDetail error={actionError} id="llm-monitor-error" />
+          <ErrorDetail error={actionError} />
         </div>
       ) : null}
 
@@ -319,7 +319,7 @@ function SessionDetail({ slug, sessionId }: { slug: string; sessionId: string })
       {/* Parsed output */}
       {session.parsed_output && (
         <CollapsibleSection title="Parsed Output">
-          <JsonView data={session.parsed_output} id={`parsed-${session.session_id}`} maxHeight="10rem" lineNumbers />
+          <JsonView data={session.parsed_output} maxHeight="10rem" lineNumbers />
         </CollapsibleSection>
       )}
 

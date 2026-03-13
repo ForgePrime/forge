@@ -162,7 +162,7 @@ export function EventStream({ slug }: { slug: string | null }) {
       {/* WS error */}
       {lastError != null ? (
         <div className="mb-2">
-          <ErrorDetail error={lastError} id="event-stream-ws-error" />
+          <ErrorDetail error={lastError} />
         </div>
       ) : null}
 

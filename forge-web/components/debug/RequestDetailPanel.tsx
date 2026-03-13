@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useAIElement } from "@/lib/ai-context/useAIElement";
 import type { ApiEntry } from "@/stores/debugStore";
 import { ErrorDetail } from "./ErrorDetail";
 import { JsonView } from "./JsonView";
@@ -166,15 +165,6 @@ export function RequestDetailPanel({ entry }: { entry: ApiEntry }) {
     ? (typeof entry.responseBody === "string" ? entry.responseBody : JSON.stringify(entry.responseBody, null, 2))
     : "";
 
-  useAIElement({
-    id: `request-detail-${entry.id}`,
-    type: "display",
-    label: `Request Detail: ${entry.method} ${cleanUrl}`,
-    description: `${entry.method} ${cleanUrl} — ${entry.status ?? "ERR"} in ${entry.duration}ms`,
-    value: `${entry.status ?? "error"}`,
-    actions: [],
-  });
-
   return (
     <div className="space-y-1.5 px-2 pb-2">
       {/* Error (if any) */}
@@ -222,14 +212,14 @@ export function RequestDetailPanel({ entry }: { entry: ApiEntry }) {
       {/* Request Body */}
       {hasRequestBody && (
         <Section title="Request Body" copyText={requestBodyText}>
-          <JsonView data={entry.requestBody} id={`req-body-${entry.id}`} maxHeight="12rem" />
+          <JsonView data={entry.requestBody} maxHeight="12rem" />
         </Section>
       )}
 
       {/* Response Body */}
       {hasResponseBody && (
         <Section title="Response Body" copyText={responseBodyText}>
-          <JsonView data={entry.responseBody} id={`res-body-${entry.id}`} maxHeight="12rem" />
+          <JsonView data={entry.responseBody} maxHeight="12rem" />
         </Section>
       )}
     </div>

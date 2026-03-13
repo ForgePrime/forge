@@ -1,20 +1,10 @@
 "use client";
 
-import { useAIElement } from "@/lib/ai-context/useAIElement";
 import type { ContentBlock } from "@/lib/hooks/useStreamDebug";
 
 export function ErrorBlock({ block }: { block: ContentBlock }) {
   const meta = block.metadata as Record<string, unknown> | undefined;
   const reason = (meta?.reason as string) || "";
-
-  useAIElement({
-    id: `error-${block.id}`,
-    type: "display",
-    label: "Stream Error",
-    description: `Error: ${block.content}`,
-    value: "error",
-    actions: [],
-  });
 
   return (
     <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs">
