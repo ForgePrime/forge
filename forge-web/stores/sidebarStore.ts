@@ -8,7 +8,7 @@ import { create } from "zustand";
 
 const STORAGE_KEY = "forge-ai-sidebar";
 
-type SidebarTab = "chat" | "tools" | "scopes" | "conversations";
+type SidebarTab = "chat" | "tools" | "scopes" | "conversations" | "debug";
 
 interface SidebarState {
   /** Extra scopes added by user (beyond auto-detected). */

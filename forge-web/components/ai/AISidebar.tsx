@@ -9,6 +9,8 @@ import { useChatStore } from "@/stores/chatStore";
 import { useSkillStore, fetchSkills } from "@/stores/skillStore";
 import type { LLMConfig } from "@/lib/types";
 import LLMChat from "./LLMChat";
+import { useStreamDebug, subscribeToStreamEvents } from "@/lib/hooks/useStreamDebug";
+import { StreamView } from "./stream/StreamView";
 import useSWR from "swr";
 import { llm } from "@/lib/api";
 import Link from "next/link";
@@ -17,13 +19,14 @@ import Link from "next/link";
 // Tab types
 // ---------------------------------------------------------------------------
 
-type SidebarTab = "chat" | "tools" | "scopes" | "conversations";
+type SidebarTab = "chat" | "tools" | "scopes" | "conversations" | "debug";
 
 const TABS: { key: SidebarTab; label: string }[] = [
   { key: "chat", label: "Chat" },
   { key: "tools", label: "Tools" },
   { key: "scopes", label: "Scopes" },
   { key: "conversations", label: "History" },
+  { key: "debug", label: "Debug" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -68,9 +71,11 @@ function ScopeChips({
 function TabBar({
   activeTab,
   onChange,
+  streaming,
 }: {
   activeTab: SidebarTab;
   onChange: (tab: SidebarTab) => void;
+  streaming?: boolean;
 }) {
   return (
     <div className="flex border-b px-1">
@@ -85,6 +90,9 @@ function TabBar({
           }`}
         >
           {tab.label}
+          {tab.key === "debug" && streaming && (
+            <span className="ml-1 inline-block animate-pulse text-forge-500">●</span>
+          )}
         </button>
       ))}
     </div>
@@ -476,6 +484,50 @@ function formatTimeAgo(isoString: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Debug tab — structured stream view (always mounted to capture events)
+// ---------------------------------------------------------------------------
+
+function DebugTab({
+  visible,
+}: {
+  visible: boolean;
+}) {
+  const { blocks, metadata, streaming, clear } = useStreamDebug();
+
+  const elapsed = metadata.startTime
+    ? ((Date.now() - metadata.startTime) / 1000).toFixed(1)
+    : null;
+
+  return (
+    <div className={visible ? "" : "hidden"}>
+      {/* Metadata bar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-gray-50 text-[10px] text-gray-500">
+        {metadata.model && (
+          <span className="font-medium text-gray-600">{metadata.model}</span>
+        )}
+        {metadata.tokensIn > 0 && (
+          <span className="tabular-nums">{metadata.tokensIn}↓ {metadata.tokensOut}↑</span>
+        )}
+        {elapsed && (
+          <span className="tabular-nums">{elapsed}s</span>
+        )}
+        <button
+          onClick={clear}
+          className="ml-auto text-[10px] text-gray-400 hover:text-gray-600"
+        >
+          Clear
+        </button>
+      </div>
+
+      {/* Stream blocks */}
+      <div className="px-2 py-2 overflow-y-auto">
+        <StreamView blocks={blocks} streaming={streaming} />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main AISidebar
 // ---------------------------------------------------------------------------
 
@@ -547,13 +599,22 @@ export default function AISidebar() {
   // Primary context for chat
   const primaryContextType = contextTypes[0] ?? "global";
 
+  // Lightweight streaming indicator for the Debug tab badge
+  const [debugStreaming, setDebugStreaming] = useState(false);
+  useEffect(() => {
+    return subscribeToStreamEvents((event) => {
+      if (event.event === "chat.token") setDebugStreaming(true);
+      else if (event.event === "chat.complete" || event.event === "chat.error") setDebugStreaming(false);
+    });
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       {/* Scope chips */}
       <ScopeChips scopes={scopes} onRemove={removeScope} />
 
       {/* Tab bar */}
-      <TabBar activeTab={activeTab} onChange={setActiveTab} />
+      <TabBar activeTab={activeTab} onChange={setActiveTab} streaming={debugStreaming} />
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
@@ -593,6 +654,9 @@ export default function AISidebar() {
         {activeTab === "conversations" && (
           <ConversationsTab onResume={handleResume} />
         )}
+
+        {/* Debug tab — always mounted so it captures stream events */}
+        <DebugTab visible={activeTab === "debug"} />
       </div>
     </div>
   );
