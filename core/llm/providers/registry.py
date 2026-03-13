@@ -115,6 +115,16 @@ def _create_provider(name: str, config: dict[str, Any], ui_keys: dict[str, str] 
             max_output=config.get("max_output", 4096),
         )
 
+    elif provider_type == "claude-code":
+        from core.llm.providers.claude_code import ClaudeCodeProvider
+
+        return ClaudeCodeProvider(
+            model=config.get("model", "sonnet"),
+            claude_binary=config.get("claude_binary", "claude"),
+            timeout=config.get("timeout", 120),
+            max_concurrent=config.get("max_concurrent", 5),
+        )
+
     else:
         raise ProviderError(f"Unknown provider type: {provider_type}")
 

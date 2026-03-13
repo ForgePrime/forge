@@ -247,6 +247,7 @@ async def chat(
         temperature=0.3,
         max_tokens=caps.max_output_tokens,
         system_prompt=system_prompt,
+        metadata={"forge_session_id": session.session_id},
     )
 
     # --- Event callback (emit WS events) ---
@@ -384,10 +385,10 @@ async def list_providers(
             if env_val:
                 has_key = True
                 key_source = "env"
-        elif pconfig.get("provider", name) == "ollama":
-            # Ollama doesn't need an API key
+        elif pconfig.get("provider", name) in ("ollama", "claude-code"):
+            # Keyless providers — no API key needed
             has_key = True
-            key_source = "none"
+            key_source = "login" if pconfig.get("provider", name) == "claude-code" else "none"
         providers.append(
             ProviderInfo(
                 name=name,
@@ -451,6 +452,13 @@ def _static_model_list(provider_type: str) -> list[dict[str, Any]]:
         ]
     elif provider_type == "openai":
         from core.llm.providers.openai import _MODEL_CAPS
+        return [
+            {"id": k, "name": k, "context_window": v["max_context_window"],
+             "max_output": v["max_output_tokens"], "supports_vision": v.get("supports_vision", False)}
+            for k, v in _MODEL_CAPS.items()
+        ]
+    elif provider_type == "claude-code":
+        from core.llm.providers.claude_code import _MODEL_CAPS
         return [
             {"id": k, "name": k, "context_window": v["max_context_window"],
              "max_output": v["max_output_tokens"], "supports_vision": v.get("supports_vision", False)}
