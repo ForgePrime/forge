@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { llm } from "@/lib/api";
+import { useState, useMemo } from "react";
+import useSWR, { mutate } from "swr";
 import { useChatStore } from "@/stores/chatStore";
 import type { ChatSessionSummary } from "@/stores/chatStore";
 import { StatusFilter } from "@/components/shared/StatusFilter";
 
 const SESSION_TYPES = ["chat", "plan", "execute", "verify", "compound"];
 const SESSION_STATUSES = ["active", "paused", "completed", "failed"];
+
+/** SWR cache key for sessions list. Exported for WS revalidation. */
+export const SESSIONS_SWR_KEY = "/llm/sessions?limit=200";
 
 /** Format token count (e.g., 12345 → "12.3k"). */
 function fmtTokens(n: number): string {
@@ -51,32 +54,17 @@ function statusDotColor(status?: string): string {
 }
 
 export default function SessionsPage() {
-  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { deleteSession } = useChatStore();
 
-  const fetchSessions = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await llm.listSessions(200);
-      setSessions(res.sessions as ChatSessionSummary[]);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+  // SWR-managed data fetching — auto-revalidates on WS events
+  const { data, error, isLoading } = useSWR<{ sessions: ChatSessionSummary[]; count: number }>(SESSIONS_SWR_KEY);
+  const sessions: ChatSessionSummary[] = (data?.sessions as ChatSessionSummary[]) ?? [];
 
   // Unique projects for filter dropdown
   const projects = useMemo(() => {
@@ -122,11 +110,14 @@ export default function SessionsPage() {
     if (!confirm("Delete this session?")) return;
     try {
       await deleteSession(sessionId);
-      setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
+      // Revalidate SWR cache after deletion
+      mutate(SESSIONS_SWR_KEY);
     } catch (e) {
-      setError((e as Error).message);
+      setDeleteError((e as Error).message);
     }
   };
+
+  const displayError = error ? (error as Error).message : deleteError;
 
   return (
     <div className="p-6">
@@ -170,7 +161,7 @@ export default function SessionsPage() {
           </div>
         )}
         <button
-          onClick={fetchSessions}
+          onClick={() => mutate(SESSIONS_SWR_KEY)}
           className="px-3 py-1.5 text-sm text-gray-600 border rounded-md hover:bg-gray-50"
         >
           Refresh
@@ -178,14 +169,14 @@ export default function SessionsPage() {
       </div>
 
       {/* Error */}
-      {error && (
+      {displayError && (
         <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-4">
-          <p className="text-sm text-red-600">{error}</p>
-          <button onClick={() => setError(null)} className="text-xs text-red-400 hover:text-red-600">Dismiss</button>
+          <p className="text-sm text-red-600">{displayError}</p>
+          <button onClick={() => setDeleteError(null)} className="text-xs text-red-400 hover:text-red-600">Dismiss</button>
         </div>
       )}
 
-      {loading && <p className="text-sm text-gray-400">Loading sessions...</p>}
+      {isLoading && <p className="text-sm text-gray-400">Loading sessions...</p>}
 
       {/* Session cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -250,7 +241,7 @@ export default function SessionsPage() {
         ))}
       </div>
 
-      {!loading && filtered.length === 0 && (
+      {!isLoading && filtered.length === 0 && (
         <p className="text-sm text-gray-400 mt-4">
           {sessions.length === 0
             ? "No sessions yet. Start a conversation with the AI to create one."

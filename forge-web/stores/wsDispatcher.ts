@@ -168,6 +168,16 @@ export function dispatchWsEvent(event: ForgeEvent): void {
   // Track last event timestamp for connection status monitoring
   _lastEventTimestamp = new Date().toISOString();
 
+  // LLM session lifecycle events — revalidate sessions SWR cache
+  if (prefix === "llm") {
+    mutate(
+      (key) => typeof key === "string" && key.startsWith("/llm/sessions"),
+      undefined,
+      { revalidate: true },
+    );
+    return;
+  }
+
   // Chat events go to chatStore; tool_results also trigger entity revalidation
   if (prefix === "chat") {
     useChatStore.getState().handleWsEvent(event);
