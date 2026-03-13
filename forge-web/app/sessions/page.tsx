@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { useChatStore } from "@/stores/chatStore";
 import type { ChatSessionSummary } from "@/stores/chatStore";
@@ -60,6 +61,7 @@ export default function SessionsPage() {
   const [search, setSearch] = useState("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const router = useRouter();
   const { deleteSession } = useChatStore();
 
   // SWR-managed data fetching — auto-revalidates on WS events
@@ -183,7 +185,8 @@ export default function SessionsPage() {
         {filtered.map((session) => (
           <div
             key={session.session_id}
-            className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white"
+            onClick={() => router.push(`/sessions/${session.session_id}`)}
+            className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white cursor-pointer"
           >
             {/* Top row: type badge + status dot + time */}
             <div className="flex items-center justify-between mb-2">
@@ -231,7 +234,7 @@ export default function SessionsPage() {
             {/* Actions */}
             <div className="flex items-center justify-end mt-3 gap-2">
               <button
-                onClick={() => handleDelete(session.session_id)}
+                onClick={(e) => { e.stopPropagation(); handleDelete(session.session_id); }}
                 className="text-xs text-red-400 hover:text-red-600"
               >
                 Delete

@@ -70,6 +70,7 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/projects\/([^/]+)$/, scopes: ["projects"], hasProject: true },
 
   // Top-level pages
+  { pattern: /^\/sessions\/([^/]+)$/, scopes: ["sessions"] },
   { pattern: /^\/sessions$/, scopes: ["sessions"] },
   { pattern: /^\/projects$/, scopes: ["projects"] },
   { pattern: /^\/settings/, scopes: ["settings"] },
