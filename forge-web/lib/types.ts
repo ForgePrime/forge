@@ -898,6 +898,16 @@ export interface SkillSyncResult {
   files_changed?: number;
 }
 
+export interface RemoteSkill {
+  name: string;
+  display_name: string;
+  description: string;
+  categories: string[];
+  status: string;
+  sync: boolean;
+  exists_locally: boolean;
+}
+
 export interface SkillUsageEntry {
   project: string;
   task_id: string;
@@ -1002,6 +1012,10 @@ export interface ChatSession {
   total_tokens_out: number;
   estimated_cost: number;
   message_count?: number;
+  session_type?: string;
+  session_status?: string;
+  target_entity_type?: string;
+  target_entity_id?: string;
   created_at: string;
   updated_at: string;
 }

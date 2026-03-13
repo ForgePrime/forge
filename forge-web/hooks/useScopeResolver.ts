@@ -25,6 +25,7 @@ export const SCOPE_TO_CONTEXT_TYPE: Record<string, string> = {
   projects: "project",
   ac_templates: "ac_template",
   changes: "change",
+  sessions: "global",
   dashboard: "global",
   settings: "global",
 };
@@ -69,6 +70,7 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/projects\/([^/]+)$/, scopes: ["projects"], hasProject: true },
 
   // Top-level pages
+  { pattern: /^\/sessions$/, scopes: ["sessions"] },
   { pattern: /^\/projects$/, scopes: ["projects"] },
   { pattern: /^\/settings/, scopes: ["settings"] },
   { pattern: /^\/$/, scopes: ["dashboard"] },
