@@ -6,7 +6,7 @@ __pycache__/
 .mypy_cache/
 
 # Runtime output (per-project state, not tracked)
-forge_output/
+#forge_output/
 
 # Git worktrees for parallel task execution
 forge_worktrees/
