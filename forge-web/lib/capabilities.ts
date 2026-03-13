@@ -246,6 +246,39 @@ export const CAPABILITY_CONTRACTS: Record<string, CapabilityDef[]> = {
     },
   ],
 
+  // ========== PLANNING ==========
+  planning: [
+    {
+      id: "planning-draft", label: "Draft plan", description: "Decompose objective/idea into a task graph (draft, not yet materialized)",
+      action: "WRITE", scope: "planning", toolName: "draftPlan", available: true,
+      contract: {
+        params: [
+          { name: "tasks", type: "array", required: true, description: "Array of task definitions with id, name, depends_on, scopes, etc." },
+          { name: "objective_id", type: "string", required: false, description: "Source objective ID for traceability" },
+          { name: "idea_id", type: "string", required: false, description: "Source idea ID for traceability" },
+          P_PROJECT,
+        ],
+        returns: "Draft plan stored with task count and IDs",
+      },
+    },
+    {
+      id: "planning-show", label: "Show draft", description: "Preview the current draft plan before approval",
+      action: "READ", scope: "planning", toolName: "showDraft", available: true,
+      contract: {
+        params: [P_PROJECT],
+        returns: "Draft plan with all task definitions, source idea/objective, created timestamp",
+      },
+    },
+    {
+      id: "planning-approve", label: "Approve plan", description: "Materialize draft plan into pipeline as TODO tasks",
+      action: "WRITE", scope: "planning", toolName: "approvePlan", available: true,
+      contract: {
+        params: [P_PROJECT],
+        returns: "Confirmation with materialized task count and IDs",
+      },
+    },
+  ],
+
   // ========== OBJECTIVES ==========
   objectives: [
     {

@@ -1502,6 +1502,158 @@ async def _handle_record_change(
 
 
 # ---------------------------------------------------------------------------
+# Planning workflow handlers (draft → show → approve)
+# ---------------------------------------------------------------------------
+
+async def _handle_draft_plan(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Store a draft plan for review before materializing into pipeline."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+
+    tasks = args.get("tasks", [])
+    if not tasks or not isinstance(tasks, list):
+        return {"error": "tasks must be a non-empty array"}
+
+    # Basic validation — each task needs id and name
+    for i, t in enumerate(tasks):
+        if not t.get("id"):
+            return {"error": f"Task at index {i} missing 'id'"}
+        if not t.get("name"):
+            return {"error": f"Task at index {i} missing 'name'"}
+
+    # Check for duplicate IDs within draft
+    ids = [t["id"] for t in tasks]
+    if len(ids) != len(set(ids)):
+        return {"error": "Duplicate task IDs in draft"}
+
+    tracker = await asyncio.to_thread(storage.load_data, project, "tracker")
+
+    tracker["draft_plan"] = {
+        "source_idea_id": args.get("idea_id") or None,
+        "source_objective_id": args.get("objective_id") or None,
+        "created": _now_iso(),
+        "tasks": tasks,
+    }
+
+    await asyncio.to_thread(storage.save_data, project, "tracker", tracker)
+
+    return {
+        "drafted": True,
+        "task_count": len(tasks),
+        "task_ids": ids,
+        "source_idea_id": args.get("idea_id"),
+        "source_objective_id": args.get("objective_id"),
+        "message": f"Draft plan with {len(tasks)} tasks stored. Use showDraft to review, approvePlan to materialize.",
+    }
+
+
+async def _handle_show_draft(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Show the current draft plan."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+
+    tracker = await asyncio.to_thread(storage.load_data, project, "tracker")
+    draft = tracker.get("draft_plan")
+
+    if not draft or not draft.get("tasks"):
+        return {"error": f"No draft plan for '{project}'"}
+
+    return {
+        "has_draft": True,
+        "source_idea_id": draft.get("source_idea_id"),
+        "source_objective_id": draft.get("source_objective_id"),
+        "created": draft.get("created"),
+        "task_count": len(draft["tasks"]),
+        "tasks": draft["tasks"],
+    }
+
+
+async def _handle_approve_plan(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Approve draft plan — materialize tasks into pipeline."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+
+    tracker = await asyncio.to_thread(storage.load_data, project, "tracker")
+    draft = tracker.get("draft_plan")
+
+    if not draft or not draft.get("tasks"):
+        return {"error": f"No draft plan for '{project}'"}
+
+    draft_tasks = draft["tasks"]
+    source_idea_id = draft.get("source_idea_id")
+    source_objective_id = draft.get("source_objective_id")
+
+    # Check for duplicate IDs against existing tasks
+    existing_ids = {t["id"] for t in tracker.get("tasks", [])}
+    for t in draft_tasks:
+        if t["id"] in existing_ids:
+            return {"error": f"Duplicate task ID '{t['id']}' — already exists in pipeline"}
+
+    # Build task entries (mirrors _build_task_entry from core.pipeline)
+    entries = []
+    for t in draft_tasks:
+        origin = t.get("origin", source_idea_id or source_objective_id or "")
+        entry = {
+            "id": t["id"],
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "depends_on": t.get("depends_on", []),
+            "parallel": t.get("parallel", False),
+            "conflicts_with": t.get("conflicts_with", []),
+            "skill": t.get("skill"),
+            "instruction": t.get("instruction", ""),
+            "acceptance_criteria": t.get("acceptance_criteria", []),
+            "type": t.get("type", "feature"),
+            "blocked_by_decisions": t.get("blocked_by_decisions", []),
+            "scopes": t.get("scopes", []),
+            "origin": origin,
+            "knowledge_ids": t.get("knowledge_ids", []),
+            "status": "TODO",
+            "started_at": None,
+            "completed_at": None,
+            "failed_reason": None,
+        }
+        if t.get("test_requirements"):
+            entry["test_requirements"] = t["test_requirements"]
+        entries.append(entry)
+
+    # Materialize
+    tracker.setdefault("tasks", []).extend(entries)
+
+    # Clear draft
+    tracker.pop("draft_plan", None)
+
+    await asyncio.to_thread(storage.save_data, project, "tracker", tracker)
+
+    return {
+        "approved": True,
+        "materialized_count": len(entries),
+        "task_ids": [e["id"] for e in entries],
+        "source_idea_id": source_idea_id,
+        "source_objective_id": source_objective_id,
+        "message": f"Plan approved! {len(entries)} tasks added to pipeline.",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Default registry factory
 # ---------------------------------------------------------------------------
 
@@ -2300,6 +2452,82 @@ def create_default_registry() -> ToolRegistry:
         required_permission=("changes", "write"),
         handler=_handle_record_change,
         scope="changes",
+    ))
+
+    # --- Planning workflow tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="draftPlan",
+        description=(
+            "Create a draft plan — decompose an objective or idea into a task graph for review. "
+            "Draft is NOT yet in the pipeline; use showDraft to preview and approvePlan to materialize."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "description": "Task ID (e.g., T-201)."},
+                            "name": {"type": "string", "description": "Task name in kebab-case."},
+                            "description": {"type": "string", "description": "What needs to be done."},
+                            "instruction": {"type": "string", "description": "Step-by-step how to do it."},
+                            "depends_on": {"type": "array", "items": {"type": "string"}, "description": "Prerequisite task IDs."},
+                            "type": {"type": "string", "enum": ["feature", "bug", "chore", "investigation"]},
+                            "scopes": {"type": "array", "items": {"type": "string"}, "description": "Guideline scopes."},
+                            "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+                            "origin": {"type": "string", "description": "Source (I-001, O-001)."},
+                            "knowledge_ids": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["id", "name"],
+                    },
+                    "description": "Array of task definitions for the plan.",
+                },
+                "objective_id": {"type": "string", "description": "Source objective ID (e.g., O-001) for traceability."},
+                "idea_id": {"type": "string", "description": "Source idea ID (e.g., I-001) for traceability."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["tasks"],
+        },
+        context_types=["task", "global"],
+        required_permission=("tasks", "write"),
+        handler=_handle_draft_plan,
+        scope="tasks",
+    ))
+
+    registry.register(ToolDef(
+        name="showDraft",
+        description="Preview the current draft plan — shows all tasks before they are materialized into the pipeline.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project slug."},
+            },
+        },
+        context_types=["task", "global"],
+        required_permission=None,  # read-only
+        handler=_handle_show_draft,
+        scope="tasks",
+    ))
+
+    registry.register(ToolDef(
+        name="approvePlan",
+        description=(
+            "Approve the current draft plan — materializes all draft tasks into the pipeline as TODO tasks. "
+            "This is irreversible; the draft is cleared after approval."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project slug."},
+            },
+        },
+        context_types=["task", "global"],
+        required_permission=("tasks", "write"),
+        handler=_handle_approve_plan,
+        scope="tasks",
     ))
 
     return registry

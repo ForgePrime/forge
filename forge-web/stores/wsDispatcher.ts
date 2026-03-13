@@ -63,6 +63,8 @@ const TOOL_TO_ENTITY: Record<string, string> = {
   createTask: "task",
   updateTask: "task",
   completeTask: "task",
+  draftPlan: "task",
+  approvePlan: "task",
   createObjective: "objective",
   updateObjective: "objective",
   createIdea: "idea",

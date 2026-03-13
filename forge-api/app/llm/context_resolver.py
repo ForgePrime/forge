@@ -458,6 +458,7 @@ async def _resolve_global(
             "**Query**: searchEntities, getEntity, listEntities, getProject\n"
             "**Objectives**: createObjective, updateObjective\n"
             "**Ideas**: createIdea, updateIdea\n"
+            "**Planning**: draftPlan, showDraft, approvePlan\n"
             "**Tasks**: createTask, updateTask, completeTask\n"
             "**Decisions**: createDecision, updateDecision\n"
             "**Knowledge**: createKnowledge, updateKnowledge\n"
