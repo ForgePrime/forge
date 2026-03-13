@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useDebugStore, type ApiEntry } from "@/stores/debugStore";
+import { ErrorDetail } from "./ErrorDetail";
+import { ApiError } from "@/lib/api";
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "bg-green-100 text-green-700",
@@ -259,9 +261,14 @@ function EntryRow({
       {expanded && (
         <div className="px-2 pb-2 space-y-2">
           {entry.error && (
-            <div className="text-[10px] bg-red-50 text-red-700 rounded p-2 font-mono">
-              {entry.error}
-            </div>
+            <ErrorDetail
+              error={
+                entry.status
+                  ? new ApiError(entry.status, entry.error, { method: entry.method, url: entry.url })
+                  : new Error(entry.error)
+              }
+              id={`api-entry-error-${entry.id}`}
+            />
           )}
           {entry.requestBody !== undefined && (
             <div>

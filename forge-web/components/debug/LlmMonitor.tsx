@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import useSWR from "swr";
 import { debug as debugApi } from "@/lib/api";
 import type { DebugSessionSummary, DebugSession, DebugStatus } from "@/lib/types";
+import { ErrorDetail } from "./ErrorDetail";
 
 // ---------------------------------------------------------------------------
 // Status colors
@@ -59,8 +60,11 @@ export function LlmMonitor({ slug }: { slug: string | null }) {
 
   const sessions = sessionsData?.sessions ?? [];
 
+  const [actionError, setActionError] = useState<unknown>(null);
+
   const handleToggle = async () => {
     if (!statusData || !slug) return;
+    setActionError(null);
     try {
       if (statusData.enabled) {
         await debugApi.disable(slug);
@@ -68,19 +72,20 @@ export function LlmMonitor({ slug }: { slug: string | null }) {
         await debugApi.enable(slug);
       }
       refreshStatus();
-    } catch {
-      // Error captured by API debug interceptor
+    } catch (e) {
+      setActionError(e);
     }
   };
 
   const handleClear = async () => {
     if (!slug) return;
+    setActionError(null);
     try {
       await debugApi.clear(slug);
       refreshSessions();
       refreshStatus();
-    } catch {
-      // Error captured by API debug interceptor
+    } catch (e) {
+      setActionError(e);
     }
   };
 
@@ -152,6 +157,13 @@ export function LlmMonitor({ slug }: { slug: string | null }) {
           </button>
         </div>
       </div>
+
+      {/* Action error */}
+      {actionError != null ? (
+        <div className="mb-2">
+          <ErrorDetail error={actionError} id="llm-monitor-error" />
+        </div>
+      ) : null}
 
       {/* Session list */}
       <div className="flex-1 overflow-y-auto">

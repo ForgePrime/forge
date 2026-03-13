@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/lib/types";
 import ToolCallBlock from "./ToolCallBlock";
 import { useSidebarStore } from "@/stores/sidebarStore";
+import { ErrorDetail } from "@/components/debug/ErrorDetail";
 
 // ---------------------------------------------------------------------------
 // Scope suggestion extraction
@@ -52,8 +53,15 @@ export default function Message({ message }: MessageProps) {
             : "bg-gray-100 text-gray-900"
         }`}
       >
+        {/* Error detail (rich rendering for ApiError) */}
+        {message.error != null ? (
+          <div className="mb-2">
+            <ErrorDetail error={message.error} id={`msg-error-${message.id}`} />
+          </div>
+        ) : null}
+
         {/* Markdown content */}
-        {cleanContent ? (
+        {!message.error && cleanContent ? (
           <div className={`prose prose-sm max-w-none ${isUser ? "prose-invert" : ""}`}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}

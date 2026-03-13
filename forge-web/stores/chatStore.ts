@@ -273,10 +273,10 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
         const conv = s.conversations[key];
         if (!conv) return { streaming: false, error: errorMsg };
 
-        // Replace streaming placeholder with error
+        // Replace streaming placeholder with error (preserve original error object for ErrorDetail)
         const messages = conv.messages.map((m) =>
           m.id === assistantMsg.id
-            ? { ...m, content: `[Error: ${errorMsg}]`, streaming: false }
+            ? { ...m, content: `[Error: ${errorMsg}]`, streaming: false, error: e }
             : m,
         );
 

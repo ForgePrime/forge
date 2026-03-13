@@ -1014,6 +1014,8 @@ export interface ChatMessage {
   toolCalls?: ChatToolCall[];
   streaming?: boolean;
   created_at: string;
+  /** Original error object for rich error rendering (client-only, not serialized). */
+  error?: unknown;
 }
 
 export interface ChatSession {

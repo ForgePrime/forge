@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useActivityStore } from "@/stores/activityStore";
 import type { ActivityEvent } from "@/components/shared/ActivityFeed";
+import { ErrorDetail } from "./ErrorDetail";
 
 // ---------------------------------------------------------------------------
 // Event type colors
@@ -45,6 +46,7 @@ function formatTime(iso: string): string {
 
 export function EventStream({ slug }: { slug: string | null }) {
   const allEvents = useActivityStore((s) => s.events);
+  const lastError = useActivityStore((s) => s.lastError);
   const clearEvents = useActivityStore((s) => s.clear);
 
   const [typeFilters, setTypeFilters] = useState<Set<string>>(new Set());
@@ -156,6 +158,13 @@ export function EventStream({ slug }: { slug: string | null }) {
           Clear
         </button>
       </div>
+
+      {/* WS error */}
+      {lastError != null ? (
+        <div className="mb-2">
+          <ErrorDetail error={lastError} id="event-stream-ws-error" />
+        </div>
+      ) : null}
 
       {/* Event list */}
       <div
