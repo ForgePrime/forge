@@ -326,6 +326,7 @@ async def chat(
         storage=storage,
         permissions=permissions.permissions,
         disabled_tools=body.disabled_capabilities,
+        session_scopes=session.scopes if session.scopes else None,
         max_iterations=config.max_iterations_per_turn,
         max_total_tokens=config.max_tokens_per_session,
     )

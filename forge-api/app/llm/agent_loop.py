@@ -47,6 +47,13 @@ def _extract_blocking_decision(tool_name: str, tool_result: dict) -> str:
     return ""
 
 
+# Tools that bypass scope enforcement (always available)
+GLOBAL_TOOLS = frozenset({
+    "searchEntities", "getEntity", "listEntities",
+    "getProject", "getProjectStatus",
+    "listAvailableTools", "getToolContract",
+})
+
 # Safety limits
 DEFAULT_MAX_ITERATIONS = 10
 DEFAULT_MAX_TOTAL_TOKENS = 50_000
@@ -101,6 +108,7 @@ class AgentLoop:
         storage: Any,
         permissions: dict[str, dict[str, bool]] | None = None,
         disabled_tools: list[str] | None = None,
+        session_scopes: list[str] | None = None,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         max_total_tokens: int = DEFAULT_MAX_TOTAL_TOKENS,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
@@ -110,6 +118,7 @@ class AgentLoop:
         self._storage = storage
         self._permissions = permissions
         self._disabled_tools = disabled_tools
+        self._session_scopes = session_scopes  # Allowed scopes for scope enforcement
         self._max_iterations = max_iterations
         self._max_total_tokens = max_total_tokens
         self._timeout = timeout_seconds
@@ -271,6 +280,43 @@ class AgentLoop:
                             "name": tool_name,
                             "input": tool_input,
                         }))
+
+                    # Scope enforcement: reject tools outside session scopes
+                    if self._session_scopes is not None and tool_name not in GLOBAL_TOOLS:
+                        tool_scope = getattr(
+                            self._tool_registry._tools.get(tool_name), "scope", None
+                        )
+                        if tool_scope and tool_scope not in self._session_scopes:
+                            logger.info(
+                                "Scope enforcement: blocked %s (scope=%s, allowed=%s)",
+                                tool_name, tool_scope, self._session_scopes,
+                            )
+                            tool_result = {
+                                "error": f"Permission denied: the '{tool_scope}' scope is not enabled. "
+                                f"Ask the user to enable it in the Scopes tab."
+                            }
+
+                            if on_event:
+                                await on_event(StreamEvent("tool_result", {
+                                    "id": tool_id,
+                                    "name": tool_name,
+                                    "result": tool_result,
+                                }))
+
+                            all_tool_calls.append({
+                                "id": tool_id,
+                                "name": tool_name,
+                                "input": tool_input,
+                                "result": tool_result,
+                            })
+
+                            conversation.append(Message(
+                                role="tool",
+                                content=json.dumps(tool_result),
+                                tool_call_id=tool_id,
+                                name=tool_name,
+                            ))
+                            continue  # Skip to next tool call
 
                     # Execute tool (with defense-in-depth permission check)
                     try:
