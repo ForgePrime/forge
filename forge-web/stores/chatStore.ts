@@ -11,6 +11,7 @@ import { create } from "zustand";
 import type { ForgeEvent } from "@/lib/ws";
 import type { ChatMessage, ChatToolCall, ChatSendResponse, ChatSession } from "@/lib/types";
 import { llm } from "@/lib/api";
+import { _notifyDebugListeners } from "@/lib/hooks/useStreamDebug";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -305,6 +306,9 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   },
 
   handleWsEvent: (event: ForgeEvent) => {
+    // Forward to debug listeners (useStreamDebug hook)
+    _notifyDebugListeners(event);
+
     const { event: eventType, payload } = event;
     const sessionId = (payload as Record<string, unknown>).session_id as string;
     if (!sessionId) return;
