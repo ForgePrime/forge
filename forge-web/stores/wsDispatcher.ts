@@ -20,6 +20,7 @@ import { useChatStore } from "./chatStore";
 import { isRecentMutation } from "@/lib/mutationTracker";
 import { useToastStore } from "./toastStore";
 import { useActivityStore } from "./activityStore";
+import { useNotificationStore } from "./notificationStore";
 
 /** All stores that handle WS events, in dispatch order. */
 const stores = [
@@ -202,6 +203,19 @@ export function dispatchWsEvent(event: ForgeEvent): void {
   // 1. Dispatch to Zustand stores (always — for optimistic update reconciliation)
   for (const store of stores) {
     store.getState().handleWsEvent(event);
+  }
+
+  // Decision created → persistent notification popup (requires user action)
+  if (event.event === "decision.created") {
+    const payload = event.payload as Record<string, unknown>;
+    useNotificationStore.getState().addDecision({
+      decisionId: (payload.decision_id ?? payload.id ?? "") as string,
+      type: (payload.type ?? "standard") as string,
+      issue: (payload.issue ?? "") as string,
+      taskId: (payload.task_id as string) || undefined,
+      severity: (payload.severity as string) || undefined,
+      project: event.project,
+    });
   }
 
   // 2. Trigger SWR revalidation for entity lists (unless it's our own echo)
