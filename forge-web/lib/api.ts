@@ -270,6 +270,7 @@ import type {
   SkillGenerateRequest, SkillImportRequest, BulkLintResult, SkillCategoryDef, SkillUsageEntry,
   ChatSendRequest, ChatSendResponse, ChatSession, ChatFileAttachment,
   LLMProvider, LLMProviderTestResult, LLMConfig, ProviderModel,
+  BackendToolContract,
 } from "./types";
 
 // -- Projects --
@@ -632,6 +633,18 @@ export const llm = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+  // Contracts — dynamic tool contracts from backend ToolRegistry
+  getContracts: (scopes?: string[]) =>
+    get<{ contracts: BackendToolContract[]; total: number }>(
+      "/llm/contracts" + (scopes?.length ? `?scope=${scopes.join(",")}` : ""),
+    ),
+  getContract: (toolName: string) =>
+    get<{ contract: Record<string, unknown> }>(`/llm/contracts/${toolName}`),
+  // Page registry
+  registerPage: (page: { id: string; title: string; description: string; route: string }) =>
+    create<{ registered: boolean; id: string }>("/llm/pages/register", page),
+  getPages: () =>
+    get<{ pages: Array<{ id: string; title: string; description: string; route: string; last_seen: string }>; count: number }>("/llm/pages"),
 };
 
 // -- Debug Monitor --

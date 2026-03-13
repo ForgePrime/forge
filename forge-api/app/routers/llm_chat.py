@@ -94,54 +94,6 @@ SCOPE_TO_CONTEXT_TYPE: dict[str, str] = {
 }
 
 
-def _build_base_prompt(active_scopes: list[str] | None = None) -> str:
-    """Build SKILL-like base system prompt with capability instructions.
-
-    This is the core "personality" prompt that tells the LLM what it is,
-    how to discover tools, and how to handle errors.
-    """
-    scopes_line = (
-        f"Active scopes: {', '.join(active_scopes)}. Only tools in these scopes are available."
-        if active_scopes
-        else "All scopes are active."
-    )
-
-    return (
-        "You are the Forge AI assistant — a structured software development partner "
-        "with direct access to project management tools.\n\n"
-        "## How to Discover Your Capabilities\n\n"
-        "1. Check the **App Map** below to see which modules are enabled [x] vs disabled [ ].\n"
-        "2. Use `listAvailableTools()` to see all tools you can use right now.\n"
-        "3. Use `getToolContract(toolName)` to get the full parameter schema before calling an unfamiliar tool.\n\n"
-        "## How to Use Tools\n\n"
-        "- When the user asks you to DO something (create, update, search), use the appropriate tool call.\n"
-        "- Always provide the `project` parameter for project-scoped entities.\n"
-        "- For queries: use `searchEntities` (text search) or `listEntities` (filtered list) or `getEntity` (by ID).\n"
-        "- For mutations: use the specific create/update tool (e.g., `createTask`, `updateDecision`).\n\n"
-        f"## Scope Awareness\n\n"
-        f"{scopes_line}\n"
-        "If you try a tool outside your active scopes, it will be rejected with a clear error.\n"
-        "When this happens, tell the user which scope they need to enable and include the marker "
-        "`[suggest-scope:SCOPENAME]` in your response so the UI shows a clickable button.\n\n"
-        "## Error Handling\n\n"
-        "- Permission denied → explain which scope is needed, suggest enabling it.\n"
-        "- Entity not found → verify the ID and project slug, try searching.\n"
-        "- Validation error → check the tool contract with `getToolContract(toolName)`.\n\n"
-        "## Common Workflows\n\n"
-        "**Find and show an entity:**\n"
-        "`searchEntities(entity_type, query)` → `getEntity(entity_type, entity_id)`\n\n"
-        "**Create a task with context:**\n"
-        "`getProjectStatus(project)` → `createTask(name, description, scopes, project)`\n\n"
-        "**Record a decision:**\n"
-        "`createDecision(title, type, reasoning_trace, project)`\n\n"
-        "## Rules\n\n"
-        "- Act, don't describe. Use tool calls to perform actions.\n"
-        "- Respect MUST guidelines strictly. Follow SHOULD unless there's a documented reason not to.\n"
-        "- For non-trivial choices, record a decision with `createDecision`.\n"
-        "- Be concise. Lead with actions, explain only when needed."
-    )
-
-
 class ChatRequest(BaseModel):
     """Request body for POST /llm/chat."""
 
@@ -171,6 +123,65 @@ class ChatResponse(BaseModel):
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     stop_reason: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Contract API — dynamic tool contracts from ToolRegistry
+# ---------------------------------------------------------------------------
+
+
+class PageRegisterRequest(BaseModel):
+    """Request body for POST /llm/pages/register."""
+
+    id: str = Field(..., min_length=1, max_length=100)
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(default="", max_length=500)
+    route: str = Field(default="", max_length=300)
+
+
+@router.get("/contracts")
+async def list_contracts(
+    request: Request,
+    scope: str | None = None,
+    tool_registry=Depends(get_tool_registry),
+):
+    """List tool contracts, optionally filtered by scope (comma-separated)."""
+    scopes = [s.strip() for s in scope.split(",") if s.strip()] if scope else None
+    contracts = tool_registry.get_contracts(scopes)
+    return {"contracts": contracts, "total": len(contracts)}
+
+
+@router.get("/contracts/{tool_name}")
+async def get_contract(
+    tool_name: str,
+    tool_registry=Depends(get_tool_registry),
+):
+    """Get a single tool's full contract."""
+    contract = tool_registry.get_tool_contract(tool_name)
+    if contract is None:
+        raise HTTPException(404, f"Tool '{tool_name}' not found")
+    return {"contract": contract}
+
+
+# ---------------------------------------------------------------------------
+# Page Registry — catalog of all Forge pages for App Context
+# ---------------------------------------------------------------------------
+
+
+@router.post("/pages/register")
+async def register_page(body: PageRegisterRequest, request: Request):
+    """Register a page (called by frontend on mount)."""
+    registry = request.app.state.page_registry
+    registry.register(body.id, body.title, body.description, body.route)
+    return {"registered": True, "id": body.id}
+
+
+@router.get("/pages")
+async def list_pages(request: Request):
+    """List all registered pages."""
+    registry = request.app.state.page_registry
+    pages = registry.get_all()
+    return {"pages": pages, "count": len(pages)}
 
 
 # ---------------------------------------------------------------------------
@@ -287,9 +298,18 @@ async def chat(
     ]
 
     # --- Build system prompt (SKILL-like format) ---
-    # 1. Base instructions (identity, capability discovery, tool usage)
+    # 1. App Context — comprehensive SKILL (identity, modules, discovery, workflows)
     active_scopes = session.scopes  # Keep [] as-is (empty = no tools allowed)
-    system_prompt = _build_base_prompt(active_scopes)
+    from app.llm.app_context_builder import AppContextBuilder
+    builder = AppContextBuilder(
+        tool_registry=tool_registry,
+        page_registry=request.app.state.page_registry,
+        custom_text=config.custom_app_context if hasattr(config, "custom_app_context") else "",
+    )
+    system_prompt = builder.build(
+        active_scopes=active_scopes,
+        project_slug=body.project or None,
+    )
 
     # 2. Entity context (supplementary — what user is working on)
     resolver = ContextResolver(storage)
@@ -303,11 +323,7 @@ async def chat(
     if entity_context:
         system_prompt += f"\n\n## Working Context\n\n{entity_context}"
 
-    # 3. App map (compact module overview, ~500 tokens)
-    app_map = tool_registry.generate_app_map(session_scopes=active_scopes)
-    system_prompt += f"\n\n{app_map}"
-
-    # 4. Page context from UI annotations (what user sees on screen)
+    # 3. Page context from UI annotations (what user sees on screen)
     if body.page_context:
         system_prompt += f"\n\n{body.page_context}"
 

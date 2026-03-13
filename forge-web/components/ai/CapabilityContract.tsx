@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import useSWR from "swr";
 import {
-  getCapabilitiesForScopes,
+  fetchContractsForScopes,
   getPermissionStatus,
   type CapabilityDef,
   type PermissionStatus,
@@ -127,7 +128,10 @@ export default function CapabilityContract({
   onToggle,
 }: CapabilityContractProps) {
   const [expanded, setExpanded] = useState(false);
-  const capabilities = getCapabilitiesForScopes(scopes);
+  const { data: capabilities = [] } = useSWR(
+    scopes.length > 0 ? ["contracts", ...scopes] : null,
+    () => fetchContractsForScopes(scopes),
+  );
 
   if (capabilities.length === 0) return null;
 

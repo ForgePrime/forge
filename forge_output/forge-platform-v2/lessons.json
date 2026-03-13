@@ -1,6 +1,6 @@
 {
   "project": "forge-platform-v2",
-  "updated": "2026-03-11T22:30:00Z",
+  "updated": "2026-03-13T21:49:31Z",
   "lessons": [
     {
       "id": "L-001",
@@ -8,10 +8,18 @@
       "title": "Store factory + per-entity stores prevents state management explosion in Zustand",
       "detail": "Risk D-005 predicted 1000+ LOC monolithic entityStore. Solution: factory.ts provides createEntitySlice() + withUpdate()/withCreateLoading() generics. Each entity gets its own store file (taskStore, decisionStore, etc.) created by the factory. The factory handles: optimistic updates with rollback, saving state, SWR revalidation triggers, WS event handling. Per-entity stores only define entity-specific logic. Result: 15 entity stores totaling ~600 LOC vs predicted 1000+ monolithic. Key: the factory pattern makes adding a new entity a 20-line file instead of a 100-line modification.",
       "task_id": "T-054",
-      "decision_ids": ["D-005"],
+      "decision_ids": [
+        "D-005"
+      ],
       "severity": "critical",
       "applies_to": "Any Zustand project managing 5+ entity types with CRUD + real-time updates",
-      "tags": ["zustand", "factory-pattern", "state-management", "per-entity-stores", "scalability"],
+      "tags": [
+        "zustand",
+        "factory-pattern",
+        "state-management",
+        "per-entity-stores",
+        "scalability"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -21,10 +29,19 @@
       "title": "SWR for reads + Zustand for WS events enables incremental migration without full rewrite",
       "detail": "Migrating from pure Zustand (fetchEntities + handleWsEvent) to SWR required coexistence: some pages migrated (tasks, decisions), others not yet. Pattern: SWR hooks (useEntityData) handle data fetching/caching for migrated pages. Zustand stores handle WS event dispatch for ALL pages. wsDispatcher triggers both: (1) Zustand store.handleWsEvent for non-migrated pages, (2) SWR mutate() for migrated pages. MutationTracker (5s TTL) prevents own-mutation echo causing double SWR revalidation. Key insight: the dedup must happen at the WS dispatcher level, not in individual components.",
       "task_id": "T-063",
-      "decision_ids": ["D-007"],
+      "decision_ids": [
+        "D-007"
+      ],
       "severity": "important",
       "applies_to": "Incrementally migrating from manual state management to SWR/React Query while maintaining real-time updates",
-      "tags": ["swr", "zustand", "migration", "websocket", "dedup", "coexistence"],
+      "tags": [
+        "swr",
+        "zustand",
+        "migration",
+        "websocket",
+        "dedup",
+        "coexistence"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -37,7 +54,13 @@
       "decision_ids": [],
       "severity": "important",
       "applies_to": "Any case where a low-level utility (HTTP client, logger) needs to push data to a UI store without circular imports",
-      "tags": ["circular-import", "callback-injection", "api-interceptor", "debug-store", "dependency-inversion"],
+      "tags": [
+        "circular-import",
+        "callback-injection",
+        "api-interceptor",
+        "debug-store",
+        "dependency-inversion"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -50,7 +73,13 @@
       "decision_ids": [],
       "severity": "critical",
       "applies_to": "Any CRUD UI where the backend API uses replace-all semantics instead of per-item CRUD",
-      "tags": ["api-semantics", "replace-vs-append", "data-loss", "gates", "deep-verify"],
+      "tags": [
+        "api-semantics",
+        "replace-vs-append",
+        "data-loss",
+        "gates",
+        "deep-verify"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -63,7 +92,13 @@
       "decision_ids": [],
       "severity": "important",
       "applies_to": "Any HTML5 drag-and-drop implementation (not using a DnD library)",
-      "tags": ["drag-and-drop", "firefox", "cross-browser", "dataTransfer", "silent-failure"],
+      "tags": [
+        "drag-and-drop",
+        "firefox",
+        "cross-browser",
+        "dataTransfer",
+        "silent-failure"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -76,7 +111,13 @@
       "decision_ids": [],
       "severity": "critical",
       "applies_to": "Every non-trivial UI/frontend task — deep-verify catches integration issues that unit tests miss",
-      "tags": ["deep-verify", "quality", "bug-prevention", "roi", "frontend"],
+      "tags": [
+        "deep-verify",
+        "quality",
+        "bug-prevention",
+        "roi",
+        "frontend"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -89,7 +130,13 @@
       "decision_ids": [],
       "severity": "important",
       "applies_to": "Any project using Docker for development where code changes need to be visible immediately",
-      "tags": ["docker", "hot-reload", "development-workflow", "volume-mounts", "build-cache"],
+      "tags": [
+        "docker",
+        "hot-reload",
+        "development-workflow",
+        "volume-mounts",
+        "build-cache"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -99,10 +146,18 @@
       "title": "Truncate large API response bodies before storing in debug circular buffer",
       "detail": "Debug store captures full request/response bodies for API inspector. Without truncation, a single large JSON response (e.g., 500-task list) could consume megabytes in the 200-entry ring buffer. Solution: truncateBody() at 8KB threshold converts body to '[truncated: N chars] first-8000-chars...'. Applied in api.ts request() function before passing to debug interceptor. The 8KB limit preserves enough context for debugging while capping memory at ~1.6MB (200 entries × 8KB). Key: truncate at the capture point, not at display time.",
       "task_id": "T-067",
-      "decision_ids": ["D-010"],
+      "decision_ids": [
+        "D-010"
+      ],
       "severity": "important",
       "applies_to": "Any debug/logging system that captures full HTTP bodies in memory",
-      "tags": ["memory", "truncation", "debug-store", "circular-buffer", "api-inspector"],
+      "tags": [
+        "memory",
+        "truncation",
+        "debug-store",
+        "circular-buffer",
+        "api-inspector"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -112,10 +167,18 @@
       "title": "5D risk scoring with interaction analysis identifies the critical reinforcing loop before it activates",
       "detail": "D-013 scored 11 risks across 5 dimensions (Probability, Impact, Velocity, Detectability, Reversibility) and found 6 risk interactions forming a reinforcing loop: scope creep → state explosion → WS races → no tests → quality decline. The composite scores (19-29) correctly predicted which issues would surface: D-005 (state, score 29) manifested as entityStore growing to 15+ stores; D-007 (WS races, score 26) manifested as SWR/Zustand data source mismatch caught by deep-verify; D-009 (API gaps, score 22) manifested as missing PATCH /projects endpoint. The 5D framework's value is in ordering mitigation: address high-composite-score risks first in execution order.",
       "task_id": "T-051",
-      "decision_ids": ["D-013"],
+      "decision_ids": [
+        "D-013"
+      ],
       "severity": "important",
       "applies_to": "Any project with 5+ identified risks — use composite scoring to prioritize mitigation order",
-      "tags": ["risk-management", "5d-scoring", "reinforcing-loop", "mitigation-priority", "prediction"],
+      "tags": [
+        "risk-management",
+        "5d-scoring",
+        "reinforcing-loop",
+        "mitigation-priority",
+        "prediction"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -128,7 +191,13 @@
       "decision_ids": [],
       "severity": "important",
       "applies_to": "Any real-time UI with multiple consumers of the same event stream",
-      "tags": ["fan-out", "event-dispatcher", "single-source", "activity-feed", "websocket"],
+      "tags": [
+        "fan-out",
+        "event-dispatcher",
+        "single-source",
+        "activity-feed",
+        "websocket"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T19:00:00Z"
     },
@@ -138,10 +207,19 @@
       "title": "Additive optional fields with defaults preserve backward compatibility for schema evolution",
       "detail": "D-014 recommended adding guideline_ids, relations, and KR description as optional fields with empty defaults. T-070 proved this correct: no existing data broke, no migration of existing records needed (defaults handle it), validation changed from (metric required) to (metric OR description required) with dual-mode check. Rule: when extending an entity schema, always add optional fields with sensible defaults rather than replacing or requiring new fields. This eliminates migration-on-existing-data risk.",
       "task_id": "T-070",
-      "decision_ids": ["D-014", "D-016"],
+      "decision_ids": [
+        "D-014",
+        "D-016"
+      ],
       "severity": "important",
       "applies_to": "Any entity schema evolution where backward compatibility with existing records matters",
-      "tags": ["schema-evolution", "backward-compat", "optional-fields", "additive-design", "migration"],
+      "tags": [
+        "schema-evolution",
+        "backward-compat",
+        "optional-fields",
+        "additive-design",
+        "migration"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T22:30:00Z"
     },
@@ -151,10 +229,18 @@
       "title": "Dual-mode validation at row level enables mixed-type collections",
       "detail": "KRs now support both numeric (metric+target) and descriptive (description) modes. The validation must be per-item, not per-field: (metric AND target) OR description. Backend uses dict check in Python, frontend uses Zod .refine() on the object schema. Key: the row-level refinement catches invalid combos (no metric AND no description) that field-level required/optional cannot express. This pattern applies to any collection where items can have different valid shapes.",
       "task_id": "T-073",
-      "decision_ids": ["D-014"],
+      "decision_ids": [
+        "D-014"
+      ],
       "severity": "important",
       "applies_to": "Any schema with variant items in a collection (mixed KR types, polymorphic list items)",
-      "tags": ["zod-refine", "dual-mode", "validation", "variant-types", "key-results"],
+      "tags": [
+        "zod-refine",
+        "dual-mode",
+        "validation",
+        "variant-types",
+        "key-results"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T22:30:00Z"
     },
@@ -167,7 +253,13 @@
       "decision_ids": [],
       "severity": "critical",
       "applies_to": "Any Docker development setup with selective volume mounts (not full source tree)",
-      "tags": ["docker", "volume-mounts", "stale-code", "partial-mount", "silent-failure"],
+      "tags": [
+        "docker",
+        "volume-mounts",
+        "stale-code",
+        "partial-mount",
+        "silent-failure"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T22:30:00Z"
     },
@@ -177,10 +269,18 @@
       "title": "Heuristic scoring is 80% good enough for AI suggestion endpoints — build it first",
       "detail": "T-076 suggest-kr endpoint uses token overlap scoring against knowledge objects + scope-based templates. No LLM call needed. Result: relevant, useful suggestions with zero API cost and zero latency. Pattern: always build heuristic mode first, wire LLM later. The heuristic serves as: (1) always-available fallback, (2) baseline for LLM quality comparison, (3) test fixture for frontend development. All existing /ai/suggest-* endpoints follow this pattern. It works because domain-specific templates + scope matching capture most of the intelligence.",
       "task_id": "T-076",
-      "decision_ids": ["D-014"],
+      "decision_ids": [
+        "D-014"
+      ],
       "severity": "important",
       "applies_to": "Any AI-powered suggestion feature — build heuristic first, add LLM enrichment second",
-      "tags": ["heuristic-scoring", "ai-suggestions", "no-llm-fallback", "cost-zero", "mvp-pattern"],
+      "tags": [
+        "heuristic-scoring",
+        "ai-suggestions",
+        "no-llm-fallback",
+        "cost-zero",
+        "mvp-pattern"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T22:30:00Z"
     },
@@ -190,10 +290,18 @@
       "title": "Typed relations matching ideas pattern works for objectives — reuse entity relation patterns",
       "detail": "D-016 ADR-4 recommended using typed relations (type + target_id + notes) matching the existing ideas.relations pattern. T-072 (cycle detection), T-074 (form editor), T-075 (detail display) all benefited from this consistency: same DFS cycle detection logic, same UI pattern (type dropdown + target select), same color-coded badges. Rule: when adding inter-entity relationships to a new entity type, copy the exact same relation structure from an existing entity. The UI, validation, and display code can be reused with minimal changes.",
       "task_id": "T-075",
-      "decision_ids": ["D-016"],
+      "decision_ids": [
+        "D-016"
+      ],
       "severity": "important",
       "applies_to": "Adding relationships to any new entity type — reuse existing relation patterns",
-      "tags": ["relations", "pattern-reuse", "consistency", "cycle-detection", "typed-relations"],
+      "tags": [
+        "relations",
+        "pattern-reuse",
+        "consistency",
+        "cycle-detection",
+        "typed-relations"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T22:30:00Z"
     },
@@ -206,7 +314,13 @@
       "decision_ids": [],
       "severity": "important",
       "applies_to": "Any continuous task execution mode (/run, /next loops) — must include verification gates",
-      "tags": ["deep-verify", "continuous-execution", "quality-gap", "process", "verification-gate"],
+      "tags": [
+        "deep-verify",
+        "continuous-execution",
+        "quality-gap",
+        "process",
+        "verification-gate"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T22:30:00Z"
     },
@@ -216,10 +330,18 @@
       "title": "Context-sensitive Actions menu with pure-function transition table for entity lifecycle",
       "detail": "T-078 objective detail page uses getAvailableActions(status) -> ActionItem[] pure function to compute valid menu items. ACTIVE shows Pause/Achieve/Abandon. PAUSED shows Resume/Achieve/Abandon. Terminal states (ACHIEVED/ABANDONED) show only Update KR Progress. Destructive actions route through confirmation dialog; non-destructive execute immediately. This pattern works for any entity with status lifecycle: define valid transitions as a pure function, render conditionally, add confirmation for irreversible transitions. Reusable for ideas (explore/approve/reject/commit) and tasks (complete/fail/skip).",
       "task_id": "T-078",
-      "decision_ids": ["D-017"],
+      "decision_ids": [
+        "D-017"
+      ],
       "severity": "minor",
       "applies_to": "Any entity detail page with status lifecycle and context-sensitive actions",
-      "tags": ["actions-menu", "status-transitions", "confirmation-dialog", "cli-parity", "entity-lifecycle"],
+      "tags": [
+        "actions-menu",
+        "status-transitions",
+        "confirmation-dialog",
+        "cli-parity",
+        "entity-lifecycle"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-11T22:30:00Z"
     },
@@ -232,7 +354,14 @@
       "decision_ids": [],
       "severity": "critical",
       "applies_to": "Any React context where children set values that other siblings read — portal-like patterns, slot systems, layout providers",
-      "tags": ["react-context", "infinite-loop", "useEffect", "ref-subscription", "performance", "layout-provider"],
+      "tags": [
+        "react-context",
+        "infinite-loop",
+        "useEffect",
+        "ref-subscription",
+        "performance",
+        "layout-provider"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-12T17:00:00Z"
     },
@@ -245,7 +374,13 @@
       "decision_ids": [],
       "severity": "important",
       "applies_to": "Any ref + subscription / pub-sub pattern in React where producers and consumers mount at different times",
-      "tags": ["race-condition", "subscription", "effect-ordering", "react-lifecycle", "initial-state"],
+      "tags": [
+        "race-condition",
+        "subscription",
+        "effect-ordering",
+        "react-lifecycle",
+        "initial-state"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-12T17:00:00Z"
     },
@@ -255,10 +390,18 @@
       "title": "CSS custom properties + Tailwind spacing tokens create a single source of truth for layout dimensions",
       "detail": "3-column layout uses CSS variables (--topnav-height, --left-panel-width, --right-sidebar-width) defined in globals.css. Tailwind config maps spacing tokens (topnav, left-panel, right-sidebar) to var() references. Benefits: (1) JavaScript resize (RightSidebarSlot drag handle) writes to the same variable CSS reads, (2) calc() expressions reference semantic names not magic numbers, (3) design token changes propagate everywhere from one place. Pattern: define dimensions as CSS custom properties in :root, reference them in Tailwind spacing config for utility class usage, read/write them from JS via element.style for runtime behavior.",
       "task_id": "T-115",
-      "decision_ids": ["D-034"],
+      "decision_ids": [
+        "D-034"
+      ],
       "severity": "minor",
       "applies_to": "Any layout with resizable panels or dynamic dimensions that need to be consistent across CSS and JS",
-      "tags": ["css-variables", "tailwind", "design-tokens", "layout", "single-source-of-truth"],
+      "tags": [
+        "css-variables",
+        "tailwind",
+        "design-tokens",
+        "layout",
+        "single-source-of-truth"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-12T17:00:00Z"
     },
@@ -268,10 +411,18 @@
       "title": "ToolRegistry union semantics for multi-scope: set intersection on context_types enables cross-module AI queries",
       "detail": "When the AI sidebar views multiple scopes (e.g., ['skills', 'tasks']), the backend needs to return tools for ALL matching scopes. Solution: get_tools() accepts str | list[str], normalizes to set, uses set.intersection(tool.context_types) for matching. Global tools (context_types=['global']) always match. Defense-in-depth: execute() re-checks permissions even though get_tools() already filtered. Union semantics means scopes are additive (user sees MORE tools when MORE scopes are active). This is safer than intersection (which could show NO tools if misconfigured).",
       "task_id": "T-122",
-      "decision_ids": ["D-035"],
+      "decision_ids": [
+        "D-035"
+      ],
       "severity": "important",
       "applies_to": "Any permission/capability system where multiple scopes can be active simultaneously",
-      "tags": ["multi-scope", "union-semantics", "tool-registry", "permissions", "defense-in-depth"],
+      "tags": [
+        "multi-scope",
+        "union-semantics",
+        "tool-registry",
+        "permissions",
+        "defense-in-depth"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-12T17:00:00Z"
     },
@@ -281,10 +432,18 @@
       "title": "Route-to-scope resolver with regex rules + manual overrides decouples page identity from component hierarchy",
       "detail": "useScopeResolver() maps pathname to scopes using ordered regex rules (first match wins). Returns { scopes, primaryScope, projectSlug, contextTypes }. Supports manual overrides: addedScopes/removedScopes merged with auto-detected. The pure function resolveScopes() is exported separately for testing without React. 25 route patterns cover all pages. Key: the resolver is independent of the component tree — any component can call it, not just layouts. The scope-to-contextType mapping mirrors the backend exactly (13 entries). Pattern: route-based feature detection is more reliable than component-tree-based detection because routes are stable while components refactor.",
       "task_id": "T-125",
-      "decision_ids": ["D-035"],
+      "decision_ids": [
+        "D-035"
+      ],
       "severity": "minor",
       "applies_to": "Any app where page-level context (scope, permissions, features) must be derived from the URL",
-      "tags": ["scope-resolver", "route-matching", "regex-rules", "pathname", "testable-pure-function"],
+      "tags": [
+        "scope-resolver",
+        "route-matching",
+        "regex-rules",
+        "pathname",
+        "testable-pure-function"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-12T17:00:00Z"
     },
@@ -297,7 +456,14 @@
       "decision_ids": [],
       "severity": "critical",
       "applies_to": "Any UI task involving React context providers, layout restructuring, or effect-based state management",
-      "tags": ["deep-verify", "runtime-testing", "build-vs-runtime", "infinite-loop", "layout", "provider"],
+      "tags": [
+        "deep-verify",
+        "runtime-testing",
+        "build-vs-runtime",
+        "infinite-loop",
+        "layout",
+        "provider"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-12T17:00:00Z"
     },
@@ -310,9 +476,231 @@
       "decision_ids": [],
       "severity": "minor",
       "applies_to": "Any TypeScript project — avoid spreading Sets/Maps unless downlevelIteration is confirmed enabled",
-      "tags": ["typescript", "set-spread", "array-from", "downlevelIteration", "compiler-config"],
+      "tags": [
+        "typescript",
+        "set-spread",
+        "array-from",
+        "downlevelIteration",
+        "compiler-config"
+      ],
       "project": "forge-platform-v2",
       "timestamp": "2026-03-12T17:00:00Z"
+    },
+    {
+      "id": "L-025",
+      "category": "architecture-lesson",
+      "title": "Meta-tools for LLM self-discovery outperform hardcoded tool lists in system prompts",
+      "detail": "O-024 initially tried listing all available tools in the system prompt. This bloated tokens and went stale as scopes changed. Solution: two meta-tools (listAvailableTools, getToolContract) + a compact app map (~500 tokens with [x]/[ ] markers). The LLM discovers its own capabilities at runtime via tool calls rather than reading a static list. Benefits: (1) always up-to-date with active scopes, (2) token-efficient (full tool schemas only loaded on demand), (3) scope-aware (getToolContract rejects queries for out-of-scope tools). Pattern: give the LLM a map + discovery tools, not an encyclopedia.",
+      "task_id": "T-221",
+      "decision_ids": [
+        "D-068",
+        "D-069",
+        "D-071"
+      ],
+      "severity": "important",
+      "applies_to": "Any LLM agent system with 10+ tools where different sessions may have different tool subsets",
+      "tags": [
+        "llm",
+        "meta-tools",
+        "self-discovery",
+        "token-efficiency",
+        "system-prompt",
+        "scope-aware"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-026",
+      "category": "mistake-avoided",
+      "title": "Python empty list [] is falsy - use is-not-None checks for optional list parameters",
+      "detail": "T-225 scope sync used 'if request_scopes and ...' which treated [] as falsy, preventing users from clearing all scopes. Same bug appeared in system prompt where 'if active_scopes' skipped empty-but-intentional scope lists. Fix: 'if body.scopes is not None and ...'. Rule: for any optional list parameter where empty list has different semantics than None/absent, always use 'is not None' check, never truthiness. This is a Python-specific gotcha that affects authorization, filtering, and configuration systems.",
+      "task_id": "T-225",
+      "decision_ids": [
+        "D-085"
+      ],
+      "severity": "critical",
+      "applies_to": "Any Python code where empty list [] has different meaning than None/absent - especially authorization and filtering",
+      "tags": [
+        "python",
+        "falsy",
+        "empty-list",
+        "authorization",
+        "scope",
+        "truthiness-bug"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-027",
+      "category": "mistake-avoided",
+      "title": "Context key naming must be exact across all handlers - mismatched keys cause silent tool failures",
+      "detail": "T-226 found that 8 skill tool handlers expected context.get('entity_id') but the chat endpoint passed 'context_id'. Tools silently returned empty results or errors - no crash, no log, just wrong behavior. This went undetected because tools were only tested via direct API, never via the AI sidebar path. Fix: added entity_id alias in context dict. Rule: when a context dict is consumed by multiple handlers, define the key contract once and validate it. Silent key misses via dict.get() with None defaults are the most insidious integration bugs.",
+      "task_id": "T-226",
+      "decision_ids": [],
+      "severity": "important",
+      "applies_to": "Any system passing context dicts to multiple handlers - especially tool registries, middleware chains, plugin systems",
+      "tags": [
+        "context-dict",
+        "key-mismatch",
+        "silent-failure",
+        "integration",
+        "tool-registry"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-028",
+      "category": "architecture-lesson",
+      "title": "Instructive system prompts (how-to) outperform descriptive prompts (what-exists) for tool-using LLMs",
+      "detail": "T-224 rewrote the AI system prompt from descriptive ('You have access to X tools') to instructive ('How to Discover: call listAvailableTools(). How to Use: call getToolContract(name). How to Handle Errors: if scope denied, suggest enabling scope.'). The old prompt made the LLM flip-flop about its capabilities because it saw tool names but did not know when/how to use them. The new prompt follows the SKILL pattern: identity, capability discovery workflow, tool usage patterns, error handling, examples. Result: LLM reliably discovers and uses tools instead of hallucinating about them.",
+      "task_id": "T-224",
+      "decision_ids": [
+        "D-067",
+        "D-068"
+      ],
+      "severity": "important",
+      "applies_to": "Any LLM agent with tools - system prompts should teach the agent HOW to work, not just list WHAT it has",
+      "tags": [
+        "system-prompt",
+        "llm",
+        "instructive",
+        "skill-pattern",
+        "tool-use",
+        "prompt-engineering"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-029",
+      "category": "process-improvement",
+      "title": "Open decisions accumulate without closure - add systematic review at objective completion",
+      "detail": "forge-platform-v2 finished with 31 of 86 decisions still OPEN. Most were exploration and risk decisions from /discover (D-067 through D-083 for O-024) that were fully implemented but never formally closed. The /discover skill creates decisions, task execution resolves them in practice, but nobody closes them. This creates noise for future /decide reviews. Fix: add a decision cleanup step to /compound or objective completion - scan for OPEN decisions whose linked tasks are DONE, prompt user to close them. Alternatively, auto-close exploration decisions when their origin idea/objective is marked complete.",
+      "task_id": "",
+      "decision_ids": [
+        "D-067",
+        "D-068",
+        "D-069",
+        "D-070",
+        "D-071"
+      ],
+      "severity": "important",
+      "applies_to": "Any Forge project using /discover - exploration decisions should be closed when implemented",
+      "tags": [
+        "decisions",
+        "open-decisions",
+        "cleanup",
+        "process",
+        "discover",
+        "compound"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-030",
+      "category": "process-improvement",
+      "title": "12 of 18 guidelines never checked in change records - auto-recording skips guideline validation",
+      "detail": "Only 6 of 18 ACTIVE guidelines were ever referenced in change records: G-001 (22x), G-005 (11x), G-006 (10x), G-003 (7x), G-004 (2x), G-010 (2x). The other 12 (G-002, G-007 through G-018) were never checked. Root cause: auto-recorded changes from pipeline complete include no guidelines_checked field. Only manually recorded changes include them. Since auto-recording became the default path, guideline validation became optional. Fix: either make deep-verify explicitly check all MUST guidelines against changes, or add a post-completion guideline audit step.",
+      "task_id": "",
+      "decision_ids": [],
+      "severity": "important",
+      "applies_to": "Any Forge project relying on auto-recorded changes - manual guideline checking discipline erodes over time",
+      "tags": [
+        "guidelines",
+        "auto-recording",
+        "compliance",
+        "gap",
+        "must-guidelines",
+        "process"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-031",
+      "category": "architecture-lesson",
+      "title": "Defense-in-depth authorization: check scope at every layer, not just the entry point",
+      "detail": "O-024 scope enforcement has three independent check points: (1) AgentLoop pre-execution check (scope of tool vs session scopes), (2) ToolRegistry.execute() permission check (defense-in-depth), (3) getToolContract meta-tool scope validation (prevents reconnaissance). Even if one layer is bypassed (e.g., a new code path skips AgentLoop check), the other layers catch it. The GLOBAL_TOOLS frozenset bypasses all checks - these are read-only discovery tools by design. Key insight: the scope check in AgentLoop uses the public get_tool() API to read scope metadata, keeping layers decoupled.",
+      "task_id": "T-218",
+      "decision_ids": [
+        "D-072",
+        "D-073"
+      ],
+      "severity": "important",
+      "applies_to": "Any multi-layer system with authorization - API gateway, middleware, service, database all should validate independently",
+      "tags": [
+        "defense-in-depth",
+        "authorization",
+        "scope-enforcement",
+        "security",
+        "multi-layer"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-032",
+      "category": "process-improvement",
+      "title": "Batched deep-verify on 3+ related tasks catches cross-task integration bugs that per-task verify misses",
+      "detail": "O-024 deep-verify ran in batches (T-219/T-221/T-222 together, T-224/T-225/T-226 together, then T-227 final sweep). Batch verify caught: stale scopes passed between components (T-225 to T-224 integration), entity_id key mismatch across endpoints (T-226 to T-105 integration), and JSON serialization inconsistency between code paths (T-218 to T-226). Per-task deep-verify would have checked each in isolation and missed these cross-boundary issues. Sweet spot: batch 3-5 related tasks that touch the same data flow, then do a final sweep of the entire objective.",
+      "task_id": "T-227",
+      "decision_ids": [],
+      "severity": "important",
+      "applies_to": "Any objective with 5+ tasks that share data flows or API boundaries",
+      "tags": [
+        "deep-verify",
+        "batch-verify",
+        "integration-bugs",
+        "cross-task",
+        "data-flow"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-033",
+      "category": "mistake-avoided",
+      "title": "Never access private attributes across module boundaries - use public API methods",
+      "detail": "T-227 deep-verify found agent_loop.py accessing tool_registry._tools (private dict) for scope enforcement. This works but creates fragile coupling: if ToolRegistry refactors internal storage, AgentLoop breaks. Fix: use get_tool() public method which returns the same data. Rule: when module A needs data from module B, always use B public API. Private attribute access is a code smell that deep-verify should flag as MODERATE. This is especially critical for registries, factories, and managers that are likely to evolve their internals.",
+      "task_id": "T-227",
+      "decision_ids": [],
+      "severity": "important",
+      "applies_to": "Any cross-module code accessing internal state - registries, managers, factories",
+      "tags": [
+        "encapsulation",
+        "private-access",
+        "public-api",
+        "coupling",
+        "deep-verify"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
+    },
+    {
+      "id": "L-034",
+      "category": "pattern-discovered",
+      "title": "Scope sync chain (UI toggle to PATCH API to Redis to AgentLoop) with ref-based change detection",
+      "detail": "O-024 scope propagation chain: (1) UI toggles in AISidebar update local scopes state, (2) useEffect watches scopesKey (joined string) to avoid array reference instability, (3) PATCH /sessions/{id}/scopes persists to Redis, (4) chat endpoint syncs request.scopes with session.scopes before processing, (5) AgentLoop reads session_scopes for tool-level enforcement. Key pattern: using scopesKey = scopes.join(',') as the stable change-detection key, with prevScopesRef to skip the initial effect. Each link in the chain is independently testable. Failure at any link degrades gracefully (worst case: LLM sees all tools instead of filtered subset).",
+      "task_id": "T-220",
+      "decision_ids": [
+        "D-070"
+      ],
+      "severity": "important",
+      "applies_to": "Any multi-layer state propagation from UI to backend enforcement - feature flags, permissions, preferences",
+      "tags": [
+        "scope-sync",
+        "state-propagation",
+        "useEffect",
+        "ref-pattern",
+        "redis",
+        "chain"
+      ],
+      "project": "forge-platform-v2",
+      "timestamp": "2026-03-13T21:49:31Z"
     }
   ]
 }

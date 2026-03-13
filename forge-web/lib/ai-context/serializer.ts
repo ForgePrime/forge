@@ -8,6 +8,8 @@ export interface SerializeOptions {
   maxItems?: number;
   /** Active scopes — if provided, filter actions to only show available tools */
   activeScopes?: string[];
+  /** Tool names disabled by user — filtered from page context */
+  disabledTools?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -50,7 +52,7 @@ export function serializePageContext(
   snapshot: AIContextSnapshot,
   options: SerializeOptions = {},
 ): string {
-  const { maxChars = 4000, maxItems = 15, activeScopes } = options;
+  const { maxChars = 4000, maxItems = 15, activeScopes, disabledTools } = options;
   const lines: string[] = [];
 
   // --- Header ---
@@ -75,7 +77,7 @@ export function serializePageContext(
   }
 
   // --- Available Actions ---
-  const { actionLines, filteredCount } = serializeActions(elements, activeScopes);
+  const { actionLines, filteredCount } = serializeActions(elements, activeScopes, disabledTools);
   if (actionLines.length > 0) {
     lines.push("### Available Actions");
     lines.push(...actionLines);
@@ -172,6 +174,7 @@ interface ActionEntry {
 function serializeActions(
   elements: AIElementDescriptor[],
   activeScopes?: string[],
+  disabledTools?: string[],
 ): { actionLines: string[]; filteredCount: number } {
   // Collect all actions with toolName
   const actions: ActionEntry[] = [];
@@ -201,6 +204,7 @@ function serializeActions(
   if (actions.length === 0) return { actionLines: [], filteredCount: 0 };
 
   const activeScopeSet = activeScopes ? new Set(activeScopes) : null;
+  const disabledSet = disabledTools ? new Set(disabledTools) : null;
   const lines: string[] = [];
   let filteredCount = 0;
 
@@ -212,6 +216,12 @@ function serializeActions(
         filteredCount++;
         continue;
       }
+    }
+
+    // Capability filtering: skip tools disabled by user
+    if (disabledSet && disabledSet.has(action.toolName)) {
+      filteredCount++;
+      continue;
     }
 
     // Format: - **Label**: `toolName(params)` — notes

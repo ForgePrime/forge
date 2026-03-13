@@ -2,8 +2,8 @@
 
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useScopeResolver, SCOPE_TO_CONTEXT_TYPE } from "@/hooks/useScopeResolver";
-import { CAPABILITY_CONTRACTS, getCapabilitiesForScopes, getPermissionStatus, type CapabilityDef } from "@/lib/capabilities";
-import { useAIPageContextSafe, serializePageContext, deriveScopesFromElements } from "@/lib/ai-context";
+import { fetchContractsForScopes, getPermissionStatus, type CapabilityDef } from "@/lib/capabilities";
+import { useAIPageContextSafe, serializePageContext, deriveScopesFromElements, type AIElementDescriptor } from "@/lib/ai-context";
 import { useSidebarStore, type SidebarTab } from "@/stores/sidebarStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useSkillStore, fetchSkills } from "@/stores/skillStore";
@@ -157,6 +157,13 @@ const ACTION_BADGE: Record<string, string> = {
   DELETE: "bg-red-100 text-red-700",
 };
 
+/** Guess action type from tool name convention. */
+function guessActionType(toolName: string): "READ" | "WRITE" | "DELETE" {
+  if (/^(delete|remove)/.test(toolName)) return "DELETE";
+  if (/^(create|update|add|set|record|draft|approve|complete)/.test(toolName)) return "WRITE";
+  return "READ";
+}
+
 function ScopesTab({
   activeScopes,
   onAdd,
@@ -169,6 +176,7 @@ function ScopesTab({
   pageElementCount,
   annotationScopes,
   pageContextText,
+  pageElements,
 }: {
   activeScopes: string[];
   onAdd: (scope: string) => void;
@@ -185,21 +193,53 @@ function ScopesTab({
   annotationScopes: string[];
   /** Full serialized page context text (what the LLM actually sees). */
   pageContextText?: string;
+  /** Page annotation elements — for deriving extra capabilities not in static registry. */
+  pageElements?: AIElementDescriptor[];
 }) {
   const [contextExpanded, setContextExpanded] = useState(false);
   const activeSet = new Set(activeScopes);
   const disabledSet = new Set(disabledCapabilities);
 
-  // Collect capabilities for active scopes
+  // Fetch capabilities for active scopes from backend (dynamic)
+  const { data: fetchedCaps } = useSWR(
+    activeScopes.length > 0 ? ["contracts", ...activeScopes] : null,
+    () => fetchContractsForScopes(activeScopes),
+  );
+
+  // Build active caps: fetched from backend + page-annotation extras
   const activeCaps: CapabilityDef[] = [];
   const seenIds = new Set<string>();
-  for (const scope of activeScopes) {
-    const caps = CAPABILITY_CONTRACTS[scope];
-    if (!caps) continue;
-    for (const cap of caps) {
+  const seenTools = new Set<string>();
+
+  if (fetchedCaps) {
+    for (const cap of fetchedCaps) {
       if (!seenIds.has(cap.id)) {
         seenIds.add(cap.id);
         activeCaps.push(cap);
+        if (cap.toolName) seenTools.add(cap.toolName);
+      }
+    }
+  }
+
+  // Merge page-annotation actions not already in backend registry
+  if (pageElements) {
+    for (const el of pageElements) {
+      if (!el.actions) continue;
+      for (const action of el.actions) {
+        if (!action.toolName || seenTools.has(action.toolName)) continue;
+        const capId = `page-${action.toolName}`;
+        if (seenIds.has(capId)) continue;
+        seenIds.add(capId);
+        seenTools.add(action.toolName);
+        activeCaps.push({
+          id: capId,
+          label: action.label,
+          description: action.description ?? `${action.label} (from page)`,
+          action: guessActionType(action.toolName),
+          scope: "page",
+          toolName: action.toolName,
+          available: action.available !== false,
+        });
       }
     }
   }
@@ -271,7 +311,7 @@ function ScopesTab({
       <div className="space-y-1 mb-3">
         {ALL_SCOPES.map((scope) => {
           const checked = activeSet.has(scope);
-          const capCount = CAPABILITY_CONTRACTS[scope]?.length ?? 0;
+          const capCount = fetchedCaps ? fetchedCaps.filter((c) => c.scope === scope).length : 0;
           return (
             <label key={scope} className="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-50 rounded px-1">
               <input
@@ -282,7 +322,7 @@ function ScopesTab({
               />
               <span className="text-xs text-gray-700">{scope}</span>
               <span className="text-[10px] text-gray-400 ml-auto">
-                {capCount > 0 ? `${capCount} ops` : SCOPE_TO_CONTEXT_TYPE[scope]}
+                {checked && capCount > 0 ? `${capCount} ops` : SCOPE_TO_CONTEXT_TYPE[scope]}
               </span>
             </label>
           );
@@ -568,10 +608,6 @@ export default function AISidebar() {
     : [];
   const scopes = Array.from(new Set([...urlScopes, ...annotationScopes]));
 
-  const pageContextText = pageSnapshot && pageSnapshot.elements.size > 0
-    ? serializePageContext(pageSnapshot, { activeScopes: scopes })
-    : undefined;
-
   // Sync scopes to active session backend when they change
   const scopesKey = scopes.join(",");
   const prevScopesRef = useRef(scopesKey);
@@ -587,14 +623,25 @@ export default function AISidebar() {
   const { data: llmConfig } = useSWR<LLMConfig>("llm-config", () => llm.getConfig());
   const permissions = llmConfig?.permissions ?? {};
 
+  // Fetch capabilities for current scopes (for tool name mapping)
+  const { data: currentCaps } = useSWR(
+    scopes.length > 0 ? ["contracts", ...scopes] : null,
+    () => fetchContractsForScopes(scopes),
+  );
+
   // Map disabled capability IDs to tool names for backend
   const disabledToolNames = disabledCapabilities
     .map((id) => {
-      const caps = getCapabilitiesForScopes(scopes);
-      const cap = caps.find((c) => c.id === id);
+      const cap = currentCaps?.find((c) => c.id === id);
       return cap?.toolName;
     })
     .filter(Boolean) as string[];
+
+  // Serialize page context — filtered by active scopes AND disabled capabilities
+  // App Context is now server-side (AppContextBuilder), so we only send page context
+  const pageContextText = pageSnapshot && pageSnapshot.elements.size > 0
+    ? serializePageContext(pageSnapshot, { activeScopes: scopes, disabledTools: disabledToolNames })
+    : undefined;
 
   // Resume session handler
   const handleResume = useCallback(
@@ -657,6 +704,7 @@ export default function AISidebar() {
             pageElementCount={pageSnapshot?.elements.size ?? 0}
             annotationScopes={annotationScopes}
             pageContextText={pageContextText}
+            pageElements={pageSnapshot ? Array.from(pageSnapshot.elements.values()) : undefined}
           />
         )}
 

@@ -256,6 +256,45 @@ class ToolRegistry:
             "context_types": tool.context_types,
         }
 
+    def get_contracts(
+        self,
+        scopes: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return all tool contracts, optionally filtered by scope.
+
+        Args:
+            scopes: If provided, only return tools whose scope is in this list
+                    (global-scope tools are always included).
+
+        Returns:
+            List of contract dicts sorted by (scope, name).
+        """
+        scope_set = set(scopes) if scopes else None
+        result: list[dict[str, Any]] = []
+
+        for tool in self._tools.values():
+            tool_scope = tool.scope or "global"
+            if scope_set is not None and tool_scope != "global" and tool_scope not in scope_set:
+                continue
+
+            action = "read"
+            if tool.required_permission:
+                action = tool.required_permission[1]
+
+            result.append({
+                "name": tool.name,
+                "description": tool.description,
+                "scope": tool.scope,
+                "action": action,
+                "parameters": tool.parameters,
+                "required_permission": (
+                    f"{tool.required_permission[0]}.{tool.required_permission[1]}"
+                    if tool.required_permission else None
+                ),
+            })
+
+        return sorted(result, key=lambda c: (c["scope"] or "", c["name"]))
+
     def generate_app_map(
         self,
         session_scopes: list[str] | None = None,

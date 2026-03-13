@@ -74,6 +74,7 @@ class LLMConfig(BaseModel):
     max_tokens_per_session: int = 50_000
     max_iterations_per_turn: int = 10
     session_ttl_hours: int = 24
+    custom_app_context: str = ""  # User text injected into App Context SKILL
 
 
 class LLMConfigUpdate(BaseModel):
@@ -87,3 +88,4 @@ class LLMConfigUpdate(BaseModel):
     max_tokens_per_session: int | None = None
     max_iterations_per_turn: int | None = None
     session_ttl_hours: int | None = None
+    custom_app_context: str | None = None

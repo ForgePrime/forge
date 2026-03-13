@@ -1,6 +1,6 @@
 {
   "project": "forge-platform-v2",
-  "updated": "2026-03-13T20:53:14Z",
+  "updated": "2026-03-13T21:43:19Z",
   "decisions": [
     {
       "id": "D-001",
@@ -2888,6 +2888,52 @@
       "scope": "",
       "timestamp": "2026-03-13T20:53:14Z",
       "tags": []
+    },
+    {
+      "id": "D-085",
+      "task_id": "T-227",
+      "type": "security",
+      "issue": "Empty scopes [] falsy-converted to None, disabling ALL scope enforcement — LLM sessions with explicitly empty scopes got unrestricted tool access",
+      "recommendation": "Use direct value or is-not-None checks instead of falsy conversion for scope lists",
+      "reasoning": "Python falsy check `scopes if scopes else None` converts [] to None. In AgentLoop, None means no enforcement. Fixed 7 instances across llm_chat.py (3) and tool_registry.py (4).",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-13T21:43:19Z",
+      "tags": [
+        "security",
+        "deep-verify",
+        "scopes"
+      ]
+    },
+    {
+      "id": "D-086",
+      "task_id": "T-227",
+      "type": "risk",
+      "issue": "Missing guideline detail route in useScopeResolver — /projects/[slug]/guidelines/[id] fell through to default dashboard scope",
+      "recommendation": "Added regex pattern for guideline detail route before the list route in ROUTE_RULES",
+      "reasoning": "AI sidebar showed wrong context on guideline detail pages because the route had no matching rule.",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-13T21:43:19Z",
+      "severity": "LOW",
+      "likelihood": "HIGH",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-024",
+      "mitigation_plan": "",
+      "resolution_notes": "Added { pattern: /^/projects/([^/]+)/guidelines/([^/]+)$/ } to ROUTE_RULES",
+      "tags": [
+        "bug",
+        "deep-verify",
+        "routing"
+      ]
     }
   ],
   "open_count": 31

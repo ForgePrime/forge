@@ -1129,4 +1129,15 @@ export interface LLMConfig {
   max_tokens_per_session: number;
   max_iterations_per_turn: number;
   session_ttl_hours: number;
+  custom_app_context: string;
+}
+
+/** Backend tool contract from GET /llm/contracts. */
+export interface BackendToolContract {
+  name: string;
+  description: string;
+  scope: string | null;
+  action: string;
+  parameters: Record<string, unknown>;
+  required_permission: string | null;
 }

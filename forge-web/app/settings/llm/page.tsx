@@ -16,7 +16,8 @@ import type {
   ProviderModel,
 } from "@/lib/types";
 import {
-  CAPABILITY_CONTRACTS,
+  ALL_SCOPES,
+  fetchAllContracts,
   getPermissionStatus,
   type CapabilityDef,
   type CapabilityContract,
@@ -72,8 +73,8 @@ export default function LLMSettingsPage() {
       <ProvidersSection />
       <SkillsGitSyncSection />
       <FeatureFlagsSection />
-      <PermissionsSection />
       <CapabilitiesSection />
+      <CustomAppContextSection />
       <LimitsSection />
       <DebugConsoleSection />
     </div>
@@ -590,110 +591,7 @@ function FeatureFlagsSection() {
 }
 
 // ---------------------------------------------------------------------------
-// Permissions
-// ---------------------------------------------------------------------------
-
-function PermissionsSection() {
-  const { data: config, error: fetchError, mutate } = useSWR<LLMConfig>("/llm/config");
-  const { addToast } = useToastStore();
-  const [saving, setSaving] = useState(false);
-
-  const permissions = config?.permissions;
-
-  const handleToggle = useCallback(async (
-    module: string,
-    action: keyof LLMModulePermission,
-    enabled: boolean,
-  ) => {
-    if (!config) return;
-    setSaving(true);
-    try {
-      const currentPerm = config.permissions[module] ?? { read: true, write: false, delete: false };
-      const updated = await llm.updateConfig({
-        permissions: {
-          ...config.permissions,
-          [module]: { ...currentPerm, [action]: enabled },
-        },
-      });
-      mutate(updated, { revalidate: false });
-    } catch (e) {
-      addToast({ message: (e as Error).message, action: "failed" });
-    } finally {
-      setSaving(false);
-    }
-  }, [config, mutate, addToast]);
-
-  if (fetchError) {
-    return (
-      <section className="border rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Permissions</h3>
-        <p className="text-xs text-red-600">Failed to load LLM config</p>
-      </section>
-    );
-  }
-
-  if (!permissions) {
-    return (
-      <section className="border rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Permissions</h3>
-        <p className="text-xs text-gray-400">Loading...</p>
-      </section>
-    );
-  }
-
-  const modules = Object.keys(MODULE_LABELS);
-  const actions: (keyof LLMModulePermission)[] = ["read", "write", "delete"];
-
-  return (
-    <section className="border rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-1">Permissions</h3>
-      <p className="text-xs text-gray-500 mb-3">
-        Control what the AI can do in each module.
-      </p>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b">
-              <th className="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase">
-                Module
-              </th>
-              {actions.map((a) => (
-                <th key={a} className="text-center py-2 px-4 text-xs font-medium text-gray-500 uppercase">
-                  {a}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {modules.map((mod) => {
-              const perm = permissions[mod] ?? { read: true, write: false, delete: false };
-              return (
-                <tr key={mod} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="py-2 pr-4 text-gray-700">{MODULE_LABELS[mod]}</td>
-                  {actions.map((action) => (
-                    <td key={action} className="text-center py-2 px-4">
-                      <input
-                        type="checkbox"
-                        checked={perm[action] ?? false}
-                        onChange={(e) => handleToggle(mod, action, e.target.checked)}
-                        disabled={saving}
-                        className="h-4 w-4 rounded border-gray-300 text-forge-600 focus:ring-forge-500"
-                      />
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// AI Capabilities — per-scope operation registry with contracts
+// AI Capabilities — per-scope operations with inline R/W/D permission toggles
 // ---------------------------------------------------------------------------
 
 const ACTION_COLORS: Record<string, string> = {
@@ -775,8 +673,11 @@ function CapabilityRow({
 }
 
 function CapabilitiesSection() {
-  const { data: config } = useSWR<LLMConfig>("/llm/config");
+  const { data: config, mutate } = useSWR<LLMConfig>("/llm/config");
+  const { data: allCaps = [] } = useSWR("all-contracts", fetchAllContracts);
+  const { addToast } = useToastStore();
   const [expandedScopes, setExpandedScopes] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
   const permissions = config?.permissions ?? {};
 
   const toggleScope = useCallback((scope: string) => {
@@ -791,44 +692,98 @@ function CapabilitiesSection() {
     });
   }, []);
 
-  const scopes = Object.keys(CAPABILITY_CONTRACTS);
+  const handlePermToggle = useCallback(async (
+    module: string,
+    action: keyof LLMModulePermission,
+    enabled: boolean,
+  ) => {
+    if (!config) return;
+    setSaving(true);
+    try {
+      const currentPerm = config.permissions[module] ?? { read: true, write: false, delete: false };
+      const updated = await llm.updateConfig({
+        permissions: {
+          ...config.permissions,
+          [module]: { ...currentPerm, [action]: enabled },
+        },
+      });
+      mutate(updated, { revalidate: false });
+    } catch (e) {
+      addToast({ message: (e as Error).message, action: "failed" });
+    } finally {
+      setSaving(false);
+    }
+  }, [config, mutate, addToast]);
+
+  // Group capabilities by scope
+  const capsByScope = new Map<string, CapabilityDef[]>();
+  for (const cap of allCaps) {
+    const scope = cap.scope || "global";
+    if (!capsByScope.has(scope)) capsByScope.set(scope, []);
+    capsByScope.get(scope)!.push(cap);
+  }
+
+  // Show all scopes that have capabilities
+  const scopes = ALL_SCOPES.filter((s) => capsByScope.has(s));
 
   return (
     <section className="border rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-1">AI Capabilities</h3>
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">AI Capabilities & Permissions</h3>
       <p className="text-xs text-gray-500 mb-3">
-        All operations the AI can perform, grouped by scope. Each operation shows its permission status
-        (based on Permissions above) and contract details.
+        All operations the AI can perform, grouped by scope. Use R/W/D toggles to control permissions per scope.
       </p>
 
       <div className="space-y-1">
         {scopes.map((scope) => {
-          const caps = CAPABILITY_CONTRACTS[scope] ?? [];
+          const caps = capsByScope.get(scope) ?? [];
           const expanded = expandedScopes.has(scope);
           const readCount = caps.filter((c) => c.action === "READ").length;
           const writeCount = caps.filter((c) => c.action === "WRITE").length;
           const deleteCount = caps.filter((c) => c.action === "DELETE").length;
+          const perm = permissions[scope] ?? { read: true, write: false, delete: false };
 
           return (
             <div key={scope} className="border rounded-md">
-              <button
-                onClick={() => toggleScope(scope)}
-                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors text-left"
-              >
-                <svg
-                  className={`h-3 w-3 text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`}
-                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              <div className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors">
+                <button
+                  onClick={() => toggleScope(scope)}
+                  className="flex items-center gap-2 flex-1 text-left"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                <span className="text-sm font-medium text-gray-700 flex-1">
-                  {MODULE_LABELS[scope] ?? scope}
-                </span>
-                <span className="text-[10px] text-gray-400">
-                  {readCount}R {writeCount > 0 ? `${writeCount}W ` : ""}{deleteCount > 0 ? `${deleteCount}D ` : ""}
-                  ({caps.length} total)
-                </span>
-              </button>
+                  <svg
+                    className={`h-3 w-3 text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span className="text-sm font-medium text-gray-700 flex-1">
+                    {MODULE_LABELS[scope] ?? scope}
+                  </span>
+                  <span className="text-[10px] text-gray-400">
+                    {readCount}R {writeCount > 0 ? `${writeCount}W ` : ""}{deleteCount > 0 ? `${deleteCount}D ` : ""}
+                    ({caps.length})
+                  </span>
+                </button>
+                {/* Inline R/W/D permission toggles */}
+                <div className="flex items-center gap-1.5 ml-2" onClick={(e) => e.stopPropagation()}>
+                  {(["read", "write", "delete"] as const).map((action) => {
+                    const label = action[0].toUpperCase();
+                    const checked = perm[action] ?? false;
+                    const color = action === "read" ? "text-blue-600" : action === "write" ? "text-amber-600" : "text-red-600";
+                    return (
+                      <label key={action} className="flex items-center gap-0.5 cursor-pointer" title={`${action} permission`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => handlePermToggle(scope, action, e.target.checked)}
+                          disabled={saving}
+                          className="h-3 w-3 rounded border-gray-300 text-forge-600 focus:ring-forge-500"
+                        />
+                        <span className={`text-[9px] font-bold ${checked ? color : "text-gray-400"}`}>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               {expanded && (
                 <div className="px-3 pb-2 border-t divide-y divide-gray-100">
                   {caps.map((cap) => (

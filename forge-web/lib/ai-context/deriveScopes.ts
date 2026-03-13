@@ -15,6 +15,10 @@ export const TOOL_ENTITY_TO_SCOPE: Record<string, string> = {
   Change: "changes",
   Skill: "skills",
   ACTemplate: "ac_templates",
+  Project: "projects",
+  Plan: "planning",
+  Gate: "verification",
+  Draft: "planning",
 };
 
 /**
@@ -75,7 +79,7 @@ function extractScope(endpoint: string, scopes: Set<string>): void {
   }
   // /api/{module}/... or /{module}/...
   const directMatch = endpoint.match(/^\/?(?:api\/)?([a-z_-]+)/);
-  if (directMatch && !["projects", "api"].includes(directMatch[1])) {
+  if (directMatch && directMatch[1] !== "api") {
     scopes.add(directMatch[1]);
   }
 }

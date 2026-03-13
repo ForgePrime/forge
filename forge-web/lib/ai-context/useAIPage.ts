@@ -3,10 +3,14 @@
 import { useEffect } from "react";
 import type { AIPageConfig } from "./types";
 import { useAIPageContextSafe } from "./AIPageProvider";
+import { llm } from "@/lib/api";
 
 /**
  * Declare page-level metadata for AI context.
  * Call once per page component.
+ *
+ * Also registers the page with the backend PageRegistry (fire-and-forget)
+ * so the AI system prompt always has a complete page catalog.
  *
  * @example
  * ```tsx
@@ -22,6 +26,13 @@ export function useAIPage(config: AIPageConfig): void {
   useEffect(() => {
     if (!ctx) return;
     ctx.setPageConfig(config);
+    // Register with backend PageRegistry (fire-and-forget)
+    llm.registerPage({
+      id: config.id,
+      title: config.title,
+      description: config.description ?? "",
+      route: config.route ?? "",
+    }).catch(() => {});
     return () => {
       ctx.setPageConfig(null);
     };
