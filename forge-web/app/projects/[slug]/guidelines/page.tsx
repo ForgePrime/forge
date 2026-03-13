@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { GuidelineCard } from "@/components/entities/GuidelineCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
+import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Guideline, GuidelineWeight, GuidelineCreate } from "@/lib/types";
 
 const STATUSES = ["ACTIVE", "DEPRECATED"];
@@ -40,6 +41,69 @@ export default function GuidelinesPage() {
   const filtered = guidelines
     .filter((g) => !statusFilter || g.status === statusFilter)
     .filter((g) => !weightFilter || g.weight === weightFilter);
+
+  const weightDist = useMemo(() => {
+    const dist: Record<string, number> = {};
+    for (const g of guidelines) dist[g.weight] = (dist[g.weight] ?? 0) + 1;
+    return dist;
+  }, [guidelines]);
+
+  useAIPage({
+    id: "guidelines",
+    title: `Guidelines (${slices.guidelines.count})`,
+    description: `Coding standards and conventions for project ${slug}`,
+    route: `/projects/${slug}/guidelines`,
+  });
+
+  useAIElement({
+    id: "status-filter",
+    type: "filter",
+    label: "Status Filter",
+    value: statusFilter || "All",
+    actions: [{ label: "Filter", description: "Filter guidelines by status" }],
+  });
+
+  useAIElement({
+    id: "guideline-list",
+    type: "list",
+    label: "Guidelines",
+    description: `${filtered.length} shown of ${slices.guidelines.count} total`,
+    data: {
+      count: slices.guidelines.count,
+      filtered: filtered.length,
+      weights: weightDist,
+    },
+    actions: [
+      {
+        label: "Create guideline",
+        toolName: "createGuideline",
+        toolParams: ["title*", "scope*", "content*", "weight", "rationale"],
+      },
+      {
+        label: "Update guideline",
+        toolName: "updateGuideline",
+        toolParams: ["guideline_id*", "title", "content", "status", "weight", "scope"],
+      },
+    ],
+  });
+
+  useAIElement({
+    id: "guideline-form",
+    type: "form",
+    label: "Guideline Form",
+    value: showCreateForm,
+    description: showCreateForm ? `open (${editingId ? `editing ${editingId}` : "creating"})` : "closed",
+    data: { fields: ["title*", "scope*", "content*", "weight", "rationale", "examples", "tags"] },
+    actions: [
+      {
+        label: editingId ? "Update" : "Create",
+        toolName: editingId ? "updateGuideline" : "createGuideline",
+        toolParams: editingId
+          ? ["guideline_id*", "title", "content", "weight", "scope"]
+          : ["title*", "scope*", "content*", "weight", "rationale"],
+      },
+    ],
+  });
 
   const handleAddTag = () => {
     const tag = tagInput.trim();

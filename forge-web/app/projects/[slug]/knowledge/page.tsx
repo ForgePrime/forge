@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { KnowledgeCard } from "@/components/entities/KnowledgeCard";
@@ -8,6 +8,7 @@ import { StatusFilter } from "@/components/shared/StatusFilter";
 import { KnowledgeForm } from "@/components/forms/KnowledgeForm";
 import { Badge } from "@/components/shared/Badge";
 import { knowledgeMaintenance } from "@/lib/api";
+import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Knowledge, MaintenanceReport, StaleKnowledge } from "@/lib/types";
 
 const STATUSES = ["DRAFT", "ACTIVE", "REVIEW_NEEDED", "DEPRECATED", "ARCHIVED"];
@@ -57,6 +58,69 @@ export default function KnowledgePage() {
   }, [showMaintenance, maintenance, maintenanceLoading, fetchMaintenance]);
 
   const items = slices.knowledge.items as Knowledge[];
+
+  const categoryDist = useMemo(() => {
+    const dist: Record<string, number> = {};
+    for (const k of items) dist[k.category] = (dist[k.category] ?? 0) + 1;
+    return dist;
+  }, [items]);
+
+  useAIPage({
+    id: "knowledge",
+    title: `Knowledge (${slices.knowledge.count})`,
+    description: `Domain knowledge objects for project ${slug}`,
+    route: `/projects/${slug}/knowledge`,
+  });
+
+  useAIElement({
+    id: "status-filter",
+    type: "filter",
+    label: "Status Filter",
+    value: statusFilter || "All",
+    actions: [{ label: "Filter", description: "Filter knowledge by status" }],
+  });
+
+  useAIElement({
+    id: "knowledge-list",
+    type: "list",
+    label: "Knowledge",
+    description: `${slices.knowledge.count} total knowledge objects`,
+    data: {
+      count: slices.knowledge.count,
+      categories: categoryDist,
+    },
+    actions: [
+      {
+        label: "Create knowledge",
+        toolName: "createKnowledge",
+        toolParams: ["title*", "category*", "content*", "scope", "tags"],
+      },
+      {
+        label: "Update knowledge",
+        toolName: "updateKnowledge",
+        toolParams: ["knowledge_id*", "title", "content", "status", "category"],
+      },
+    ],
+  });
+
+  useAIElement({
+    id: "knowledge-form",
+    type: "form",
+    label: "Knowledge Form",
+    value: formOpen,
+    description: formOpen ? `open (${editingKnowledge ? `editing ${editingKnowledge.id}` : "creating"})` : "closed",
+    data: { fields: ["title*", "category*", "content*", "scope", "tags", "links"] },
+    actions: [
+      {
+        label: editingKnowledge ? "Update" : "Create",
+        toolName: editingKnowledge ? "updateKnowledge" : "createKnowledge",
+        toolParams: editingKnowledge
+          ? ["knowledge_id*", "title", "content", "status"]
+          : ["title*", "category*", "content*", "scope"],
+      },
+    ],
+  });
+
   const filtered = items
     .filter((k) => !statusFilter || k.status === statusFilter)
     .filter((k) => !categoryFilter || k.category === categoryFilter)

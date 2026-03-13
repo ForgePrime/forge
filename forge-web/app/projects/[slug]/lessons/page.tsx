@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { LessonCard } from "@/components/entities/LessonCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
 import { LessonForm } from "@/components/forms/LessonForm";
+import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Lesson } from "@/lib/types";
 
 const CATEGORIES = [
@@ -32,6 +33,62 @@ export default function LessonsPage() {
   const filtered = categoryFilter
     ? lessons.filter((l) => l.category === categoryFilter)
     : lessons;
+
+  const categoryDist = useMemo(() => {
+    const dist: Record<string, number> = {};
+    for (const l of lessons) dist[l.category] = (dist[l.category] ?? 0) + 1;
+    return dist;
+  }, [lessons]);
+
+  useAIPage({
+    id: "lessons",
+    title: `Lessons (${slices.lessons.count})`,
+    description: `Compound learning and lessons from project ${slug}`,
+    route: `/projects/${slug}/lessons`,
+  });
+
+  useAIElement({
+    id: "category-filter",
+    type: "filter",
+    label: "Category Filter",
+    value: categoryFilter || "All",
+    actions: [{ label: "Filter", description: "Filter lessons by category" }],
+  });
+
+  useAIElement({
+    id: "lesson-list",
+    type: "list",
+    label: "Lessons",
+    description: `${filtered.length} shown of ${slices.lessons.count} total`,
+    data: {
+      count: slices.lessons.count,
+      filtered: filtered.length,
+      categories: categoryDist,
+    },
+    actions: [
+      {
+        label: "Record lesson",
+        toolName: "createLesson",
+        toolParams: ["title*", "category*", "description*", "severity", "tags"],
+      },
+    ],
+  });
+
+  useAIElement({
+    id: "lesson-form",
+    type: "form",
+    label: "Lesson Form",
+    value: formOpen,
+    description: formOpen ? "open (creating)" : "closed",
+    data: { fields: ["title*", "category*", "description*", "severity", "tags"] },
+    actions: [
+      {
+        label: "Create",
+        toolName: "createLesson",
+        toolParams: ["title*", "category*", "description*", "severity"],
+      },
+    ],
+  });
 
   return (
     <div>
