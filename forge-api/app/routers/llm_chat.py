@@ -340,6 +340,8 @@ async def chat(
                 "context_types": context_types,
                 "context_id": body.context_id,
                 "project": body.project,
+                "_tool_registry": tool_registry,
+                "session_scopes": session.scopes if session.scopes else None,
             },
             on_event=on_event,
         )
@@ -725,6 +727,35 @@ async def delete_session(
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     return {"deleted": True, "session_id": session_id}
+
+
+class UpdateScopesRequest(BaseModel):
+    """Request body for PATCH /llm/sessions/{session_id}/scopes."""
+
+    scopes: list[str] = Field(..., description="New list of allowed scopes for this session")
+
+
+@router.patch("/sessions/{session_id}/scopes")
+async def update_session_scopes(
+    session_id: str,
+    body: UpdateScopesRequest,
+    manager=Depends(get_session_manager),
+) -> dict[str, Any]:
+    """Update allowed scopes for a session.
+
+    Called by the frontend when the user toggles scopes in the Scopes tab.
+    The new scopes take effect on the next agent loop iteration.
+    """
+    updated = await manager.update_scopes(session_id, body.scopes)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found or expired")
+
+    session = await manager.load(session_id)
+    return {
+        "session_id": session_id,
+        "scopes": session.scopes if session else body.scopes,
+        "updated_at": session.updated_at if session else "",
+    }
 
 
 @router.post("/sessions/{session_id}/resume")

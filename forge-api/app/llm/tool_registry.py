@@ -203,6 +203,59 @@ class ToolRegistry:
             for t in self.get_tools(context_type, permissions, disabled_tools)
         ]
 
+    def get_tools_by_scope(
+        self,
+        scopes: list[str] | None = None,
+    ) -> dict[str, list[dict[str, str]]]:
+        """Return tools grouped by scope, optionally filtered by allowed scopes.
+
+        Args:
+            scopes: If provided, only return tools whose scope is in this list
+                    (plus tools with no scope, grouped under 'global').
+
+        Returns:
+            Dict mapping scope name to list of {name, description} dicts.
+        """
+        groups: dict[str, list[dict[str, str]]] = {}
+        scope_set = set(scopes) if scopes else None
+
+        for tool in self._tools.values():
+            tool_scope = tool.scope or "global"
+            if scope_set is not None and tool_scope != "global" and tool_scope not in scope_set:
+                continue
+            groups.setdefault(tool_scope, []).append({
+                "name": tool.name,
+                "description": tool.description,
+            })
+
+        # Sort tools within each group
+        for tools in groups.values():
+            tools.sort(key=lambda t: t["name"])
+
+        return groups
+
+    def get_tool_contract(self, tool_name: str) -> dict[str, Any] | None:
+        """Return full contract for a single tool.
+
+        Returns:
+            Dict with name, description, parameters (JSON Schema),
+            required_permission, scope — or None if not found.
+        """
+        tool = self._tools.get(tool_name)
+        if tool is None:
+            return None
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
+            "required_permission": (
+                f"{tool.required_permission[0]}.{tool.required_permission[1]}"
+                if tool.required_permission else None
+            ),
+            "scope": tool.scope,
+            "context_types": tool.context_types,
+        }
+
     def get_unavailable_scopes(
         self,
         context_type: str | list[str] = "global",
@@ -1959,6 +2012,69 @@ async def _handle_get_project_status(
 
 
 # ---------------------------------------------------------------------------
+# Meta-tool handlers (listAvailableTools, getToolContract)
+# ---------------------------------------------------------------------------
+
+async def _handle_list_available_tools(
+    args: dict[str, Any],
+    storage: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """List all tools available to the current session, grouped by scope."""
+    # The registry instance is injected via context by the agent loop
+    registry: ToolRegistry | None = context.get("_tool_registry")
+    if registry is None:
+        return {"error": "Tool registry not available in context"}
+
+    session_scopes = context.get("session_scopes")
+    groups = registry.get_tools_by_scope(scopes=session_scopes if session_scopes else None)
+
+    # Format as readable text
+    lines = ["## Available Tools\n"]
+    for scope_name in sorted(groups.keys()):
+        tools = groups[scope_name]
+        lines.append(f"### {scope_name}")
+        for t in tools:
+            lines.append(f"- **{t['name']}**: {t['description']}")
+        lines.append("")
+
+    return {
+        "tools_by_scope": groups,
+        "total_tools": sum(len(v) for v in groups.values()),
+        "formatted": "\n".join(lines),
+    }
+
+
+async def _handle_get_tool_contract(
+    args: dict[str, Any],
+    storage: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Get full JSON Schema and metadata for a single tool."""
+    tool_name = args.get("toolName", "")
+    if not tool_name:
+        return {"error": "toolName is required"}
+
+    registry: ToolRegistry | None = context.get("_tool_registry")
+    if registry is None:
+        return {"error": "Tool registry not available in context"}
+
+    contract = registry.get_tool_contract(tool_name)
+    if contract is None:
+        return {"error": f"Tool '{tool_name}' not found"}
+
+    # Scope enforcement: if session has scopes, check tool is accessible
+    session_scopes = context.get("session_scopes")
+    if session_scopes and contract["scope"] and contract["scope"] not in session_scopes:
+        return {
+            "error": f"Tool '{tool_name}' requires the '{contract['scope']}' scope to be enabled. "
+            f"Ask the user to enable it in the Scopes tab.",
+        }
+
+    return {"contract": contract}
+
+
+# ---------------------------------------------------------------------------
 # Default registry factory
 # ---------------------------------------------------------------------------
 
@@ -2893,6 +3009,46 @@ def create_default_registry() -> ToolRegistry:
         context_types=["global"],
         required_permission=None,  # read-only
         handler=_handle_get_project_status,
+    ))
+
+    # --- Meta-tools (always available, no scope) ---
+
+    registry.register(ToolDef(
+        name="listAvailableTools",
+        description=(
+            "List all tools available in your current session, grouped by scope/module. "
+            "Use this to discover what actions you can take. "
+            "Returns tool names and descriptions, not full schemas."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+        context_types=["global"],
+        required_permission=None,
+        handler=_handle_list_available_tools,
+    ))
+
+    registry.register(ToolDef(
+        name="getToolContract",
+        description=(
+            "Get the full JSON Schema, description, required permissions, and scope "
+            "for a specific tool. Use this before calling an unfamiliar tool to understand "
+            "its exact parameters and requirements."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "toolName": {
+                    "type": "string",
+                    "description": "The exact tool name to get the contract for (e.g., 'createTask', 'searchEntities').",
+                },
+            },
+            "required": ["toolName"],
+        },
+        context_types=["global"],
+        required_permission=None,
+        handler=_handle_get_tool_contract,
     ))
 
     return registry
