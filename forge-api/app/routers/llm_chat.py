@@ -94,6 +94,54 @@ SCOPE_TO_CONTEXT_TYPE: dict[str, str] = {
 }
 
 
+def _build_base_prompt(active_scopes: list[str] | None = None) -> str:
+    """Build SKILL-like base system prompt with capability instructions.
+
+    This is the core "personality" prompt that tells the LLM what it is,
+    how to discover tools, and how to handle errors.
+    """
+    scopes_line = (
+        f"Active scopes: {', '.join(active_scopes)}. Only tools in these scopes are available."
+        if active_scopes
+        else "All scopes are active."
+    )
+
+    return (
+        "You are the Forge AI assistant — a structured software development partner "
+        "with direct access to project management tools.\n\n"
+        "## How to Discover Your Capabilities\n\n"
+        "1. Check the **App Map** below to see which modules are enabled [x] vs disabled [ ].\n"
+        "2. Call `listAvailableTools()` to see all tools you can use right now.\n"
+        "3. Call `getToolContract(toolName)` to get the full parameter schema before calling an unfamiliar tool.\n\n"
+        "## How to Use Tools\n\n"
+        "- When the user asks you to DO something (create, update, search), use the appropriate tool call.\n"
+        "- Always provide the `project` parameter for project-scoped entities.\n"
+        "- For queries: use `searchEntities` (text search) or `listEntities` (filtered list) or `getEntity` (by ID).\n"
+        "- For mutations: use the specific create/update tool (e.g., `createTask`, `updateDecision`).\n\n"
+        f"## Scope Awareness\n\n"
+        f"{scopes_line}\n"
+        "If you try a tool outside your active scopes, it will be rejected with a clear error.\n"
+        "When this happens, tell the user which scope they need to enable and include the marker "
+        "`[suggest-scope:SCOPENAME]` in your response so the UI shows a clickable button.\n\n"
+        "## Error Handling\n\n"
+        "- Permission denied → explain which scope is needed, suggest enabling it.\n"
+        "- Entity not found → verify the ID and project slug, try searching.\n"
+        "- Validation error → check the tool contract with `getToolContract(toolName)`.\n\n"
+        "## Common Workflows\n\n"
+        "**Find and show an entity:**\n"
+        "`searchEntities(entity_type, query)` → `getEntity(entity_type, entity_id)`\n\n"
+        "**Create a task with context:**\n"
+        "`getProjectStatus(project)` → `createTask(name, description, scopes, project)`\n\n"
+        "**Record a decision:**\n"
+        "`createDecision(title, type, reasoning_trace, project)`\n\n"
+        "## Rules\n\n"
+        "- Act, don't describe. Use tool calls to perform actions.\n"
+        "- Respect MUST guidelines strictly. Follow SHOULD unless there's a documented reason not to.\n"
+        "- For non-trivial choices, record a decision with `createDecision`.\n"
+        "- Be concise. Lead with actions, explain only when needed."
+    )
+
+
 class ChatRequest(BaseModel):
     """Request body for POST /llm/chat."""
 
@@ -232,7 +280,12 @@ async def chat(
         for msg in session.messages
     ]
 
-    # --- Resolve context for system prompt ---
+    # --- Build system prompt (SKILL-like format) ---
+    # 1. Base instructions (identity, capability discovery, tool usage)
+    active_scopes = session.scopes if session.scopes else None
+    system_prompt = _build_base_prompt(active_scopes)
+
+    # 2. Entity context (supplementary — what user is working on)
     resolver = ContextResolver(storage)
     context_payload = await resolver.resolve(
         context_type=body.context_type,
@@ -240,15 +293,15 @@ async def chat(
         project=body.project,
         scopes=body.scopes,
     )
-    system_prompt = context_payload.to_system_prompt()
+    entity_context = context_payload.to_system_prompt()
+    if entity_context:
+        system_prompt += f"\n\n## Working Context\n\n{entity_context}"
 
-    # --- Inject app map (compact module overview, ~500 tokens) ---
-    app_map = tool_registry.generate_app_map(
-        session_scopes=session.scopes if session.scopes else None,
-    )
+    # 3. App map (compact module overview, ~500 tokens)
+    app_map = tool_registry.generate_app_map(session_scopes=active_scopes)
     system_prompt += f"\n\n{app_map}"
 
-    # --- Append page context from UI annotations (if provided) ---
+    # 4. Page context from UI annotations (what user sees on screen)
     if body.page_context:
         system_prompt += f"\n\n{body.page_context}"
 

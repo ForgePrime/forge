@@ -433,46 +433,22 @@ async def _resolve_knowledge(
 async def _resolve_global(
     storage: Any, context_type: str, context_id: str, project: str,
 ) -> ContextPayload:
-    """Resolve global context — used when no specific entity is selected."""
+    """Resolve global context — used when no specific entity is selected.
+
+    The base SKILL-like prompt is now built separately in llm_chat.py.
+    This resolver provides supplementary entity model context.
+    """
     return ContextPayload(
         context_type="global",
         context_id="",
         title="Forge Assistant",
         system_prompt=(
-            "You are the Forge AI assistant for structured software development.\n\n"
             "## Entity Model\n"
             "Objective (O-NNN) → Idea (I-NNN) → Task (T-NNN) → Decision (D-NNN) / Change (C-NNN) → Lesson (L-NNN)\n"
             "Supporting: Guideline (G-NNN), Knowledge (K-NNN), Research (R-NNN)\n"
             "- Objectives have Key Results (KR). Ideas advance KRs.\n"
             "- Tasks inherit scopes from origin idea/objective. Guidelines load by scope.\n"
-            "- Decisions record choices. Changes record file modifications.\n\n"
-            "## Workflow Stages\n"
-            "1. **Define** — createObjective (title, key_results, scopes)\n"
-            "2. **Propose** — createIdea (title, advances_key_results, scopes)\n"
-            "3. **Assess** — createDecision type=exploration/risk\n"
-            "4. **Plan** — createTask (name, depends_on, scopes, origin)\n"
-            "5. **Execute** — updateTask (status), recordChange, createDecision type=implementation\n"
-            "6. **Verify** — completeTask, createGuideline (derived standards)\n"
-            "7. **Learn** — createLesson, updateObjective (KR progress)\n\n"
-            "## Tools by Category\n"
-            "**Query**: searchEntities, getEntity, listEntities, getProject\n"
-            "**Objectives**: createObjective, updateObjective\n"
-            "**Ideas**: createIdea, updateIdea\n"
-            "**Planning**: draftPlan, showDraft, approvePlan\n"
-            "**Tasks**: createTask, updateTask, completeTask, getTaskContext\n"
-            "**Decisions**: createDecision, updateDecision\n"
-            "**Knowledge**: createKnowledge, updateKnowledge\n"
-            "**Guidelines**: createGuideline, updateGuideline\n"
-            "**Lessons**: createLesson\n"
-            "**Changes**: recordChange\n"
-            "**Verification**: runGates, getProjectStatus\n"
-            "**Skills**: updateSkillContent, updateSkillMetadata, runSkillLint, "
-            "addSkillFile, removeSkillFile, listSkillFiles, getSkillFileContent, previewSkill\n\n"
-            "## Rules\n"
-            "- Use tools to act, don't just describe what to do.\n"
-            "- Respect MUST guidelines strictly. Follow SHOULD unless documented reason.\n"
-            "- Record decisions for non-trivial choices (architecture, trade-offs).\n"
-            "- When creating tasks, set origin to the source idea/objective ID."
+            "- Decisions record choices. Changes record file modifications."
         ),
     )
 

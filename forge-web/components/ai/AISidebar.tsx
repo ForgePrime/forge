@@ -578,9 +578,10 @@ export default function AISidebar() {
   useEffect(() => {
     if (prevScopesRef.current !== scopesKey) {
       prevScopesRef.current = scopesKey;
-      useChatStore.getState().updateSessionScopes(scopes);
+      useChatStore.getState().updateSessionScopes(scopesKey.split(",").filter(Boolean));
     }
-  }, [scopesKey, scopes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopesKey]);
 
   // Load LLM config for permissions
   const { data: llmConfig } = useSWR<LLMConfig>("llm-config", () => llm.getConfig());
