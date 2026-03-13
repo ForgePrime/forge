@@ -382,6 +382,7 @@ export interface Guideline {
   weight: GuidelineWeight;
   status: GuidelineStatus;
   tags: string[];
+  derived_from?: string;
   created_at: string;
 }
 
