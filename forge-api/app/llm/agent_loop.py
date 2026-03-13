@@ -284,7 +284,7 @@ class AgentLoop:
                     # Scope enforcement: reject tools outside session scopes
                     if self._session_scopes is not None and tool_name not in GLOBAL_TOOLS:
                         tool_scope = getattr(
-                            self._tool_registry._tools.get(tool_name), "scope", None
+                            self._tool_registry.get_tool(tool_name), "scope", None
                         )
                         if tool_scope and tool_scope not in self._session_scopes:
                             logger.info(
