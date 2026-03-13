@@ -34,6 +34,10 @@ export interface ChatSessionSummary {
   context_type: string;
   context_id: string;
   project: string;
+  session_type?: string;           // "chat" | "plan" | "execute" | "verify" | "compound"
+  session_status?: string;         // "active" | "paused" | "completed" | "failed"
+  target_entity_type?: string;     // "objective" | "task" | "idea" | etc.
+  target_entity_id?: string;       // Target entity ID (e.g., O-001, T-003)
   model_used: string;
   message_count: number;
   total_tokens_in: number;

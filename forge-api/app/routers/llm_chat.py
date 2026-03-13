@@ -107,6 +107,7 @@ class ChatRequest(BaseModel):
     disabled_capabilities: list[str] | None = Field(default=None, description="Tool names to disable")
     file_ids: list[str] | None = Field(default=None, description="Uploaded file IDs to include as context")
     page_context: str | None = Field(default=None, max_length=8000, description="Serialized UI page context from AI annotations")
+    session_type: str | None = Field(default=None, description="Session type: chat, plan, execute, verify, compound")
 
 
 class ChatResponse(BaseModel):
@@ -198,6 +199,7 @@ async def chat(
             context_id=body.context_id,
             project=body.project,
             model=model,
+            session_type=body.session_type or "chat",
         )
 
     # --- Inject uploaded file content into user message ---
