@@ -14,9 +14,9 @@ const METHOD_COLORS: Record<string, string> = {
 
 function statusColor(status: number | null): string {
   if (status === null) return "text-gray-400";
-  if (status < 300) return "text-green-600";
-  if (status < 400) return "text-yellow-600";
-  return "text-red-600";
+  if (status < 300) return "text-green-400";
+  if (status < 400) return "text-yellow-400";
+  return "text-red-400";
 }
 
 function formatDuration(ms: number): string {
@@ -108,8 +108,8 @@ export function ApiInspector({ slug: _slug }: { slug: string | null }) {
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 pb-2 border-b mb-2 flex-shrink-0 flex-wrap">
-        <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+      <div className="flex items-center gap-2 pb-2 mb-2 flex-shrink-0 flex-wrap" style={{ borderBottom: "1px solid var(--debug-border)" }}>
+        <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "var(--debug-text-muted)" }}>
           <span>{totalRequests} total</span>
           <span className="text-gray-300">|</span>
           {errorCount > 0 && (
@@ -238,23 +238,24 @@ function EntryRow({
   const statusClass = statusColor(entry.status);
 
   return (
-    <div className={`${expanded ? "bg-gray-50" : "hover:bg-gray-50"}`}>
+    <div style={{ backgroundColor: expanded ? "var(--debug-bg-secondary)" : undefined }}>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-2 py-1 text-left"
+        className="w-full flex items-center gap-2 px-2 py-1 text-left transition-colors"
+        style={{ color: "var(--debug-text-primary)" }}
       >
         <span className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10px] font-medium w-12 ${methodClass}`}>
           {entry.method}
         </span>
-        <span className="text-xs text-gray-700 font-mono truncate flex-1">{entry.url}</span>
+        <span className="text-xs font-mono truncate flex-1">{entry.url}</span>
         <span className={`text-[10px] font-medium w-8 text-right ${statusClass}`}>
           {entry.status ?? "ERR"}
         </span>
-        <span className="text-[10px] text-gray-400 w-14 text-right tabular-nums">
+        <span className="text-[10px] w-14 text-right tabular-nums" style={{ color: "var(--debug-text-muted)" }}>
           {formatDuration(entry.duration)}
         </span>
-        <span className="text-[10px] text-gray-300 w-16 text-right">{formatTime(entry.timestamp)}</span>
-        <span className="text-[10px] text-gray-300 w-4">{expanded ? "▼" : "▶"}</span>
+        <span className="text-[10px] w-16 text-right" style={{ color: "var(--debug-text-muted)" }}>{formatTime(entry.timestamp)}</span>
+        <span className="text-[10px] w-4" style={{ color: "var(--debug-text-muted)" }}>{expanded ? "▼" : "▶"}</span>
       </button>
 
       {expanded && <RequestDetailPanel entry={entry} />}

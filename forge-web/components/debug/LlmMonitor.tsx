@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { debug as debugApi } from "@/lib/api";
 import type { DebugSessionSummary, DebugSession, DebugStatus } from "@/lib/types";
 import { ErrorDetail } from "./ErrorDetail";
+import { JsonView } from "./JsonView";
 
 // ---------------------------------------------------------------------------
 // Status colors
@@ -318,9 +319,7 @@ function SessionDetail({ slug, sessionId }: { slug: string; sessionId: string })
       {/* Parsed output */}
       {session.parsed_output && (
         <CollapsibleSection title="Parsed Output">
-          <pre className="text-[10px] bg-white border rounded p-2 overflow-x-auto max-h-40 overflow-y-auto font-mono">
-            {JSON.stringify(session.parsed_output, null, 2)}
-          </pre>
+          <JsonView data={session.parsed_output} id={`parsed-${session.session_id}`} maxHeight="10rem" lineNumbers />
         </CollapsibleSection>
       )}
 

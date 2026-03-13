@@ -76,7 +76,12 @@ export function BottomPanel() {
     >
       {/* Status bar / drag handle */}
       <div
-        className="flex items-center gap-2 px-3 h-10 flex-shrink-0 bg-gray-50 border-b cursor-pointer select-none"
+        className="flex items-center gap-2 px-3 h-10 flex-shrink-0 cursor-pointer select-none"
+        style={{
+          backgroundColor: "var(--debug-bg-secondary)",
+          borderBottom: "1px solid var(--debug-border)",
+          color: "var(--debug-text-secondary)",
+        }}
         onClick={() => {
           if (isCollapsed) setPanelState("expanded");
         }}
@@ -99,11 +104,11 @@ export function BottomPanel() {
                   e.stopPropagation();
                   setActiveTab(tab.id);
                 }}
-                className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                  activeTab === tab.id
-                    ? "bg-forge-100 text-forge-700 font-medium"
-                    : "text-gray-500 hover:bg-gray-200"
-                }`}
+                className="px-2 py-0.5 text-xs rounded transition-colors font-medium"
+                style={{
+                  backgroundColor: activeTab === tab.id ? "var(--debug-bg-surface)" : "transparent",
+                  color: activeTab === tab.id ? "var(--debug-text-primary)" : "var(--debug-text-muted)",
+                }}
               >
                 {tab.label}
               </button>
@@ -112,11 +117,11 @@ export function BottomPanel() {
         )}
 
         {/* Status indicators */}
-        <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
-          {isCollapsed && <span className="font-medium">Debug Console</span>}
+        <div className="ml-auto flex items-center gap-3 text-xs" style={{ color: "var(--debug-text-muted)" }}>
+          {isCollapsed && <span className="font-medium" style={{ color: "var(--debug-text-secondary)" }}>Debug Console</span>}
           {apiErrorCount > 0 && (
-            <span className="inline-flex items-center gap-1 text-red-600 font-medium">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+            <span className="inline-flex items-center gap-1 font-medium" style={{ color: "var(--debug-status-error)" }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--debug-status-error)" }} />
               {apiErrorCount} error{apiErrorCount !== 1 ? "s" : ""}
             </span>
           )}
@@ -131,7 +136,8 @@ export function BottomPanel() {
               e.stopPropagation();
               cycleState();
             }}
-            className="p-0.5 hover:bg-gray-200 rounded"
+            className="p-0.5 rounded transition-colors"
+            style={{ color: "var(--debug-text-muted)" }}
             title="Cycle panel size"
             aria-label="Cycle panel size"
           >
@@ -142,7 +148,8 @@ export function BottomPanel() {
               e.stopPropagation();
               toggle();
             }}
-            className="p-0.5 hover:bg-gray-200 rounded"
+            className="p-0.5 rounded transition-colors"
+            style={{ color: "var(--debug-text-muted)" }}
             title={isCollapsed ? "Open debug console (Ctrl+`)" : "Close debug console (Ctrl+`)"}
             aria-label={isCollapsed ? "Open debug console" : "Close debug console"}
           >
@@ -153,7 +160,10 @@ export function BottomPanel() {
 
       {/* Tab content */}
       {!isCollapsed && (
-        <div className="flex-1 overflow-y-auto p-3 text-sm text-gray-500">
+        <div className="flex-1 overflow-y-auto p-3 text-sm" style={{
+          backgroundColor: "var(--debug-bg-primary)",
+          color: "var(--debug-text-primary)",
+        }}>
           <div role="tabpanel" id="debug-panel-api" hidden={activeTab !== "api"} className="h-full">
             <ApiInspector slug={slug} />
           </div>

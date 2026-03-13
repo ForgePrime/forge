@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useAIElement } from "@/lib/ai-context/useAIElement";
 import type { ApiEntry } from "@/stores/debugStore";
 import { ErrorDetail } from "./ErrorDetail";
+import { JsonView } from "./JsonView";
 import { ApiError } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -144,29 +145,6 @@ function urlWithoutQuery(url: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Body renderer
-// ---------------------------------------------------------------------------
-
-function BodyView({ body, id }: { body: unknown; id: string }) {
-  const text = typeof body === "string" ? body : JSON.stringify(body, null, 2);
-
-  useAIElement({
-    id,
-    type: "display",
-    label: "Request/Response Body",
-    description: `Body: ${(text ?? "").slice(0, 80)}...`,
-    value: `${(text ?? "").length} chars`,
-    actions: [],
-  });
-
-  return (
-    <pre className="text-[10px] text-gray-700 font-mono whitespace-pre-wrap break-all max-h-48 overflow-y-auto select-text">
-      {text}
-    </pre>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main panel
 // ---------------------------------------------------------------------------
 
@@ -244,14 +222,14 @@ export function RequestDetailPanel({ entry }: { entry: ApiEntry }) {
       {/* Request Body */}
       {hasRequestBody && (
         <Section title="Request Body" copyText={requestBodyText}>
-          <BodyView body={entry.requestBody} id={`req-body-${entry.id}`} />
+          <JsonView data={entry.requestBody} id={`req-body-${entry.id}`} maxHeight="12rem" />
         </Section>
       )}
 
       {/* Response Body */}
       {hasResponseBody && (
         <Section title="Response Body" copyText={responseBodyText}>
-          <BodyView body={entry.responseBody} id={`res-body-${entry.id}`} />
+          <JsonView data={entry.responseBody} id={`res-body-${entry.id}`} maxHeight="12rem" />
         </Section>
       )}
     </div>

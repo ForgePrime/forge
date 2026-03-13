@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAIElement } from "@/lib/ai-context/useAIElement";
 import type { ContentBlock } from "@/lib/hooks/useStreamDebug";
+import { JsonView } from "@/components/debug/JsonView";
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   pending: { label: "running", className: "bg-yellow-100 text-yellow-700 animate-pulse" },
@@ -46,9 +47,11 @@ export function StreamToolCallBlock({ block }: { block: ContentBlock }) {
           {input !== undefined && (
             <div>
               <span className="font-semibold text-[10px] text-gray-500">Input:</span>
-              <pre className="mt-0.5 overflow-x-auto rounded bg-white p-2 text-[10px] text-gray-700 border border-gray-100 font-mono max-h-32 overflow-y-auto select-text">
-                {typeof input === "string" ? input : JSON.stringify(input, null, 2)}
-              </pre>
+              <div className="mt-0.5">
+                {typeof input === "string"
+                  ? <pre className="overflow-x-auto rounded bg-white p-2 text-[10px] text-gray-700 border border-gray-100 font-mono max-h-32 overflow-y-auto select-text">{input}</pre>
+                  : <JsonView data={input} id={`tool-input-${block.id}`} maxHeight="8rem" />}
+              </div>
             </div>
           )}
           {result !== undefined && (
@@ -56,13 +59,13 @@ export function StreamToolCallBlock({ block }: { block: ContentBlock }) {
               <span className={`font-semibold text-[10px] ${block.status === "error" ? "text-red-500" : "text-gray-500"}`}>
                 Result:
               </span>
-              <pre className={`mt-0.5 overflow-x-auto rounded p-2 text-[10px] border max-h-32 overflow-y-auto font-mono select-text ${
-                block.status === "error"
-                  ? "bg-red-50 text-red-800 border-red-100"
-                  : "bg-white text-gray-700 border-gray-100"
-              }`}>
-                {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
-              </pre>
+              <div className="mt-0.5">
+                {typeof result === "string"
+                  ? <pre className={`overflow-x-auto rounded p-2 text-[10px] border max-h-32 overflow-y-auto font-mono select-text ${
+                      block.status === "error" ? "bg-red-50 text-red-800 border-red-100" : "bg-white text-gray-700 border-gray-100"
+                    }`}>{result}</pre>
+                  : <JsonView data={result} id={`tool-result-${block.id}`} maxHeight="8rem" />}
+              </div>
             </div>
           )}
         </div>
