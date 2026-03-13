@@ -800,6 +800,66 @@ function CapabilitiesSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Custom App Context
+// ---------------------------------------------------------------------------
+
+function CustomAppContextSection() {
+  const { data: config, mutate } = useSWR<LLMConfig>("/llm/config");
+  const { addToast } = useToastStore();
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (config && !initialized) {
+      setText(config.custom_app_context ?? "");
+      setInitialized(true);
+    }
+  }, [config, initialized]);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const updated = await llm.updateConfig({ custom_app_context: text });
+      mutate(updated, { revalidate: false });
+      addToast({ message: "Custom App Context saved", action: "updated" });
+    } catch (e) {
+      addToast({ message: (e as Error).message, action: "failed" });
+    } finally {
+      setSaving(false);
+    }
+  }, [text, mutate, addToast]);
+
+  return (
+    <section className="border rounded-lg p-4">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Custom App Context</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Custom instructions injected into every AI system prompt. Use this to define team conventions,
+        project-specific rules, or behavioral guidelines that the AI should always follow.
+      </p>
+      <div className="space-y-2 max-w-2xl">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Example: Always respond in Polish. Use snake_case for Python variables. Our API endpoints follow REST conventions..."
+          rows={6}
+          className="w-full text-sm border rounded-md px-3 py-2 focus:border-forge-500 focus:ring-1 focus:ring-forge-500 font-mono resize-y"
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-gray-400">
+            {text.length} characters
+            {text.length > 0 && ` (~${Math.ceil(text.length / 4)} tokens)`}
+          </span>
+          <Button size="sm" onClick={handleSave} disabled={saving || text === (config?.custom_app_context ?? "")}>
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Limits
 // ---------------------------------------------------------------------------
 
