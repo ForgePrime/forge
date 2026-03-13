@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NotificationCenter } from "./NotificationCenter";
 
 interface NavItem {
   label: string;
@@ -50,7 +51,8 @@ export function TopNavBar() {
         ))}
       </nav>
 
-      <nav className="flex items-center gap-1">
+      <nav className="flex items-center gap-2">
+        <NotificationCenter />
         {rightNav.map((item) => (
           <Link key={item.href} href={item.href} className={linkClasses(item.href)}>
             <span className="text-base">{item.icon}</span>
