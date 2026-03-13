@@ -133,6 +133,9 @@ function generateMsgId(): string {
   return `msg-${Date.now()}-${++_msgCounter}`;
 }
 
+/** Track whether WS events arrived for the current request (to avoid duplicate debug events). */
+let _wsEventsReceived = false;
+
 function getOrCreateConversation(
   conversations: Record<string, ChatConversation>,
   sessionId: string,
@@ -152,6 +155,54 @@ function getOrCreateConversation(
     estimatedCost: 0,
     model: "",
   };
+}
+
+/**
+ * Synthesize debug events from an HTTP chat response.
+ * Fallback for when WS events don't flow — ensures the Debug tab
+ * shows tool calls and the final response regardless.
+ */
+function _synthesizeDebugEvents(response: ChatSendResponse): void {
+  const base = { project: "", timestamp: new Date().toISOString() };
+  const sid = response.session_id;
+
+  // Tool calls
+  for (const tc of response.tool_calls) {
+    _notifyDebugListeners({
+      ...base,
+      event: "chat.tool_call",
+      payload: { session_id: sid, id: tc.id, name: tc.name, input: tc.input },
+    });
+    if (tc.result !== undefined) {
+      _notifyDebugListeners({
+        ...base,
+        event: "chat.tool_result",
+        payload: { session_id: sid, id: tc.id, name: tc.name, result: tc.result },
+      });
+    }
+  }
+
+  // Final response text
+  if (response.content) {
+    _notifyDebugListeners({
+      ...base,
+      event: "chat.token",
+      payload: { session_id: sid, content: response.content, block_type: "token" },
+    });
+  }
+
+  // Complete
+  _notifyDebugListeners({
+    ...base,
+    event: "chat.complete",
+    payload: {
+      session_id: sid,
+      content: response.content,
+      model: response.model,
+      total_input_tokens: response.total_input_tokens,
+      total_output_tokens: response.total_output_tokens,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +265,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       };
     });
 
+    _wsEventsReceived = false;
     try {
       const response = await llm.send({
         message,
@@ -230,6 +282,12 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
         target_entity_type: targetEntityType,
         target_entity_id: targetEntityId,
       });
+
+      // Synthesize debug events from HTTP response (fallback when WS events
+      // don't flow — ensures Debug tab always shows something)
+      if (!_wsEventsReceived) {
+        _synthesizeDebugEvents(response);
+      }
 
       // Update conversation with real session ID and response
       set((s) => {
@@ -271,6 +329,13 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       return response;
     } catch (e) {
       const errorMsg = (e instanceof Error ? e.message : "Unknown error") || "Request failed";
+      // Synthesize debug error event
+      _notifyDebugListeners({
+        event: "chat.error",
+        payload: { session_id: sessionId ?? "pending", message: errorMsg },
+        project: "",
+        timestamp: new Date().toISOString(),
+      });
       set((s) => {
         const key = sessionId ?? "pending";
         const conv = s.conversations[key];
@@ -310,6 +375,8 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   handleWsEvent: (event: ForgeEvent) => {
     // Forward to debug listeners (useStreamDebug hook)
     _notifyDebugListeners(event);
+    // Mark that real WS events arrived (prevents duplicate synthetic events)
+    if (event.event.startsWith("chat.")) _wsEventsReceived = true;
 
     const { event: eventType, payload } = event;
     const sessionId = (payload as Record<string, unknown>).session_id as string;
