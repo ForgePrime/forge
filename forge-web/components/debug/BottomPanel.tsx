@@ -72,7 +72,8 @@ export function BottomPanel() {
   return (
     <div
       data-debug-panel
-      className={`flex-shrink-0 border-t bg-white flex flex-col transition-all duration-200 ${PANEL_HEIGHTS[panelState]}`}
+      className={`flex-shrink-0 flex flex-col transition-all duration-200 ${PANEL_HEIGHTS[panelState]}`}
+      style={{ borderTop: "1px solid var(--debug-border)", backgroundColor: "var(--debug-bg-primary)" }}
     >
       {/* Status bar / drag handle */}
       <div

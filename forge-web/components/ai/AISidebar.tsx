@@ -497,7 +497,7 @@ function DebugTab({
     : null;
 
   return (
-    <div data-debug-panel className={visible ? "" : "hidden"}>
+    <div data-debug-panel className={visible ? "" : "hidden"} style={{ backgroundColor: "var(--debug-bg-primary)", color: "var(--debug-text-primary)" }}>
       {/* Metadata bar */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-gray-50 text-[10px] text-gray-500">
         {metadata.model && (

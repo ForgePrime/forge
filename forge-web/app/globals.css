@@ -64,3 +64,86 @@ body {
   --debug-radius: 6px;
   --debug-radius-sm: 4px;
 }
+
+/* ---------------------------------------------------------------------------
+ * Debug Theme — descendant overrides.
+ *
+ * Override common Tailwind light-mode patterns inside debug panels so child
+ * components (RequestDetailPanel, EventStream, LlmMonitor, etc.) render
+ * correctly on the dark background without rewriting every Tailwind class.
+ * --------------------------------------------------------------------------- */
+
+/* Backgrounds: neutralize bg-white / bg-gray-50 inside debug panels */
+[data-debug-panel] .bg-white {
+  background-color: var(--debug-bg-secondary) !important;
+}
+[data-debug-panel] .bg-gray-50 {
+  background-color: var(--debug-bg-hover) !important;
+}
+[data-debug-panel] .hover\:bg-gray-50:hover {
+  background-color: var(--debug-bg-hover) !important;
+}
+[data-debug-panel] .hover\:bg-gray-100\/50:hover {
+  background-color: var(--debug-bg-hover) !important;
+}
+
+/* Borders: make default borders use debug-border */
+[data-debug-panel] .border,
+[data-debug-panel] .border-b,
+[data-debug-panel] .border-t {
+  border-color: var(--debug-border) !important;
+}
+[data-debug-panel] .border-gray-100,
+[data-debug-panel] .border-gray-200,
+[data-debug-panel] .border-gray-50 {
+  border-color: var(--debug-border) !important;
+}
+
+/* Text: remap gray text scales for readability on dark */
+[data-debug-panel] .text-gray-700,
+[data-debug-panel] .text-gray-800 {
+  color: var(--debug-text-primary) !important;
+}
+[data-debug-panel] .text-gray-500,
+[data-debug-panel] .text-gray-600 {
+  color: var(--debug-text-secondary) !important;
+}
+[data-debug-panel] .text-gray-300,
+[data-debug-panel] .text-gray-400 {
+  color: var(--debug-text-muted) !important;
+}
+
+/* Form controls inside debug panels */
+[data-debug-panel] select,
+[data-debug-panel] input[type="text"] {
+  background-color: var(--debug-bg-surface) !important;
+  color: var(--debug-text-primary) !important;
+  border-color: var(--debug-border) !important;
+}
+
+/* Keep colored badges readable — make pastel backgrounds darker */
+[data-debug-panel] .bg-green-100 { background-color: rgba(74, 222, 128, 0.15) !important; }
+[data-debug-panel] .bg-blue-100 { background-color: rgba(96, 165, 250, 0.15) !important; }
+[data-debug-panel] .bg-red-100 { background-color: rgba(248, 113, 113, 0.15) !important; }
+[data-debug-panel] .bg-yellow-100 { background-color: rgba(251, 191, 36, 0.15) !important; }
+[data-debug-panel] .bg-orange-100 { background-color: rgba(251, 146, 60, 0.15) !important; }
+[data-debug-panel] .bg-purple-100 { background-color: rgba(167, 139, 250, 0.15) !important; }
+[data-debug-panel] .bg-indigo-100 { background-color: rgba(129, 140, 248, 0.15) !important; }
+[data-debug-panel] .bg-emerald-100 { background-color: rgba(52, 211, 153, 0.15) !important; }
+[data-debug-panel] .bg-teal-100 { background-color: rgba(45, 212, 191, 0.15) !important; }
+[data-debug-panel] .bg-cyan-100 { background-color: rgba(34, 211, 238, 0.15) !important; }
+[data-debug-panel] .bg-amber-100 { background-color: rgba(251, 191, 36, 0.15) !important; }
+[data-debug-panel] .bg-pink-100 { background-color: rgba(244, 114, 182, 0.15) !important; }
+
+/* Error-specific: red-50 backgrounds → subtle dark red */
+[data-debug-panel] .bg-red-50 { background-color: rgba(248, 113, 113, 0.1) !important; }
+[data-debug-panel] .bg-blue-50,
+[data-debug-panel] .bg-blue-50\/50 { background-color: rgba(96, 165, 250, 0.08) !important; }
+
+/* JsonView controls: fit dark theme */
+[data-debug-panel] .bg-white\/90 {
+  background-color: var(--debug-bg-surface) !important;
+}
+[data-debug-panel] .bg-gray-50\/80 {
+  background-color: var(--debug-bg-hover) !important;
+}
