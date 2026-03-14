@@ -420,12 +420,31 @@ function ConversationsTab({
   onResume: (sessionId: string) => void;
 }) {
   const { sessionList, sessionsLoading, loadSessions, deleteSession, searchSessions } = useChatStore();
+  const targetEntity = useSidebarStore((s) => s.targetEntity);
+  const [showAll, setShowAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [entitySessions, setEntitySessions] = useState<typeof sessionList>([]);
+  const [entityLoading, setEntityLoading] = useState(false);
 
+  // Load entity-specific sessions when targetEntity is set
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    if (!targetEntity || showAll) return;
+    setEntityLoading(true);
+    llm.listSessions({ entity_type: targetEntity.type, entity_id: targetEntity.id })
+      .then((result) => {
+        setEntitySessions(result.sessions as typeof sessionList);
+        setEntityLoading(false);
+      })
+      .catch(() => setEntityLoading(false));
+  }, [targetEntity, showAll]);
+
+  // Load all sessions for showAll mode or when no entity
+  useEffect(() => {
+    if (!targetEntity || showAll) {
+      loadSessions();
+    }
+  }, [loadSessions, targetEntity, showAll]);
 
   const handleSearch = useCallback(
     (value: string) => {
@@ -448,9 +467,36 @@ function ConversationsTab({
   }, []);
 
   const handleNew = useCallback(() => {
+    const entity = useSidebarStore.getState().targetEntity;
+    if (entity) {
+      useChatStore.getState().setPendingSessionMeta({
+        sessionType: "chat",
+        targetEntityType: entity.type,
+        targetEntityId: entity.id,
+      });
+    }
     useChatStore.getState().startConversation("global", "");
     useSidebarStore.getState().setActiveTab("chat");
   }, []);
+
+  const isFiltered = !!targetEntity && !showAll;
+  const displaySessions = isFiltered ? entitySessions : sessionList;
+  const isLoading = isFiltered ? entityLoading : sessionsLoading;
+
+  const handleRefresh = useCallback(() => {
+    setSearchQuery("");
+    if (isFiltered && targetEntity) {
+      setEntityLoading(true);
+      llm.listSessions({ entity_type: targetEntity.type, entity_id: targetEntity.id })
+        .then((result) => {
+          setEntitySessions(result.sessions as typeof sessionList);
+          setEntityLoading(false);
+        })
+        .catch(() => setEntityLoading(false));
+    } else {
+      loadSessions();
+    }
+  }, [isFiltered, targetEntity, loadSessions]);
 
   return (
     <div>
@@ -461,36 +507,49 @@ function ConversationsTab({
         >
           + New conversation
         </button>
-        <button
-          onClick={() => { setSearchQuery(""); loadSessions(); }}
-          disabled={sessionsLoading}
-          className="text-[10px] text-gray-500 hover:text-gray-700"
-          title="Refresh"
-        >
-          {sessionsLoading ? "..." : "Refresh"}
-        </button>
+        <div className="flex items-center gap-2">
+          {targetEntity && (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className={`text-[10px] px-1.5 py-0.5 rounded ${showAll ? "bg-gray-200 text-gray-700" : "bg-forge-100 text-forge-600"}`}
+              title={showAll ? "Show entity sessions" : "Show all sessions"}
+            >
+              {showAll ? "All" : targetEntity.id}
+            </button>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="text-[10px] text-gray-500 hover:text-gray-700"
+            title="Refresh"
+          >
+            {isLoading ? "..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
-      {/* Search input */}
-      <div className="px-3 py-1.5 border-b">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
-          placeholder="Search conversations..."
-          className="w-full rounded border border-gray-200 px-2 py-1 text-xs
-            focus:border-forge-400 focus:outline-none focus:ring-1 focus:ring-forge-400
-            placeholder:text-gray-400"
-        />
-      </div>
+      {/* Search input (only in showAll / no entity mode) */}
+      {(!targetEntity || showAll) && (
+        <div className="px-3 py-1.5 border-b">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search conversations..."
+            className="w-full rounded border border-gray-200 px-2 py-1 text-xs
+              focus:border-forge-400 focus:outline-none focus:ring-1 focus:ring-forge-400
+              placeholder:text-gray-400"
+          />
+        </div>
+      )}
 
-      {sessionList.length === 0 ? (
+      {displaySessions.length === 0 ? (
         <div className="flex items-center justify-center h-24 text-sm text-gray-400">
-          {sessionsLoading ? "Loading..." : searchQuery ? "No matching conversations" : "No conversations yet"}
+          {isLoading ? "Loading..." : searchQuery ? "No matching conversations" : "No conversations yet"}
         </div>
       ) : (
         <div className="divide-y">
-          {sessionList.map((session) => (
+          {displaySessions.map((session) => (
             <div
               key={session.session_id}
               className="px-3 py-2 hover:bg-gray-50 transition-colors cursor-pointer group"
@@ -500,8 +559,10 @@ function ConversationsTab({
                 <span className="text-[10px] rounded bg-forge-100 px-1.5 py-0.5 text-forge-600 font-medium">
                   {session.context_type}
                 </span>
-                {session.context_id && (
-                  <span className="text-[10px] text-gray-500 truncate">{session.context_id}</span>
+                {session.target_entity_id && (
+                  <span className="text-[10px] text-gray-500 truncate font-mono">
+                    {session.target_entity_id}
+                  </span>
                 )}
                 <span className="text-[10px] text-gray-400 ml-auto shrink-0">
                   {formatTimeAgo(session.updated_at)}
