@@ -154,7 +154,16 @@ class AppContextBuilder:
             "2. `createDecision(type=exploration, issue, recommendation, reasoning, project)` — D-NNN for options/findings\n"
             "3. `createDecision(type=risk, issue, recommendation, severity, likelihood, project)` — D-NNN for risks\n"
             "4. `updateResearch(id=R-NNN, decision_ids=[D-001, D-002], status=ACTIVE)` — link decisions to research\n"
-            "This mirrors `/discover` from Forge CLI. Output summary with findings + risks + recommendations."
+            "This mirrors `/discover` from Forge CLI. Output summary with findings + risks + recommendations.\n\n"
+            "**Compound learning** (requires lessons scope):\n"
+            "When user asks to 'extract lessons', 'compound', or 'what did we learn':\n"
+            "1. Review completed tasks: `listEntities(entity_type=task, status=DONE)` + their decisions\n"
+            "2. Identify patterns: recurring issues, validated decisions, process improvements\n"
+            "3. `createLesson(category, title, detail, severity, task_id, decision_ids)` — for each pattern\n"
+            "4. Suggest promotion: `promoteLesson(id, target=guideline|knowledge, scope, weight)` for critical lessons\n"
+            "Categories: pattern-discovered, mistake-avoided, decision-validated, decision-reversed, "
+            "tool-insight, architecture-lesson, process-improvement, market-insight.\n"
+            "Severity maps to guideline weight: critical→must, important→should, minor→may."
         )
 
     def _scope_awareness_section(

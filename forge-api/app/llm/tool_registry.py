@@ -1676,6 +1676,80 @@ async def _handle_create_lesson(
     return {"created": True, "id": new_id, "lesson": lesson}
 
 
+async def _handle_promote_lesson(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Promote a lesson to guideline or knowledge."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    lesson_id = args.get("id")
+    if not lesson_id:
+        return {"error": "id is required (lesson ID, e.g., L-001)"}
+    target = args.get("target", "guideline")
+
+    data = await asyncio.to_thread(storage.load_data, project, "lessons")
+    lessons = data.get("lessons", [])
+
+    lesson = None
+    for l in lessons:
+        if l.get("id") == lesson_id:
+            lesson = l
+            break
+    if not lesson:
+        return {"error": f"Lesson {lesson_id} not found"}
+
+    if lesson.get("promoted_to_guideline"):
+        return {"error": f"Already promoted to guideline {lesson['promoted_to_guideline']}"}
+    if lesson.get("promoted_to_knowledge"):
+        return {"error": f"Already promoted to knowledge {lesson['promoted_to_knowledge']}"}
+
+    if target == "guideline":
+        g_data = await asyncio.to_thread(storage.load_global, "guidelines")
+        guidelines = g_data.get("guidelines", [])
+        g_id = _next_id(guidelines, "G")
+        guideline = {
+            "id": g_id,
+            "title": lesson["title"],
+            "content": lesson.get("detail", ""),
+            "scope": args.get("scope", ""),
+            "weight": args.get("weight", "should"),
+            "status": "ACTIVE",
+            "promoted_from": lesson_id,
+        }
+        guidelines.append(guideline)
+        g_data["guidelines"] = guidelines
+        await asyncio.to_thread(storage.save_global, "guidelines", g_data)
+        lesson["promoted_to_guideline"] = g_id
+        await asyncio.to_thread(storage.save_data, project, "lessons", data)
+        return {"promoted": True, "target": "guideline", "guideline_id": g_id}
+
+    elif target == "knowledge":
+        k_data = await asyncio.to_thread(storage.load_data, project, "knowledge")
+        entries = k_data.get("knowledge", [])
+        k_id = _next_id(entries, "K")
+        knowledge = {
+            "id": k_id,
+            "title": lesson["title"],
+            "content": lesson.get("detail", ""),
+            "category": args.get("category", "technical-context"),
+            "scopes": args.get("scopes", []),
+            "tags": lesson.get("tags", []),
+            "status": "ACTIVE",
+            "promoted_from": lesson_id,
+            "versions": [],
+            "linked_entities": [],
+        }
+        entries.append(knowledge)
+        k_data["knowledge"] = entries
+        await asyncio.to_thread(storage.save_data, project, "knowledge", k_data)
+        lesson["promoted_to_knowledge"] = k_id
+        await asyncio.to_thread(storage.save_data, project, "lessons", data)
+        return {"promoted": True, "target": "knowledge", "knowledge_id": k_id}
+
+    return {"error": f"Invalid target '{target}', use 'guideline' or 'knowledge'"}
+
+
 # ---------------------------------------------------------------------------
 # Research handlers
 # ---------------------------------------------------------------------------
@@ -3168,6 +3242,37 @@ def create_default_registry() -> ToolRegistry:
         context_types=["lesson", "global"],
         required_permission=("lessons", "write"),
         handler=_handle_create_lesson,
+        scope="lessons",
+    ))
+
+    registry.register(ToolDef(
+        name="promoteLesson",
+        description="Promote a lesson to a global guideline or project knowledge object.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Lesson ID (e.g., L-001)."},
+                "target": {
+                    "type": "string", "enum": ["guideline", "knowledge"],
+                    "description": "Promote to guideline (global standard) or knowledge (project context).",
+                },
+                "scope": {"type": "string", "description": "Guideline scope (if target=guideline)."},
+                "weight": {
+                    "type": "string", "enum": ["must", "should", "may"],
+                    "description": "Guideline weight (if target=guideline).",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Knowledge category (if target=knowledge).",
+                },
+                "scopes": {"type": "array", "items": {"type": "string"}, "description": "Knowledge scopes (if target=knowledge)."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id", "target"],
+        },
+        context_types=["lesson", "global"],
+        required_permission=("lessons", "write"),
+        handler=_handle_promote_lesson,
         scope="lessons",
     ))
 
