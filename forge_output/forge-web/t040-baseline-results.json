@@ -1,0 +1,507 @@
+{
+  "results": [
+    {
+      "id": "C1",
+      "op": "create",
+      "entity": "tasks",
+      "prompt": "Create a new task called 'Add login page' with type feature and description 'Implement OAuth login page with Google provider'",
+      "expected_tool": "createTask",
+      "actual_tool": null,
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 11.3,
+      "iterations": 1,
+      "tool_calls_count": 0
+    },
+    {
+      "id": "C2",
+      "op": "create",
+      "entity": "decisions",
+      "prompt": "Record a decision: we chose PostgreSQL over MongoDB for the user store. Reasoning: relational data fits better, team has SQL expertise. Type: architecture.",
+      "expected_tool": "createDecision",
+      "actual_tool": "createDecision",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 16.4,
+      "iterations": 2,
+      "tool_calls_count": 1
+    },
+    {
+      "id": "C3",
+      "op": "create",
+      "entity": "guidelines",
+      "prompt": "Add a new guideline: All API endpoints must return JSON with a consistent error format {error, message, details}. Scope: backend, weight: must.",
+      "expected_tool": "createGuideline",
+      "actual_tool": "createGuideline",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 22.6,
+      "iterations": 3,
+      "tool_calls_count": 3
+    },
+    {
+      "id": "C4",
+      "op": "create",
+      "entity": "ideas",
+      "prompt": "I have an idea: 'Add dark mode support'. Category: feature. It would improve UX for users working at night.",
+      "expected_tool": "createIdea",
+      "actual_tool": "createIdea",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 10.5,
+      "iterations": 2,
+      "tool_calls_count": 1
+    },
+    {
+      "id": "C5",
+      "op": "create",
+      "entity": "objectives",
+      "prompt": "Create an objective 'Improve Developer Experience' with key result: reduce build time from 60s to under 15s.",
+      "expected_tool": "createObjective",
+      "actual_tool": null,
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 16.6,
+      "iterations": 1,
+      "tool_calls_count": 0
+    },
+    {
+      "id": "C6",
+      "op": "create",
+      "entity": "knowledge",
+      "prompt": "Add knowledge: our Redis instance uses Stack 7.4 with JSON module enabled. Category: infrastructure. This is important for all backend tasks.",
+      "expected_tool": "createKnowledge",
+      "actual_tool": "createKnowledge",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 17.3,
+      "iterations": 2,
+      "tool_calls_count": 2
+    },
+    {
+      "id": "R1",
+      "op": "read",
+      "entity": "tasks",
+      "prompt": "Show me the details of task T-040",
+      "expected_tool": "getEntity",
+      "actual_tool": "__parse_error__",
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 33.7,
+      "iterations": 5,
+      "tool_calls_count": 4
+    },
+    {
+      "id": "R2",
+      "op": "read",
+      "entity": "decisions",
+      "prompt": "What does decision D-018 say?",
+      "expected_tool": "getEntity",
+      "actual_tool": "getEntity",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 43.7,
+      "iterations": 4,
+      "tool_calls_count": 5
+    },
+    {
+      "id": "R3",
+      "op": "read",
+      "entity": "objectives",
+      "prompt": "Show me objective O-003 with its key results",
+      "expected_tool": "getEntity",
+      "actual_tool": "getEntity",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 37.7,
+      "iterations": 5,
+      "tool_calls_count": 4
+    },
+    {
+      "id": "R4",
+      "op": "read",
+      "entity": "research",
+      "prompt": "Get the details of research R-005",
+      "expected_tool": "getEntity",
+      "actual_tool": "getEntity",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 27.1,
+      "iterations": 2,
+      "tool_calls_count": 1
+    },
+    {
+      "id": "R5",
+      "op": "read",
+      "entity": "tasks",
+      "prompt": "What is the full context for task T-042? I need dependencies and guidelines.",
+      "expected_tool": "getTaskContext",
+      "actual_tool": "getTaskContext",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 43.7,
+      "iterations": 4,
+      "tool_calls_count": 4
+    },
+    {
+      "id": "R6",
+      "op": "read",
+      "entity": "global",
+      "prompt": "What is the current project status? How many tasks are done?",
+      "expected_tool": "getProjectStatus",
+      "actual_tool": "getProjectStatus",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 14.8,
+      "iterations": 2,
+      "tool_calls_count": 1
+    },
+    {
+      "id": "L1",
+      "op": "list",
+      "entity": "tasks",
+      "prompt": "List all tasks that are still TODO",
+      "expected_tool": "listEntities",
+      "actual_tool": null,
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 11.1,
+      "iterations": 1,
+      "tool_calls_count": 0
+    },
+    {
+      "id": "L2",
+      "op": "list",
+      "entity": "decisions",
+      "prompt": "Show me all open decisions",
+      "expected_tool": "listEntities",
+      "actual_tool": "listEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 41.5,
+      "iterations": 5,
+      "tool_calls_count": 5
+    },
+    {
+      "id": "L3",
+      "op": "list",
+      "entity": "guidelines",
+      "prompt": "What guidelines do we have for the backend scope?",
+      "expected_tool": "listEntities",
+      "actual_tool": "listEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 21.1,
+      "iterations": 3,
+      "tool_calls_count": 2
+    },
+    {
+      "id": "L4",
+      "op": "list",
+      "entity": "ideas",
+      "prompt": "List all ideas with status DRAFT",
+      "expected_tool": "listEntities",
+      "actual_tool": "listEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 22.1,
+      "iterations": 4,
+      "tool_calls_count": 4
+    },
+    {
+      "id": "L5",
+      "op": "list",
+      "entity": "knowledge",
+      "prompt": "Show all knowledge objects",
+      "expected_tool": "listEntities",
+      "actual_tool": "listEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 11.8,
+      "iterations": 2,
+      "tool_calls_count": 2
+    },
+    {
+      "id": "L6",
+      "op": "list",
+      "entity": "research",
+      "prompt": "List all research linked to objective O-003",
+      "expected_tool": "listResearch",
+      "actual_tool": "listResearch",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 11.4,
+      "iterations": 2,
+      "tool_calls_count": 2
+    },
+    {
+      "id": "U1",
+      "op": "update",
+      "entity": "decisions",
+      "prompt": "Close decision D-018 with action accept. The recommendation is solid.",
+      "expected_tool": "updateDecision",
+      "actual_tool": null,
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 18.8,
+      "iterations": 1,
+      "tool_calls_count": 0
+    },
+    {
+      "id": "U2",
+      "op": "update",
+      "entity": "ideas",
+      "prompt": "Update idea I-001 status to APPROVED",
+      "expected_tool": "updateIdea",
+      "actual_tool": "updateIdea",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 24.9,
+      "iterations": 2,
+      "tool_calls_count": 1
+    },
+    {
+      "id": "U3",
+      "op": "update",
+      "entity": "guidelines",
+      "prompt": "Change guideline G-001 weight from 'should' to 'must'",
+      "expected_tool": "updateGuideline",
+      "actual_tool": null,
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 23.5,
+      "iterations": 1,
+      "tool_calls_count": 0
+    },
+    {
+      "id": "U4",
+      "op": "update",
+      "entity": "objectives",
+      "prompt": "Update O-003 KR-1 current value to 75%",
+      "expected_tool": "updateObjective",
+      "actual_tool": "getEntity",
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 25.5,
+      "iterations": 3,
+      "tool_calls_count": 3
+    },
+    {
+      "id": "U5",
+      "op": "update",
+      "entity": "tasks",
+      "prompt": "Update task T-041 description to 'Verify the full SWR revalidation pipeline including WebSocket dispatch'",
+      "expected_tool": "updateTask",
+      "actual_tool": null,
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 13.2,
+      "iterations": 1,
+      "tool_calls_count": 0
+    },
+    {
+      "id": "U6",
+      "op": "update",
+      "entity": "knowledge",
+      "prompt": "Update knowledge K-001 content to reflect that we upgraded to Redis 7.4.1. Change reason: version bump.",
+      "expected_tool": "updateKnowledge",
+      "actual_tool": "getEntity",
+      "exact_match": false,
+      "acceptable": false,
+      "error": null,
+      "elapsed_s": 43.7,
+      "iterations": 3,
+      "tool_calls_count": 2
+    },
+    {
+      "id": "S1",
+      "op": "search",
+      "entity": "tasks",
+      "prompt": "Find all tasks related to authentication",
+      "expected_tool": "searchEntities",
+      "actual_tool": "searchEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 23.2,
+      "iterations": 4,
+      "tool_calls_count": 5
+    },
+    {
+      "id": "S2",
+      "op": "search",
+      "entity": "decisions",
+      "prompt": "Search for decisions about database choices",
+      "expected_tool": "searchEntities",
+      "actual_tool": "searchEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 15.4,
+      "iterations": 3,
+      "tool_calls_count": 3
+    },
+    {
+      "id": "S3",
+      "op": "search",
+      "entity": "guidelines",
+      "prompt": "Find guidelines mentioning API error handling",
+      "expected_tool": "searchEntities",
+      "actual_tool": "searchEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 30.6,
+      "iterations": 6,
+      "tool_calls_count": 6
+    },
+    {
+      "id": "S4",
+      "op": "search",
+      "entity": "knowledge",
+      "prompt": "Search knowledge for anything about Redis configuration",
+      "expected_tool": "searchEntities",
+      "actual_tool": "searchEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 12.7,
+      "iterations": 2,
+      "tool_calls_count": 2
+    },
+    {
+      "id": "S5",
+      "op": "search",
+      "entity": "lessons",
+      "prompt": "Find lessons learned about testing strategies",
+      "expected_tool": "searchEntities",
+      "actual_tool": "searchEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 16.2,
+      "iterations": 3,
+      "tool_calls_count": 5
+    },
+    {
+      "id": "S6",
+      "op": "search",
+      "entity": "research",
+      "prompt": "Search for research about notification infrastructure",
+      "expected_tool": "searchEntities",
+      "actual_tool": "searchEntities",
+      "exact_match": true,
+      "acceptable": true,
+      "error": null,
+      "elapsed_s": 13.4,
+      "iterations": 2,
+      "tool_calls_count": 2
+    }
+  ],
+  "stats": {
+    "overall": {
+      "total": 30,
+      "exact_match": 21,
+      "exact_pct": 70.0,
+      "acceptable": 21,
+      "acceptable_pct": 70.0
+    },
+    "by_operation": {
+      "create": {
+        "total": 6,
+        "exact": 4,
+        "acceptable": 4
+      },
+      "read": {
+        "total": 6,
+        "exact": 5,
+        "acceptable": 5
+      },
+      "list": {
+        "total": 6,
+        "exact": 5,
+        "acceptable": 5
+      },
+      "update": {
+        "total": 6,
+        "exact": 1,
+        "acceptable": 1
+      },
+      "search": {
+        "total": 6,
+        "exact": 6,
+        "acceptable": 6
+      }
+    },
+    "by_entity": {
+      "tasks": {
+        "total": 6,
+        "exact": 2,
+        "acceptable": 2
+      },
+      "decisions": {
+        "total": 5,
+        "exact": 4,
+        "acceptable": 4
+      },
+      "guidelines": {
+        "total": 4,
+        "exact": 3,
+        "acceptable": 3
+      },
+      "ideas": {
+        "total": 3,
+        "exact": 3,
+        "acceptable": 3
+      },
+      "objectives": {
+        "total": 3,
+        "exact": 1,
+        "acceptable": 1
+      },
+      "knowledge": {
+        "total": 4,
+        "exact": 3,
+        "acceptable": 3
+      },
+      "research": {
+        "total": 3,
+        "exact": 3,
+        "acceptable": 3
+      },
+      "global": {
+        "total": 1,
+        "exact": 1,
+        "acceptable": 1
+      },
+      "lessons": {
+        "total": 1,
+        "exact": 1,
+        "acceptable": 1
+      }
+    }
+  }
+}
