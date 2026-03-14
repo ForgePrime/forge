@@ -10,7 +10,7 @@
       "exact_match": false,
       "acceptable": false,
       "error": null,
-      "elapsed_s": 11.3,
+      "elapsed_s": 15.5,
       "iterations": 1,
       "tool_calls_count": 0
     },
@@ -24,9 +24,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 16.4,
-      "iterations": 2,
-      "tool_calls_count": 1
+      "elapsed_s": 22.7,
+      "iterations": 4,
+      "tool_calls_count": 4
     },
     {
       "id": "C3",
@@ -38,9 +38,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 22.6,
-      "iterations": 3,
-      "tool_calls_count": 3
+      "elapsed_s": 33.5,
+      "iterations": 4,
+      "tool_calls_count": 4
     },
     {
       "id": "C4",
@@ -48,13 +48,13 @@
       "entity": "ideas",
       "prompt": "I have an idea: 'Add dark mode support'. Category: feature. It would improve UX for users working at night.",
       "expected_tool": "createIdea",
-      "actual_tool": "createIdea",
-      "exact_match": true,
-      "acceptable": true,
+      "actual_tool": null,
+      "exact_match": false,
+      "acceptable": false,
       "error": null,
-      "elapsed_s": 10.5,
-      "iterations": 2,
-      "tool_calls_count": 1
+      "elapsed_s": 11.1,
+      "iterations": 1,
+      "tool_calls_count": 0
     },
     {
       "id": "C5",
@@ -66,7 +66,7 @@
       "exact_match": false,
       "acceptable": false,
       "error": null,
-      "elapsed_s": 16.6,
+      "elapsed_s": 12.3,
       "iterations": 1,
       "tool_calls_count": 0
     },
@@ -80,9 +80,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 17.3,
+      "elapsed_s": 17.7,
       "iterations": 2,
-      "tool_calls_count": 2
+      "tool_calls_count": 1
     },
     {
       "id": "R1",
@@ -90,13 +90,13 @@
       "entity": "tasks",
       "prompt": "Show me the details of task T-040",
       "expected_tool": "getEntity",
-      "actual_tool": "__parse_error__",
-      "exact_match": false,
-      "acceptable": false,
+      "actual_tool": "getEntity",
+      "exact_match": true,
+      "acceptable": true,
       "error": null,
       "elapsed_s": 33.7,
-      "iterations": 5,
-      "tool_calls_count": 4
+      "iterations": 4,
+      "tool_calls_count": 3
     },
     {
       "id": "R2",
@@ -108,9 +108,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 43.7,
-      "iterations": 4,
-      "tool_calls_count": 5
+      "elapsed_s": 99.2,
+      "iterations": 5,
+      "tool_calls_count": 7
     },
     {
       "id": "R3",
@@ -122,9 +122,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 37.7,
-      "iterations": 5,
-      "tool_calls_count": 4
+      "elapsed_s": 27.3,
+      "iterations": 4,
+      "tool_calls_count": 3
     },
     {
       "id": "R4",
@@ -136,9 +136,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 27.1,
-      "iterations": 2,
-      "tool_calls_count": 1
+      "elapsed_s": 30.8,
+      "iterations": 3,
+      "tool_calls_count": 2
     },
     {
       "id": "R5",
@@ -150,8 +150,8 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 43.7,
-      "iterations": 4,
+      "elapsed_s": 34.3,
+      "iterations": 5,
       "tool_calls_count": 4
     },
     {
@@ -160,13 +160,13 @@
       "entity": "global",
       "prompt": "What is the current project status? How many tasks are done?",
       "expected_tool": "getProjectStatus",
-      "actual_tool": "getProjectStatus",
-      "exact_match": true,
-      "acceptable": true,
+      "actual_tool": null,
+      "exact_match": false,
+      "acceptable": false,
       "error": null,
-      "elapsed_s": 14.8,
-      "iterations": 2,
-      "tool_calls_count": 1
+      "elapsed_s": 14.1,
+      "iterations": 1,
+      "tool_calls_count": 0
     },
     {
       "id": "L1",
@@ -174,13 +174,13 @@
       "entity": "tasks",
       "prompt": "List all tasks that are still TODO",
       "expected_tool": "listEntities",
-      "actual_tool": null,
-      "exact_match": false,
-      "acceptable": false,
+      "actual_tool": "listEntities",
+      "exact_match": true,
+      "acceptable": true,
       "error": null,
-      "elapsed_s": 11.1,
-      "iterations": 1,
-      "tool_calls_count": 0
+      "elapsed_s": 13.3,
+      "iterations": 3,
+      "tool_calls_count": 3
     },
     {
       "id": "L2",
@@ -192,9 +192,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 41.5,
-      "iterations": 5,
-      "tool_calls_count": 5
+      "elapsed_s": 17.8,
+      "iterations": 3,
+      "tool_calls_count": 3
     },
     {
       "id": "L3",
@@ -206,8 +206,8 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 21.1,
-      "iterations": 3,
+      "elapsed_s": 12.9,
+      "iterations": 2,
       "tool_calls_count": 2
     },
     {
@@ -220,9 +220,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 22.1,
-      "iterations": 4,
-      "tool_calls_count": 4
+      "elapsed_s": 22.5,
+      "iterations": 3,
+      "tool_calls_count": 2
     },
     {
       "id": "L5",
@@ -234,7 +234,7 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 11.8,
+      "elapsed_s": 11.7,
       "iterations": 2,
       "tool_calls_count": 2
     },
@@ -248,9 +248,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 11.4,
+      "elapsed_s": 21.7,
       "iterations": 2,
-      "tool_calls_count": 2
+      "tool_calls_count": 1
     },
     {
       "id": "U1",
@@ -262,7 +262,7 @@
       "exact_match": false,
       "acceptable": false,
       "error": null,
-      "elapsed_s": 18.8,
+      "elapsed_s": 112.3,
       "iterations": 1,
       "tool_calls_count": 0
     },
@@ -276,9 +276,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 24.9,
+      "elapsed_s": 8.6,
       "iterations": 2,
-      "tool_calls_count": 1
+      "tool_calls_count": 2
     },
     {
       "id": "U3",
@@ -286,13 +286,13 @@
       "entity": "guidelines",
       "prompt": "Change guideline G-001 weight from 'should' to 'must'",
       "expected_tool": "updateGuideline",
-      "actual_tool": null,
-      "exact_match": false,
-      "acceptable": false,
+      "actual_tool": "updateGuideline",
+      "exact_match": true,
+      "acceptable": true,
       "error": null,
-      "elapsed_s": 23.5,
-      "iterations": 1,
-      "tool_calls_count": 0
+      "elapsed_s": 24.5,
+      "iterations": 2,
+      "tool_calls_count": 1
     },
     {
       "id": "U4",
@@ -300,13 +300,13 @@
       "entity": "objectives",
       "prompt": "Update O-003 KR-1 current value to 75%",
       "expected_tool": "updateObjective",
-      "actual_tool": "getEntity",
+      "actual_tool": null,
       "exact_match": false,
       "acceptable": false,
       "error": null,
-      "elapsed_s": 25.5,
-      "iterations": 3,
-      "tool_calls_count": 3
+      "elapsed_s": 10.2,
+      "iterations": 1,
+      "tool_calls_count": 0
     },
     {
       "id": "U5",
@@ -318,7 +318,7 @@
       "exact_match": false,
       "acceptable": false,
       "error": null,
-      "elapsed_s": 13.2,
+      "elapsed_s": 14.2,
       "iterations": 1,
       "tool_calls_count": 0
     },
@@ -328,11 +328,11 @@
       "entity": "knowledge",
       "prompt": "Update knowledge K-001 content to reflect that we upgraded to Redis 7.4.1. Change reason: version bump.",
       "expected_tool": "updateKnowledge",
-      "actual_tool": "getEntity",
+      "actual_tool": "__parse_error__",
       "exact_match": false,
       "acceptable": false,
       "error": null,
-      "elapsed_s": 43.7,
+      "elapsed_s": 17.7,
       "iterations": 3,
       "tool_calls_count": 2
     },
@@ -346,9 +346,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 23.2,
+      "elapsed_s": 22.2,
       "iterations": 4,
-      "tool_calls_count": 5
+      "tool_calls_count": 4
     },
     {
       "id": "S2",
@@ -360,9 +360,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 15.4,
+      "elapsed_s": 23.0,
       "iterations": 3,
-      "tool_calls_count": 3
+      "tool_calls_count": 2
     },
     {
       "id": "S3",
@@ -374,9 +374,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 30.6,
-      "iterations": 6,
-      "tool_calls_count": 6
+      "elapsed_s": 16.3,
+      "iterations": 3,
+      "tool_calls_count": 4
     },
     {
       "id": "S4",
@@ -388,7 +388,7 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 12.7,
+      "elapsed_s": 13.7,
       "iterations": 2,
       "tool_calls_count": 2
     },
@@ -402,9 +402,9 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 16.2,
+      "elapsed_s": 17.5,
       "iterations": 3,
-      "tool_calls_count": 5
+      "tool_calls_count": 2
     },
     {
       "id": "S6",
@@ -416,7 +416,7 @@
       "exact_match": true,
       "acceptable": true,
       "error": null,
-      "elapsed_s": 13.4,
+      "elapsed_s": 10.9,
       "iterations": 2,
       "tool_calls_count": 2
     }
@@ -424,16 +424,16 @@
   "stats": {
     "overall": {
       "total": 30,
-      "exact_match": 21,
-      "exact_pct": 70.0,
-      "acceptable": 21,
-      "acceptable_pct": 70.0
+      "exact_match": 22,
+      "exact_pct": 73.3,
+      "acceptable": 22,
+      "acceptable_pct": 73.3
     },
     "by_operation": {
       "create": {
         "total": 6,
-        "exact": 4,
-        "acceptable": 4
+        "exact": 3,
+        "acceptable": 3
       },
       "read": {
         "total": 6,
@@ -442,13 +442,13 @@
       },
       "list": {
         "total": 6,
-        "exact": 5,
-        "acceptable": 5
+        "exact": 6,
+        "acceptable": 6
       },
       "update": {
         "total": 6,
-        "exact": 1,
-        "acceptable": 1
+        "exact": 2,
+        "acceptable": 2
       },
       "search": {
         "total": 6,
@@ -459,8 +459,8 @@
     "by_entity": {
       "tasks": {
         "total": 6,
-        "exact": 2,
-        "acceptable": 2
+        "exact": 4,
+        "acceptable": 4
       },
       "decisions": {
         "total": 5,
@@ -469,13 +469,13 @@
       },
       "guidelines": {
         "total": 4,
-        "exact": 3,
-        "acceptable": 3
+        "exact": 4,
+        "acceptable": 4
       },
       "ideas": {
         "total": 3,
-        "exact": 3,
-        "acceptable": 3
+        "exact": 2,
+        "acceptable": 2
       },
       "objectives": {
         "total": 3,
@@ -494,8 +494,8 @@
       },
       "global": {
         "total": 1,
-        "exact": 1,
-        "acceptable": 1
+        "exact": 0,
+        "acceptable": 0
       },
       "lessons": {
         "total": 1,
