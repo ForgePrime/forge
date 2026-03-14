@@ -594,6 +594,8 @@ export interface Lesson {
   applies_to?: string;
   tags: string[];
   project?: string;
+  promoted_to_guideline?: string;
+  promoted_to_knowledge?: string;
   created_at: string;
 }
 

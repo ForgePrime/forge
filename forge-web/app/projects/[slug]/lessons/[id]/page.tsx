@@ -65,7 +65,7 @@ export default function LessonDetailPage() {
       const result = await lessonsApi.promote(slug, id, data);
       useToastStore.getState().addToast({
         message: `Promoted ${id} to ${target}: ${result.guideline_id || result.knowledge_id || result.promoted_to}`,
-        action: "promoted",
+        action: "completed",
       });
       await loadLesson();
     } catch (e) {
