@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useState, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { useScopeResolver, SCOPE_TO_CONTEXT_TYPE } from "@/hooks/useScopeResolver";
 import { fetchContractsForScopes, getPermissionStatus, type CapabilityDef } from "@/lib/capabilities";
 import { useAIPageContextSafe, serializePageContext, deriveScopesFromElements, type AIElementDescriptor } from "@/lib/ai-context";
@@ -19,6 +20,19 @@ import { ToolsTabEnhanced } from "./ToolsTabEnhanced";
 // ---------------------------------------------------------------------------
 // Tab types
 // ---------------------------------------------------------------------------
+
+/** Entity type colors (matching EntityNode config). */
+const ENTITY_TYPE_COLORS: Record<string, string> = {
+  objective: "#3B82F6",
+  idea: "#8B5CF6",
+  task: "#10B981",
+  decision: "#F59E0B",
+  research: "#EC4899",
+  knowledge: "#6366F1",
+  guideline: "#14B8A6",
+  lesson: "#F97316",
+  ac_template: "#64748B",
+};
 
 const TABS: { key: SidebarTab; label: string }[] = [
   { key: "chat", label: "Chat" },
@@ -593,6 +607,8 @@ export default function AISidebar() {
     resetScopes,
     toggleCapability,
     setActiveTab,
+    targetEntity,
+    clearTargetEntity,
   } = useSidebarStore();
 
   // Active workflow state (reactive)
@@ -605,6 +621,29 @@ export default function AISidebar() {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  const pathname = usePathname();
+
+  // Auto-detect entity from URL path: /projects/{slug}/{entityPlural}/{id}
+  const setTargetEntity = useSidebarStore((s) => s.setTargetEntity);
+  useEffect(() => {
+    const match = pathname?.match(/\/projects\/[^/]+\/(objectives|ideas|tasks|decisions|research|knowledge|guidelines|lessons|ac-templates)\/([A-Z]+-?\d+|[^/]+)$/);
+    if (!match) {
+      // Not on an entity detail page — clear binding
+      useSidebarStore.getState().clearTargetEntity();
+      return;
+    }
+    const [, segment, id] = match;
+    const ROUTE_TO_TYPE: Record<string, string> = {
+      objectives: "objective", ideas: "idea", tasks: "task",
+      decisions: "decision", research: "research", knowledge: "knowledge",
+      guidelines: "guideline", lessons: "lesson", "ac-templates": "ac_template",
+    };
+    const entityType = ROUTE_TO_TYPE[segment];
+    if (entityType) {
+      setTargetEntity({ type: entityType, id, label: id });
+    }
+  }, [pathname, setTargetEntity]);
 
   // Resolve scopes from URL + overrides
   const { scopes: urlScopes, projectSlug, contextTypes, contextId: resolvedContextId } = useScopeResolver({
@@ -694,6 +733,29 @@ export default function AISidebar() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Entity binding badge */}
+      {targetEntity && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-gray-50">
+          <span
+            className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white"
+            style={{ backgroundColor: ENTITY_TYPE_COLORS[targetEntity.type] ?? "#94A3B8" }}
+          >
+            {targetEntity.type.toUpperCase()}
+          </span>
+          <span className="text-xs font-medium text-gray-700 truncate flex-1">{targetEntity.label}</span>
+          <span className="text-[10px] text-gray-400 font-mono">{targetEntity.id}</span>
+          <button
+            onClick={clearTargetEntity}
+            className="ml-1 rounded-full hover:bg-gray-200 p-0.5 transition-colors"
+            title="Clear entity binding"
+          >
+            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Scope chips */}
       <ScopeChips scopes={scopes} onRemove={removeScope} />
 
@@ -713,6 +775,8 @@ export default function AISidebar() {
               scopes={scopes}
               disabledCapabilities={disabledToolNames}
               pageContext={pageContextText}
+              targetEntityType={targetEntity?.type}
+              targetEntityId={targetEntity?.id}
               className="flex-1 min-h-0"
             />
             <TokenCounter />

@@ -20,6 +20,10 @@ interface LLMChatProps {
   disabledCapabilities?: string[];
   /** Serialized AI page context to include with messages. */
   pageContext?: string;
+  /** Target entity type for entity-scoped conversations. */
+  targetEntityType?: string;
+  /** Target entity ID for entity-scoped conversations. */
+  targetEntityId?: string;
 }
 
 export default function LLMChat({
@@ -32,6 +36,8 @@ export default function LLMChat({
   scopes,
   disabledCapabilities,
   pageContext,
+  targetEntityType,
+  targetEntityId,
 }: LLMChatProps) {
   const {
     conversations,
@@ -97,9 +103,9 @@ export default function LLMChat({
         }
       }
 
-      sendMessage(message, contextType, contextId, slug, null, scopes, disabledCapabilities, fileIds, pageContext, sessionType, undefined, undefined, skillNames);
+      sendMessage(message, contextType, contextId, slug, null, scopes, disabledCapabilities, fileIds, pageContext, sessionType, targetEntityType, targetEntityId, skillNames);
     },
-    [contextType, contextId, slug, sendMessage, clearError, scopes, disabledCapabilities, pageContext],
+    [contextType, contextId, slug, sendMessage, clearError, scopes, disabledCapabilities, pageContext, targetEntityType, targetEntityId],
   );
 
   // Token counter

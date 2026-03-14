@@ -18,6 +18,12 @@ export interface AttachedSkillInfo {
   display_name: string;
 }
 
+export interface TargetEntity {
+  type: string;   // "objective" | "task" | "idea" | etc.
+  id: string;     // "O-001", "T-003", etc.
+  label: string;  // Display name
+}
+
 interface SidebarState {
   /** Extra scopes added by user (beyond auto-detected). */
   addedScopes: string[];
@@ -31,6 +37,8 @@ interface SidebarState {
   hiddenRoutes: string[];
   /** Skills attached by user for the current message. */
   attachedSkills: AttachedSkillInfo[];
+  /** Entity the sidebar is bound to (null = project-level). */
+  targetEntity: TargetEntity | null;
   /** Whether localStorage has been read. */
   _hydrated: boolean;
 }
@@ -47,6 +55,8 @@ interface SidebarActions {
   attachSkill: (name: string, display_name: string) => void;
   detachSkill: (name: string) => void;
   clearSkills: () => void;
+  setTargetEntity: (entity: TargetEntity | null) => void;
+  clearTargetEntity: () => void;
 }
 
 function persist(state: SidebarState) {
@@ -74,6 +84,7 @@ export const useSidebarStore = create<SidebarState & SidebarActions>((set, get) 
   activeTab: "chat",
   hiddenRoutes: [],
   attachedSkills: [],
+  targetEntity: null,
   _hydrated: false,
 
   hydrate: () => {
@@ -193,5 +204,13 @@ export const useSidebarStore = create<SidebarState & SidebarActions>((set, get) 
       persist(next);
       return next;
     });
+  },
+
+  setTargetEntity: (entity) => {
+    set({ targetEntity: entity });
+  },
+
+  clearTargetEntity: () => {
+    set({ targetEntity: null });
   },
 }));
