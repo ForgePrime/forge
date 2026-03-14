@@ -1,5 +1,9 @@
 import type { ComponentType } from "react";
 import type { Notification } from "@/lib/types";
+import { DecisionRenderer } from "./renderers/DecisionRenderer";
+import { ApprovalRenderer } from "./renderers/ApprovalRenderer";
+import { QuestionRenderer } from "./renderers/QuestionRenderer";
+import { AlertRenderer } from "./renderers/AlertRenderer";
 
 /**
  * Props passed to notification type-specific renderers.
@@ -31,3 +35,9 @@ export function registerRenderer(
 ): void {
   NOTIFICATION_RENDERERS.set(type, component);
 }
+
+// Register built-in renderers
+NOTIFICATION_RENDERERS.set("decision", DecisionRenderer);
+NOTIFICATION_RENDERERS.set("approval", ApprovalRenderer);
+NOTIFICATION_RENDERERS.set("question", QuestionRenderer);
+NOTIFICATION_RENDERERS.set("alert", AlertRenderer);
