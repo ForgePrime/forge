@@ -242,11 +242,12 @@ export function dispatchWsEvent(event: ForgeEvent): void {
     });
   }
 
-  // Notification created with critical/high priority → persistent popup
+  // Notification created → priority-based display (D-014)
   if (event.event === "notification.created") {
     const payload = event.payload as Record<string, unknown>;
     const priority = (payload.priority as string) ?? "normal";
     if (priority === "critical" || priority === "high") {
+      // Immediate popup for critical/high
       useNotificationStore.getState().addDecision({
         decisionId: (payload.notification_id ?? "") as string,
         type: (payload.notification_type ?? "alert") as string,
@@ -254,7 +255,18 @@ export function dispatchWsEvent(event: ForgeEvent): void {
         severity: priority,
         project: event.project,
       });
+      // Critical also gets a toast
+      if (priority === "critical") {
+        useToastStore.getState().addToast({
+          message: `CRITICAL: ${(payload.title as string) ?? "Notification"}`,
+          entityType: "notification",
+          action: "created",
+          project: event.project,
+        });
+      }
     }
+    // Normal/low → debounced SWR revalidation only (bell badge increments, no popup)
+    // Already handled by the general entity routing above
   }
 
   // Decision closed → auto-resume any paused session waiting for this decision
