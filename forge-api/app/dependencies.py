@@ -105,6 +105,15 @@ async def get_session_manager(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Notification Service (O-002)
+# ---------------------------------------------------------------------------
+
+async def get_notification_service(request: Request):
+    """Return the app-wide NotificationService (set during lifespan)."""
+    return getattr(request.app.state, "notification_service", None)
+
+
+# ---------------------------------------------------------------------------
 # Skill Storage + Git Sync
 # ---------------------------------------------------------------------------
 

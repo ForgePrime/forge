@@ -95,6 +95,10 @@ async def lifespan(app: FastAPI):
     # LLM Config — load from _global/llm_config.json or use defaults
     app.state.llm_config = _load_llm_config()
 
+    # Notification Service (O-002) — event-to-notification mapping
+    from app.services.notification_service import NotificationService
+    app.state.notification_service = NotificationService(app.state.storage, app.state.event_bus)
+
     # LLM Tool Registry — built-in tools for LLM agents
     from app.llm.tool_registry import create_default_registry
     app.state.tool_registry = create_default_registry()
