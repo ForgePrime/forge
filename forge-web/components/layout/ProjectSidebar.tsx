@@ -48,6 +48,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Execution",
     items: [
       { label: "Tasks", segment: "tasks", icon: "\u2611", countKey: "tasks" },
+      { label: "Workflows", segment: "workflows", icon: "\u29BB" },
       { label: "Board", segment: "board", icon: "\u25A6" },
       { label: "Runner", segment: "execution", icon: "\u25B6" },
     ],
