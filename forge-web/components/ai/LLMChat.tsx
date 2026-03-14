@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useChatStore } from "@/stores/chatStore";
+import { parseSlashCommand } from "@/lib/ai-context/slashCommandRouter";
 import Message from "./Message";
 import ChatInput from "./ChatInput";
 
@@ -71,6 +72,7 @@ export default function LLMChat({
   const handleSend = useCallback(
     (message: string, fileIds?: string[]) => {
       clearError();
+
       // Parse @skill-name mentions inline from message text
       const mentionRegex = /@([a-z0-9][a-z0-9-]*)/g;
       const found: string[] = [];
@@ -78,8 +80,24 @@ export default function LLMChat({
       while ((m = mentionRegex.exec(message)) !== null) {
         if (!found.includes(m[1])) found.push(m[1]);
       }
-      const skillNames = found.length > 0 ? found : undefined;
-      sendMessage(message, contextType, contextId, slug, null, scopes, disabledCapabilities, fileIds, pageContext, undefined, undefined, undefined, skillNames);
+
+      // Parse slash commands and resolve routing
+      let sessionType: string | undefined;
+      let skillNames = found.length > 0 ? [...found] : undefined;
+
+      const parsed = parseSlashCommand(message);
+      if (parsed?.route) {
+        const { route } = parsed;
+        sessionType = route.sessionType;
+        if (route.skillName) {
+          skillNames = skillNames ?? [];
+          if (!skillNames.includes(route.skillName)) {
+            skillNames.push(route.skillName);
+          }
+        }
+      }
+
+      sendMessage(message, contextType, contextId, slug, null, scopes, disabledCapabilities, fileIds, pageContext, sessionType, undefined, undefined, skillNames);
     },
     [contextType, contextId, slug, sendMessage, clearError, scopes, disabledCapabilities, pageContext],
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { SLASH_ROUTES } from "@/lib/ai-context/slashCommandRouter";
 
 export interface SlashCommand {
   name: string;
@@ -129,6 +130,11 @@ export default function SlashCommandDropdown({
           {cmd.source === "skill" && (
             <span className="text-[9px] rounded bg-purple-100 text-purple-600 px-1 py-0.5 ml-auto shrink-0">
               skill
+            </span>
+          )}
+          {cmd.source === "built-in" && SLASH_ROUTES[cmd.name]?.skillName && (
+            <span className="text-[9px] rounded bg-forge-100 text-forge-600 px-1 py-0.5 ml-auto shrink-0">
+              workflow
             </span>
           )}
         </button>
