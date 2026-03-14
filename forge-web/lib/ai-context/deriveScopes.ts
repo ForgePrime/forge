@@ -14,6 +14,7 @@ export const TOOL_ENTITY_TO_SCOPE: Record<string, string> = {
   Lesson: "lessons",
   Change: "changes",
   Skill: "skills",
+  Research: "research",
   ACTemplate: "ac_templates",
   Project: "projects",
   Plan: "planning",
