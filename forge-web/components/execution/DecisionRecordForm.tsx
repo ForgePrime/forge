@@ -12,7 +12,7 @@ const DECISION_TYPES: DecisionType[] = [
   "constraint", "business", "strategy", "other",
 ];
 
-const CONFIDENCE_LEVELS: Confidence[] = ["high", "medium", "low"];
+const CONFIDENCE_LEVELS: Confidence[] = ["HIGH", "MEDIUM", "LOW"];
 
 interface DecisionRecordFormProps {
   slug: string;
@@ -31,7 +31,7 @@ export function DecisionRecordForm({ slug, taskId }: DecisionRecordFormProps) {
   const [issue, setIssue] = useState("");
   const [recommendation, setRecommendation] = useState("");
   const [reasoning, setReasoning] = useState("");
-  const [confidence, setConfidence] = useState<Confidence>("medium");
+  const [confidence, setConfidence] = useState<Confidence>("MEDIUM");
 
   const loadDecisions = useCallback(async () => {
     setLoadingDecisions(true);
@@ -71,7 +71,7 @@ export function DecisionRecordForm({ slug, taskId }: DecisionRecordFormProps) {
       setRecommendation("");
       setReasoning("");
       setType("implementation");
-      setConfidence("medium");
+      setConfidence("MEDIUM");
       // Reload decisions
       await loadDecisions();
     } catch (e) {

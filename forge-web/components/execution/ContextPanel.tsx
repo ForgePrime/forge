@@ -98,7 +98,7 @@ function BusinessContextSection({ objective }: { objective: Objective }) {
         <div className="space-y-2">
           <span className="text-xs font-medium text-gray-600">Key Results:</span>
           {objective.key_results.map((kr) => {
-            const pct = kr.target !== 0 ? Math.round(((kr.current ?? kr.baseline) / kr.target) * 100) : 0;
+            const pct = kr.target ? Math.round(((kr.current ?? kr.baseline ?? 0) / kr.target) * 100) : 0;
             return (
               <div key={kr.id} className="flex items-center gap-2 text-xs">
                 <span className="text-gray-400 w-12">{kr.id}</span>
