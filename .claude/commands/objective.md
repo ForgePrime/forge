@@ -35,7 +35,13 @@ python -m core.pipeline init {slug} --goal "Project workspace"
       Only ask what you genuinely don't know. If the user gave metrics
       in the title/description, don't re-ask.
 
-   c. If `--quick` — skip alignment, infer reasonable defaults, flag assumptions.
+   c. **Constraint-frame the description** — add 1-3 short constraints: what sources to use, what NOT to do, what to do when blocked. Keep it tight — one sentence per constraint, not a paragraph.
+
+      **Push back on bad ideas.** If the objective is vague, unrealistic, or poorly scoped — say so directly. Don't just ask polite questions. Express your opinion: "This is too broad because X", "I'd cut Y because Z", "This will fail without W". Influence the user toward a better objective before locking it in.
+
+      Skip framing for objectives that are already specific.
+
+   d. If `--quick` — skip alignment, infer reasonable defaults, flag assumptions.
 
 3. Check the contract:
 ```bash
@@ -78,6 +84,7 @@ python -m core.objectives add {project} --data '[{
 
 6. Present the created objective and suggest next steps:
    - `/idea {title}` — propose Ideas that advance specific Key Results
+   - `/research O-001` —  structured analysis summaries linked to objectives
    - `/objectives` — see all objectives
    - `/objectives O-001` — see details + coverage
    - `/guideline {text}` — create standards derived from this objective

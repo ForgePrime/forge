@@ -1,6 +1,6 @@
 {
   "project": "forge-web",
-  "updated": "2026-03-14T19:13:04Z",
+  "updated": "2026-03-14T21:22:42Z",
   "decisions": [
     {
       "id": "D-001",
@@ -1293,7 +1293,258 @@
       "scope": "",
       "timestamp": "2026-03-14T19:13:04Z",
       "tags": []
+    },
+    {
+      "id": "D-030",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "Layout engine, Graph API design, and node architecture for multi-entity DAG",
+      "recommendation": "elkjs + server-side Graph API + generic EntityNode with config map",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "OPEN",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T21:22:42Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "dagre deprecated, lacks edge routing - not suitable for multi-edge-type graphs",
+        "elkjs (1.4MB) provides layered layout + edge routing, can run in Web Worker",
+        "Server-side Graph API ensures data consistency vs client-side N-fetch aggregation",
+        "Generic EntityNode with config map follows L-001 store factory DRY pattern",
+        "Changes (357) and Lessons should be excluded from default graph view"
+      ],
+      "options": [
+        {
+          "name": "dagre + server graph",
+          "pros": [
+            "Small bundle (40KB)",
+            "Simple API"
+          ],
+          "cons": [
+            "Deprecated",
+            "No edge routing",
+            "Edge clutter"
+          ],
+          "recommendation": "NO-GO"
+        },
+        {
+          "name": "elkjs + server graph",
+          "pros": [
+            "Edge routing",
+            "Configurable",
+            "Production-grade"
+          ],
+          "cons": [
+            "1.4MB bundle",
+            "Async API",
+            "Complex config"
+          ],
+          "recommendation": "GO"
+        },
+        {
+          "name": "elkjs + client-side merge",
+          "pros": [
+            "Reuses SWR caching",
+            "No backend changes"
+          ],
+          "cons": [
+            "Data inconsistency risk",
+            "Complex client logic",
+            "N+1 fetches"
+          ],
+          "recommendation": "NO-GO"
+        }
+      ],
+      "open_questions": [],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-multi-entity-dag-option-exploration.md"
+      ],
+      "tags": [
+        "elkjs",
+        "graph-api",
+        "layout",
+        "react-flow"
+      ]
+    },
+    {
+      "id": "D-031",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "State management pattern for React Flow + SWR + Zustand integration",
+      "recommendation": "SWR as single source of truth; React Flow as derived read-only view; graphStore only for UI preferences (filters, viewport)",
+      "reasoning": "Three-way state sync (SWR + Zustand + React Flow) is the highest complexity risk (composite 25). L-018 shows infinite re-render risk with React context/state loops. Making SWR the sole data source and React Flow an uncontrolled derived view eliminates the sync problem entirely.",
+      "alternatives": [
+        "graphStore owns nodes/edges, syncs with entity stores (rejected: dual source of truth)",
+        "React Flow controlled mode with entity stores (rejected: couples layout state to data state)"
+      ],
+      "confidence": "HIGH",
+      "status": "OPEN",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-architect",
+      "timestamp": "2026-03-14T21:22:42Z",
+      "tags": [
+        "state-management",
+        "swr",
+        "zustand",
+        "react-flow"
+      ]
+    },
+    {
+      "id": "D-032",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "elkjs execution environment: main thread vs Web Worker",
+      "recommendation": "Run elkjs in Web Worker loaded from public/ directory to bypass Next.js webpack worker limitations",
+      "reasoning": "elkjs layout for 100+ nodes can take 500ms-2s, freezing the UI. Next.js has no webpack worker support configured. Loading elkjs from public/ as a static file bypasses webpack entirely and avoids build configuration complexity.",
+      "alternatives": [
+        "Main thread with loading spinner (rejected: 500ms+ UI freeze unacceptable)",
+        "requestIdleCallback chunked layout (rejected: complex, unreliable timing)",
+        "Webpack worker loader config (rejected: Next.js webpack customization fragile)"
+      ],
+      "confidence": "HIGH",
+      "status": "OPEN",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-architect",
+      "timestamp": "2026-03-14T21:22:42Z",
+      "tags": [
+        "web-worker",
+        "elkjs",
+        "performance",
+        "next-js"
+      ]
+    },
+    {
+      "id": "D-033",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "Edge type phasing strategy for multi-entity graph",
+      "recommendation": "Phase 1: 4 core edge types (depends_on, advances_kr, origin, derived_from). Phase 2: blocked_by, parent_child, linked_entity, knowledge_ref",
+      "reasoning": "31 relationship fields across 9 entity types produce 130+ edges. Implementing all at once creates visual clutter and excessive implementation scope. 4 core types cover the primary DAG structure (Objective -> Idea -> Task hierarchy + dependencies).",
+      "alternatives": [
+        "All edge types at once (rejected: visual clutter, scope creep)",
+        "Only depends_on (rejected: loses the multi-entity value proposition)"
+      ],
+      "confidence": "HIGH",
+      "status": "OPEN",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-architect",
+      "timestamp": "2026-03-14T21:22:42Z",
+      "tags": [
+        "edges",
+        "phasing",
+        "relationships"
+      ]
+    },
+    {
+      "id": "D-034",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "Graph-specific WebSocket debounce strategy",
+      "recommendation": "2-5s debounce for graph data revalidation; only structural changes (add/remove node/edge) trigger re-layout; position-only updates skip layout",
+      "reasoning": "Current entity WS events debounce at 300ms. Graph re-layout is expensive (elkjs computation). Triggering re-layout on every entity status change would cause constant graph jumping. Structural changes (new task added, dependency changed) warrant re-layout; status changes only update node appearance without re-layout.",
+      "alternatives": [
+        "Same 300ms debounce as entities (rejected: excessive re-layouts)",
+        "Manual refresh button only (rejected: breaks real-time expectation)"
+      ],
+      "confidence": "MEDIUM",
+      "status": "OPEN",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-architect",
+      "timestamp": "2026-03-14T21:22:42Z",
+      "tags": [
+        "websocket",
+        "debounce",
+        "real-time",
+        "performance"
+      ]
+    },
+    {
+      "id": "D-035",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "elkjs layout computation may freeze UI for 100+ node graphs",
+      "recommendation": "Run elkjs in Web Worker; implement fallback grid layout if worker fails",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "OPEN",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T21:22:42Z",
+      "severity": "HIGH",
+      "likelihood": "HIGH",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-008",
+      "mitigation_plan": "1. Load elkjs in Web Worker from public/ directory. 2. Show loading skeleton during layout computation. 3. If worker crashes, fall back to simple grid layout. 4. Cache layout results for same graph structure.",
+      "resolution_notes": "",
+      "tags": [
+        "performance",
+        "elkjs",
+        "web-worker"
+      ]
+    },
+    {
+      "id": "D-036",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Three-way state sync (SWR + Zustand + React Flow) may cause infinite re-render loops",
+      "recommendation": "Strict separation: SWR owns data, React Flow owns layout, graphStore owns UI preferences only",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "OPEN",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T21:22:42Z",
+      "severity": "HIGH",
+      "likelihood": "MEDIUM",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-008",
+      "mitigation_plan": "1. SWR cache is sole data source for graph nodes/edges. 2. React Flow in uncontrolled mode (no onNodesChange syncing back to store). 3. graphStore stores ONLY filters, viewport prefs, selected node ID. 4. Code review checkpoint: no useEffect that reads and writes to same state source.",
+      "resolution_notes": "",
+      "tags": [
+        "state-management",
+        "infinite-loop",
+        "react-flow"
+      ]
+    },
+    {
+      "id": "D-037",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Visual clutter from 130+ edges across 8 relationship types",
+      "recommendation": "Phase edge types, provide entity type and edge type filters, default to showing only core 4 edge types",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "OPEN",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T21:22:42Z",
+      "severity": "MEDIUM",
+      "likelihood": "HIGH",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-008",
+      "mitigation_plan": "1. Default view shows 4 core edge types only. 2. Edge type toggles in toolbar. 3. Entity type filter hides nodes + their edges. 4. Hover on node highlights only connected edges. 5. Consider grouping by objective as collapsible clusters in future.",
+      "resolution_notes": "",
+      "tags": [
+        "ux",
+        "visual-clutter",
+        "filtering"
+      ]
     }
   ],
-  "open_count": 0
+  "open_count": 8
 }

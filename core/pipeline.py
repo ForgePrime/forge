@@ -2060,6 +2060,47 @@ def cmd_config(args):
             print(f"  {k}: {v}")
 
 
+# -- AC Quality --
+
+_VAGUE_AC_WORDS = {"handle", "handles", "ensure", "ensures", "properly", "robust",
+                   "correctly", "works", "appropriate", "appropriately",
+                   "should work", "as expected", "as needed"}
+
+
+def _warn_ac_quality(tasks: list):
+    """Print warnings for missing or vague acceptance criteria (non-blocking)."""
+    warnings = []
+    for t in tasks:
+        tid = t.get("id", "?")
+        ttype = t.get("type", "feature")
+        ac = t.get("acceptance_criteria", [])
+
+        if ttype in ("investigation", "chore"):
+            continue
+
+        if not ac:
+            warnings.append(f"  {tid} ({t.get('name', '?')}): no acceptance criteria")
+            continue
+
+        for criterion in ac:
+            text = criterion if isinstance(criterion, str) else criterion.get("text", "")
+            text_lower = text.lower()
+            found = [w for w in _VAGUE_AC_WORDS if w in text_lower]
+            if found:
+                warnings.append(
+                    f"  {tid}: vague AC \"{text[:60]}\" — contains: {', '.join(found)}"
+                )
+
+    if warnings:
+        print()
+        print(f"**AC QUALITY WARNINGS** ({len(warnings)}):")
+        for w in warnings:
+            print(w)
+        print("Tip: rewrite vague AC as observable outcomes. "
+              "E.g., 'handles errors' → 'returns 400 with {error} body for invalid input'")
+        print()
+
+
 # -- CLI --
 
 def cmd_draft_plan(args):
@@ -2093,6 +2134,9 @@ def cmd_draft_plan(args):
     }
 
     save_tracker(args.project, tracker)
+
+    # AC quality warnings (non-blocking)
+    _warn_ac_quality(draft_tasks)
 
     print(f"## Draft Plan: {args.project}")
     if tracker["draft_plan"]["source_idea_id"]:

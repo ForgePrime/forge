@@ -45,7 +45,8 @@ Identify every dimension where you would need to guess:
 | **Form** | What should the output look like? |
 | **Audience** | Who is this for? |
 | **Constraints** | What must it NOT be? What's off limits? |
-| **Quality** | How will you judge if this is good? |
+| **Quality** | How will you judge if this is good? What can you test or observe to verify? |
+| **Boundaries** | What is explicitly NOT in scope? (prevents scope creep during execution) |
 | **Context** | What do you already know/have that I should use? |
 | **Priority** | What matters most if I have to choose? |
 
@@ -66,8 +67,9 @@ From the answers, produce the alignment contract:
 **Boundaries:**
 - Must: {non-negotiable requirements}
 - Must not: {explicit exclusions}
+- Not in scope: {what this work deliberately does NOT cover}
 - Prefer: {soft preferences}
-**Success:** {how the user will judge if this is right}
+**Success:** {how the user will judge if this is right — what they can test, observe, or verify}
 ```
 
 Show this to the user. Get confirmation. This is the bucket — stay inside it.
@@ -88,7 +90,7 @@ Deep-align adapts its depth based on context:
 | Context | Alignment depth | What to do |
 |---------|----------------|------------|
 | `/idea` | **Light** — restatement + 1-2 targeted questions | Confirm intent, clarify scope/priority if ambiguous |
-| `/plan` | **Medium** — restatement + scope/constraints/quality | Confirm goal, boundaries, what success looks like before decomposing |
+| `/plan` | **Medium** — restatement + scope/constraints/quality/boundaries | Confirm goal, boundaries, verification method, what is NOT in scope before decomposing |
 | `/discover` | **Medium** — restatement + scope/constraints | Confirm what to explore and what's out of scope before running analysis |
 | `/task` | **Light** — already has mini-align built in | Use existing alignment in task.md |
 | Direct task execution | **Skip** — task instruction IS the alignment | Trust the pipeline; task was already aligned at idea/plan stage |
@@ -105,6 +107,7 @@ Deep-align adapts its depth based on context:
 - Group questions in one message. Do not interrogate with one question at a time.
 - The alignment contract is a living document — if the user changes direction mid-task, update it.
 - If the user says "just do it" — do it, but flag your top 2 riskiest assumptions.
+- **Have opinions. Push back.** If something is vague, too broad, unrealistic, or a bad idea — say so directly. Don't just ask neutral questions. State your view: "This is too broad because X", "I'd drop Y because Z", "This will fail without W". Influence the user toward better decisions before committing to execution.
 
 ## Anti-Patterns
 

@@ -246,11 +246,27 @@ export default function TaskDetailPage() {
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2">
-              {!editing && canEdit && (
-                <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
+              {!editing && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={startEdit}
+                  disabled={!canEdit}
+                  title={canEdit ? "Edit task" : `Cannot edit — task is ${task.status}`}
+                >
+                  Edit
+                </Button>
               )}
-              {!editing && canDelete && (
-                <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>Delete</Button>
+              {!editing && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setDeleteOpen(true)}
+                  disabled={!canDelete}
+                  title={canDelete ? "Delete task" : `Cannot delete — task is ${task.status}`}
+                >
+                  Delete
+                </Button>
               )}
               <button
                 onClick={() => launchSession("execute")}

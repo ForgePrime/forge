@@ -87,15 +87,15 @@ export function KnowledgeCard({ knowledge: k, slug, onEdit, staleInfo, selected,
         <p className="text-xs text-amber-600 mt-1 italic">{staleInfo.suggestion}</p>
       )}
       <div className="flex items-center gap-3 mt-2 text-[10px] text-gray-400">
-        {k.scopes.length > 0 && <span>scopes: {k.scopes.join(", ")}</span>}
-        {k.linked_entities.length > 0 && (
+        {k.scopes?.length > 0 && <span>scopes: {k.scopes.join(", ")}</span>}
+        {k.linked_entities?.length > 0 && (
           <span>{k.linked_entities.length} link{k.linked_entities.length !== 1 ? "s" : ""}</span>
         )}
-        {k.dependencies.length > 0 && (
+        {k.dependencies?.length > 0 && (
           <span>{k.dependencies.length} dep{k.dependencies.length !== 1 ? "s" : ""}</span>
         )}
       </div>
-      {k.tags.length > 0 && (
+      {k.tags?.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
           {k.tags.map((t) => (
             <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{t}</span>

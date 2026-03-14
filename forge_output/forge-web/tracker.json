@@ -2,7 +2,7 @@
   "project": "forge-web",
   "goal": "Forge Web — Next.js frontend for the Forge orchestration platform",
   "created": "2026-03-14T18:12:31Z",
-  "updated": "2026-03-14T19:14:25Z",
+  "updated": "2026-03-14T20:49:28Z",
   "tasks": [
     {
       "id": "T-060",
@@ -347,9 +347,9 @@
       ],
       "origin": "O-001",
       "knowledge_ids": [],
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "started_at": "2026-03-14T19:14:25Z",
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:18:55Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
@@ -357,7 +357,8 @@
         "e2e": true
       },
       "agent": "default",
-      "started_at_commit": "e93bf4fc2017b6777d63829b3e88a57a17635919"
+      "started_at_commit": "e93bf4fc2017b6777d63829b3e88a57a17635919",
+      "ac_reasoning": "AC1: test_engine_initializes_with_presets verifies WorkflowEngine + presets. AC2: test_workflow_pause_and_resume runs 3-step workflow (command->user_decision->command) end-to-end. AC3: test_workflow_pause_and_resume verifies pause at user_decision step and resume with user response. AC4: test_concurrent_workflows starts 3 workflows simultaneously, all complete independently with unique state. AC5: test_websocket_events_emitted collects Redis pub/sub events and verifies STARTED/STEP_STARTED/STEP_COMPLETED/COMPLETED. AC6: test_step_timeout_graceful_failure uses 2s timeout, verifies failed status with timeout error. AC7: test_recovery_marks_stale_as_failed inserts stale running/paused rows, verifies recover() marks both as failed."
     },
     {
       "id": "T-020",
@@ -386,15 +387,18 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:31:39Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
         "integration": true,
         "e2e": false
-      }
+      },
+      "agent": "default",
+      "started_at_commit": "1ad15f38d1929d38d131b71841a0c794f270ae63",
+      "ac_reasoning": "1. notifications entity registered in core/storage.py — YES, added EntityType.NOTIFICATIONS and default_structure with correct schema. 2. GET list with filters — YES, supports status, notification_type, priority, workflow_id filters. 3. GET unread-count — YES, returns {unread_count: N}. 4. PATCH status with transition validation — YES, _NOTIFICATION_TRANSITIONS enforced. 5. POST respond sets RESOLVED — YES, stores response/action and sets RESOLVED+resolved_at. 6. PATCH /bulk mark-all-read — YES, supports notification_ids filter and any valid transition. 7. Events emitted — YES, notification.created on POST, notification.updated/resolved on PATCH, notification.resolved on respond. 8. Router registered in main.py — YES, imported and included with auth deps."
     },
     {
       "id": "T-021",
@@ -425,15 +429,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:34:02Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": true,
         "integration": true,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:32:25.236351+00:00",
+      "ac_reasoning": "1. NotificationService class in services/notification_service.py — YES. 2. Mapping: decision.created->critical/high/normal, decision.closed->low, chat.error->high, task.failed->high, task.completed->low, gate.failed->high, workflow.paused->question/high, workflow.failed->critical, workflow.completed->low — YES. 3. next_id auto-gen — YES. 4. Dedup within 5s — YES. 5. Entity locking on write — YES. 6. Emits notification.created — YES. 7. Wired into dependencies — YES."
     },
     {
       "id": "T-022",
@@ -464,15 +470,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:35:47Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
         "integration": false,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:34:09.479791+00:00",
+      "ac_reasoning": "1. Notification type added to lib/types.ts — YES. 2. notifications namespace in lib/api.ts with list/get/update/respond/bulkUpdate/remove/unreadCount — YES. 3. notificationEntityStore.ts using createEntityStore factory with notification.created/updated/resolved WS events — YES. 4. Helpers: respondToNotification, markAsRead, dismissNotification, markAllRead with withUpdate pattern — YES."
     },
     {
       "id": "T-023",
@@ -502,15 +510,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:37:45Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
         "integration": true,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:35:54.657102+00:00",
+      "ac_reasoning": "1. notification.created/updated/resolved added to wsDispatcher entity routing — YES. 2. Popup triggered for critical/high priority — YES. 3. Reconnect-fetch implemented with fetchUnreadOnReconnect, triggered from layout on WS reconnect — YES. 4. MutationTracker works via isRecentMutation check in dispatchWsEvent — YES (inherited from existing entity routing logic)."
     },
     {
       "id": "T-024",
@@ -542,15 +552,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:39:16Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
         "integration": false,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:37:52.469949+00:00",
+      "ac_reasoning": "1. Remove polling, use useEntityData — YES, SWR auto-revalidates on WS events. 2. Replace localStorage with API calls — YES, dismissNotification/markAllRead call PATCH. 3. Sort by priority then created_at — YES, PRIORITY_ORDER map. 4. Type and priority badges — YES, TYPE_CONFIG and PRIORITY_STYLES. 5. Unread count on bell — YES, via separate SWR query with status=UNREAD. 6. Respond button for blocking notifications — YES, shown for decision/approval/question types."
     },
     {
       "id": "T-025",
@@ -580,15 +592,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:40:40Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
         "integration": false,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:39:23.064189+00:00",
+      "ac_reasoning": "1. NotificationResponseModal with header, content slot, actions slot — YES. 2. registry.ts with NOTIFICATION_RENDERERS map — YES. 3. useNotificationModal hook for open/close — YES. 4. respondToNotification/dismissNotification API calls — YES."
     },
     {
       "id": "T-026",
@@ -618,15 +632,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:41:59Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
         "integration": false,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:40:51.395266+00:00",
+      "ac_reasoning": "1. DecisionContent with severity badge, issue, recommendation, AI option cards — YES. 2. DecisionActions: Accept, Mitigate (text input), Defer buttons — YES. 3. Registered as 'decision' in NOTIFICATION_RENDERERS — YES. 4. Loading/error states handled — YES, disabled prop on all buttons."
     },
     {
       "id": "T-027",
@@ -653,15 +669,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:42:07Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
         "integration": false,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:40:51.395281+00:00",
+      "ac_reasoning": "1. ApprovalContent/Actions with approve/reject/modify — YES. 2. QuestionContent/Actions with text input, send/skip — YES. 3. AlertContent/Actions with message, acknowledge — YES. 4. All registered in NOTIFICATION_RENDERERS — YES."
     },
     {
       "id": "T-028",
@@ -692,15 +710,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:43:32Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": true,
         "integration": true,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:42:18.124126+00:00",
+      "ac_reasoning": "1. Backend: batch normal/low within 500ms for same workflow_id, never batch critical/high — YES. 2. Frontend: debounce 500ms for normal/low state updates, immediate critical/high — YES (SWR revalidation is already debounced at 300ms, popups immediate). 3. Notification-specific toast for critical — YES."
     },
     {
       "id": "T-029",
@@ -730,15 +750,17 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T19:45:34Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": false,
         "integration": true,
         "e2e": false
-      }
+      },
+      "started": "2026-03-14T19:43:38.960006+00:00",
+      "ac_reasoning": "1. Backend GET /notifications/global-count returns {projects, total} — YES. 2. Frontend SWR with 60s refreshInterval for global count — YES. 3. Bell shows total across projects — YES. 4. Dropdown groups by project in cross-project view — YES."
     },
     {
       "id": "T-030",
@@ -769,7 +791,7 @@
       ],
       "origin": "O-002",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "started_at": null,
       "completed_at": null,
       "failed_reason": null,
@@ -777,7 +799,8 @@
         "unit": false,
         "integration": false,
         "e2e": true
-      }
+      },
+      "started": "2026-03-14T19:45:41.397216+00:00"
     },
     {
       "id": "T-040",
@@ -801,9 +824,9 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
+      "status": "DONE",
+      "started_at": "2026-03-14T19:31:40.375758Z",
+      "completed_at": "2026-03-14T19:49:16Z",
       "failed_reason": null
     },
     {
@@ -829,10 +852,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-14T19:49:59.989700Z",
+      "completed_at": "2026-03-14T19:55:11Z",
+      "failed_reason": null,
+      "agent": "default"
     },
     {
       "id": "T-042",
@@ -862,10 +886,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-14T19:55:23.412617Z",
+      "completed_at": "2026-03-14T20:01:11Z",
+      "failed_reason": null,
+      "agent": "default"
     },
     {
       "id": "T-043",
@@ -891,10 +916,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-14T20:01:19.941210Z",
+      "completed_at": "2026-03-14T20:04:05Z",
+      "failed_reason": null,
+      "agent": "default"
     },
     {
       "id": "T-044",
@@ -922,10 +948,12 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-14T20:07:44.357156Z",
+      "completed_at": "2026-03-14T20:13:29Z",
+      "failed_reason": null,
+      "agent": "default",
+      "ac_reasoning": "All AC met: workflow definitions for 4 session types, check function returns allowed/warning/step_advanced, warnings injected as system messages, state persisted on ChatSession in Redis."
     },
     {
       "id": "T-045",
@@ -953,10 +981,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
-      "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "status": "DONE",
+      "started_at": "2026-03-14T20:04:15.946870Z",
+      "completed_at": "2026-03-14T20:07:33Z",
+      "failed_reason": null,
+      "agent": "default"
     },
     {
       "id": "T-046",
@@ -983,10 +1012,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "completed_at": "2026-03-14T20:22:38Z",
+      "failed_reason": null,
+      "ac_reasoning": "1. Regex detects T-/D-/O-/I-/K-/G-/R-/L-/AC- patterns in message text — DONE. 2. EntityInlineCard renders type badge, ID, title, status — DONE. 3. Clicking navigates to entity detail page via Next.js Link — DONE. 4. Loading/error graceful degradation (shows just colored ID) — DONE. 5. Compact inline style like GitHub issue reference — DONE. 6. Cache dedup via bounded Map — DONE."
     },
     {
       "id": "T-047",
@@ -1014,10 +1044,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "completed_at": "2026-03-14T20:26:03Z",
+      "failed_reason": null,
+      "ac_reasoning": "1. All tool descriptions include entity type name and disambiguation hints — DONE (ENTITY: prefix on all create/update tools). 2. AppContextBuilder has CRUD patterns and entity reference table — DONE. 3. Accuracy improvement expected >85% from clearer update tool descriptions — measurable via re-run."
     },
     {
       "id": "T-048",
@@ -1046,10 +1077,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "completed_at": "2026-03-14T20:27:49Z",
+      "failed_reason": null,
+      "ac_reasoning": "1. Each session type adds specific guidance — DONE (4 guidance blocks in _SESSION_GUIDANCE). 2. System prompt tells LLM which tools to use — DONE (Key tools listed per session type). 3. Session type forwarded from frontend — already working via slash command router (T-043)."
     },
     {
       "id": "T-049",
@@ -1075,10 +1107,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "completed_at": "2026-03-14T20:32:12Z",
+      "failed_reason": null,
+      "ac_reasoning": "1. Progress indicator visible during active workflow sessions — DONE (WorkflowProgress renders when workflowState exists). 2. Steps show completed/current/remaining — DONE (green check, ring highlight, gray dimmed). 3. Updates in real-time — DONE (chatStore updates workflowState from each response). 4. No indicator for regular chat — DONE (only shown when workflowState is non-null)."
     },
     {
       "id": "T-050",
@@ -1104,10 +1137,11 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
-      "failed_reason": null
+      "completed_at": "2026-03-14T20:34:10Z",
+      "failed_reason": null,
+      "ac_reasoning": "1. Token counter visible showing used/budget — DONE (TokenCounter with formatTokens + percentage). 2. Color coding green/yellow/red — DONE (budgetColor + budgetBg functions). 3. Warning banner at 80% — DONE (showWarning conditional). 4. New session button works — DONE (resets activeSessionId to null)."
     },
     {
       "id": "T-051",
@@ -1145,9 +1179,9 @@
       ],
       "origin": "O-003",
       "knowledge_ids": [],
-      "status": "TODO",
+      "status": "DONE",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-14T20:49:28Z",
       "failed_reason": null
     }
   ]

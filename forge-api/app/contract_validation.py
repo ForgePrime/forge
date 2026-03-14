@@ -450,11 +450,6 @@ _CONTRACTS: dict[tuple[str, str], dict[str, Any]] = {
 }
 
 
-def get_contract_spec(entity: str, operation: str) -> dict[str, Any] | None:
-    """Look up contract spec for an entity and operation."""
-    return _CONTRACTS.get((entity, operation))
-
-
 # ---------------------------------------------------------------------------
 # Middleware
 # ---------------------------------------------------------------------------

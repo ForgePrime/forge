@@ -103,14 +103,3 @@ async def get_current_user(
         "Authentication required",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
-
-async def require_auth(user: dict = Depends(get_current_user)) -> dict:
-    """Strict auth — always require valid credentials (no anonymous fallback)."""
-    if user.get("auth_method") == "none":
-        raise HTTPException(
-            401,
-            "Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user

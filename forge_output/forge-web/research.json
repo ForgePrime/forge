@@ -1,6 +1,6 @@
 {
   "project": "forge-web",
-  "updated": "2026-03-14T18:21:35Z",
+  "updated": "2026-03-14T21:22:52Z",
   "research": [
     {
       "id": "R-001",
@@ -433,6 +433,133 @@
       ],
       "created_at": "2026-03-14T18:19:51Z",
       "updated_at": "2026-03-14T18:21:35Z",
+      "created_by": "claude"
+    },
+    {
+      "id": "R-011",
+      "title": "Multi-Entity DAG Option Exploration",
+      "topic": "Layout engine, Graph API design, and node architecture options for multi-entity DAG visualization",
+      "status": "ACTIVE",
+      "category": "architecture",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-008",
+      "linked_idea_id": null,
+      "skill": "deep-explore",
+      "file_path": "research/deep-explore-multi-entity-dag-option-exploration.md",
+      "summary": "elkjs + server-side Graph API + generic EntityNode recommended. dagre deprecated and lacks edge routing. Client-side aggregation risks data inconsistency. Per-type custom nodes violate DRY.",
+      "key_findings": [
+        "React Flow handles 100+ nodes with proper memoization (React.memo on custom nodes, useCallback for handlers)",
+        "elkjs (1.4MB) provides edge routing and layered layout ideal for DAGs; dagre (40KB) is deprecated and lacks edge routing",
+        "elkjs can be lazy-loaded via dynamic import to mitigate bundle size",
+        "Server-side Graph API (single endpoint) preferred over client-side aggregation of N entity fetches for consistency",
+        "Generic EntityNode with config map is DRY (per L-001 store factory pattern lesson)",
+        "Changes (357 in forge-web) must be excluded from default graph view to avoid overwhelming layout",
+        "Edge types should be phased: start with 4 core types (depends_on, advances_kr, origin, derived_from), add others incrementally"
+      ],
+      "decision_ids": [
+        "D-030"
+      ],
+      "scopes": [
+        "frontend",
+        "backend",
+        "visualization"
+      ],
+      "tags": [
+        "react-flow",
+        "elkjs",
+        "dagre",
+        "graph-api",
+        "layout"
+      ],
+      "created_at": "2026-03-14T21:21:43Z",
+      "updated_at": "2026-03-14T21:22:52Z",
+      "created_by": "claude"
+    },
+    {
+      "id": "R-012",
+      "title": "Multi-Entity DAG Architecture Design",
+      "topic": "Component decomposition, API design, data model, and C4 architecture for multi-entity DAG",
+      "status": "ACTIVE",
+      "category": "architecture",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-008",
+      "linked_idea_id": null,
+      "skill": "deep-architect",
+      "file_path": "research/deep-architect-multi-entity-dag-architecture-design.md",
+      "summary": "Architecture centers on Graph API endpoint aggregating 9 entity types into nodes+edges, React Flow with elkjs in Web Worker for layout, generic EntityNode component, and SWR as data source of truth with React Flow as derived view.",
+      "key_findings": [
+        "Graph API: GET /projects/{slug}/graph returns {nodes[], edges[], meta{}} - server-side edge derivation from entity relationships",
+        "EntityNode: single React.memo component with config map for 9 entity types (color, icon, displayed fields)",
+        "State: SWR as source of truth, React Flow as derived read-only view - avoids three-way state sync",
+        "elkjs in Web Worker via public/ static file approach bypasses Next.js webpack worker issues",
+        "WS debounce: graph-specific 2-5s debounce (vs 300ms entity debounce) with structural-change-only re-layout",
+        "Edge types phased: 4 core first (depends_on, advances_kr, origin, derived_from), expand later",
+        "graphStore (Zustand): filters, viewport preferences, selected node - NOT node/edge data",
+        "Migration: replace only DAG view in board/page.tsx, keep existing route /projects/{slug}/board"
+      ],
+      "decision_ids": [
+        "D-031",
+        "D-032",
+        "D-033",
+        "D-034"
+      ],
+      "scopes": [
+        "frontend",
+        "backend",
+        "visualization"
+      ],
+      "tags": [
+        "architecture",
+        "react-flow",
+        "graph-api",
+        "c4",
+        "adr"
+      ],
+      "created_at": "2026-03-14T21:21:43Z",
+      "updated_at": "2026-03-14T21:22:52Z",
+      "created_by": "claude"
+    },
+    {
+      "id": "R-013",
+      "title": "Multi-Entity DAG Risk Assessment",
+      "topic": "Risk analysis for replacing task-only board with multi-entity React Flow DAG",
+      "status": "ACTIVE",
+      "category": "risk",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-008",
+      "linked_idea_id": null,
+      "skill": "deep-risk",
+      "file_path": "research/deep-risk-multi-entity-dag-risk-assessment.md",
+      "summary": "Top risks: elkjs layout performance (mitigate with Web Worker), state management complexity (mitigate with SWR-as-truth pattern), and visual clutter from 130+ edges (mitigate with phased edge types and filtering). No NO-GO risks identified.",
+      "key_findings": [
+        "Real data: 84 core nodes, 130 edges, 357 changes - changes MUST be excluded from default view",
+        "elkjs layout for 100 nodes can take 500ms-2s on main thread - Web Worker is non-negotiable",
+        "Three-way state sync (SWR + Zustand + React Flow) is the #1 complexity risk - SWR as sole truth mitigates",
+        "31 relationship field types across 9 entity types - must phase to 4 core edge types initially",
+        "elkjs 1.4MB bundle + React Flow 180KB = significant bundle increase - lazy loading required",
+        "WS entity events at 300ms debounce would cause excessive graph re-renders - need graph-specific 2-5s debounce",
+        "No existing React Flow or dynamic import usage in codebase - new patterns to establish",
+        "Next.js has no webpack worker support configured - public/ static file approach needed for elkjs worker"
+      ],
+      "decision_ids": [
+        "D-035",
+        "D-036",
+        "D-037"
+      ],
+      "scopes": [
+        "frontend",
+        "backend",
+        "visualization"
+      ],
+      "tags": [
+        "risk",
+        "performance",
+        "state-management",
+        "bundle-size",
+        "elkjs"
+      ],
+      "created_at": "2026-03-14T21:21:43Z",
+      "updated_at": "2026-03-14T21:22:52Z",
       "created_by": "claude"
     }
   ]

@@ -206,6 +206,8 @@ Get confirmation. If the restatement is wrong, the entire plan will be wrong.
 - **Constraints:** "Any technologies/approaches that are off limits?"
 - **Quality:** "What does 'done' look like? MVP or production-ready?"
 - **Priority:** "If I have to choose between X and Y, which matters more?"
+- **Verification:** "How will you know each piece works? What can you test or observe?"
+- **Boundaries:** "What is explicitly NOT in scope for this work?"
 
 Group questions in one message (2-4 questions max). Don't ask what you
 already know from the idea, discovery findings, or codebase context.
@@ -285,7 +287,7 @@ Phase 4 — Quality:     Tests, validation, documentation
 For each task, specify:
 - `id`: Use temporary IDs: `_1`, `_2`, `_3`, etc. These are auto-remapped to real `T-NNN` IDs when the plan is approved (`approve-plan`) or tasks are added (`add-tasks`). This prevents ID collisions between concurrent planning processes. Use temp IDs in `depends_on` and `conflicts_with` too — they will be remapped together.
 - `name`: kebab-case, descriptive (e.g., "setup-database-schema")
-- `description`: WHAT needs to be done (concrete, not vague)
+- `description`: WHAT needs to be done (concrete, not vague). Include boundary when scope edge is ambiguous: "This task IS {X}. This task is NOT {Y}."
 - `instruction`: HOW to do it (step-by-step, mention specific files)
 - `depends_on`: list of prerequisite task IDs (use temp IDs `_1`, `_2` for tasks in the same batch, or real `T-NNN` IDs for existing tasks)
 - `parallel`: true if this task can run alongside siblings
@@ -293,6 +295,21 @@ For each task, specify:
 - `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). **Only use scopes that exist in the project** (loaded via R10 in Step 2). Inherit from idea/objective scopes but narrow per task — a backend-only task should NOT get frontend scopes. `general` is always included automatically during execution.
 - `knowledge_ids`: list of Knowledge IDs (K-001, etc.) that provide context for this task. **Only assign knowledge relevant to the task** — if K-001 is about API patterns and the task is pure CSS, don't assign K-001. Inherit from source idea/objective but distribute selectively. Loaded by `pipeline context` for LLM assembly.
 - `test_requirements`: dict with boolean keys `unit`, `integration`, `e2e` indicating which test types this task needs.
+- `acceptance_criteria`: list of concrete, verifiable conditions for DONE (2-5 per task). Generate from these sources:
+  1. **User's answer** to "what does done look like?" / "how will you verify?" (Step 3)
+  2. **Task output** — what artifact exists after? (file created, endpoint responding, test passing)
+  3. **Integration point** — how does this connect to the next task? (data format, API contract, import path)
+  4. **Boundary** — "Does NOT {thing}" when the scope edge is ambiguous
+
+  Anti-patterns (these trigger warnings in `draft-plan`):
+  | Vague (reject) | Specific (good) |
+  |----------------|-----------------|
+  | "Error handling works correctly" | "Returns 400 with `{error: string}` body for invalid input" |
+  | "Component handles edge cases" | "Empty list renders 'No items found' message" |
+  | "API is properly secured" | "Unauthenticated requests return 401, not 500" |
+  | "Tests pass" | "Unit tests cover create, read, update, delete operations" |
+
+  Skip AC for `investigation` and `chore` tasks — use `--force` on completion.
 
 **Risk-informed decomposition:**
 
