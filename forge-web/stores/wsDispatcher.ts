@@ -95,6 +95,10 @@ const TOOL_TO_ENTITY: Record<string, string> = {
   addSkillFile: "skill",
   removeSkillFile: "skill",
   instantiateACTemplate: "ac_template",
+  createACTemplate: "ac_template",
+  updateACTemplate: "ac_template",
+  updateLesson: "lesson",
+  // archiveEntity maps dynamically — revalidation handled by entity_type in response
 };
 
 /** Pending revalidation timers, keyed by "entityPrefix:project". */

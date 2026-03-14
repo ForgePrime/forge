@@ -2458,6 +2458,198 @@ async def _handle_get_tool_contract(
 
 
 # ---------------------------------------------------------------------------
+# Archive / remove handler (T-042: soft-delete via status change)
+# ---------------------------------------------------------------------------
+
+# Entity type → (storage_key, list_key, archive_status)
+_ARCHIVE_MAP: dict[str, tuple[str, str, str]] = {
+    "tasks": ("tracker", "tasks", "SKIPPED"),
+    "decisions": ("decisions", "decisions", "CLOSED"),
+    "ideas": ("ideas", "ideas", "REJECTED"),
+    "objectives": ("objectives", "objectives", "ABANDONED"),
+    "guidelines": ("guidelines", "guidelines", "DEPRECATED"),
+    "knowledge": ("knowledge", "knowledge", "ARCHIVED"),
+    "research": ("research", "research", "ARCHIVED"),
+    "lessons": ("lessons", "lessons", "ARCHIVED"),
+    "ac_templates": ("ac_templates", "ac_templates", "DEPRECATED"),
+}
+
+
+async def _handle_archive_entity(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Archive/remove an entity by setting its status to the archive state.
+
+    Uses soft-delete semantics — entities are never hard-deleted.
+    """
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+
+    entity_type = args.get("entity_type")
+    if entity_type not in _ARCHIVE_MAP:
+        return {"error": f"Cannot archive entity type '{entity_type}'. Supported: {', '.join(sorted(_ARCHIVE_MAP))}"}
+
+    entity_id = args.get("entity_id")
+    if not entity_id:
+        return {"error": "entity_id is required"}
+
+    confirm = args.get("confirm", False)
+    if not confirm:
+        storage_key, list_key, archive_status = _ARCHIVE_MAP[entity_type]
+        return {
+            "confirmation_required": True,
+            "message": f"This will set {entity_type} {entity_id} status to {archive_status}. Call again with confirm=true to proceed.",
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "target_status": archive_status,
+        }
+
+    storage_key, list_key, archive_status = _ARCHIVE_MAP[entity_type]
+    data = await asyncio.to_thread(storage.load_data, project, storage_key)
+    items = data.get(list_key, [])
+
+    for item in items:
+        if item.get("id") == entity_id:
+            old_status = item.get("status", "")
+            item["status"] = archive_status
+            item["updated"] = _now_iso()
+            item["archived_at"] = _now_iso()
+            data[list_key] = items
+            await asyncio.to_thread(storage.save_data, project, storage_key, data)
+            return {
+                "archived": True,
+                "id": entity_id,
+                "entity_type": entity_type,
+                "old_status": old_status,
+                "new_status": archive_status,
+            }
+
+    return {"error": f"{entity_type} {entity_id} not found"}
+
+
+# ---------------------------------------------------------------------------
+# AC Template create/update handlers (T-042)
+# ---------------------------------------------------------------------------
+
+async def _handle_create_ac_template(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new AC template."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+
+    title = args.get("title")
+    if not title:
+        return {"error": "title is required"}
+    template_text = args.get("template")
+    if not template_text:
+        return {"error": "template is required (the parameterized AC text with {placeholders})"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "ac_templates")
+    templates = data.get("ac_templates", [])
+    new_id = _next_id(templates, "AC")
+
+    template = {
+        "id": new_id,
+        "title": title,
+        "template": template_text,
+        "category": args.get("category", "functionality"),
+        "scope": args.get("scope", ""),
+        "status": "ACTIVE",
+        "params": args.get("params", []),
+        "usage_count": 0,
+        "source_tasks": args.get("source_tasks", []),
+        "created_at": _now_iso(),
+    }
+    templates.append(template)
+    data["ac_templates"] = templates
+    await asyncio.to_thread(storage.save_data, project, "ac_templates", data)
+    return {"created": True, "id": new_id, "template": template}
+
+
+async def _handle_update_ac_template(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update an AC template."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+
+    template_id = args.get("id")
+    if not template_id:
+        return {"error": "id is required (e.g., AC-001)"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "ac_templates")
+    templates = data.get("ac_templates", [])
+
+    for tmpl in templates:
+        if tmpl.get("id") == template_id:
+            updatable = ["title", "template", "category", "scope", "status", "params"]
+            changed = []
+            for field in updatable:
+                if field in args and args[field] is not None:
+                    tmpl[field] = args[field]
+                    changed.append(field)
+            if not changed:
+                return {"error": "No fields to update"}
+            tmpl["updated_at"] = _now_iso()
+            data["ac_templates"] = templates
+            await asyncio.to_thread(storage.save_data, project, "ac_templates", data)
+            return {"updated": True, "id": template_id, "changed_fields": changed, "template": tmpl}
+    return {"error": f"AC template {template_id} not found"}
+
+
+# ---------------------------------------------------------------------------
+# Update lesson handler (T-042)
+# ---------------------------------------------------------------------------
+
+async def _handle_update_lesson(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update a lesson's fields."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    err = _validate_project_slug(project)
+    if err:
+        return {"error": err}
+
+    lesson_id = args.get("id")
+    if not lesson_id:
+        return {"error": "id is required (e.g., L-001)"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "lessons")
+    lessons = data.get("lessons", [])
+
+    for lesson in lessons:
+        if lesson.get("id") == lesson_id:
+            updatable = ["title", "detail", "severity", "category", "tags", "applies_to"]
+            changed = []
+            for field in updatable:
+                if field in args and args[field] is not None:
+                    lesson[field] = args[field]
+                    changed.append(field)
+            if not changed:
+                return {"error": "No fields to update"}
+            lesson["updated"] = _now_iso()
+            data["lessons"] = lessons
+            await asyncio.to_thread(storage.save_data, project, "lessons", data)
+            return {"updated": True, "id": lesson_id, "changed_fields": changed, "lesson": lesson}
+    return {"error": f"Lesson {lesson_id} not found"}
+
+
+# ---------------------------------------------------------------------------
 # Default registry factory
 # ---------------------------------------------------------------------------
 
@@ -2840,7 +3032,7 @@ def create_default_registry() -> ToolRegistry:
 
     registry.register(ToolDef(
         name="createTask",
-        description="Create a new task in the project pipeline.",
+        description="Create a new task in the project pipeline. Only 'name' is required — all other fields are optional. Example: createTask(name='setup-database', description='Install and configure PostgreSQL').",
         parameters={
             "type": "object",
             "properties": {
@@ -2864,7 +3056,7 @@ def create_default_registry() -> ToolRegistry:
 
     registry.register(ToolDef(
         name="updateTask",
-        description="Update fields on a TODO or FAILED task.",
+        description="Update fields on a TODO or FAILED task. Call directly with the fields you want to change — no need to read the task first. Only include fields that should be modified.",
         parameters={
             "type": "object",
             "properties": {
@@ -2908,7 +3100,7 @@ def create_default_registry() -> ToolRegistry:
 
     registry.register(ToolDef(
         name="createObjective",
-        description="Create a business objective with measurable key results.",
+        description="Create a business objective with measurable key results. Only 'title' is required. Key results are optional — add with key_results array containing {description, metric, baseline, target}.",
         parameters={
             "type": "object",
             "properties": {
@@ -2943,7 +3135,7 @@ def create_default_registry() -> ToolRegistry:
 
     registry.register(ToolDef(
         name="updateObjective",
-        description="Update an objective's status or key result progress.",
+        description="Update an objective's status or key result progress. Call directly — no need to read first. To update a KR: pass id and key_results array with the KR to update (include kr_id and new current value).",
         parameters={
             "type": "object",
             "properties": {
@@ -3086,7 +3278,7 @@ def create_default_registry() -> ToolRegistry:
 
     registry.register(ToolDef(
         name="updateDecision",
-        description="Update a decision — close, defer, mitigate, or add notes.",
+        description="Update a decision — close it (status='CLOSED'), defer, mitigate, or add resolution notes. Call directly with the fields to change — no need to read the decision first. To close: set status='CLOSED'.",
         parameters={
             "type": "object",
             "properties": {
@@ -3141,7 +3333,7 @@ def create_default_registry() -> ToolRegistry:
 
     registry.register(ToolDef(
         name="updateKnowledge",
-        description="Update a knowledge object — content (creates new version), status, or metadata.",
+        description="Update a knowledge object — content (creates new version), status, or metadata. Call directly with the fields to change — no need to read first. Content changes require change_reason.",
         parameters={
             "type": "object",
             "properties": {
@@ -3192,7 +3384,7 @@ def create_default_registry() -> ToolRegistry:
 
     registry.register(ToolDef(
         name="updateGuideline",
-        description="Update a guideline's content, status, or weight.",
+        description="Update a guideline's content, status, weight, or scope. Call directly with the fields to change — no need to read the guideline first. Example: to change weight, pass id and weight only.",
         parameters={
             "type": "object",
             "properties": {
@@ -3567,6 +3759,144 @@ def create_default_registry() -> ToolRegistry:
         context_types=["global"],
         required_permission=None,
         handler=_handle_get_tool_contract,
+    ))
+
+    # --- Archive tool (T-042: soft-delete for all entity types) ---
+
+    registry.register(ToolDef(
+        name="archiveEntity",
+        description=(
+            "Archive or remove a Forge entity (task, decision, idea, objective, guideline, "
+            "knowledge, research, lesson, AC template). Uses soft-delete: sets status to the "
+            "entity's archive state (e.g., SKIPPED for tasks, DEPRECATED for guidelines). "
+            "Requires confirm=true to execute. Call once without confirm to see what will happen."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": sorted(_ARCHIVE_MAP.keys()),
+                    "description": "The type of entity to archive.",
+                },
+                "entity_id": {
+                    "type": "string",
+                    "description": "The entity ID (e.g., T-001, D-005, G-003).",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be true to execute. First call without confirm to preview.",
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Project slug.",
+                },
+            },
+            "required": ["entity_type", "entity_id"],
+        },
+        context_types=["global"],
+        required_permission=None,  # permission checked per entity type
+        handler=_handle_archive_entity,
+    ))
+
+    # --- AC Template CRUD (T-042) ---
+
+    registry.register(ToolDef(
+        name="createACTemplate",
+        description=(
+            "Create a reusable acceptance criteria template with parameterized placeholders. "
+            "Templates use {placeholder} syntax. Example: 'Response time for {endpoint} must be under {max_ms}ms'. "
+            "Categories: performance, security, quality, functionality, accessibility, reliability, data-integrity, ux."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Template title (e.g., 'API Response Time')."},
+                "template": {
+                    "type": "string",
+                    "description": "Parameterized AC text with {placeholders} (e.g., 'Response time for {endpoint} < {max_ms}ms').",
+                },
+                "category": {
+                    "type": "string",
+                    "enum": ["performance", "security", "quality", "functionality", "accessibility", "reliability", "data-integrity", "ux"],
+                    "description": "Template category.",
+                },
+                "scope": {"type": "string", "description": "Guideline scope (e.g., 'backend', 'frontend')."},
+                "params": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of parameter names used in the template (e.g., ['endpoint', 'max_ms']).",
+                },
+                "source_tasks": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Task IDs where this pattern was observed (e.g., ['T-001', 'T-005']).",
+                },
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["title", "template"],
+        },
+        context_types=["ac_template", "global"],
+        required_permission=("ac_templates", "write"),
+        handler=_handle_create_ac_template,
+        scope="ac_templates",
+    ))
+
+    registry.register(ToolDef(
+        name="updateACTemplate",
+        description=(
+            "Update an AC template's fields — title, template text, category, scope, status, or params. "
+            "Call directly with the fields you want to change (no need to read first)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Template ID (e.g., AC-001)."},
+                "title": {"type": "string", "description": "New title."},
+                "template": {"type": "string", "description": "New parameterized AC text."},
+                "category": {
+                    "type": "string",
+                    "enum": ["performance", "security", "quality", "functionality", "accessibility", "reliability", "data-integrity", "ux"],
+                },
+                "scope": {"type": "string", "description": "New scope."},
+                "status": {"type": "string", "enum": ["PROPOSED", "ACTIVE", "DEPRECATED"]},
+                "params": {"type": "array", "items": {"type": "string"}, "description": "Updated parameter list."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id"],
+        },
+        context_types=["ac_template"],
+        required_permission=("ac_templates", "write"),
+        handler=_handle_update_ac_template,
+        scope="ac_templates",
+    ))
+
+    # --- Update Lesson (T-042) ---
+
+    registry.register(ToolDef(
+        name="updateLesson",
+        description=(
+            "Update a lesson's fields — title, detail, severity, category, tags, or applies_to. "
+            "Call directly with the fields you want to change (no need to read first)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Lesson ID (e.g., L-001)."},
+                "title": {"type": "string", "description": "New title."},
+                "detail": {"type": "string", "description": "New detail text."},
+                "severity": {"type": "string", "enum": ["critical", "important", "minor"]},
+                "category": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "applies_to": {"type": "string", "description": "What this lesson applies to."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id"],
+        },
+        context_types=["lesson"],
+        required_permission=("lessons", "write"),
+        handler=_handle_update_lesson,
+        scope="lessons",
     ))
 
     return registry
