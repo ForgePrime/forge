@@ -23,6 +23,7 @@ from app.routers import (
     decisions,
     execution,
     gates,
+    graph,
     guidelines,
     ideas,
     knowledge,
@@ -264,6 +265,7 @@ app.include_router(lessons.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(research.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(ac_templates.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(gates.router, prefix=PREFIX, dependencies=auth_deps)
+app.include_router(graph.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(execution.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(debug.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(ai.router, prefix=PREFIX, dependencies=auth_deps)
