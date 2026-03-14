@@ -863,6 +863,58 @@ def cmd_next(args):
         _claim_with_retry(args, candidate, agent, max_retries=5)
 
 
+def cmd_begin(args):
+    """Combined next + context: claim task and show full execution context.
+
+    Calls cmd_next to claim/resume a task, then immediately prints
+    the full context (dependencies, guidelines, knowledge, risks, etc.).
+    Equivalent to running ``pipeline next`` followed by ``pipeline context``,
+    but in a single invocation.
+    """
+    # Phase 1: Claim or resume task (prints task header + detail)
+    cmd_next(args)
+
+    # Phase 2: Find which task is now IN_PROGRESS for this agent
+    agent = getattr(args, "agent", None) or "default"
+    try:
+        tracker = load_tracker(args.project)
+    except SystemExit:
+        return  # Project doesn't exist — cmd_next already printed error
+
+    task = None
+    # Check for agent-specific IN_PROGRESS task
+    for t in tracker["tasks"]:
+        if t["status"] == "IN_PROGRESS" and t.get("agent") == agent:
+            task = t
+            break
+    if not task:
+        # Single-agent mode — IN_PROGRESS without agent field
+        for t in tracker["tasks"]:
+            if t["status"] == "IN_PROGRESS" and not t.get("agent"):
+                task = t
+                break
+
+    if not task:
+        return  # No task claimed (all done, blocked, etc.) — cmd_next printed status
+
+    if task.get("has_subtasks"):
+        # Subtask mode — subtask info already printed, skip full context
+        # (subtasks are small self-contained units)
+        return
+
+    # Phase 3: Print full context
+    print()
+    print("---")
+    print()
+
+    class _CtxArgs:
+        pass
+    ctx_args = _CtxArgs()
+    ctx_args.project = args.project
+    ctx_args.task_id = task["id"]
+    cmd_context(ctx_args)
+
+
 def cmd_complete(args):
     """Mark task as DONE."""
     tracker = load_tracker(args.project)
@@ -2122,6 +2174,10 @@ def main():
     p.add_argument("project")
     p.add_argument("--agent", default=None, help="Agent name for multi-agent claim")
 
+    p = sub.add_parser("begin", help="Claim next task and show full execution context")
+    p.add_argument("project")
+    p.add_argument("--agent", default=None, help="Agent name for multi-agent claim")
+
     p = sub.add_parser("complete", help="Mark task DONE")
     p.add_argument("project")
     p.add_argument("task_id")
@@ -2202,6 +2258,7 @@ def main():
         "init": cmd_init,
         "add-tasks": cmd_add_tasks,
         "next": cmd_next,
+        "begin": cmd_begin,
         "complete": cmd_complete,
         "fail": cmd_fail,
         "skip": cmd_skip,

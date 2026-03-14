@@ -101,7 +101,8 @@ python -m core.pipeline show-draft {project}             Show current draft plan
 python -m core.pipeline approve-plan {project}           Approve draft → materialize tasks
 python -m core.pipeline update-task {project} --data '{...}' Update existing task
 python -m core.pipeline remove-task {project} {task_id}  Remove TODO task
-python -m core.pipeline next {project} [--agent name]    Get next task
+python -m core.pipeline begin {project} [--agent name]   Claim next task + show full context (next + context combined)
+python -m core.pipeline next {project} [--agent name]    Get next task (without context)
 python -m core.pipeline complete {project} {task_id} [--force] [--reasoning "..."] [--ac-reasoning "..."]  Mark done (auto-records git changes + checks gates + verifies AC)
 python -m core.pipeline contract add-tasks               Show task contract
 python -m core.pipeline contract update-task             Show update contract
