@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { IdeaCard } from "@/components/entities/IdeaCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
-import { IdeaForm } from "@/components/forms/IdeaForm";
+import Link from "next/link";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
@@ -18,9 +18,6 @@ export default function IdeasPage() {
   const { slug } = useParams() as { slug: string };
   const { slices, fetchEntities } = useEntityStore();
   const [statusFilter, setStatusFilter] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingIdea, setEditingIdea] = useState<Idea | undefined>();
-
   useEffect(() => {
     fetchEntities(slug, "ideas");
   }, [slug, fetchEntities]);
@@ -83,29 +80,6 @@ export default function IdeasPage() {
     ],
   });
 
-  useAIElement({
-    id: "idea-form",
-    type: "form",
-    label: "Idea Form",
-    value: formOpen,
-    description: formOpen ? `open (${editingIdea ? `editing ${editingIdea.id}` : "creating"})` : "closed",
-    data: {
-      fields: ["title*", "description*", "category", "scopes", "parent_id", "advances_key_results", "relations"],
-    },
-    actions: [
-      {
-        label: editingIdea ? "Update" : "Create",
-        toolName: editingIdea ? "updateIdea" : "createIdea",
-        toolParams: editingIdea
-          ? ["id*", "status", "exploration_notes", "relations"]
-          : ["title*", "description*", "category", "priority", "parent_id", "advances_key_results"],
-      },
-    ],
-  });
-
-  const handleFormSuccess = useCallback(() => {
-    fetchEntities(slug, "ideas");
-  }, [slug, fetchEntities]);
 
   return (
     <div>
@@ -113,12 +87,12 @@ export default function IdeasPage() {
         <h2 className="text-lg font-semibold">Ideas ({slices.ideas.count})</h2>
         <div className="flex items-center gap-3">
           <StatusFilter options={STATUSES} value={statusFilter} onChange={setStatusFilter} />
-          <button
-            onClick={() => { setEditingIdea(undefined); setFormOpen(true); }}
+          <Link
+            href={`/projects/${slug}/ideas/new`}
             className="px-3 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700"
           >
             + New Idea
-          </button>
+          </Link>
         </div>
       </div>
       {slices.ideas.loading && <p className="text-sm text-gray-400">Loading...</p>}
@@ -126,20 +100,13 @@ export default function IdeasPage() {
       <BulkActionBar count={selectionCount} entityLabel="ideas" onDelete={handleBulkDelete} onDeselectAll={deselectAll} />
       <div className="space-y-3">
         {filtered.map((idea) => (
-          <IdeaCard key={idea.id} idea={idea} slug={slug} onEdit={(i) => { setEditingIdea(i); setFormOpen(true); }} selected={isSelected(idea.id)} onSelect={() => toggle(idea.id)} />
+          <IdeaCard key={idea.id} idea={idea} slug={slug} selected={isSelected(idea.id)} onSelect={() => toggle(idea.id)} />
         ))}
         {!slices.ideas.loading && filtered.length === 0 && (
           <p className="text-sm text-gray-400">No ideas{statusFilter ? ` with status ${statusFilter}` : ""}</p>
         )}
       </div>
 
-      <IdeaForm
-        slug={slug}
-        open={formOpen}
-        onClose={() => { setFormOpen(false); setEditingIdea(undefined); }}
-        idea={editingIdea}
-        onSuccess={handleFormSuccess}
-      />
     </div>
   );
 }

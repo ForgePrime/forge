@@ -1247,3 +1247,71 @@ export interface BackendToolContract {
   parameters: Record<string, unknown>;
   required_permission: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Workflow Execution (O-001)
+// ---------------------------------------------------------------------------
+
+export type WorkflowExecutionStatus =
+  | "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+
+export type WorkflowStepStatus =
+  | "pending" | "running" | "completed" | "failed" | "skipped";
+
+export type WorkflowStepType = "llm_agent" | "forge_command" | "user_decision";
+
+export interface WorkflowStepResult {
+  step_id: string;
+  status: WorkflowStepStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  output: Record<string, unknown> | null;
+  session_id: string | null;
+  error: string | null;
+  decision_ids: string[];
+  retries: number;
+}
+
+export interface WorkflowStepDefinition {
+  id: string;
+  name: string;
+  type: WorkflowStepType;
+  description: string;
+  next_step: string | null;
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  initial_step: string;
+  steps: WorkflowStepDefinition[];
+}
+
+export interface WorkflowExecution {
+  id: number;
+  ext_id: string;
+  workflow_def_id: string;
+  project_id: number;
+  objective_id: string | null;
+  status: WorkflowExecutionStatus;
+  current_step: string | null;
+  step_results: Record<string, WorkflowStepResult>;
+  pause_reason: string | null;
+  variables: Record<string, unknown>;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface WorkflowStartRequest {
+  definition_id: string;
+  objective_id?: string;
+  variables?: Record<string, unknown>;
+}
+
+export interface WorkflowResumeRequest {
+  user_response: unknown;
+}

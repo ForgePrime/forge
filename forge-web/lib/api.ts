@@ -272,6 +272,7 @@ import type {
   ChatSendRequest, ChatSendResponse, ChatSession, ChatFileAttachment,
   LLMProvider, LLMProviderTestResult, LLMConfig, ProviderModel,
   BackendToolContract,
+  WorkflowExecution, WorkflowStartRequest,
 } from "./types";
 
 // -- Projects --
@@ -736,4 +737,22 @@ export const debug = {
     get<DebugSession>(`/projects/${slug}/debug/sessions/${sessionId}`),
   clear: (slug: string) =>
     remove<{ cleared: number }>(`/projects/${slug}/debug/sessions`),
+};
+
+// -- Workflows (O-001) --
+export const workflows = {
+  list: (slug: string, params?: Record<string, string>) =>
+    list<{ workflows: WorkflowExecution[] }>(
+      projectPath(slug, "workflows"), params),
+  get: (slug: string, extId: string) =>
+    get<WorkflowExecution>(projectPath(slug, "workflows", extId)),
+  start: (slug: string, data: WorkflowStartRequest) =>
+    create<WorkflowExecution>(projectPath(slug, "workflows"), data),
+  resume: (slug: string, extId: string, userResponse: unknown) =>
+    create<WorkflowExecution>(
+      projectPath(slug, "workflows", extId) + "/resume",
+      { user_response: userResponse }),
+  cancel: (slug: string, extId: string) =>
+    create<WorkflowExecution>(
+      projectPath(slug, "workflows", extId) + "/cancel", {}),
 };

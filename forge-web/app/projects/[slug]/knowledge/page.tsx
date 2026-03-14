@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { KnowledgeCard } from "@/components/entities/KnowledgeCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
-import { KnowledgeForm } from "@/components/forms/KnowledgeForm";
+import Link from "next/link";
 import { Badge } from "@/components/shared/Badge";
 import { knowledgeMaintenance, knowledge as knowledgeApi } from "@/lib/api";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
@@ -25,8 +25,6 @@ export default function KnowledgePage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [search, setSearch] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingKnowledge, setEditingKnowledge] = useState<Knowledge | undefined>();
   const [maintenance, setMaintenance] = useState<MaintenanceReport | null>(null);
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
@@ -41,10 +39,6 @@ export default function KnowledgePage() {
   };
 
   useEffect(() => {
-    fetchEntities(slug, "knowledge");
-  }, [slug, fetchEntities]);
-
-  const handleFormSuccess = useCallback(() => {
     fetchEntities(slug, "knowledge");
   }, [slug, fetchEntities]);
 
@@ -113,24 +107,6 @@ export default function KnowledgePage() {
     ],
   });
 
-  useAIElement({
-    id: "knowledge-form",
-    type: "form",
-    label: "Knowledge Form",
-    value: formOpen,
-    description: formOpen ? `open (${editingKnowledge ? `editing ${editingKnowledge.id}` : "creating"})` : "closed",
-    data: { fields: ["title*", "category*", "content*", "scope", "tags", "links"] },
-    actions: [
-      {
-        label: editingKnowledge ? "Update" : "Create",
-        toolName: editingKnowledge ? "updateKnowledge" : "createKnowledge",
-        toolParams: editingKnowledge
-          ? ["knowledge_id*", "title", "content", "status"]
-          : ["title*", "category*", "content*", "scope"],
-      },
-    ],
-  });
-
   const filtered = items
     .filter((k) => !statusFilter || k.status === statusFilter)
     .filter((k) => !categoryFilter || k.category === categoryFilter)
@@ -169,12 +145,12 @@ export default function KnowledgePage() {
           </button>
           <StatusFilter options={STATUSES} value={statusFilter} onChange={setStatusFilter} />
           <StatusFilter options={CATEGORIES} value={categoryFilter} onChange={setCategoryFilter} label="Category" />
-          <button
-            onClick={() => { setEditingKnowledge(undefined); setFormOpen(true); }}
+          <Link
+            href={`/projects/${slug}/knowledge/new`}
             className="px-3 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700"
           >
             + New Knowledge
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -324,7 +300,6 @@ export default function KnowledgePage() {
             key={k.id}
             knowledge={k}
             slug={slug}
-            onEdit={(knowledge) => { setEditingKnowledge(knowledge); setFormOpen(true); }}
             staleInfo={staleMap.get(k.id)}
             selected={isSelected(k.id)}
             onSelect={() => toggle(k.id)}
@@ -337,13 +312,6 @@ export default function KnowledgePage() {
         )}
       </div>
 
-      <KnowledgeForm
-        slug={slug}
-        open={formOpen}
-        onClose={() => { setFormOpen(false); setEditingKnowledge(undefined); }}
-        knowledge={editingKnowledge}
-        onSuccess={handleFormSuccess}
-      />
     </div>
   );
 }

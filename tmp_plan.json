@@ -1,0 +1,186 @@
+[
+  {
+    "id": "T-001",
+    "name": "workflow-db-schema",
+    "description": "Create Postgres tables for workflow execution state: workflow_definitions, workflow_executions, workflow_step_results. Migration file + verify on clean DB.",
+    "instruction": "1. Create forge-api/migrations/006_workflows.sql with:\n   - workflow_executions table: id SERIAL, ext_id TEXT (WE-001), project_id INT FK, workflow_def_id TEXT, objective_id TEXT, status TEXT (pending/running/paused/completed/failed/cancelled), current_step TEXT, variables JSONB, pause_reason TEXT, error TEXT, created_at, updated_at, completed_at. UNIQUE(project_id, ext_id).\n   - workflow_step_results table: id SERIAL, execution_id INT FK, step_id TEXT, status TEXT (pending/running/completed/failed/skipped), output JSONB, session_id TEXT, error TEXT, decision_ids TEXT[], retries INT DEFAULT 0, started_at, completed_at. UNIQUE(execution_id, step_id).\n2. Add appropriate indexes (project_id+status, execution_id).\n3. Create rollback_006.sql.\n4. Test: run migrate.py, verify tables created.",
+    "depends_on": [],
+    "parallel": true,
+    "type": "feature",
+    "scopes": ["backend", "execution"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "006_workflows.sql creates workflow_executions and workflow_step_results tables",
+      "rollback_006.sql drops both tables cleanly",
+      "migrate.py applies the migration without errors on existing DB"
+    ]
+  },
+  {
+    "id": "T-002",
+    "name": "workflow-data-models",
+    "description": "Define Pydantic models for workflow definitions (StepDefinition, WorkflowDefinition) and execution state (WorkflowExecution, StepResult). Definitions are code-only (not stored in DB). Execution models map to DB tables.",
+    "instruction": "1. Create forge-api/app/workflow/__init__.py\n2. Create forge-api/app/workflow/models.py with:\n   - StepType enum: llm_agent, forge_command, user_decision (Phase 1 only — no conditional/parallel_group yet per D-007)\n   - StepDefinition (Pydantic): id, name, type, description, prompt_template, scopes, max_iterations, command_template, decision_prompt, blocking, next_step\n   - WorkflowDefinition (Pydantic): id, name, description, steps list, initial_step, version\n   - ExecutionStatus enum: pending, running, paused, completed, failed, cancelled\n   - StepStatus enum: pending, running, completed, failed, skipped\n   - StepResult (Pydantic): step_id, status, started_at, completed_at, output, session_id, error, decision_ids, retries\n   - WorkflowExecution (Pydantic): id, ext_id, workflow_id, project, objective_id, status, current_step, step_results dict, pause_reason, variables dict, timestamps, error\n3. Add model validators: valid step references in next_step, no orphan steps, initial_step exists.",
+    "depends_on": [],
+    "parallel": true,
+    "type": "feature",
+    "scopes": ["backend", "execution"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "StepType has exactly 3 values: llm_agent, forge_command, user_decision",
+      "WorkflowDefinition validates that all next_step references exist in steps list",
+      "WorkflowExecution serializes to/from JSON matching DB schema",
+      "All models have proper type hints and Pydantic validators"
+    ]
+  },
+  {
+    "id": "T-003",
+    "name": "workflow-events",
+    "description": "Define workflow event types and integrate with existing EventBus. Events: workflow.started, workflow.step_started, workflow.step_completed, workflow.paused, workflow.resumed, workflow.completed, workflow.failed, workflow.cancelled.",
+    "instruction": "1. Create forge-api/app/workflow/events.py with:\n   - WorkflowEventType constants for all 8 event types\n   - WorkflowEventPayload Pydantic model: workflow_id, execution_id, step_id, status, output_summary, error, timestamp\n   - Helper function emit_workflow_event(event_bus, project_slug, event_type, payload) that calls event_bus.emit()\n2. Register workflow event types in forge-api/app/events.py EVENT_TYPES dict.\n3. Ensure events are serializable and compatible with existing WebSocket consumers.",
+    "depends_on": [],
+    "parallel": true,
+    "type": "feature",
+    "scopes": ["backend", "execution"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "8 workflow event types defined and registered in EVENT_TYPES",
+      "WorkflowEventPayload serializes correctly for WebSocket transmission",
+      "emit_workflow_event helper works with existing EventBus.emit() interface"
+    ]
+  },
+  {
+    "id": "T-004",
+    "name": "workflow-store",
+    "description": "Persistence layer for workflow executions using asyncpg (raw SQL, matching existing forge-api patterns). CRUD operations with atomic state transitions.",
+    "instruction": "1. Create forge-api/app/workflow/store.py with WorkflowStore class:\n   - __init__(pool: asyncpg.Pool)\n   - create_execution(project_id, workflow_id, objective_id, variables) -> WorkflowExecution\n   - get_execution(execution_id) -> WorkflowExecution | None\n   - get_execution_by_ext_id(project_slug, ext_id) -> WorkflowExecution | None\n   - list_executions(project_slug, status_filter) -> list[WorkflowExecution]\n   - update_execution(execution_id, **fields) -> WorkflowExecution (atomic)\n   - update_step_result(execution_id, step_id, **fields) -> StepResult (upsert)\n   - transition_status(execution_id, from_status, to_status) -> bool (atomic CAS)\n   - get_running_executions() -> list[WorkflowExecution] (for recovery)\n   - generate_ext_id(project_id) -> str (WE-001, WE-002, etc.)\n2. Use asyncpg parameterized queries (no ORM). Follow existing patterns from other routers.\n3. All mutations use transactions for atomicity.\n4. Per-step timeout tracking: store step started_at, check against configurable limit.",
+    "depends_on": ["T-001", "T-002"],
+    "parallel": false,
+    "type": "feature",
+    "scopes": ["backend", "execution"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "CRUD operations work against real Postgres (not mocks)",
+      "transition_status uses atomic CAS (UPDATE ... WHERE status = $from RETURNING ...)",
+      "generate_ext_id produces sequential WE-NNN IDs per project",
+      "Concurrent transition_status calls don't corrupt state (only one wins)"
+    ],
+    "test_requirements": {"unit": true, "integration": true, "e2e": false}
+  },
+  {
+    "id": "T-005",
+    "name": "step-executors",
+    "description": "Implement per-type step execution: LLMAgentStepExecutor (wraps AgentLoop), ForgeCommandStepExecutor (direct Python import of forge-core), UserDecisionStepExecutor (pauses workflow for user input).",
+    "instruction": "1. Create forge-api/app/workflow/steps.py with:\n   - Abstract base: StepExecutor with async execute(step_def, context, on_event) -> StepResult\n   - LLMAgentStepExecutor:\n     a. Creates ChatSession via SessionManager with step-specific scopes\n     b. Builds system prompt from step.prompt_template + workflow context (previous step outputs, objective info)\n     c. Runs AgentLoop.run() with step.max_iterations and per-step timeout (default 600s per D-006)\n     d. On blocking decision: returns StepResult with status=paused, pause_reason=decision_id\n     e. On completion: extracts output summary, stores session_id in StepResult\n   - ForgeCommandStepExecutor:\n     a. Direct import of forge-core modules (per D-003: core.pipeline, core.decisions, etc.)\n     b. Templates command with workflow variables (project, task_id, etc.)\n     c. Captures result (success/failure + output)\n     d. Returns StepResult with output dict\n   - UserDecisionStepExecutor:\n     a. Emits workflow.paused event with decision_prompt\n     b. Returns StepResult with status=paused, pause_reason=awaiting_user_decision\n     c. On resume: receives user response in variables, returns StepResult with output\n2. Each executor handles its own error cases (timeout, LLM failure, import error).\n3. Context assembly: inject previous step summaries + objective KR progress.",
+    "depends_on": ["T-002", "T-003"],
+    "parallel": false,
+    "type": "feature",
+    "scopes": ["backend", "execution", "llm"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "LLMAgentStepExecutor creates session, runs AgentLoop, returns StepResult with content + session_id",
+      "LLMAgentStepExecutor correctly pauses on blocking decision (returns paused status)",
+      "ForgeCommandStepExecutor directly imports and calls forge-core modules (not subprocess)",
+      "UserDecisionStepExecutor emits workflow.paused event and returns paused status",
+      "All executors respect per-step timeout (600s default) — asyncio.wait_for"
+    ]
+  },
+  {
+    "id": "T-006",
+    "name": "workflow-engine",
+    "description": "Main WorkflowEngine orchestrator: starts workflows, schedules steps, manages state transitions, handles pause/resume/cancel, emits events. Uses asyncio.Task per execution with Semaphore(5).",
+    "instruction": "1. Create forge-api/app/workflow/engine.py with WorkflowEngine class:\n   - __init__(store, event_bus, session_manager, step_executors dict)\n   - start(definition, project_slug, objective_id, variables) -> WorkflowExecution\n     a. Create execution in store\n     b. Launch asyncio.Task for _run_workflow(execution_id)\n     c. Emit workflow.started event\n     d. Return execution\n   - resume(execution_id, user_response) -> WorkflowExecution\n     a. Load execution from store\n     b. Validate status is 'paused'\n     c. Store user_response in variables\n     d. Launch asyncio.Task to continue from current_step\n     e. Emit workflow.resumed event\n   - cancel(execution_id) -> WorkflowExecution\n     a. Set status to cancelled via store.transition_status\n     b. Cancel asyncio.Task if running\n     c. Emit workflow.cancelled event\n   - _run_workflow(execution_id) — main loop:\n     a. Load definition + execution state\n     b. Determine next step (current_step or initial_step)\n     c. Dispatch to appropriate StepExecutor\n     d. On StepResult:\n        - completed: update step_result, determine next_step, continue loop\n        - paused: update execution status to paused, emit event, return\n        - failed: update execution status to failed, emit event, return\n     e. When no next_step: mark execution completed, emit event\n   - _active_tasks: dict[execution_id -> asyncio.Task] for cancellation\n   - _semaphore: asyncio.Semaphore(5) for concurrency limit\n   - recover() — called on startup: find running executions, mark as failed (retriable)\n2. Workflow-level timeout: asyncio.wait_for(_run_workflow, timeout=7200).\n3. Error handling: catch all exceptions, update execution to failed, emit event.",
+    "depends_on": ["T-004", "T-005"],
+    "parallel": false,
+    "type": "feature",
+    "scopes": ["backend", "execution"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "start() creates execution, launches asyncio.Task, emits workflow.started",
+      "Linear workflow (3+ steps) executes end-to-end without manual intervention",
+      "Workflow pauses on user_decision step and resumes on resume() call",
+      "Workflow pauses on LLM blocking decision and resumes after decision closed",
+      "cancel() terminates running workflow and emits workflow.cancelled",
+      "Semaphore(5) limits concurrent workflow executions",
+      "recover() marks stale running executions as failed on startup",
+      "Workflow-level timeout (2hr) terminates stuck workflows"
+    ],
+    "test_requirements": {"unit": true, "integration": true, "e2e": false}
+  },
+  {
+    "id": "T-007",
+    "name": "workflow-router",
+    "description": "REST API endpoints for workflow management: start, list, get, pause, resume, cancel. WebSocket endpoint for real-time workflow event streaming.",
+    "instruction": "1. Create forge-api/app/routers/workflows.py with:\n   - POST /projects/{slug}/workflows — start new workflow (body: definition_id, objective_id, variables)\n   - GET /projects/{slug}/workflows — list executions (query: status filter)\n   - GET /projects/{slug}/workflows/{ext_id} — get execution details with step results\n   - POST /projects/{slug}/workflows/{ext_id}/resume — resume paused workflow (body: user_response)\n   - POST /projects/{slug}/workflows/{ext_id}/cancel — cancel running workflow\n   - WebSocket /ws/projects/{slug}/workflows/{ext_id} — stream workflow events\n2. Register router in forge-api/app/main.py\n3. Inject WorkflowEngine via FastAPI dependency injection (add to app.state in lifespan)\n4. WebSocket handler: subscribe to EventBus workflow.* events, filter by execution_id, forward JSON.\n5. Error handling: 404 for unknown execution, 409 for invalid state transitions.",
+    "depends_on": ["T-006"],
+    "parallel": false,
+    "type": "feature",
+    "scopes": ["backend", "execution"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "POST /workflows starts a workflow and returns execution details with 201",
+      "GET /workflows lists executions filtered by status",
+      "GET /workflows/{ext_id} returns full execution with step results",
+      "POST /resume on paused workflow transitions to running",
+      "POST /cancel on running workflow transitions to cancelled",
+      "WebSocket streams real-time workflow events filtered by execution",
+      "Invalid state transitions return 409 Conflict"
+    ]
+  },
+  {
+    "id": "T-008",
+    "name": "builtin-workflow-definitions",
+    "description": "Create 3 built-in workflow definition presets: full-lifecycle (objective->discover->plan->execute->compound), simplified-next (begin->execute->complete), and discovery-only (discover->decide).",
+    "instruction": "1. Create forge-api/app/workflow/definitions.py (rename existing models.py definitions section or create alongside):\n   - FULL_LIFECYCLE: 7 steps\n     1. create-objective (llm_agent): create objective from user input\n     2. discover (llm_agent): run discovery analysis\n     3. review-discovery (user_decision): user reviews findings\n     4. plan (llm_agent): decompose into task graph\n     5. approve-plan (user_decision): user approves plan\n     6. execute-tasks (llm_agent): execute tasks via /next loop\n     7. compound (llm_agent): extract lessons learned\n   - SIMPLIFIED_NEXT: 3 steps\n     1. begin-task (forge_command): claim next task via pipeline.begin\n     2. execute-task (llm_agent): implement the task\n     3. complete-task (forge_command): mark task done via pipeline.complete\n   - DISCOVERY_ONLY: 2 steps\n     1. discover (llm_agent): run discovery\n     2. review (user_decision): present findings for review\n2. Create BUILTIN_DEFINITIONS dict mapping id -> WorkflowDefinition.\n3. Each step has appropriate prompt_template, scopes, and max_iterations.",
+    "depends_on": ["T-002"],
+    "parallel": true,
+    "type": "feature",
+    "scopes": ["backend", "execution"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "3 built-in definitions exist: full-lifecycle, simplified-next, discovery-only",
+      "Each definition passes WorkflowDefinition validation (no orphan steps, valid next_step refs)",
+      "full-lifecycle has 7 steps with correct types and sequencing",
+      "simplified-next has 3 steps (forge_command + llm_agent + forge_command)",
+      "All llm_agent steps have meaningful prompt_templates"
+    ]
+  },
+  {
+    "id": "T-009",
+    "name": "workflow-frontend-store",
+    "description": "Frontend Zustand store for workflow state management + WebSocket event handling. Basic workflow status display component.",
+    "instruction": "1. Create forge-web/stores/workflowStore.ts:\n   - State: executions (Record<ext_id, WorkflowExecution>), activeExecutionId, loading, error\n   - Actions: startWorkflow(defId, projectSlug, objectiveId), resumeWorkflow(extId, response), cancelWorkflow(extId), fetchExecutions(projectSlug, status?), fetchExecution(projectSlug, extId)\n   - handleWsEvent(event) for workflow.* events: update execution state in real-time\n   - Integrate with existing wsDispatcher pattern from chatStore.ts\n2. Create forge-web/types/workflow.ts with TypeScript interfaces matching backend models.\n3. Add workflow API methods to forge-web/lib/api.ts: startWorkflow, listWorkflows, getWorkflow, resumeWorkflow, cancelWorkflow.\n4. Create forge-web/components/workflow/WorkflowStatus.tsx:\n   - Shows current step, progress bar, step list with status indicators\n   - Pause/Resume/Cancel buttons based on execution status\n   - Real-time updates via workflowStore subscription\n5. Register workflow WS events in the WebSocket dispatcher.",
+    "depends_on": ["T-007"],
+    "parallel": false,
+    "type": "feature",
+    "scopes": ["frontend"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "workflowStore manages execution state with real-time WebSocket updates",
+      "API methods in api.ts match all workflow router endpoints",
+      "WorkflowStatus component shows step progress with status indicators",
+      "Pause/Resume/Cancel buttons work and update UI immediately",
+      "WebSocket workflow.* events update store within 200ms"
+    ]
+  },
+  {
+    "id": "T-010",
+    "name": "e2e-workflow-integration",
+    "description": "End-to-end integration: wire WorkflowEngine into app lifecycle, test full workflow execution with real LLM calls, verify 3 concurrent workflows, test recovery.",
+    "instruction": "1. Wire WorkflowEngine into forge-api/app/main.py lifespan:\n   - Create WorkflowStore with db_pool\n   - Create StepExecutors (llm_agent, forge_command, user_decision)\n   - Create WorkflowEngine with all dependencies\n   - Store in app.state.workflow_engine\n   - Call engine.recover() on startup\n2. Integration test: start full-lifecycle workflow -> verify each step executes -> verify pause on user_decision -> resume -> verify completion.\n3. Concurrency test: start 3 workflows simultaneously -> verify all progress independently -> verify no state corruption.\n4. Recovery test: start workflow -> simulate server restart (re-create engine) -> verify recover() marks running as failed.\n5. Timeout test: start workflow with very short step timeout -> verify step times out and workflow fails gracefully.\n6. Verify all WebSocket events emit correctly and can be consumed by frontend.",
+    "depends_on": ["T-006", "T-008", "T-009"],
+    "parallel": false,
+    "type": "feature",
+    "scopes": ["backend", "execution", "llm"],
+    "origin": "O-001",
+    "acceptance_criteria": [
+      "WorkflowEngine initializes in app lifespan and recovers stale executions",
+      "Full-lifecycle workflow executes 5+ steps end-to-end with real LLM (KR-1)",
+      "Workflow correctly pauses on user_decision and resumes after response (KR-2)",
+      "3 concurrent workflows run independently without state corruption (KR-3)",
+      "All step transitions emit WebSocket events consumed by frontend < 200ms (KR-4)",
+      "Step timeout triggers graceful failure with error message",
+      "Engine recovery marks stale running executions as failed"
+    ],
+    "test_requirements": {"unit": false, "integration": true, "e2e": true}
+  }
+]

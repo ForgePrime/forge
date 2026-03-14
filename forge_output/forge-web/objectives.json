@@ -1,0 +1,425 @@
+{
+  "project": "forge-web",
+  "updated": "2026-03-14T17:52:52Z",
+  "objectives": [
+    {
+      "id": "O-001",
+      "title": "Workflow Execution Engine",
+      "description": "Zbudowac serwerowy silnik workflow, ktory orkiestruje wielokrokowe procesy AI - od objectives przez discovery, plan, execution po compound - jako persystentne, pauzowalne, wznawiane procesy. To jest absolutny fundament. Silnik w forge-api wykonuje sekwencje krokow workflow. Kazdy krok to sesja LLM agent, ktora wywoluje narzedzia forge-core. Silnik zarzadza tranzycjami miedzy krokami, pauzuje gdy potrzebna decyzja uzytkownika, i emituje eventy WebSocket. Bez tego nic innego nie dziala.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "Silnik wykonuje sekwencje 5+ krokow end-to-end (objective -> discover -> plan -> execute tasks -> compound) z prawdziwymi wywolaniami LLM",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-2",
+          "description": "Silnik poprawnie pauzuje na blocking decisions i wznawia po rozwiazaniu przez uzytkownika, zero utraty danych",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-3",
+          "metric": "Rownoczesne wykonania workflow per projekt",
+          "baseline": 0,
+          "target": 3,
+          "current": 0
+        },
+        {
+          "id": "KR-4",
+          "description": "Wszystkie tranzycje krokow emituja WebSocket events konsumowane przez frontend w < 200ms",
+          "status": "NOT_STARTED"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "Istniejacy agent_loop.py wystarczy jako baza do rozbudowy",
+        "WebSocket EventBus jest wydajny dla real-time events",
+        "forge-core tools (pipeline, decisions, etc.) moga byc wywolywane programmatycznie z silnika"
+      ],
+      "tags": [
+        "execution",
+        "engine",
+        "workflow",
+        "foundation"
+      ],
+      "scopes": [
+        "backend",
+        "execution",
+        "llm"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-14T17:52:34Z",
+      "updated": "2026-03-14T17:52:34Z"
+    },
+    {
+      "id": "O-002",
+      "title": "Decision & Notification Infrastructure",
+      "description": "Zbudowac system powiadomien dla pytan LLM, blocking decisions, i eventow workflow - dzialajacy across wielu rownoczesnych procesow. Gdy silnik workflow dziala, czesto potrzebuje input uzytkownika: blocking decisions (ryzyka HIGH), pytania LLM podczas discovery, zatwierdzenie planu, weryfikacja taskow. Tworzy: (a) backend notification z priorytetami i persistence, (b) frontend real-time notification UI z click-to-navigate, (c) widok decyzji z propozycjami AI, (d) obsluga wielu rownoczesnych procesow bez pomieszania kontekstow.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "Powiadomienia w real-time via WebSocket (< 500ms) dla: decisions, pytan LLM, zakonczeniu krokow, bledow",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-2",
+          "description": "Kazdy typ powiadomienia ma dedicated detail view z AI-proposed options i mechanizmem odpowiedzi",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-3",
+          "metric": "Rownoczesne workflow z poprawnymi powiadomieniami",
+          "baseline": 0,
+          "target": 3,
+          "current": 0
+        },
+        {
+          "id": "KR-4",
+          "description": "Zero pominietych powiadomien - kazdy blocking event generuje persistent notification az do rozwiazania",
+          "status": "NOT_STARTED"
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "WebSocket transport wystarczy (nie potrzebujemy SSE/long-polling fallback)",
+        "Istniejacy NotificationCenter.tsx da sie rozbudowac"
+      ],
+      "tags": [
+        "notifications",
+        "decisions",
+        "real-time"
+      ],
+      "scopes": [
+        "backend",
+        "frontend",
+        "notifications"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [
+        {
+          "type": "depends_on",
+          "target_id": "O-001",
+          "notes": "Potrzebuje silnika workflow do e2e testow"
+        }
+      ],
+      "status": "ACTIVE",
+      "created": "2026-03-14T17:52:34Z",
+      "updated": "2026-03-14T17:52:52Z"
+    },
+    {
+      "id": "O-003",
+      "title": "Full Entity Management via AI Sidebar",
+      "description": "Uczynic AI sidebar glownym interfejsem workflow - tworzenie i zarzadzanie wszystkimi encjami przez naturalny jezyk i slash commands. Uzytkownik mowi utworz objective - AI to robi. Slash commands (/plan, /next, /discover, /compound, /decide, /objective, /idea) w chat input uruchamiaja odpowiednie workflow sessions. Rezultaty widoczne inline w chacie (entity cards) i na stronach encji (via SWR revalidation). To jest parytet z forge-core.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "Wszystkie 12 typow encji mozna tworzyc, aktualizowac i queryowac przez natural language w AI sidebar (> 95% success rate)",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-2",
+          "description": "Slash commands (/plan, /next, /discover, /compound, /decide, /guideline, /objective, /idea) rozpoznawane w chat input i triggering odpowiednich workflow sessions",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-3",
+          "description": "Mutacje encji przez AI chat pojawiaja sie na stronach list w < 1s (WebSocket + SWR revalidation)",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-4",
+          "description": "Konwersacje utrzymuja pelny kontekst multi-turn",
+          "status": "NOT_STARTED"
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "Istniejacy tool registry pokrywa wiekszosc encji",
+        "LLM poprawnie interpretuje natural language do tool calls",
+        "SWR revalidation wystarczy bez dedykowanego WebSocket per entity"
+      ],
+      "tags": [
+        "ai-sidebar",
+        "entity-management",
+        "workflow-parity"
+      ],
+      "scopes": [
+        "frontend",
+        "backend",
+        "ai",
+        "llm"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-14T17:52:34Z",
+      "updated": "2026-03-14T17:52:34Z"
+    },
+    {
+      "id": "O-004",
+      "title": "Execution Templates (DAG Workflow Automation)",
+      "description": "Zaprojektowac i zaimplementowac konfigurowalne szablony workflow jako edytowalne DAGi z silnikiem wykonawczym. Szablony definiuja reuzywalne sekwencje workflow. Pelny szablon: objective -> discovery -> decisions/risks -> plan -> tasks z AC -> auto-run -> compound. Szablony przechowywane jako JSON DAG z typowanymi node-ami, edge-ami, i conditional branching. Frontend potrzebuje wizualnego edytora DAG.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Built-in template presets",
+          "baseline": 0,
+          "target": 3,
+          "current": 0
+        },
+        {
+          "id": "KR-2",
+          "description": "Wizualny edytor DAG pozwala tworzyc custom templates (add/remove/connect nodes, real-time validation, no orphans/cycles)",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-3",
+          "metric": "Obslugiwane warunki conditional branching",
+          "baseline": 0,
+          "target": 3,
+          "current": 0
+        },
+        {
+          "id": "KR-4",
+          "description": "Templates exportowalne/importowalne jako JSON, shareable via repository",
+          "status": "NOT_STARTED"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "React Flow jest odpowiedni dla edytora DAG",
+        "JSON wystarczy jako format storage (nie potrzebujemy YAML)",
+        "Conditional branching da sie wyrazic deklaratywnie bez scripting"
+      ],
+      "tags": [
+        "templates",
+        "dag",
+        "automation",
+        "workflow"
+      ],
+      "scopes": [
+        "backend",
+        "frontend",
+        "templates"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [
+        {
+          "type": "depends_on",
+          "target_id": "O-001",
+          "notes": "Silnik wykonawczy uruchamia template steps"
+        },
+        {
+          "type": "depends_on",
+          "target_id": "O-002",
+          "notes": "Powiadomienia dla decision points w template"
+        }
+      ],
+      "status": "ACTIVE",
+      "created": "2026-03-14T17:52:34Z",
+      "updated": "2026-03-14T17:52:52Z"
+    },
+    {
+      "id": "O-005",
+      "title": "Project Infrastructure - Repo & Container Management",
+      "description": "Kazdy projekt ma wlasne repo kodu i izolowany kontener do budowania/testowania/wykonywania. (a) Backend API do zarzadzania repo (init, clone, branch management), (b) Backend API do container lifecycle (create, start, stop, exec, logs) z konfigurowalnym runtime (Docker/Rancher Desktop), (c) UI w project settings do konfiguracji, (d) Integracja z silnikiem wykonawczym - taski wykonywane w kontenerze projektu na repo projektu.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "Tworzenie projektu obejmuje inicjalizacje repo (local lub remote clone), z branch management widocznym w UI",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-2",
+          "description": "Projekty konfigurowalne z container runtime (Docker/Rancher Desktop), kontener tworzony/startowany automatycznie przy execution",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-3",
+          "description": "Konfiguracja kontenera elastyczna: custom image, port mappings, volume mounts, env vars, resource limits - all via UI",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-4",
+          "description": "Execution w kontenerze produkuje streaming output widoczny w execution panel, exit code i logi persisted",
+          "status": "NOT_STARTED"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "Docker Desktop lub Rancher Desktop jest zainstalowany na maszynie uzytkownika",
+        "Docker SDK for Python jest stabilny na Windows",
+        "Jeden kontener per projekt wystarczy (nie potrzebujemy docker-compose)"
+      ],
+      "tags": [
+        "infrastructure",
+        "docker",
+        "git",
+        "containers"
+      ],
+      "scopes": [
+        "backend",
+        "frontend",
+        "infrastructure",
+        "devops"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [
+        {
+          "type": "depends_on",
+          "target_id": "O-001",
+          "notes": "Silnik wykonawczy wywoluje operacje container"
+        }
+      ],
+      "status": "ACTIVE",
+      "created": "2026-03-14T17:52:34Z",
+      "updated": "2026-03-14T17:52:52Z"
+    },
+    {
+      "id": "O-006",
+      "title": "Workflow DAG Visualization (Objective Lifecycle View)",
+      "description": "Zastapic task-only board pelnym DAGiem cyklu zycia objective - od objective przez discovery, plan, taski, po lessons i knowledge. Kanban jest bezcelowy (AI zarzadza taskami). Nowy DAG pokazuje: Objective -> discover results -> plan results -> task nodes (z zaleznosciami) -> lessons -> knowledge. Kazdy node klikalny. Podczas aktywnej execution, DAG pokazuje real-time progress.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "DAG renderuje sie poprawnie dla projektu z 3+ objectives, kazdy z discovery, planami, 5+ taskami z zaleznosciami, lessons - all clickable",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-2",
+          "description": "Podczas aktywnej execution, DAG pokazuje real-time status (animated running nodes, completed checkmarks, blocked indicators) < 1s latency",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-3",
+          "description": "Zoom, pan, filter (by objective, status, scope), auto-layout dla grafow 50+ nodes",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-4",
+          "description": "Kanban view zastapiony lub opcjonalny, lifecycle DAG jako default",
+          "status": "NOT_STARTED"
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "React Flow da rade z 50+ nodes bez problemow z wydajnoscia",
+        "Auto-layout (dagre/elk) daje czytelne wyniki dla tego typu grafu"
+      ],
+      "tags": [
+        "visualization",
+        "dag",
+        "board",
+        "lifecycle"
+      ],
+      "scopes": [
+        "frontend",
+        "visualization"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [
+        {
+          "type": "depends_on",
+          "target_id": "O-001",
+          "notes": "Real-time execution data"
+        },
+        {
+          "type": "depends_on",
+          "target_id": "O-003",
+          "notes": "Encje tworzone przez AI do wizualizacji"
+        }
+      ],
+      "status": "ACTIVE",
+      "created": "2026-03-14T17:52:34Z",
+      "updated": "2026-03-14T17:52:52Z"
+    },
+    {
+      "id": "O-007",
+      "title": "Export/Import & Reusable Object Repository",
+      "description": "Eksport/import obiektow (knowledge, guidelines, AC templates, execution templates, gates) + repozytorium marketplace do przegladania i dodawania do projektow. Rozszerzenie istniejacego wzorca skills repository (git-sync) na wszystkie shareable entity types. Import z innego projektu Forge (cross-project sharing).",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Typy encji z export/import",
+          "baseline": 0,
+          "target": 5,
+          "current": 0
+        },
+        {
+          "id": "KR-2",
+          "description": "Repository UI z browsing, filtering (category, scope, source project), preview przed dodaniem",
+          "status": "NOT_STARTED"
+        },
+        {
+          "id": "KR-3",
+          "metric": "Built-in repository items on first install",
+          "baseline": 0,
+          "target": 10,
+          "current": 0
+        },
+        {
+          "id": "KR-4",
+          "description": "Import z innego Forge projektu (cross-project sharing)",
+          "status": "NOT_STARTED"
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "JSON jest wystarczajacy format dla export/import",
+        "Git-based storage (jak skills) da sie rozszerzyc na inne typy",
+        "Conflict detection na podstawie title/ID match wystarczy"
+      ],
+      "tags": [
+        "export",
+        "import",
+        "repository",
+        "marketplace",
+        "sharing"
+      ],
+      "scopes": [
+        "backend",
+        "frontend",
+        "repository"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [
+        {
+          "type": "depends_on",
+          "target_id": "O-004",
+          "notes": "Execution templates musza istniec by je udostepniac"
+        },
+        {
+          "type": "depends_on",
+          "target_id": "O-003",
+          "notes": "AI sidebar drives import"
+        }
+      ],
+      "status": "ACTIVE",
+      "created": "2026-03-14T17:52:34Z",
+      "updated": "2026-03-14T17:52:52Z"
+    }
+  ]
+}

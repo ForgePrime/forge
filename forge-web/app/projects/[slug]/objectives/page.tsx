@@ -5,8 +5,8 @@ import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { ObjectiveCard } from "@/components/entities/ObjectiveCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
-import { ObjectiveForm } from "@/components/forms/ObjectiveForm";
 import { CoverageDashboard } from "@/components/objectives/CoverageDashboard";
+import Link from "next/link";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
@@ -19,9 +19,7 @@ export default function ObjectivesPage() {
   const { slug } = useParams() as { slug: string };
   const { slices, fetchEntities } = useEntityStore();
   const [statusFilter, setStatusFilter] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
   const [showCoverage, setShowCoverage] = useState(false);
-  const [editingObj, setEditingObj] = useState<Objective | undefined>();
 
   useEffect(() => {
     fetchEntities(slug, "objectives");
@@ -86,29 +84,6 @@ export default function ObjectivesPage() {
     ],
   });
 
-  useAIElement({
-    id: "objective-form",
-    type: "form",
-    label: "Objective Form",
-    value: formOpen,
-    description: formOpen ? `open (${editingObj ? `editing ${editingObj.id}` : "creating"})` : "closed",
-    data: {
-      fields: ["title*", "description*", "key_results*", "appetite", "scope", "assumptions", "tags", "scopes"],
-    },
-    actions: [
-      {
-        label: editingObj ? "Update" : "Create",
-        toolName: editingObj ? "updateObjective" : "createObjective",
-        toolParams: editingObj
-          ? ["id*", "status", "key_results"]
-          : ["title*", "description*", "key_results*", "appetite", "scopes"],
-      },
-    ],
-  });
-
-  const handleFormSuccess = useCallback(() => {
-    fetchEntities(slug, "objectives");
-  }, [slug, fetchEntities]);
 
   return (
     <div>
@@ -122,12 +97,12 @@ export default function ObjectivesPage() {
           >
             Coverage
           </button>
-          <button
-            onClick={() => { setEditingObj(undefined); setFormOpen(true); }}
+          <Link
+            href={`/projects/${slug}/objectives/new`}
             className="px-3 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700"
           >
             + New Objective
-          </button>
+          </Link>
         </div>
       </div>
       {showCoverage && (
@@ -140,20 +115,13 @@ export default function ObjectivesPage() {
       <BulkActionBar count={selectionCount} entityLabel="objectives" onDelete={handleBulkDelete} onDeselectAll={deselectAll} />
       <div className="space-y-3">
         {filtered.map((o) => (
-          <ObjectiveCard key={o.id} objective={o} slug={slug} onEdit={(obj) => { setEditingObj(obj); setFormOpen(true); }} selected={isSelected(o.id)} onSelect={() => toggle(o.id)} />
+          <ObjectiveCard key={o.id} objective={o} slug={slug} selected={isSelected(o.id)} onSelect={() => toggle(o.id)} />
         ))}
         {!slices.objectives.loading && filtered.length === 0 && (
           <p className="text-sm text-gray-400">No objectives{statusFilter ? ` with status ${statusFilter}` : ""}</p>
         )}
       </div>
 
-      <ObjectiveForm
-        slug={slug}
-        open={formOpen}
-        onClose={() => { setFormOpen(false); setEditingObj(undefined); }}
-        objective={editingObj}
-        onSuccess={handleFormSuccess}
-      />
     </div>
   );
 }

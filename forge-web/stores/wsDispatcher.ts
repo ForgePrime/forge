@@ -18,6 +18,7 @@ import { useGateStore } from "./gateStore";
 import { useResearchStore } from "./researchStore";
 import { useSkillStore } from "./skillStore";
 import { useChatStore } from "./chatStore";
+import { useWorkflowStore } from "./workflowStore";
 import { isRecentMutation } from "@/lib/mutationTracker";
 import { llm } from "@/lib/api";
 import { useToastStore } from "./toastStore";
@@ -180,6 +181,12 @@ export function dispatchWsEvent(event: ForgeEvent): void {
       undefined,
       { revalidate: true },
     );
+    return;
+  }
+
+  // Workflow events go to workflowStore for real-time step progress
+  if (prefix === "workflow") {
+    useWorkflowStore.getState().handleWsEvent(event);
     return;
   }
 

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useResearchStore } from "@/stores/researchStore";
 import { ResearchCard } from "@/components/entities/ResearchCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
-import { ResearchForm } from "@/components/forms/ResearchForm";
+import Link from "next/link";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
@@ -23,8 +23,6 @@ export default function ResearchPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [search, setSearch] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingResearch, setEditingResearch] = useState<Research | undefined>();
 
   const { selectedIds, isSelected, toggle, deselectAll, count: selectionCount } = useMultiSelect();
 
@@ -67,10 +65,6 @@ export default function ResearchPage() {
     return dist;
   }, [research]);
 
-  const handleFormSuccess = () => {
-    fetchAll(slug);
-  };
-
   // --- AI Annotations ---
   useAIPage({
     id: "research",
@@ -107,24 +101,6 @@ export default function ResearchPage() {
     ],
   });
 
-  useAIElement({
-    id: "research-form",
-    type: "form",
-    label: "Research Form",
-    value: formOpen,
-    description: formOpen ? `open (${editingResearch ? `editing ${editingResearch.id}` : "creating"})` : "closed",
-    data: { fields: ["title*", "topic*", "category*", "summary*", "key_findings", "decision_ids"] },
-    actions: [
-      {
-        label: editingResearch ? "Update" : "Create",
-        toolName: editingResearch ? "updateResearch" : "createResearch",
-        toolParams: editingResearch
-          ? ["research_id*", "title", "status"]
-          : ["title*", "topic*", "category*", "summary*"],
-      },
-    ],
-  });
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -132,12 +108,12 @@ export default function ResearchPage() {
         <div className="flex gap-3 items-center">
           <StatusFilter options={STATUSES} value={statusFilter} onChange={setStatusFilter} />
           <StatusFilter options={CATEGORIES} value={categoryFilter} onChange={setCategoryFilter} label="Category" />
-          <button
-            onClick={() => { setEditingResearch(undefined); setFormOpen(true); }}
+          <Link
+            href={`/projects/${slug}/research/new`}
             className="px-3 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700"
           >
             + New Research
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -165,21 +141,12 @@ export default function ResearchPage() {
               key={r.id}
               research={r}
               slug={slug}
-              onEdit={(research) => { setEditingResearch(research); setFormOpen(true); }}
               selected={isSelected(r.id)}
               onSelect={() => toggle(r.id)}
             />
           ))}
         </div>
       )}
-
-      <ResearchForm
-        slug={slug}
-        open={formOpen}
-        onClose={() => { setFormOpen(false); setEditingResearch(undefined); }}
-        research={editingResearch}
-        onSuccess={handleFormSuccess}
-      />
     </div>
   );
 }

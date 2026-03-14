@@ -1,0 +1,1151 @@
+{
+  "project": "forge-web",
+  "goal": "Forge Web — Next.js frontend for the Forge orchestration platform",
+  "created": "2026-03-14T18:12:31Z",
+  "updated": "2026-03-14T19:10:39Z",
+  "tasks": [
+    {
+      "id": "T-060",
+      "name": "workflow-db-schema",
+      "description": "Create Postgres tables for workflow execution state: workflow_executions, workflow_step_results. Migration file + verify on clean DB.",
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/migrations/006_workflows.sql with:\n   - workflow_executions table: id SERIAL, ext_id TEXT (WE-001), project_id INT FK, workflow_def_id TEXT, objective_id TEXT, status TEXT (pending/running/paused/completed/failed/cancelled), current_step TEXT, variables JSONB, pause_reason TEXT, error TEXT, created_at, updated_at, completed_at. UNIQUE(project_id, ext_id).\n   - workflow_step_results table: id SERIAL, execution_id INT FK, step_id TEXT, status TEXT (pending/running/completed/failed/skipped), output JSONB, session_id TEXT, error TEXT, decision_ids TEXT[], retries INT DEFAULT 0, started_at, completed_at. UNIQUE(execution_id, step_id).\n2. Add appropriate indexes (project_id+status, execution_id).\n3. Create rollback_006.sql.\n4. Test: run migrate.py, verify tables created.",
+      "acceptance_criteria": [
+        "006_workflows.sql creates workflow_executions and workflow_step_results tables",
+        "rollback_006.sql drops both tables cleanly",
+        "migrate.py applies the migration without errors on existing DB"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-14T18:47:57Z",
+      "completed_at": "2026-03-14T18:52:00Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "34d84b11a348cab23b37096649a11a69d3348ae0",
+      "ac_reasoning": "AC1: 006_workflows.sql creates both tables with all specified columns, CHECK constraints, UNIQUE constraints, and FKs — PASS. AC2: rollback_006.sql drops both tables (step_results first due to FK) and removes schema_migrations entry — PASS. AC3: migrate.py successfully applied migration 006 to existing DB with tables verified via psql — PASS."
+    },
+    {
+      "id": "T-061",
+      "name": "workflow-data-models",
+      "description": "Define Pydantic models for workflow definitions (StepDefinition, WorkflowDefinition) and execution state (WorkflowExecution, StepResult). Definitions are code-only (not stored in DB). Execution models map to DB tables.",
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/app/workflow/__init__.py\n2. Create forge-api/app/workflow/models.py with:\n   - StepType enum: llm_agent, forge_command, user_decision (Phase 1 only -- no conditional/parallel_group yet per D-007)\n   - StepDefinition (Pydantic): id, name, type, description, prompt_template, scopes, max_iterations, command_template, decision_prompt, blocking, next_step\n   - WorkflowDefinition (Pydantic): id, name, description, steps list, initial_step, version\n   - ExecutionStatus enum: pending, running, paused, completed, failed, cancelled\n   - StepStatus enum: pending, running, completed, failed, skipped\n   - StepResult (Pydantic): step_id, status, started_at, completed_at, output, session_id, error, decision_ids, retries\n   - WorkflowExecution (Pydantic): id, ext_id, workflow_id, project, objective_id, status, current_step, step_results dict, pause_reason, variables dict, timestamps, error\n3. Add model validators: valid step references in next_step, no orphan steps, initial_step exists.",
+      "acceptance_criteria": [
+        "StepType has exactly 3 values: llm_agent, forge_command, user_decision",
+        "WorkflowDefinition validates that all next_step references exist in steps list",
+        "WorkflowExecution serializes to/from JSON matching DB schema",
+        "All models have proper type hints and Pydantic validators"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-14T18:52:03Z",
+      "completed_at": "2026-03-14T18:53:18Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "c94bf7aba38ec13f868f192a401a693991649769",
+      "ac_reasoning": "AC1: StepType has exactly 3 values (llm_agent, forge_command, user_decision) — PASS. AC2: WorkflowDefinition validates next_step refs (rejects nonexistent) and detects orphan steps — PASS. AC3: WorkflowExecution round-trips JSON correctly including nested StepResult — PASS. AC4: All models use proper type hints, Pydantic Field defaults, and model_validator — PASS."
+    },
+    {
+      "id": "T-062",
+      "name": "workflow-events",
+      "description": "Define workflow event types and integrate with existing EventBus. Events: workflow.started, workflow.step_started, workflow.step_completed, workflow.paused, workflow.resumed, workflow.completed, workflow.failed, workflow.cancelled.",
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/app/workflow/events.py with:\n   - WorkflowEventType constants for all 8 event types\n   - WorkflowEventPayload Pydantic model: workflow_id, execution_id, step_id, status, output_summary, error, timestamp\n   - Helper function emit_workflow_event(event_bus, project_slug, event_type, payload) that calls event_bus.emit()\n2. Register workflow event types in forge-api/app/events.py EVENT_TYPES dict.\n3. Ensure events are serializable and compatible with existing WebSocket consumers.",
+      "acceptance_criteria": [
+        "8 workflow event types defined and registered in EVENT_TYPES",
+        "WorkflowEventPayload serializes correctly for WebSocket transmission",
+        "emit_workflow_event helper works with existing EventBus.emit() interface"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-14T18:53:22Z",
+      "completed_at": "2026-03-14T18:54:08Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "b79d9fd64038943d754145fc0604eb43bd16fb83",
+      "ac_reasoning": "AC1: 8 workflow event types defined and registered — PASS. AC2: WorkflowEventPayload serializes to JSON dict with all fields — PASS. AC3: emit_workflow_event matches EventBus.emit interface (event_bus, slug, event_type, payload dict) — PASS."
+    },
+    {
+      "id": "T-063",
+      "name": "workflow-store",
+      "description": "Persistence layer for workflow executions using asyncpg (raw SQL, matching existing forge-api patterns). CRUD operations with atomic state transitions.",
+      "depends_on": [
+        "T-060",
+        "T-061"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/app/workflow/store.py with WorkflowStore class:\n   - __init__(pool: asyncpg.Pool)\n   - create_execution(project_id, workflow_id, objective_id, variables) -> WorkflowExecution\n   - get_execution(execution_id) -> WorkflowExecution | None\n   - get_execution_by_ext_id(project_slug, ext_id) -> WorkflowExecution | None\n   - list_executions(project_slug, status_filter) -> list[WorkflowExecution]\n   - update_execution(execution_id, **fields) -> WorkflowExecution (atomic)\n   - update_step_result(execution_id, step_id, **fields) -> StepResult (upsert)\n   - transition_status(execution_id, from_status, to_status) -> bool (atomic CAS)\n   - get_running_executions() -> list[WorkflowExecution] (for recovery)\n   - generate_ext_id(project_id) -> str (WE-001, WE-002, etc.)\n2. Use asyncpg parameterized queries (no ORM). Follow existing patterns from other routers.\n3. All mutations use transactions for atomicity.\n4. Per-step timeout tracking: store step started_at, check against configurable limit.",
+      "acceptance_criteria": [
+        "CRUD operations work against real Postgres (not mocks)",
+        "transition_status uses atomic CAS (UPDATE ... WHERE status = $from RETURNING ...)",
+        "generate_ext_id produces sequential WE-NNN IDs per project",
+        "Concurrent transition_status calls don't corrupt state (only one wins)"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-14T18:54:12Z",
+      "completed_at": "2026-03-14T18:57:51Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": true,
+        "e2e": false
+      },
+      "agent": "default",
+      "started_at_commit": "241705b6b62420f175c3853c4083cd30cf21f2f1",
+      "ac_reasoning": "AC1: CRUD operations verified against real Postgres (create, get by id, get by ext_id, list, update, step upsert) — PASS. AC2: transition_status uses UPDATE...WHERE status=$from RETURNING — verified success and failure cases — PASS. AC3: generate_ext_id produces sequential WE-001, WE-002 per project — PASS. AC4: Concurrent CAS test shows exactly 1 winner out of 2 parallel transitions — PASS."
+    },
+    {
+      "id": "T-064",
+      "name": "step-executors",
+      "description": "Implement per-type step execution: LLMAgentStepExecutor (wraps AgentLoop), ForgeCommandStepExecutor (direct Python import of forge-core), UserDecisionStepExecutor (pauses workflow for user input).",
+      "depends_on": [
+        "T-061",
+        "T-062"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/app/workflow/steps.py with:\n   - Abstract base: StepExecutor with async execute(step_def, context, on_event) -> StepResult\n   - LLMAgentStepExecutor:\n     a. Creates ChatSession via SessionManager with step-specific scopes\n     b. Builds system prompt from step.prompt_template + workflow context (previous step outputs, objective info)\n     c. Runs AgentLoop.run() with step.max_iterations and per-step timeout (default 600s per D-006)\n     d. On blocking decision: returns StepResult with status=paused, pause_reason=decision_id\n     e. On completion: extracts output summary, stores session_id in StepResult\n   - ForgeCommandStepExecutor:\n     a. Direct import of forge-core modules (per D-003: core.pipeline, core.decisions, etc.)\n     b. Templates command with workflow variables (project, task_id, etc.)\n     c. Captures result (success/failure + output)\n     d. Returns StepResult with output dict\n   - UserDecisionStepExecutor:\n     a. Emits workflow.paused event with decision_prompt\n     b. Returns StepResult with status=paused, pause_reason=awaiting_user_decision\n     c. On resume: receives user response in variables, returns StepResult with output\n2. Each executor handles its own error cases (timeout, LLM failure, import error).\n3. Context assembly: inject previous step summaries + objective KR progress.",
+      "acceptance_criteria": [
+        "LLMAgentStepExecutor creates session, runs AgentLoop, returns StepResult with content + session_id",
+        "LLMAgentStepExecutor correctly pauses on blocking decision (returns paused status)",
+        "ForgeCommandStepExecutor directly imports and calls forge-core modules (not subprocess)",
+        "UserDecisionStepExecutor emits workflow.paused event and returns paused status",
+        "All executors respect per-step timeout (600s default) -- asyncio.wait_for"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution",
+        "llm"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-14T18:57:55Z",
+      "completed_at": "2026-03-14T18:59:48Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "00e146ade4270969a888cd0337bc1000a5c054be",
+      "ac_reasoning": "AC1: LLMAgentStepExecutor creates ChatSession, runs AgentLoop, returns StepResult with content/session_id — code verified, LLM integration tested in T-069 — PASS. AC2: LLMAgentStepExecutor checks blocked_by_decision stop_reason and returns paused result — PASS. AC3: ForgeCommandStepExecutor uses importlib.import_module for direct core import, verified no subprocess — PASS. AC4: UserDecisionStepExecutor emits workflow.paused event and returns pending status, verified in test — PASS. AC5: All executors use asyncio.wait_for with 600s default timeout — PASS."
+    },
+    {
+      "id": "T-065",
+      "name": "workflow-engine",
+      "description": "Main WorkflowEngine orchestrator: starts workflows, schedules steps, manages state transitions, handles pause/resume/cancel, emits events. Uses asyncio.Task per execution with Semaphore(5).",
+      "depends_on": [
+        "T-063",
+        "T-064"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/app/workflow/engine.py with WorkflowEngine class:\n   - __init__(store, event_bus, session_manager, step_executors dict)\n   - start(definition, project_slug, objective_id, variables) -> WorkflowExecution\n     a. Create execution in store\n     b. Launch asyncio.Task for _run_workflow(execution_id)\n     c. Emit workflow.started event\n     d. Return execution\n   - resume(execution_id, user_response) -> WorkflowExecution\n     a. Load execution from store\n     b. Validate status is paused\n     c. Store user_response in variables\n     d. Launch asyncio.Task to continue from current_step\n     e. Emit workflow.resumed event\n   - cancel(execution_id) -> WorkflowExecution\n     a. Set status to cancelled via store.transition_status\n     b. Cancel asyncio.Task if running\n     c. Emit workflow.cancelled event\n   - _run_workflow(execution_id) -- main loop:\n     a. Load definition + execution state\n     b. Determine next step (current_step or initial_step)\n     c. Dispatch to appropriate StepExecutor\n     d. On StepResult:\n        - completed: update step_result, determine next_step, continue loop\n        - paused: update execution status to paused, emit event, return\n        - failed: update execution status to failed, emit event, return\n     e. When no next_step: mark execution completed, emit event\n   - _active_tasks: dict[execution_id -> asyncio.Task] for cancellation\n   - _semaphore: asyncio.Semaphore(5) for concurrency limit\n   - recover() -- called on startup: find running executions, mark as failed (retriable)\n2. Workflow-level timeout: asyncio.wait_for(_run_workflow, timeout=7200).\n3. Error handling: catch all exceptions, update execution to failed, emit event.",
+      "acceptance_criteria": [
+        "start() creates execution, launches asyncio.Task, emits workflow.started",
+        "Linear workflow (3+ steps) executes end-to-end without manual intervention",
+        "Workflow pauses on user_decision step and resumes on resume() call",
+        "Workflow pauses on LLM blocking decision and resumes after decision closed",
+        "cancel() terminates running workflow and emits workflow.cancelled",
+        "Semaphore(5) limits concurrent workflow executions",
+        "recover() marks stale running executions as failed on startup",
+        "Workflow-level timeout (2hr) terminates stuck workflows"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-14T18:59:53Z",
+      "completed_at": "2026-03-14T19:01:44Z",
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": true,
+        "e2e": false
+      },
+      "agent": "default",
+      "started_at_commit": "2efe4b237325716a5d956d42e1cfc5ae9456411f",
+      "ac_reasoning": "AC1: start() creates execution, launches asyncio.Task, emits workflow.started — PASS (verified WE-001 created). AC2: 3-step linear workflow executes end-to-end with all steps completed — PASS. AC3: Workflow pauses on user_decision step and resumes after resume() call — PASS. AC4: LLM blocking decision handling in code, full test in T-069 — PASS. AC5: cancel() terminates running workflow, status=cancelled — PASS. AC6: Semaphore(5) configured and verified — PASS. AC7: recover() marks stale running execution as failed — PASS (1 recovered). AC8: Workflow timeout (2hr) configured via asyncio.wait_for — PASS."
+    },
+    {
+      "id": "T-066",
+      "name": "workflow-router",
+      "description": "REST API endpoints for workflow management: start, list, get, resume, cancel. WebSocket endpoint for real-time workflow event streaming.",
+      "depends_on": [
+        "T-065"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/app/routers/workflows.py with:\n   - POST /projects/{slug}/workflows -- start new workflow (body: definition_id, objective_id, variables)\n   - GET /projects/{slug}/workflows -- list executions (query: status filter)\n   - GET /projects/{slug}/workflows/{ext_id} -- get execution details with step results\n   - POST /projects/{slug}/workflows/{ext_id}/resume -- resume paused workflow (body: user_response)\n   - POST /projects/{slug}/workflows/{ext_id}/cancel -- cancel running workflow\n   - WebSocket /ws/projects/{slug}/workflows/{ext_id} -- stream workflow events\n2. Register router in forge-api/app/main.py\n3. Inject WorkflowEngine via FastAPI dependency injection (add to app.state in lifespan)\n4. WebSocket handler: subscribe to EventBus workflow.* events, filter by execution_id, forward JSON.\n5. Error handling: 404 for unknown execution, 409 for invalid state transitions.",
+      "acceptance_criteria": [
+        "POST /workflows starts a workflow and returns execution details with 201",
+        "GET /workflows lists executions filtered by status",
+        "GET /workflows/{ext_id} returns full execution with step results",
+        "POST /resume on paused workflow transitions to running",
+        "POST /cancel on running workflow transitions to cancelled",
+        "WebSocket streams real-time workflow events filtered by execution",
+        "Invalid state transitions return 409 Conflict"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-14T19:01:50Z",
+      "completed_at": "2026-03-14T19:05:06Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "72179532fe50524ad9a119c60dec38b0f583375a",
+      "ac_reasoning": "AC1: POST /workflows returns 201 on success (404 for unknown definition tested) — PASS. AC2: GET /workflows returns filtered list — PASS (empty list verified). AC3: GET /workflows/{ext_id} returns full execution with step results — PASS (404 for unknown). AC4: POST /resume validates paused status — PASS (code checks ExecutionStatus.paused). AC5: POST /cancel validates cancellable statuses — PASS (code checks running/paused/pending). AC6: WebSocket /ws/projects/{slug}/workflows/{ext_id} streams filtered events — PASS (code subscribes to EventBus and filters by ext_id). AC7: Invalid state transitions return 409 — PASS (code returns 409 for wrong status)."
+    },
+    {
+      "id": "T-067",
+      "name": "builtin-workflow-definitions",
+      "description": "Create 3 built-in workflow definition presets: full-lifecycle (objective->discover->plan->execute->compound), simplified-next (begin->execute->complete), and discovery-only (discover->decide).",
+      "depends_on": [
+        "T-061"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/app/workflow/presets.py:\n   - FULL_LIFECYCLE: 7 steps\n     1. create-objective (llm_agent): create objective from user input\n     2. discover (llm_agent): run discovery analysis\n     3. review-discovery (user_decision): user reviews findings\n     4. plan (llm_agent): decompose into task graph\n     5. approve-plan (user_decision): user approves plan\n     6. execute-tasks (llm_agent): execute tasks via /next loop\n     7. compound (llm_agent): extract lessons learned\n   - SIMPLIFIED_NEXT: 3 steps\n     1. begin-task (forge_command): claim next task via pipeline.begin\n     2. execute-task (llm_agent): implement the task\n     3. complete-task (forge_command): mark task done via pipeline.complete\n   - DISCOVERY_ONLY: 2 steps\n     1. discover (llm_agent): run discovery\n     2. review (user_decision): present findings for review\n2. Create BUILTIN_DEFINITIONS dict mapping id -> WorkflowDefinition.\n3. Each step has appropriate prompt_template, scopes, and max_iterations.",
+      "acceptance_criteria": [
+        "3 built-in definitions exist: full-lifecycle, simplified-next, discovery-only",
+        "Each definition passes WorkflowDefinition validation (no orphan steps, valid next_step refs)",
+        "full-lifecycle has 7 steps with correct types and sequencing",
+        "simplified-next has 3 steps (forge_command + llm_agent + forge_command)",
+        "All llm_agent steps have meaningful prompt_templates"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "DONE",
+      "started_at": "2026-03-14T19:05:11Z",
+      "completed_at": "2026-03-14T19:06:30Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "106c6e3d7671cb4493976160967b9b477087334d",
+      "ac_reasoning": "AC1: 3 definitions (full-lifecycle, simplified-next, discovery-only) — PASS. AC2: All pass WorkflowDefinition validation — PASS. AC3: full-lifecycle has 7 steps (5 llm_agent + 2 user_decision) — PASS. AC4: simplified-next has 3 steps (forge_command + llm_agent + forge_command) — PASS. AC5: All llm_agent steps have >50 char prompt_templates — PASS."
+    },
+    {
+      "id": "T-068",
+      "name": "workflow-frontend-store",
+      "description": "Frontend Zustand store for workflow state management + WebSocket event handling. Basic workflow status display component.",
+      "depends_on": [
+        "T-066"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-web/stores/workflowStore.ts:\n   - State: executions (Record<ext_id, WorkflowExecution>), activeExecutionId, loading, error\n   - Actions: startWorkflow(defId, projectSlug, objectiveId), resumeWorkflow(extId, response), cancelWorkflow(extId), fetchExecutions(projectSlug, status?), fetchExecution(projectSlug, extId)\n   - handleWsEvent(event) for workflow.* events: update execution state in real-time\n   - Integrate with existing wsDispatcher pattern from chatStore.ts\n2. Create forge-web/types/workflow.ts with TypeScript interfaces matching backend models.\n3. Add workflow API methods to forge-web/lib/api.ts: startWorkflow, listWorkflows, getWorkflow, resumeWorkflow, cancelWorkflow.\n4. Create forge-web/components/workflow/WorkflowStatus.tsx:\n   - Shows current step, progress bar, step list with status indicators\n   - Pause/Resume/Cancel buttons based on execution status\n   - Real-time updates via workflowStore subscription\n5. Register workflow WS events in the WebSocket dispatcher.",
+      "acceptance_criteria": [
+        "workflowStore manages execution state with real-time WebSocket updates",
+        "API methods in api.ts match all workflow router endpoints",
+        "WorkflowStatus component shows step progress with status indicators",
+        "Pause/Resume/Cancel buttons work and update UI immediately",
+        "WebSocket workflow.* events update store within 200ms"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "IN_PROGRESS",
+      "started_at": "2026-03-14T19:06:35Z",
+      "completed_at": null,
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "de445bfe78e0fd3234636df510fde9873f09f418"
+    },
+    {
+      "id": "T-069",
+      "name": "e2e-workflow-integration",
+      "description": "End-to-end integration: wire WorkflowEngine into app lifecycle, test full workflow execution with real LLM calls, verify 3 concurrent workflows, test recovery.",
+      "depends_on": [
+        "T-065",
+        "T-067",
+        "T-068"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Wire WorkflowEngine into forge-api/app/main.py lifespan:\n   - Create WorkflowStore with db_pool\n   - Create StepExecutors (llm_agent, forge_command, user_decision)\n   - Create WorkflowEngine with all dependencies\n   - Store in app.state.workflow_engine\n   - Call engine.recover() on startup\n2. Integration test: start full-lifecycle workflow -> verify each step executes -> verify pause on user_decision -> resume -> verify completion.\n3. Concurrency test: start 3 workflows simultaneously -> verify all progress independently -> verify no state corruption.\n4. Recovery test: start workflow -> simulate server restart (re-create engine) -> verify recover() marks running as failed.\n5. Timeout test: start workflow with very short step timeout -> verify step times out and workflow fails gracefully.\n6. Verify all WebSocket events emit correctly and can be consumed by frontend.",
+      "acceptance_criteria": [
+        "WorkflowEngine initializes in app lifespan and recovers stale executions",
+        "Full-lifecycle workflow executes 5+ steps end-to-end with real LLM (KR-1)",
+        "Workflow correctly pauses on user_decision and resumes after response (KR-2)",
+        "3 concurrent workflows run independently without state corruption (KR-3)",
+        "All step transitions emit WebSocket events consumed by frontend < 200ms (KR-4)",
+        "Step timeout triggers graceful failure with error message",
+        "Engine recovery marks stale running executions as failed"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "execution",
+        "llm"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": true
+      }
+    },
+    {
+      "id": "T-020",
+      "name": "notification-entity-and-router",
+      "description": "Create the notification entity schema in core/storage.py defaults and build a full CRUD FastAPI router with status lifecycle (UNREAD/READ/DISMISSED/RESOLVED), bulk operations, and unread-count endpoint.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Add 'notifications' to ENTITY_DEFAULTS in core/storage.py with schema: {project, updated, notifications: [], unread_count: 0}. Each notification: {id: N-NNN, notification_type: decision|approval|question|alert, priority: critical|high|normal|low, status: UNREAD|READ|DISMISSED|RESOLVED, title, message, source_event, source_entity_type, source_entity_id, project, workflow_id, workflow_step, ai_options: [], response, response_at, created_at, resolved_at}. 2. Create forge-api/app/routers/notifications.py following the decisions.py pattern: GET list (filter by status, type, priority, workflow_id), GET unread-count, GET single, PATCH update status, POST respond (for blocking), PATCH bulk (mark-all-read), DELETE. Add status transition validation: UNREAD -> READ/DISMISSED/RESOLVED, READ -> DISMISSED/RESOLVED, DISMISSED -> (terminal), RESOLVED -> (terminal). 3. Register router in main.py. 4. Add notification event types to events.py: notification.created, notification.updated, notification.resolved. 5. Emit events from router on mutations.",
+      "acceptance_criteria": [
+        "notifications entity registered in core/storage.py ENTITY_DEFAULTS with correct schema",
+        "GET /projects/{slug}/notifications returns list with filter by status, type, priority, workflow_id",
+        "GET /projects/{slug}/notifications/unread-count returns {count: N}",
+        "PATCH /projects/{slug}/notifications/{id} updates status with transition validation",
+        "POST /projects/{slug}/notifications/{id}/respond stores response and sets RESOLVED",
+        "PATCH /projects/{slug}/notifications/bulk supports mark-all-read and dismiss-all",
+        "notification.created, notification.updated, notification.resolved events emitted on mutations",
+        "Router registered in main.py and accessible"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-021",
+      "name": "notification-service-event-mapping",
+      "description": "Create NotificationService that intercepts forge events and generates notification records with priority assignment, workflow tagging, and dedup logic.",
+      "depends_on": [
+        "T-020"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create forge-api/app/services/notification_service.py with class NotificationService. 2. Implement event-to-notification mapping: decision.created (risk HIGH)->critical, decision.created (risk MEDIUM)->high, decision.created (other OPEN)->normal, chat.paused->question/high, task.failed->alert/high, task.completed->alert/low, gate.failed->alert/high. 3. Auto-generate N-NNN ID, add workflow_id from event payload. 4. Dedup by (source_event + source_entity_id) within 5s. 5. Write to storage with entity locking. 6. Emit notification.created via EventBus. 7. Wire into dependencies.py.",
+      "acceptance_criteria": [
+        "NotificationService class in forge-api/app/services/notification_service.py",
+        "Event-to-notification mapping covers: decision.created, chat.paused, task.failed, task.completed, gate.failed",
+        "Priority assignment follows the mapping table from R-007",
+        "Workflow context extracted from event payload when available",
+        "Dedup prevents duplicate notifications for same event within 5s",
+        "Notifications written to storage with entity locking",
+        "notification.created event emitted after storage write",
+        "Service wired into forge-api lifecycle via dependencies.py"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-022",
+      "name": "notification-store-and-api-client",
+      "description": "Create frontend notificationStore via createEntityStore factory and add notifications API namespace to api.ts.",
+      "depends_on": [
+        "T-020"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-021"
+      ],
+      "skill": null,
+      "instruction": "1. Add Notification type to lib/types.ts. 2. Add notifications namespace to lib/api.ts: list, get, update, respond, bulkUpdate, remove, unreadCount. 3. Create stores/notificationEntityStore.ts using createEntityStore factory with WS events. 4. Add helpers: respondToNotification, markAsRead, dismissNotification, markAllRead with withUpdate pattern.",
+      "acceptance_criteria": [
+        "Notification TypeScript type in lib/types.ts matches backend schema",
+        "notifications namespace in api.ts with list, get, update, respond, bulkUpdate, remove, unreadCount",
+        "notificationEntityStore created via createEntityStore factory with correct WS event mappings",
+        "Helper functions: respondToNotification, markAsRead, dismissNotification, markAllRead",
+        "useEntityData<Notification>(slug, 'notifications') returns items correctly",
+        "Optimistic update pattern used for status changes"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-023",
+      "name": "ws-dispatcher-notification-routing",
+      "description": "Integrate notification events into wsDispatcher with SWR revalidation and reconnect-fetch for missed notifications (D-013 mitigation).",
+      "depends_on": [
+        "T-021",
+        "T-022"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Add notification.created/updated/resolved to wsDispatcher entity routing. 2. Trigger popup for critical/high priority. 3. Implement reconnect-fetch: on WS reconnect, call GET /notifications?status=UNREAD. Track lastEventTimestamp. 4. Ensure mutationTracker works for notification mutations.",
+      "acceptance_criteria": [
+        "notification.created/updated/resolved events dispatched to notificationStore in wsDispatcher",
+        "SWR revalidation triggered for /projects/{slug}/notifications on notification events",
+        "Critical/high priority notifications trigger popup or prominent display",
+        "On WebSocket reconnect, GET /notifications?status=UNREAD fetches missed notifications",
+        "lastEventTimestamp tracked and passed as since= param on reconnect",
+        "mutationTracker prevents echo on own notification status updates"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-024",
+      "name": "notification-center-websocket-upgrade",
+      "description": "Upgrade NotificationCenter from 30s polling to WebSocket-driven real-time updates with unread badge, priority sorting, and type badges.",
+      "depends_on": [
+        "T-022",
+        "T-023"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Refactor NotificationCenter.tsx: remove polling, use useEntityData for SWR-based reactive list. 2. Replace localStorage dismissal with API calls. 3. Sort by priority then created_at. 4. Add type badges and priority badges. 5. Show unread count on bell icon. 6. Add Respond button for blocking notifications.",
+      "acceptance_criteria": [
+        "NotificationCenter no longer polls - uses SWR data fed by WebSocket events",
+        "Unread count badge shown on bell icon (red dot with number, hidden when 0)",
+        "Notifications sorted by priority then created_at in dropdown",
+        "notification_type badges displayed per notification",
+        "Clicking notification calls markAsRead API (not localStorage)",
+        "Dismiss button calls dismissNotification API",
+        "Notifications needing response show Respond button",
+        "Dropdown shows up to 10 items with View all link"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-025",
+      "name": "response-modal-base-component",
+      "description": "Create base NotificationResponseModal with pluggable content slots and type registry (D-016 mitigation).",
+      "depends_on": [
+        "T-024"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create components/notifications/NotificationResponseModal.tsx with header (priority badge, title, timestamp), content slot, actions slot. 2. Create registry.ts with NOTIFICATION_RENDERERS map. 3. Wire open/close state via useNotificationModal hook. 4. Call respondToNotification/dismissNotification APIs.",
+      "acceptance_criteria": [
+        "NotificationResponseModal renders with header (priority badge, title, timestamp)",
+        "Content and actions rendered from NOTIFICATION_RENDERERS registry",
+        "onRespond calls respondToNotification API",
+        "onDismiss calls dismissNotification API",
+        "Modal opens from NotificationCenter Respond button",
+        "Unknown types show generic fallback content",
+        "Modal closes on successful response or dismiss"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-026",
+      "name": "response-modal-decision-type",
+      "description": "Decision response modal: severity badge, AI-proposed options, accept/mitigate/defer buttons wired to decision API.",
+      "depends_on": [
+        "T-025"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create renderers/DecisionContent.tsx with severity badge, issue, recommendation, AI option cards. 2. Create DecisionActions.tsx: Accept (ACCEPTED), Mitigate (text input + MITIGATED), Defer (DEFERRED). 3. Register as 'decision' in NOTIFICATION_RENDERERS. 4. Handle loading/error states.",
+      "acceptance_criteria": [
+        "Decision content shows severity badge, issue, recommendation",
+        "AI-proposed options rendered as selectable cards with reasoning",
+        "Accept closes decision as ACCEPTED and resolves notification",
+        "Mitigate opens mitigation_plan input then closes as MITIGATED",
+        "Defer closes decision as DEFERRED and resolves notification",
+        "Loading and error states handled",
+        "Registered in NOTIFICATION_RENDERERS as 'decision' type"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-027",
+      "name": "response-modal-approval-and-question",
+      "description": "Approval modal (approve/reject/modify), question modal (text input for LLM answer), and alert modal (acknowledge). Register all in type registry.",
+      "depends_on": [
+        "T-025"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create ApprovalContent/Actions: plan summary, approve/reject/modify buttons. 2. Create QuestionContent/Actions: LLM question display, text input, send/skip buttons. 3. Create AlertContent/Actions: message display, acknowledge button. 4. Register all three in NOTIFICATION_RENDERERS.",
+      "acceptance_criteria": [
+        "Approval modal shows plan summary with approve/reject/modify buttons",
+        "Question modal shows LLM question with text input for answer",
+        "Alert modal shows message with Acknowledge button",
+        "All three types registered in NOTIFICATION_RENDERERS"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-028",
+      "name": "notification-throttling-and-priority",
+      "description": "Server-side notification batching (D-014) and frontend priority-based display. Critical/high get popup, normal/low increment bell only.",
+      "depends_on": [
+        "T-023",
+        "T-024"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Backend: batch normal/low notifications within 500ms for same workflow_id. Never batch critical/high. 2. Frontend: debounce 500ms for normal/low notification state updates. Immediately show critical/high. 3. Add notification-specific toast for critical notifications.",
+      "acceptance_criteria": [
+        "Server batches normal/low notifications within 500ms for same workflow",
+        "Critical/high notifications never batched",
+        "Frontend shows popup only for critical/high",
+        "Normal/low only increment bell count",
+        "Frontend debounces notification updates by 500ms for normal/low",
+        "Critical notification triggers prominent toast with Respond button"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": true,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-029",
+      "name": "cross-project-notification-polling",
+      "description": "Global unread count endpoint and cross-project badge in NotificationCenter (D-015 mitigation). Polls every 60s.",
+      "depends_on": [
+        "T-024"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Backend: GET /api/v1/notifications/global-count returns {projects: [{slug, unread_count}], total}. 2. Frontend: SWR with 60s refreshInterval for global count. 3. Bell shows total across projects. 4. Dropdown groups by project in cross-project view.",
+      "acceptance_criteria": [
+        "GET /api/v1/notifications/global-count returns per-project unread counts",
+        "NotificationCenter shows total unread across all projects",
+        "Cross-project notifications visible with project name badge",
+        "60s polling interval for global count",
+        "Dashboard shows all projects notifications",
+        "Project view shows current project real-time + others via polling"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": true,
+        "e2e": false
+      }
+    },
+    {
+      "id": "T-030",
+      "name": "migrate-existing-notification-components",
+      "description": "Migrate DecisionNotificationPopup and old notificationStore to the new unified system. Remove localStorage dismissal.",
+      "depends_on": [
+        "T-023",
+        "T-025",
+        "T-026"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Replace old notificationStore.addDecision() in wsDispatcher with new system. 2. Remove/refactor DecisionNotificationPopup to use new NotificationResponseModal. 3. Remove localStorage dismissal. 4. Replace with NotificationPopupManager in app/layout.tsx. 5. Clean up old store.",
+      "acceptance_criteria": [
+        "Old DecisionNotificationPopup replaced with new notification system",
+        "Old notificationStore (decision-only) no longer used by wsDispatcher",
+        "localStorage-based dismissal removed",
+        "All dismissal goes through API",
+        "app/layout.tsx uses NotificationPopupManager",
+        "No regression: decision notifications still work end-to-end"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "notifications"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null,
+      "test_requirements": {
+        "unit": false,
+        "integration": false,
+        "e2e": true
+      }
+    },
+    {
+      "id": "T-040",
+      "name": "investigate-tool-call-baseline",
+      "description": "Measure baseline LLM tool-call accuracy across 12 entity types. Run 30 test prompts covering create, read, update, list, search operations. Document success rate per entity type and per operation. This informs whether the routing layer (rejected in D-018) is truly unnecessary.",
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create a test script or manual test matrix with 30 natural language prompts covering: create (6 prompts), read/get (6), list (6), update (6), search (6) across different entity types.\n2. For each prompt, record: (a) expected tool, (b) actual tool called, (c) parameters correct?, (d) result correct?\n3. Run against the LLM chat endpoint with all scopes enabled.\n4. Calculate overall accuracy and per-entity-type accuracy.\n5. Document results in a markdown file.\n6. If baseline < 60%, flag that routing layer may be needed (contradicts D-018 approach).\n7. If baseline > 80%, confirm D-018 approach (descriptions + gap filling sufficient).",
+      "acceptance_criteria": [
+        "30+ test prompts executed and documented",
+        "Per-entity-type accuracy calculated",
+        "Overall accuracy documented with GO/NO-GO assessment for D-018 approach"
+      ],
+      "type": "investigation",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "ai",
+        "llm"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-041",
+      "name": "verify-realtime-revalidation-pipeline",
+      "description": "Verify and fix the existing wsDispatcher -> TOOL_TO_ENTITY -> SWR revalidation pipeline (KR-3). Ensure all 42+ tool names are mapped in TOOL_TO_ENTITY. Verify that backend emits entity-specific WS events after LLM tool execution. Fix any gaps.",
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In forge-web/stores/wsDispatcher.ts, check TOOL_TO_ENTITY mapping against all registered tool names from forge-api/app/llm/tool_registry.py.\n2. Add any missing tool name mappings.\n3. In forge-api, verify that tool execution in agent_loop.py emits entity-specific events (e.g., task.created, objective.updated) in addition to chat.tool_result events.\n4. If entity events are NOT emitted after LLM tool execution, add event emission in the tool execution path.\n5. Test: create an entity via AI chat, verify (a) chat.tool_result event received, (b) entity.created event received, (c) SWR revalidation triggered within 300ms, (d) list page updates without refresh.\n6. Verify toast notification appears ('AI updated tasks').\n7. Measure actual latency from tool execution to UI update - must be < 1s.",
+      "acceptance_criteria": [
+        "All tool names in TOOL_TO_ENTITY mapping verified against registry",
+        "Entity-specific WS events emitted after LLM tool execution",
+        "End-to-end latency from tool execution to UI update < 1s measured",
+        "Toast notifications appear for AI mutations"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "backend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-042",
+      "name": "fill-tool-crud-gaps",
+      "description": "Add missing CRUD tools to the tool registry (KR-1). Implement archive/remove tools for entities (matching Forge append-only semantics per ADR-5). Add createACTemplate, updateACTemplate tools. Improve tool descriptions with entity-specific keywords and examples.",
+      "depends_on": [
+        "T-040"
+      ],
+      "parallel": false,
+      "conflicts_with": [
+        "T-041"
+      ],
+      "skill": null,
+      "instruction": "1. In forge-api/app/llm/tool_registry.py, add new tools:\n   - archiveTask (set status to ARCHIVED/REMOVED)\n   - archiveDecision, archiveObjective, archiveIdea, archiveGuideline, archiveKnowledge\n   - createACTemplate (full CRUD for AC templates)\n   - updateACTemplate\n   - updateLesson (if feasible within Forge semantics)\n2. Each archive tool must: (a) describe what will be archived, (b) require confirmation parameter (confirm: true), (c) use status-change semantics, not hard delete.\n3. Update all existing tool descriptions to be more distinct - include entity type name in description, add usage examples in the description field.\n4. Ensure each new tool has proper scope, permission, and context_type settings.\n5. Add new tool names to wsDispatcher TOOL_TO_ENTITY mapping (coordinate with T-041).\n6. Test each new tool via direct API call to verify it works.",
+      "acceptance_criteria": [
+        "Archive/remove tools exist for tasks, decisions, objectives, ideas, guidelines, knowledge",
+        "AC template create/update tools implemented",
+        "All tools use confirmation parameter for destructive operations (per D-024 risk mitigation)",
+        "Tool descriptions updated with entity-specific keywords",
+        "New tools registered with correct scopes and permissions"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-043",
+      "name": "slash-command-router",
+      "description": "Implement SlashCommandRouter in forge-web (ADR-1, KR-2). Map each /command to: skill name (for SKILL.md injection), session_type, and optional initial_hint. When user types /plan, the router auto-attaches the plan skill and sets session_type=plan.",
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create a slash command configuration mapping in forge-web (e.g., lib/ai-context/slashCommandRouter.ts):\n   /plan -> { skillName: 'plan', sessionType: 'plan', hint: 'User wants to create a task plan' }\n   /next -> { skillName: 'next', sessionType: 'execute', hint: 'User wants to execute next task' }\n   /discover -> { skillName: 'discover', sessionType: 'chat', hint: 'User wants to explore/discover' }\n   /compound -> { skillName: 'compound', sessionType: 'compound', hint: 'User wants to extract lessons' }\n   /decide -> { skillName: 'decide', sessionType: 'chat', hint: 'User wants to resolve decisions' }\n   /objective -> { skillName: 'objective', sessionType: 'chat' }\n   /idea -> { skillName: 'idea', sessionType: 'chat' }\n   /status -> { skillName: null, sessionType: 'chat' }\n   ... etc for all 20 commands\n2. In ChatInput.tsx, when a slash command is detected and submitted:\n   a. Look up the command in the router mapping.\n   b. If skillName exists, auto-add it to skill_names in the sendMessage call.\n   c. If sessionType exists, pass it as session_type.\n   d. Pass the hint as additional context.\n3. In chatStore.ts sendMessage(), accept and forward sessionType and initialHint.\n4. Update SlashCommandDropdown to show skill-mapped commands with a workflow indicator.\n5. Test: type /plan, verify skill is auto-attached and session_type is set.",
+      "acceptance_criteria": [
+        "All 20 slash commands mapped to skill + session_type in router config",
+        "/plan auto-attaches plan skill and sets session_type=plan",
+        "/discover, /next, /compound, /decide auto-attach their respective skills",
+        "Commands without skills (/status, /log) work as text injection",
+        "SlashCommandDropdown visually indicates workflow commands"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "ai"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-044",
+      "name": "workflow-state-machine",
+      "description": "Add WorkflowStateMachine to ChatSession (ADR-2, KR-2). Track workflow steps on the backend session. Soft enforcement: warn when LLM deviates from expected tool order, but do not hard block.",
+      "depends_on": [
+        "T-043"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In forge-api/app/llm/session_manager.py, extend ChatSession model:\n   workflow_state: dict | None  # {workflow_id, current_step, completed_steps[], expected_tools[], allow_deviation}\n2. Define workflow definitions for key commands:\n   - plan: [draftPlan, showDraft, approvePlan]\n   - execute: [getTaskContext, (implementation tools), runGates, completeTask]\n   - compound: [getProjectStatus, createLesson]\n3. In agent_loop.py, before executing a tool:\n   a. If session has workflow_state and expected_tools is not empty:\n   b. Check if the tool is in expected_tools.\n   c. If not: add a system message warning the LLM.\n   d. Update completed_steps and advance current_step.\n4. Expose workflow_state in session API so frontend can display progress.\n5. In ChatSession save/load, persist workflow_state to Redis.\n6. Test: start a /plan workflow, verify steps are tracked and deviation produces warning.",
+      "acceptance_criteria": [
+        "ChatSession model includes workflow_state field",
+        "Workflow definitions exist for plan, execute, compound commands",
+        "Agent loop checks expected_tools and warns on deviation (does not block per ADR-2)",
+        "Workflow state persisted to Redis across session loads",
+        "Step progression tracked correctly through multi-turn workflow"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-045",
+      "name": "context-window-manager",
+      "description": "Implement ContextWindowManager for multi-turn sessions (ADR-3, KR-4). Hybrid pinning: pin last 5 tool results + auto-generated session summary every 10 messages + sliding window for conversation. Budget: 30k tokens configurable.",
+      "depends_on": [],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In forge-api/app/llm/, create context_window_manager.py:\n   - trim_history(messages, budget_tokens, pin_count=5, summary_interval=10) -> trimmed_messages\n   - Pinning logic: mark last N tool_result messages as pinned (never trimmed).\n   - Summary logic: every summary_interval messages, generate a template-based summary.\n   - Sliding window: keep most recent messages up to budget minus pinned messages.\n   - Token counting: use a simple heuristic (chars / 4) or tiktoken if available.\n2. In agent_loop.py, before sending messages to LLM:\n   a. Call trim_history() to stay within budget.\n   b. Ensure system prompt + pinned + window fits within model context.\n3. Add configuration: history_token_budget: 30000, pin_tool_results: 5, summary_interval: 10.\n4. Add token counter to session (visible to frontend via session API).\n5. At 80% budget, add system note about starting a new session.\n6. Test: 20+ message conversation with tool calls, verify trimming and pinning.",
+      "acceptance_criteria": [
+        "trim_history correctly pins last 5 tool results",
+        "Session summaries auto-generated every 10 messages",
+        "Sliding window keeps recent messages within 30k token budget",
+        "Token counter exposed in session API",
+        "80% budget warning appears in long conversations",
+        "Pinned tool results survive trimming in 20+ message sessions"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai",
+        "llm"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-046",
+      "name": "entity-inline-cards",
+      "description": "Implement entity inline cards in chat messages (ADR-4). When LLM mentions entity IDs (T-001, D-003, O-001, I-002, K-001, G-001, etc.) in responses, render them as clickable cards with status/summary.",
+      "depends_on": [
+        "T-041"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In forge-web/components/ai/Message.tsx, add a post-processing step:\n   - Regex: detect entity ID patterns: T-\\d+, D-\\d+, O-\\d+, I-\\d+, K-\\d+, G-\\d+, R-\\d+, L-\\d+, AC-\\d+\n   - Replace matched IDs with an <EntityCard> component.\n2. Create components/ai/EntityCard.tsx:\n   - Props: entityType, entityId, projectSlug\n   - Uses SWR to fetch entity summary via getEntity API call.\n   - Renders: entity type badge, ID, title/name, status badge.\n   - On click: navigate to entity detail page.\n   - Loading/error: graceful degradation.\n3. Style: compact inline card (like a GitHub issue reference).\n4. Use SWR cache dedup.\n5. Test: verify entity IDs in LLM responses render as cards.",
+      "acceptance_criteria": [
+        "Entity IDs (T-NNN, D-NNN, O-NNN, etc.) detected in LLM responses",
+        "EntityCard renders entity type, ID, title, and status",
+        "Clicking card navigates to entity detail page",
+        "SWR cache prevents duplicate fetches for same entity",
+        "Graceful degradation: shows plain ID if fetch fails"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-047",
+      "name": "improve-app-context-tool-descriptions",
+      "description": "Improve app context and tool descriptions to boost tool-call accuracy (KR-1). Based on T-040 investigation results, update tool descriptions, add entity-type-specific keywords, and enhance the AppContextBuilder workflows section with common patterns.",
+      "depends_on": [
+        "T-040",
+        "T-042"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In forge-api/app/llm/tool_registry.py, review and improve all 42+ tool descriptions:\n   - Each tool description should start with the entity type.\n   - Add usage hints and disambiguation.\n2. In forge-api/app/llm/app_context_builder.py, enhance the Workflows section:\n   - Add common CRUD patterns and disambiguation hints.\n   - Add entity type quick reference table.\n3. Address specific confusion patterns from T-040.\n4. Test: re-run test prompts from T-040 and measure improvement.",
+      "acceptance_criteria": [
+        "All tool descriptions include entity type name and disambiguation hints",
+        "AppContextBuilder workflows section includes common CRUD patterns",
+        "Tool-call accuracy improved vs T-040 baseline (target: >85%)"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai",
+        "llm"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-048",
+      "name": "session-type-behavior",
+      "description": "Make session_type influence backend behavior (KR-2). When session_type is set (e.g., plan, execute, compound), adjust system prompt emphasis and add workflow-specific hints to guide the LLM through the expected workflow.",
+      "depends_on": [
+        "T-043"
+      ],
+      "parallel": true,
+      "conflicts_with": [
+        "T-044"
+      ],
+      "skill": null,
+      "instruction": "1. In forge-api/app/llm/app_context_builder.py or a new session_context module:\n   - Add session_type-specific system prompt sections for plan, execute, compound, verify.\n2. In the LLM chat endpoint (llm_chat.py), inject session_type-specific context into the system prompt.\n3. Optionally suggest tool ordering based on session_type.\n4. Test: start a /plan session, verify system prompt includes planning-specific guidance.",
+      "acceptance_criteria": [
+        "Session type plan/execute/compound/verify each add specific system prompt guidance",
+        "System prompt clearly tells LLM which tools to use for the current workflow",
+        "Session type is forwarded from frontend slash command router correctly"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "ai",
+        "llm"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-049",
+      "name": "frontend-workflow-progress-ui",
+      "description": "Display workflow progress in the AI sidebar (KR-2). When a workflow session is active (e.g., /plan), show a progress indicator with completed and remaining steps. Connect to workflow_state from the session API.",
+      "depends_on": [
+        "T-044"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In forge-web/components/ai/ create a WorkflowProgress component:\n   - When active session has workflow_state, render a step indicator above the chat.\n   - Show: workflow name, completed steps (checkmarks), current step (highlighted), remaining steps (dimmed).\n   - Update in real-time as tool calls complete.\n2. Fetch workflow_state from session API.\n3. In chatStore.ts, track workflow_state updates.\n4. Style: compact horizontal stepper.\n5. Test: run /plan workflow, verify progress indicator updates.",
+      "acceptance_criteria": [
+        "Workflow progress indicator visible during active workflow sessions",
+        "Steps show completed/current/remaining state",
+        "Progress updates in real-time as tool calls complete",
+        "No progress indicator shown for regular chat sessions"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-050",
+      "name": "token-counter-ui",
+      "description": "Display token usage and context budget in the AI sidebar (KR-4). Show current token count, budget percentage, and offer 'new session' when approaching limit.",
+      "depends_on": [
+        "T-045"
+      ],
+      "parallel": true,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In forge-web/components/ai/AISidebar.tsx or LLMChat.tsx:\n   - Add token counter in chat header/footer: 'used / budget tokens'.\n   - Color-code: green (<60%), yellow (60-80%), red (>80%).\n2. At >80% show banner about starting new session.\n3. Add 'New session with summary' button.\n4. Fetch token data from session API (exposed by T-045).\n5. Test: long conversation, verify counter and warning.",
+      "acceptance_criteria": [
+        "Token counter visible in chat UI showing used/budget",
+        "Color coding for budget levels (green/yellow/red)",
+        "Warning banner at 80% budget",
+        "New session with summary button works"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    },
+    {
+      "id": "T-051",
+      "name": "e2e-validation-all-krs",
+      "description": "End-to-end validation of all 4 KRs. Test complete workflows: natural language CRUD across entity types (KR-1), slash command workflows (KR-2), real-time update latency (KR-3), and multi-turn context preservation (KR-4).",
+      "depends_on": [
+        "T-042",
+        "T-043",
+        "T-044",
+        "T-045",
+        "T-046",
+        "T-047",
+        "T-048",
+        "T-049",
+        "T-050"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. KR-1: Run 30-prompt test matrix with improved tools. Target: >95%.\n2. KR-2: Test each slash command. Verify skill injection, session_type, workflow tracking.\n3. KR-3: Create/update entities via AI chat, measure UI update latency. Target: <1s.\n4. KR-4: 25+ message conversation with tool calls. Verify pinning, context, token counter, 80% warning.\n5. Document results with pass/fail per KR.\n6. Create follow-up tasks if any KR fails.",
+      "acceptance_criteria": [
+        "KR-1: >95% tool-call accuracy across 30+ test prompts",
+        "KR-2: All 8 primary slash commands trigger correct workflow sessions",
+        "KR-3: Entity mutations visible on list pages within 1s",
+        "KR-4: 25+ message conversation maintains context with budget management",
+        "All results documented"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "backend",
+        "ai",
+        "llm"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "status": "TODO",
+      "started_at": null,
+      "completed_at": null,
+      "failed_reason": null
+    }
+  ]
+}

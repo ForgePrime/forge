@@ -1,6 +1,13 @@
 import type { AIContextSnapshot, AIElementDescriptor, AIActionDescriptor } from "./types";
 import { toolScopeFromName, TOOL_ENTITY_TO_SCOPE } from "./deriveScopes";
 
+/** Lightweight session tool descriptor (from backend contracts). */
+export interface SessionTool {
+  toolName: string;
+  label: string;
+  scope: string;
+}
+
 export interface SerializeOptions {
   /** Max total characters (default: 4000) */
   maxChars?: number;
@@ -10,6 +17,8 @@ export interface SerializeOptions {
   activeScopes?: string[];
   /** Tool names disabled by user — filtered from page context */
   disabledTools?: string[];
+  /** All enabled session tools from backend contracts — shown in Session Tools section. */
+  sessionTools?: SessionTool[];
 }
 
 // ---------------------------------------------------------------------------
@@ -52,7 +61,7 @@ export function serializePageContext(
   snapshot: AIContextSnapshot,
   options: SerializeOptions = {},
 ): string {
-  const { maxChars = 4000, maxItems = 15, activeScopes, disabledTools } = options;
+  const { maxChars = 4000, maxItems = 15, activeScopes, disabledTools, sessionTools } = options;
   const lines: string[] = [];
 
   // --- Header ---
@@ -76,8 +85,8 @@ export function serializePageContext(
     lines.push("");
   }
 
-  // --- Available Actions ---
-  const { actionLines, filteredCount } = serializeActions(elements, activeScopes, disabledTools);
+  // --- Available Actions (from page annotations) ---
+  const { actionLines, filteredCount, renderedTools } = serializeActions(elements, activeScopes, disabledTools);
   if (actionLines.length > 0) {
     lines.push("### Available Actions");
     lines.push(...actionLines);
@@ -85,6 +94,16 @@ export function serializePageContext(
       lines.push(`\n_${filteredCount} action(s) hidden — enable their scope in the Scopes tab to use them._`);
     }
     lines.push("");
+  }
+
+  // --- Session Tools (from backend contracts, not covered by page annotations) ---
+  if (sessionTools && sessionTools.length > 0) {
+    const sessionToolLines = serializeSessionTools(sessionTools, renderedTools);
+    if (sessionToolLines.length > 0) {
+      lines.push("### Session Tools");
+      lines.push(...sessionToolLines);
+      lines.push("");
+    }
   }
 
   // --- Browsing hints ---
@@ -175,7 +194,7 @@ function serializeActions(
   elements: AIElementDescriptor[],
   activeScopes?: string[],
   disabledTools?: string[],
-): { actionLines: string[]; filteredCount: number } {
+): { actionLines: string[]; filteredCount: number; renderedTools: Set<string> } {
   // Collect all actions with toolName
   const actions: ActionEntry[] = [];
   const seenTools = new Set<string>();
@@ -201,7 +220,8 @@ function serializeActions(
     }
   }
 
-  if (actions.length === 0) return { actionLines: [], filteredCount: 0 };
+  const renderedTools = new Set<string>();
+  if (actions.length === 0) return { actionLines: [], filteredCount: 0, renderedTools };
 
   const activeScopeSet = activeScopes ? new Set(activeScopes) : null;
   const disabledSet = disabledTools ? new Set(disabledTools) : null;
@@ -229,9 +249,38 @@ function serializeActions(
     const notes = formatNotes(action);
 
     lines.push(`- **${action.label}**: \`${callSig}\`${notes}`);
+    renderedTools.add(action.toolName);
   }
 
-  return { actionLines: lines, filteredCount };
+  return { actionLines: lines, filteredCount, renderedTools };
+}
+
+// ---------------------------------------------------------------------------
+// Session Tools — backend capabilities not covered by page annotations
+// ---------------------------------------------------------------------------
+
+/**
+ * Render session tools grouped by scope, excluding tools already shown
+ * in the Available Actions section (from page annotations).
+ */
+function serializeSessionTools(
+  sessionTools: SessionTool[],
+  renderedTools: Set<string>,
+): string[] {
+  // Group by scope, skip tools already rendered by page annotations
+  const byScope: Record<string, string[]> = {};
+  for (const tool of sessionTools) {
+    if (renderedTools.has(tool.toolName)) continue;
+    const scope = tool.scope || "global";
+    (byScope[scope] ??= []).push(tool.toolName);
+  }
+
+  const lines: string[] = [];
+  for (const scope of Object.keys(byScope).sort()) {
+    const tools = byScope[scope].sort();
+    lines.push(`- **${scope}**: ${tools.map((t) => `\`${t}\``).join(", ")}`);
+  }
+  return lines;
 }
 
 /**

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useEntityStore } from "@/stores/entityStore";
 import { LessonCard } from "@/components/entities/LessonCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
-import { LessonForm } from "@/components/forms/LessonForm";
+import Link from "next/link";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
@@ -22,7 +22,6 @@ export default function LessonsPage() {
   const { slug } = useParams() as { slug: string };
   const { slices, fetchEntities } = useEntityStore();
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
 
   const { selectedIds, isSelected, toggle, deselectAll, count: selectionCount } = useMultiSelect();
 
@@ -36,7 +35,7 @@ export default function LessonsPage() {
     fetchEntities(slug, "lessons");
   }, [slug, fetchEntities]);
 
-  const handleFormSuccess = useCallback(() => {
+  const handleRefresh = useCallback(() => {
     fetchEntities(slug, "lessons");
   }, [slug, fetchEntities]);
 
@@ -85,34 +84,18 @@ export default function LessonsPage() {
     ],
   });
 
-  useAIElement({
-    id: "lesson-form",
-    type: "form",
-    label: "Lesson Form",
-    value: formOpen,
-    description: formOpen ? "open (creating)" : "closed",
-    data: { fields: ["title*", "category*", "description*", "severity", "tags"] },
-    actions: [
-      {
-        label: "Create",
-        toolName: "createLesson",
-        toolParams: ["title*", "category*", "description*", "severity"],
-      },
-    ],
-  });
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Lessons ({slices.lessons.count})</h2>
         <div className="flex items-center gap-3">
           <StatusFilter options={CATEGORIES} value={categoryFilter} onChange={setCategoryFilter} label="Category" />
-          <button
-            onClick={() => setFormOpen(true)}
+          <Link
+            href={`/projects/${slug}/lessons/new`}
             className="px-3 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700"
           >
             + Record Lesson
-          </button>
+          </Link>
         </div>
       </div>
       {slices.lessons.loading && <p className="text-sm text-gray-400">Loading...</p>}
@@ -120,19 +103,13 @@ export default function LessonsPage() {
       <BulkActionBar count={selectionCount} entityLabel="lessons" onDelete={handleBulkDelete} onDeselectAll={deselectAll} />
       <div className="space-y-3">
         {filtered.map((l) => (
-          <LessonCard key={l.id} lesson={l} slug={slug} onPromoted={handleFormSuccess} selected={isSelected(l.id)} onSelect={() => toggle(l.id)} />
+          <LessonCard key={l.id} lesson={l} slug={slug} onPromoted={handleRefresh} selected={isSelected(l.id)} onSelect={() => toggle(l.id)} />
         ))}
         {!slices.lessons.loading && filtered.length === 0 && (
           <p className="text-sm text-gray-400">No lessons{categoryFilter ? ` in category ${categoryFilter}` : ""}</p>
         )}
       </div>
 
-      <LessonForm
-        slug={slug}
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        onSuccess={handleFormSuccess}
-      />
     </div>
   );
 }

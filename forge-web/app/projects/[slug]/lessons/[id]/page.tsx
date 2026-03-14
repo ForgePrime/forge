@@ -33,6 +33,8 @@ export default function LessonDetailPage() {
   const [editSeverity, setEditSeverity] = useState<LessonSeverity | "">("");
   const [editAppliesTo, setEditAppliesTo] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
+  const [editTaskId, setEditTaskId] = useState("");
+  const [editDecisionIds, setEditDecisionIds] = useState<string[]>([]);
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -67,6 +69,8 @@ export default function LessonDetailPage() {
     setEditSeverity(lesson.severity || "");
     setEditAppliesTo(lesson.applies_to || "");
     setEditTags([...lesson.tags]);
+    setEditTaskId(lesson.task_id || "");
+    setEditDecisionIds([...(lesson.decision_ids || [])]);
     setEditing(true);
   };
 
@@ -82,6 +86,8 @@ export default function LessonDetailPage() {
       if ((editSeverity || undefined) !== lesson.severity) update.severity = editSeverity as LessonSeverity || undefined;
       if (editAppliesTo !== (lesson.applies_to || "")) update.applies_to = editAppliesTo || undefined;
       if (JSON.stringify(editTags) !== JSON.stringify(lesson.tags)) update.tags = editTags;
+      if (editTaskId !== (lesson.task_id || "")) update.task_id = editTaskId || undefined;
+      if (JSON.stringify(editDecisionIds) !== JSON.stringify(lesson.decision_ids || [])) update.decision_ids = editDecisionIds;
       if (Object.keys(update).length > 0) {
         const updated = await lessonsApi.update(slug, lesson.id, update);
         setLesson(updated);
@@ -272,14 +278,52 @@ export default function LessonDetailPage() {
               </select>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Task ID</label>
+              <input
+                value={editTaskId}
+                onChange={(e) => setEditTaskId(e.target.value)}
+                placeholder="T-001"
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Applies To</label>
+              <input
+                value={editAppliesTo}
+                onChange={(e) => setEditAppliesTo(e.target.value)}
+                placeholder="e.g., backend, all projects"
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              />
+            </div>
+          </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Applies To</label>
-            <input
-              value={editAppliesTo}
-              onChange={(e) => setEditAppliesTo(e.target.value)}
-              placeholder="e.g., backend, all projects"
-              className="w-full rounded-md border px-3 py-1.5 text-sm"
-            />
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Decision IDs ({editDecisionIds.length})
+            </label>
+            {editDecisionIds.map((d, i) => (
+              <div key={i} className="flex items-center gap-2 mb-1">
+                <input
+                  value={d}
+                  onChange={(e) => { const next = [...editDecisionIds]; next[i] = e.target.value; setEditDecisionIds(next); }}
+                  placeholder="D-001"
+                  className="flex-1 rounded-md border px-2 py-1 text-xs"
+                />
+                <button
+                  onClick={() => setEditDecisionIds(editDecisionIds.filter((_, j) => j !== i))}
+                  className="text-xs text-red-400 hover:text-red-600"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => setEditDecisionIds([...editDecisionIds, ""])}
+              className="text-xs text-forge-600 hover:underline mt-1"
+            >
+              + Add decision ID
+            </button>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">

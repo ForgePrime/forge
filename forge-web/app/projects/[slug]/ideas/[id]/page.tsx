@@ -45,6 +45,7 @@ export default function IdeaDetailPage() {
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editScopes, setEditScopes] = useState<string[]>([]);
   const [editAdvancesKR, setEditAdvancesKR] = useState<string[]>([]);
+  const [editParentId, setEditParentId] = useState("");
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -113,6 +114,7 @@ export default function IdeaDetailPage() {
     setEditTags([...idea.tags]);
     setEditScopes([...(idea.scopes || [])]);
     setEditAdvancesKR([...(idea.advances_key_results || [])]);
+    setEditParentId(idea.parent_id || "");
     setEditing(true);
   };
 
@@ -129,6 +131,7 @@ export default function IdeaDetailPage() {
       if (JSON.stringify(editTags) !== JSON.stringify(idea.tags)) update.tags = editTags;
       if (JSON.stringify(editScopes) !== JSON.stringify(idea.scopes || [])) update.scopes = editScopes;
       if (JSON.stringify(editAdvancesKR) !== JSON.stringify(idea.advances_key_results || [])) update.advances_key_results = editAdvancesKR;
+      if (editParentId !== (idea.parent_id || "")) update.parent_id = editParentId || undefined;
       if (Object.keys(update).length > 0) {
         const updated = await ideasApi.update(slug, idea.id, update);
         setIdea({ ...idea, ...updated });
@@ -314,6 +317,15 @@ export default function IdeaDetailPage() {
                 <option value="LOW">LOW</option>
               </select>
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Parent Idea</label>
+            <input
+              value={editParentId}
+              onChange={(e) => setEditParentId(e.target.value)}
+              placeholder="I-001 (leave empty for no parent)"
+              className="w-full rounded-md border px-3 py-1.5 text-sm"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">

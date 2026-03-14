@@ -11,7 +11,7 @@ import { StatusFilter } from "@/components/shared/StatusFilter";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
 
-import { TaskForm } from "@/components/forms/TaskForm";
+import Link from "next/link";
 import { DraftPlanView } from "@/components/planning/DraftPlanView";
 import { ActiveTasksDashboard } from "@/components/execution/ActiveTasksDashboard";
 import { RunModeView } from "@/components/execution/RunModeView";
@@ -28,8 +28,6 @@ export default function TasksPage() {
   const saving = useTaskStore((s) => s.saving);
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "");
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | undefined>();
   const [draft, setDraft] = useState<DraftPlan | null>(null);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -143,25 +141,6 @@ export default function TasksPage() {
     ],
   });
 
-  useAIElement({
-    id: "task-form",
-    type: "form",
-    label: "Task Form",
-    value: formOpen,
-    description: formOpen ? `open (${editingTask ? `editing ${editingTask.id}` : "creating"})` : "closed",
-    data: {
-      fields: ["name*", "description", "instruction", "type*", "scopes", "skill_id", "acceptance_criteria", "depends_on"],
-    },
-    actions: [
-      {
-        label: editingTask ? "Update" : "Create",
-        toolName: editingTask ? "updateTask" : "createTask",
-        toolParams: editingTask
-          ? ["task_id*", "name", "description", "depends_on", "scopes"]
-          : ["name*", "description", "type*", "scopes", "depends_on", "acceptance_criteria"],
-      },
-    ],
-  });
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -221,24 +200,6 @@ export default function TasksPage() {
     updateTaskAction(slug, id, { status: status as Task["status"] });
   };
 
-  const handleEdit = (task: Task) => {
-    setEditingTask(task);
-    setFormOpen(true);
-  };
-
-  const handleCreate = () => {
-    setEditingTask(undefined);
-    setFormOpen(true);
-  };
-
-  const handleFormClose = () => {
-    setFormOpen(false);
-    setEditingTask(undefined);
-  };
-
-  const handleFormSuccess = useCallback(() => {
-    mutate();
-  }, [mutate]);
 
   return (
     <div>
@@ -269,12 +230,12 @@ export default function TasksPage() {
           >
             Run Mode
           </button>
-          <button
-            onClick={handleCreate}
+          <Link
+            href={`/projects/${slug}/tasks/new`}
             className="px-3 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700"
           >
             + New Task
-          </button>
+          </Link>
         </div>
       </div>
       {/* Run mode view */}
@@ -314,7 +275,7 @@ export default function TasksPage() {
             task={task}
             slug={slug}
             onStatusChange={handleStatusChange}
-            onEdit={handleEdit}
+
             onClaim={handleClaimSpecific}
             claiming={claimingTaskId === task.id}
             selected={isSelected(task.id)}
@@ -326,13 +287,6 @@ export default function TasksPage() {
         )}
       </div>
 
-      <TaskForm
-        slug={slug}
-        open={formOpen}
-        onClose={handleFormClose}
-        task={editingTask}
-        onSuccess={handleFormSuccess}
-      />
     </div>
   );
 }

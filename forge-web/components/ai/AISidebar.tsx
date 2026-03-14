@@ -647,10 +647,20 @@ export default function AISidebar() {
     })
     .filter(Boolean) as string[];
 
+  // Build enabled session tools from backend contracts (for Page Context Session Tools section)
+  const enabledSessionTools = currentCaps
+    ?.filter((cap) => cap.toolName && !disabledToolNames.includes(cap.toolName))
+    .map((cap) => ({ toolName: cap.toolName!, label: cap.label, scope: cap.scope }))
+    ?? [];
+
   // Serialize page context — filtered by active scopes AND disabled capabilities
   // App Context is now server-side (AppContextBuilder), so we only send page context
   const pageContextText = pageSnapshot && pageSnapshot.elements.size > 0
-    ? serializePageContext(pageSnapshot, { activeScopes: scopes, disabledTools: disabledToolNames })
+    ? serializePageContext(pageSnapshot, {
+        activeScopes: scopes,
+        disabledTools: disabledToolNames,
+        sessionTools: enabledSessionTools,
+      })
     : undefined;
 
   // Resume session handler

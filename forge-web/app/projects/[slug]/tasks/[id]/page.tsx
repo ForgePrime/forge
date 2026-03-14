@@ -46,6 +46,10 @@ export default function TaskDetailPage() {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editInstruction, setEditInstruction] = useState("");
+  const [editScopes, setEditScopes] = useState<string[]>([]);
+  const [editAC, setEditAC] = useState<string[]>([]);
+  const [editDependsOn, setEditDependsOn] = useState<string[]>([]);
+  const [editBlockedByDecisions, setEditBlockedByDecisions] = useState<string[]>([]);
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -132,6 +136,10 @@ export default function TaskDetailPage() {
     setEditName(task.name);
     setEditDescription(task.description || "");
     setEditInstruction(task.instruction || "");
+    setEditScopes([...task.scopes]);
+    setEditAC([...task.acceptance_criteria]);
+    setEditDependsOn([...task.depends_on]);
+    setEditBlockedByDecisions([...task.blocked_by_decisions]);
     setEditing(true);
   };
 
@@ -144,6 +152,10 @@ export default function TaskDetailPage() {
       if (editName !== task.name) update.name = editName;
       if (editDescription !== (task.description || "")) update.description = editDescription;
       if (editInstruction !== (task.instruction || "")) update.instruction = editInstruction;
+      if (JSON.stringify(editScopes) !== JSON.stringify(task.scopes)) update.scopes = editScopes;
+      if (JSON.stringify(editAC) !== JSON.stringify(task.acceptance_criteria)) update.acceptance_criteria = editAC;
+      if (JSON.stringify(editDependsOn) !== JSON.stringify(task.depends_on)) update.depends_on = editDependsOn;
+      if (JSON.stringify(editBlockedByDecisions) !== JSON.stringify(task.blocked_by_decisions)) update.blocked_by_decisions = editBlockedByDecisions;
       if (Object.keys(update).length > 0) {
         const updated = await tasksApi.update(slug, task.id, update);
         setTask(updated);
@@ -324,6 +336,46 @@ export default function TaskDetailPage() {
               rows={6}
               className="w-full rounded-md border px-3 py-2 text-sm font-mono"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Scopes ({editScopes.length})</label>
+            {editScopes.map((s, i) => (
+              <div key={i} className="flex items-center gap-2 mb-1">
+                <input value={s} onChange={(e) => { const next = [...editScopes]; next[i] = e.target.value; setEditScopes(next); }} className="flex-1 rounded-md border px-2 py-1 text-xs" />
+                <button onClick={() => setEditScopes(editScopes.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:text-red-600">Remove</button>
+              </div>
+            ))}
+            <button onClick={() => setEditScopes([...editScopes, ""])} className="text-xs text-forge-600 hover:underline mt-1">+ Add scope</button>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Acceptance Criteria ({editAC.length})</label>
+            {editAC.map((ac, i) => (
+              <div key={i} className="flex items-start gap-2 mb-1">
+                <textarea value={ac} onChange={(e) => { const next = [...editAC]; next[i] = e.target.value; setEditAC(next); }} rows={2} className="flex-1 rounded-md border px-2 py-1 text-xs" />
+                <button onClick={() => setEditAC(editAC.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:text-red-600 mt-1">Remove</button>
+              </div>
+            ))}
+            <button onClick={() => setEditAC([...editAC, ""])} className="text-xs text-forge-600 hover:underline mt-1">+ Add criterion</button>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Depends On ({editDependsOn.length})</label>
+            {editDependsOn.map((dep, i) => (
+              <div key={i} className="flex items-center gap-2 mb-1">
+                <input value={dep} onChange={(e) => { const next = [...editDependsOn]; next[i] = e.target.value; setEditDependsOn(next); }} placeholder="T-001" className="flex-1 rounded-md border px-2 py-1 text-xs" />
+                <button onClick={() => setEditDependsOn(editDependsOn.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:text-red-600">Remove</button>
+              </div>
+            ))}
+            <button onClick={() => setEditDependsOn([...editDependsOn, ""])} className="text-xs text-forge-600 hover:underline mt-1">+ Add dependency</button>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Blocked by Decisions ({editBlockedByDecisions.length})</label>
+            {editBlockedByDecisions.map((d, i) => (
+              <div key={i} className="flex items-center gap-2 mb-1">
+                <input value={d} onChange={(e) => { const next = [...editBlockedByDecisions]; next[i] = e.target.value; setEditBlockedByDecisions(next); }} placeholder="D-001" className="flex-1 rounded-md border px-2 py-1 text-xs" />
+                <button onClick={() => setEditBlockedByDecisions(editBlockedByDecisions.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:text-red-600">Remove</button>
+              </div>
+            ))}
+            <button onClick={() => setEditBlockedByDecisions([...editBlockedByDecisions, ""])} className="text-xs text-forge-600 hover:underline mt-1">+ Add decision</button>
           </div>
           <div className="flex items-center gap-2 pt-2">
             <Button onClick={handleSave} disabled={saving} size="sm">

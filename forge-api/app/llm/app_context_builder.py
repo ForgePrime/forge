@@ -111,7 +111,6 @@ class AppContextBuilder:
             else:
                 marker = " "
 
-            status = "active" if marker in ("x", "+") else "inactive"
             lines.append(f"[{marker}] **{scope_name}** ({count} tools) — {desc}")
 
         return "\n".join(lines)

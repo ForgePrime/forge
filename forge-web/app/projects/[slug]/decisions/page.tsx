@@ -6,7 +6,7 @@ import { useEntityData } from "@/hooks/useEntityData";
 import { useDecisionStore, updateDecision as updateDecisionAction } from "@/stores/decisionStore";
 import { DecisionCard } from "@/components/entities/DecisionCard";
 import { StatusFilter } from "@/components/shared/StatusFilter";
-import { DecisionForm } from "@/components/forms/DecisionForm";
+import Link from "next/link";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
 import { decisions as decisionsApi } from "@/lib/api";
@@ -20,8 +20,6 @@ export default function DecisionsPage() {
   const { items, count, isLoading, error, mutate } = useEntityData<Decision>(slug, "decisions");
   const saving = useDecisionStore((s) => s.saving);
   const [statusFilter, setStatusFilter] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-
   const { selectedIds, isSelected, toggle, deselectAll, count: selectionCount } = useMultiSelect();
 
   const handleBulkDelete = async () => {
@@ -81,39 +79,9 @@ export default function DecisionsPage() {
     ],
   });
 
-  useAIElement({
-    id: "decision-form",
-    type: "form",
-    label: "Decision Form",
-    value: formOpen,
-    description: formOpen ? "open (creating)" : "closed",
-    data: {
-      fields: ["task_id*", "type*", "issue*", "recommendation*", "reasoning", "alternatives", "confidence"],
-    },
-    actions: [
-      {
-        label: "Create",
-        toolName: "createDecision",
-        toolParams: ["task_id*", "type*", "issue*", "recommendation*", "reasoning"],
-      },
-    ],
-  });
-
   const handleStatusChange = (id: string, status: string) => {
     updateDecisionAction(slug, id, { status: status as Decision["status"] });
   };
-
-  const handleCreate = () => {
-    setFormOpen(true);
-  };
-
-  const handleFormClose = () => {
-    setFormOpen(false);
-  };
-
-  const handleFormSuccess = useCallback(() => {
-    mutate();
-  }, [mutate]);
 
   return (
     <div>
@@ -124,12 +92,12 @@ export default function DecisionsPage() {
         </h2>
         <div className="flex items-center gap-3">
           <StatusFilter options={STATUSES} value={statusFilter} onChange={setStatusFilter} />
-          <button
-            onClick={handleCreate}
+          <Link
+            href={`/projects/${slug}/decisions/new`}
             className="px-3 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700"
           >
             + New Decision
-          </button>
+          </Link>
         </div>
       </div>
       {isLoading && <p className="text-sm text-gray-400">Loading...</p>}
@@ -144,12 +112,6 @@ export default function DecisionsPage() {
         )}
       </div>
 
-      <DecisionForm
-        slug={slug}
-        open={formOpen}
-        onClose={handleFormClose}
-        onSuccess={handleFormSuccess}
-      />
     </div>
   );
 }

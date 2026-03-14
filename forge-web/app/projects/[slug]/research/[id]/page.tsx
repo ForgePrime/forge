@@ -63,6 +63,9 @@ export default function ResearchDetailPage() {
   const [editDecisionIds, setEditDecisionIds] = useState<string[]>([]);
   const [editScopes, setEditScopes] = useState<string[]>([]);
   const [editTags, setEditTags] = useState<string[]>([]);
+  const [editLinkedEntityType, setEditLinkedEntityType] = useState("");
+  const [editLinkedEntityId, setEditLinkedEntityId] = useState("");
+  const [editContent, setEditContent] = useState("");
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -104,6 +107,9 @@ export default function ResearchDetailPage() {
     setEditDecisionIds([...item.decision_ids]);
     setEditScopes([...item.scopes]);
     setEditTags([...item.tags]);
+    setEditLinkedEntityType(item.linked_entity_type || "");
+    setEditLinkedEntityId(item.linked_entity_id || "");
+    setEditContent(item.content || "");
     setEditing(true);
   };
 
@@ -121,6 +127,9 @@ export default function ResearchDetailPage() {
       if (JSON.stringify(editDecisionIds) !== JSON.stringify(item.decision_ids)) update.decision_ids = editDecisionIds;
       if (JSON.stringify(editScopes) !== JSON.stringify(item.scopes)) update.scopes = editScopes;
       if (JSON.stringify(editTags) !== JSON.stringify(item.tags)) update.tags = editTags;
+      if (editLinkedEntityType !== (item.linked_entity_type || "")) update.linked_entity_type = editLinkedEntityType || undefined;
+      if (editLinkedEntityId !== (item.linked_entity_id || "")) update.linked_entity_id = editLinkedEntityId || undefined;
+      if (editContent !== (item.content || "")) update.content = editContent;
 
       if (Object.keys(update).length > 0) {
         const updated = await researchApi.update(slug, id, update);
@@ -312,6 +321,44 @@ export default function ResearchDetailPage() {
           <fieldset>
             <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Linked Decisions</legend>
             <EditableList items={editDecisionIds} setItems={setEditDecisionIds} label="Decision IDs" addLabel="Add decision ID" />
+          </fieldset>
+
+          <fieldset>
+            <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Linked Entity</legend>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Entity Type</label>
+                <select
+                  value={editLinkedEntityType}
+                  onChange={(e) => setEditLinkedEntityType(e.target.value)}
+                  className="w-full rounded-md border px-3 py-1.5 text-sm"
+                >
+                  <option value="">None</option>
+                  <option value="objective">Objective</option>
+                  <option value="idea">Idea</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Entity ID</label>
+                <input
+                  value={editLinkedEntityId}
+                  onChange={(e) => setEditLinkedEntityId(e.target.value)}
+                  placeholder="O-001 or I-001"
+                  className="w-full rounded-md border px-3 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Full Analysis (Markdown)</legend>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              rows={12}
+              placeholder="Full analysis content in markdown..."
+              className="w-full rounded-md border px-3 py-2 text-sm font-mono"
+            />
           </fieldset>
 
           <fieldset>

@@ -353,9 +353,15 @@ async def chat(
         page_registry=request.app.state.page_registry,
         custom_text=config.custom_app_context if hasattr(config, "custom_app_context") else "",
     )
+    disabled = (
+        [t.strip() for t in body.disabled_capabilities if t.strip()]
+        if body.disabled_capabilities
+        else None
+    )
     system_prompt = builder.build(
         active_scopes=active_scopes,
         project_slug=body.project or None,
+        disabled_tools=disabled,
     )
 
     # 2. Entity context (supplementary — what user is working on)

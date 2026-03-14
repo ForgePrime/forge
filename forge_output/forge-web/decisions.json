@@ -1,0 +1,1283 @@
+{
+  "project": "forge-web",
+  "updated": "2026-03-14T18:32:53Z",
+  "decisions": [
+    {
+      "id": "D-001",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "Workflow engine architecture: external orchestrator vs custom state machine?",
+      "recommendation": "Custom event-sourced state machine using existing forge patterns (JSON + Redis + AgentLoop)",
+      "reasoning": "forge-api already has 80% of needed infrastructure. Workflows are minutes-long (not days), running on desktop (not cloud). External orchestrators (Temporal, Prefect) add operational overhead and infrastructure dependencies disproportionate to the actual need. Custom approach gives full control and zero new dependencies.",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T18:14:28Z",
+      "exploration_type": "architecture",
+      "findings": [
+        {
+          "finding": "AgentLoop already supports streaming, tool execution, and blocking-decision pause/resume",
+          "detail": "The exact patterns needed for per-step workflow execution are already built and tested"
+        },
+        {
+          "finding": "EventBus (Redis pub/sub) has 30+ event types and WebSocket integration",
+          "detail": "Adding workflow.* events is trivial"
+        },
+        {
+          "finding": "SessionManager handles Redis-backed persistent sessions with async locks",
+          "detail": "Per-step sessions provide clean context boundaries"
+        },
+        {
+          "finding": "Temporal/Prefect require external infrastructure",
+          "detail": "Temporal needs a server, Prefect needs cloud or server — overkill for desktop app"
+        },
+        {
+          "finding": "LangGraph is agent-focused, not workflow-focused",
+          "detail": "Lacks user decision gates, multi-session orchestration, forge-core integration"
+        }
+      ],
+      "options": [
+        {
+          "name": "Custom state machine (JSON + Redis)",
+          "pros": [
+            "Zero new deps",
+            "Full control",
+            "Fits forge patterns",
+            "80% infrastructure exists"
+          ],
+          "cons": [
+            "Must implement FSM logic",
+            "Custom recovery code"
+          ],
+          "recommendation": "GO"
+        },
+        {
+          "name": "Temporal",
+          "pros": [
+            "Battle-tested",
+            "Durable replay",
+            "Enterprise-grade"
+          ],
+          "cons": [
+            "External server required",
+            "Steep learning curve",
+            "Overkill for scope"
+          ],
+          "recommendation": "NO-GO"
+        },
+        {
+          "name": "Prefect",
+          "pros": [
+            "Python-native",
+            "Good observability"
+          ],
+          "cons": [
+            "Designed for ETL/data pipelines",
+            "Not ideal for AI agent loops"
+          ],
+          "recommendation": "NO-GO"
+        },
+        {
+          "name": "LangGraph",
+          "pros": [
+            "AI-agent focused",
+            "Graph-based"
+          ],
+          "cons": [
+            "No workflow-level features",
+            "No user decision gates",
+            "External dep"
+          ],
+          "recommendation": "NO-GO"
+        }
+      ],
+      "open_questions": [],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-workflow-execution-engine.md",
+        "research/deep-architect-workflow-execution-engine--architecture-design.md"
+      ],
+      "tags": [
+        "workflow-engine",
+        "architecture",
+        "state-machine"
+      ],
+      "action": "accept",
+      "resolution_notes": "Custom event-sourced state machine accepted. User clarified: NOT JSON files — use Postgres for persistence (see D-002 override). Redis for events/sessions, AgentLoop for LLM execution.",
+      "updated": "2026-03-14T18:27:13Z"
+    },
+    {
+      "id": "D-002",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "Persistence layer for workflow state: JSON files vs Postgres vs Redis-only?",
+      "recommendation": "JSON files in forge_output/{project}/workflows.json with atomic writes",
+      "reasoning": "Consistent with all other forge state (tracker.json, decisions.json, etc.). No new infrastructure needed. forge-core already solves concurrent write safety with atomic write pattern (write .tmp, rename). Postgres would be more durable but adds significant infrastructure for marginal benefit — workflows are minutes-long, not mission-critical financial transactions.",
+      "alternatives": [
+        "Postgres (durable, queryable, but adds infra)",
+        "Redis-only (fast but volatile, lost on restart)",
+        "SQLite (embedded DB, good compromise but different pattern from rest of forge)"
+      ],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T18:14:28Z",
+      "tags": [
+        "persistence",
+        "json",
+        "workflow-state"
+      ],
+      "action": "override",
+      "resolution_notes": "User override: Postgres instead of JSON files. Reasoning: forge-web is a web application, not CLI — JSON file persistence is for forge-core CLI. Web platform should use proper database. Postgres provides durability, concurrent-safe writes, queryability, and is appropriate for the web stack.",
+      "updated": "2026-03-14T18:27:13Z"
+    },
+    {
+      "id": "D-003",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "forge-core integration: subprocess calls vs direct Python imports?",
+      "recommendation": "Subprocess calls (py -m core.XXX) for primary integration",
+      "reasoning": "Clean separation — workflow engine treats forge-core as a black box with CLI interface. Same interface used by CLI and skills. No import side effects or coupling. Subprocess overhead (~100ms per call) is negligible for workflow steps that take seconds-to-minutes. Direct imports would save latency but create tight coupling and risk import side effects.",
+      "alternatives": [
+        "Direct Python import (faster but tight coupling)",
+        "REST API wrapping (over-engineering for internal modules)",
+        "Hybrid: subprocess for writes, import for reads (complex)"
+      ],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T18:14:28Z",
+      "tags": [
+        "forge-core",
+        "integration",
+        "subprocess"
+      ],
+      "action": "override",
+      "resolution_notes": "User override: Direct Python import instead of subprocess. Reasoning: faster execution (~0ms vs ~100ms per call), tighter integration is acceptable since forge-api and forge-core are part of the same codebase. Clean API boundaries can still be maintained via module interfaces.",
+      "updated": "2026-03-14T18:27:13Z"
+    },
+    {
+      "id": "D-004",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "LLM session strategy: one session per workflow vs one session per step?",
+      "recommendation": "One ChatSession per step, with previous step summaries injected as context",
+      "reasoning": "A full workflow (5+ steps) could consume 100K+ tokens in a single session, causing context overflow and degraded LLM performance. Per-step sessions keep context focused and manageable. Previous step outputs are injected as structured summaries (not full conversation history). This matches how forge-core works — each /next execution is independent but gets context from dependencies.",
+      "alternatives": [
+        "Single session (risk of context overflow)",
+        "Shared session with pruning (complex, unpredictable)",
+        "Session per step with no cross-referencing (loses context)"
+      ],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T18:14:28Z",
+      "tags": [
+        "llm",
+        "sessions",
+        "context-management"
+      ],
+      "action": "accept",
+      "resolution_notes": "Per-step ChatSession accepted. Each workflow step gets its own session with previous step summaries injected as context.",
+      "updated": "2026-03-14T18:27:13Z"
+    },
+    {
+      "id": "D-005",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "Concurrency model: asyncio.Task vs ThreadPool vs ProcessPool?",
+      "recommendation": "asyncio.Task per WorkflowExecution with configurable max concurrency",
+      "reasoning": "forge-api is fully async (FastAPI + asyncio throughout). asyncio.Tasks are lightweight, support cancellation natively, and don't hit GIL issues (I/O bound, not CPU bound). Each workflow execution runs as an asyncio.Task, with asyncio.Semaphore limiting concurrency (default 5). ThreadPool would add unnecessary complexity, ProcessPool is too heavy for this use case.",
+      "alternatives": [
+        "ThreadPoolExecutor (heavier, GIL concerns for CPU work)",
+        "ProcessPool (too heavy, IPC overhead)",
+        "Celery (overkill external infrastructure)"
+      ],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T18:14:28Z",
+      "tags": [
+        "concurrency",
+        "asyncio",
+        "performance"
+      ],
+      "action": "accept",
+      "resolution_notes": "asyncio.Task per execution accepted with Semaphore(5) concurrency limit.",
+      "updated": "2026-03-14T18:27:13Z"
+    },
+    {
+      "id": "D-006",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Workflow stuck forever due to silent step failure or missing timeout",
+      "recommendation": "Implement per-step timeout (default 10min) and workflow-level timeout (default 2hr) with automatic failure notification",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T18:14:28Z",
+      "severity": "HIGH",
+      "likelihood": "MEDIUM",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-001",
+      "mitigation_plan": "1. Per-step configurable timeout (default 600s, max 3600s). 2. Workflow-level timeout (default 7200s). 3. Periodic health check every 60s marking stale running steps as failed. 4. Automatic notification via EventBus on step failure/timeout. 5. Retry button in UI for failed steps.",
+      "resolution_notes": "Risk mitigation accepted: per-step timeout (10min default), workflow timeout (2hr), periodic health check, auto-notification on failure.",
+      "tags": [
+        "timeout",
+        "stuck-workflow",
+        "reliability"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:27:13Z"
+    },
+    {
+      "id": "D-007",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Complexity creep: engine grows into unmanageable mini-Temporal",
+      "recommendation": "Strict phased implementation: Phase 1 linear only, Phase 2 conditionals, Phase 3 parallel. Each addition requires explicit decision record.",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T18:14:28Z",
+      "severity": "MEDIUM",
+      "likelihood": "MEDIUM",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-001",
+      "mitigation_plan": "1. Phase 1: linear steps only (no branching, no parallel). 2. Phase 2: add conditional routing after Phase 1 proven. 3. Phase 3: add parallel_group after Phase 2 proven. 4. Every feature addition requires a decision (D-NNN) with justification. 5. Strict component separation (Scheduler, StateManager, StepDispatcher) to contain complexity.",
+      "resolution_notes": "Risk mitigation accepted: strict phased implementation — Phase 1: linear only, Phase 2: conditionals, Phase 3: parallel.",
+      "tags": [
+        "complexity",
+        "scope-creep",
+        "phased-implementation"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:27:13Z"
+    },
+    {
+      "id": "D-008",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "JSON file state corruption from concurrent workflow writes",
+      "recommendation": "Use atomic write pattern (write .tmp then rename) with asyncio.Lock per project",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "",
+      "timestamp": "2026-03-14T18:14:28Z",
+      "severity": "MEDIUM",
+      "likelihood": "LOW",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-001",
+      "mitigation_plan": "1. Atomic write pattern (write to .tmp file, os.rename to target) — proven in forge-core. 2. asyncio.Lock per project slug prevents concurrent writes to same workflows.json. 3. Consider per-execution JSON files (WE-001.json) instead of single file — eliminates contention entirely. 4. Backup before write (workflows.json.bak).",
+      "resolution_notes": "Risk mitigation accepted. Note: with Postgres (D-002 override), JSON corruption risk is eliminated — Postgres handles concurrent writes natively. Atomic operations via database transactions.",
+      "tags": [
+        "json",
+        "corruption",
+        "concurrent-writes",
+        "atomic"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:27:13Z"
+    },
+    {
+      "id": "D-009",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "Notification persistence strategy for zero-miss guarantee (KR-4)",
+      "recommendation": "Server-side notification entity (notifications.json) via existing StorageAdapter pattern",
+      "reasoning": "KR-4 requires zero missed notifications and persistent notifications until resolved. Client-only storage (current notificationStore + localStorage) loses state on page refresh. Server-side entity is consistent with all other Forge entities and provides audit trail, cross-session persistence, and fetch-on-reconnect capability.",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "Current notificationStore is client-only (Zustand) - lost on page refresh",
+        "Current NotificationCenter dismissal uses localStorage - not cross-device",
+        "Redis Pub/Sub is fire-and-forget - cannot replay missed events",
+        "JSON file storage with entity locking handles concurrent writes safely",
+        "All other Forge entities use same pattern successfully"
+      ],
+      "options": [
+        {
+          "name": "Client-only (current)",
+          "pros": [
+            "Zero backend changes",
+            "Already partially implemented"
+          ],
+          "cons": [
+            "Lost on refresh",
+            "No cross-device",
+            "Cannot guarantee zero-miss"
+          ],
+          "recommendation": "NO-GO"
+        },
+        {
+          "name": "Server-side entity (notifications.json)",
+          "pros": [
+            "Consistent with Forge patterns",
+            "Full audit trail",
+            "Survives offline",
+            "Existing StorageAdapter"
+          ],
+          "cons": [
+            "File I/O overhead",
+            "Entity locking under volume"
+          ],
+          "recommendation": "GO"
+        },
+        {
+          "name": "Redis Streams",
+          "pros": [
+            "Built for persistent messaging",
+            "Consumer groups per user"
+          ],
+          "cons": [
+            "New pattern not used elsewhere",
+            "Redis data loss risk without AOF"
+          ],
+          "recommendation": "CONDITIONAL"
+        },
+        {
+          "name": "Hybrid Redis + entity",
+          "pros": [
+            "Best reliability"
+          ],
+          "cons": [
+            "Two sources of truth",
+            "Higher complexity"
+          ],
+          "recommendation": "CONDITIONAL"
+        }
+      ],
+      "open_questions": [
+        "What is the actual notification volume under concurrent workflows?",
+        "Should resolved notifications be archived after N days?"
+      ],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-notification-infrastructure-option-exploration.md"
+      ],
+      "tags": [
+        "persistence",
+        "notifications",
+        "storage",
+        "KR-4"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-010",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "Notification backend architecture - dedicated service vs event enrichment",
+      "recommendation": "Dedicated NotificationService + NotificationRouter in forge-api",
+      "reasoning": "Backend should own notification creation logic to ensure consistency, enable server-side persistence, and centralize event-to-notification mapping. Without a dedicated service, notification logic would be scattered across 10+ routers. The service follows the same pattern as all other Forge entity routers.",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "Current decision notifications are created in frontend wsDispatcher - no server persistence",
+        "10+ entity routers emit events that could generate notifications",
+        "Centralizing mapping logic prevents inconsistency across frontends",
+        "Existing router pattern (CRUD + status validation) applies directly"
+      ],
+      "options": [
+        {
+          "name": "Event enrichment only (frontend)",
+          "pros": [
+            "No backend changes"
+          ],
+          "cons": [
+            "No persistence",
+            "Logic in client",
+            "Inconsistent across clients"
+          ],
+          "recommendation": "NO-GO"
+        },
+        {
+          "name": "Dedicated NotificationService + Router",
+          "pros": [
+            "Server owns logic",
+            "Persistent",
+            "Consistent",
+            "Reuses existing patterns"
+          ],
+          "cons": [
+            "More backend code (~250 lines)"
+          ],
+          "recommendation": "GO"
+        },
+        {
+          "name": "Configurable event hooks",
+          "pros": [
+            "User-configurable rules"
+          ],
+          "cons": [
+            "Complex configuration",
+            "Harder to debug"
+          ],
+          "recommendation": "NO-GO"
+        }
+      ],
+      "open_questions": [],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-notification-infrastructure-option-exploration.md",
+        "research/deep-architect-notification-infrastructure-architecture-design.md"
+      ],
+      "tags": [
+        "backend",
+        "notifications",
+        "service",
+        "architecture"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-011",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "Notification UI architecture - bell enhancement vs drawer vs modals",
+      "recommendation": "Enhanced NotificationCenter bell (WebSocket-driven) + response modals for blocking notifications",
+      "reasoning": "KR-2 requires dedicated detail views with AI-proposed options. Modals keep users in workflow context without page navigation. Non-blocking notifications (alerts) use toast + bell count, clicking navigates to entity. Builds on existing UI components without major restructuring.",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "Current NotificationCenter polls every 30s - easy win to convert to WebSocket",
+        "DecisionNotificationPopup already shows single-notification queue with actions",
+        "AISidebar occupies right side - drawer would compete for space",
+        "Existing entity detail pages already exist for all notification targets",
+        "4 notification types identified: decision, approval, question, alert"
+      ],
+      "options": [
+        {
+          "name": "Enhanced bell dropdown",
+          "pros": [
+            "Familiar pattern",
+            "Minimal changes"
+          ],
+          "cons": [
+            "Limited space for response forms"
+          ],
+          "recommendation": "CONDITIONAL"
+        },
+        {
+          "name": "Full notification drawer",
+          "pros": [
+            "More room for details"
+          ],
+          "cons": [
+            "Competes with AISidebar",
+            "Major UI change"
+          ],
+          "recommendation": "NO-GO"
+        },
+        {
+          "name": "Bell + response modals",
+          "pros": [
+            "Dedicated response UI",
+            "No context switching",
+            "Scalable to new types"
+          ],
+          "cons": [
+            "Modal management complexity"
+          ],
+          "recommendation": "GO"
+        },
+        {
+          "name": "Notification center page",
+          "pros": [
+            "Full detail views"
+          ],
+          "cons": [
+            "Navigates away from workflow",
+            "Split attention"
+          ],
+          "recommendation": "CONDITIONAL"
+        }
+      ],
+      "open_questions": [],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-notification-infrastructure-option-exploration.md",
+        "research/deep-architect-notification-infrastructure-architecture-design.md"
+      ],
+      "tags": [
+        "frontend",
+        "notifications",
+        "UI",
+        "modals",
+        "KR-2"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-012",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "Multi-workflow notification routing strategy (KR-3)",
+      "recommendation": "Workflow metadata tagging on notifications, frontend grouping/filtering",
+      "reasoning": "Adding workflow_id and workflow_step fields to notifications enables grouping without changing WebSocket infrastructure. Single WS connection per project is sufficient. Frontend wsDispatcher can group and filter by workflow context. No new channels or subscriptions needed.",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "Single WS connection per project handles current event volume well",
+        "Separate WS channels would add connection overhead and complexity",
+        "Workflow context (execution_id, step) is available at notification creation time",
+        "Frontend already groups entities by various criteria (status, type)"
+      ],
+      "options": [
+        {
+          "name": "Workflow metadata tagging",
+          "pros": [
+            "Simple",
+            "No infrastructure changes",
+            "Single WS"
+          ],
+          "cons": [
+            "Frontend must implement filter/group logic"
+          ],
+          "recommendation": "GO"
+        },
+        {
+          "name": "Separate WS channels per workflow",
+          "pros": [
+            "Clean separation"
+          ],
+          "cons": [
+            "Connection overhead",
+            "Complex subscription management"
+          ],
+          "recommendation": "NO-GO"
+        },
+        {
+          "name": "Server-side filtering",
+          "pros": [
+            "Reduces client noise"
+          ],
+          "cons": [
+            "Backend must track user focus",
+            "Complex state"
+          ],
+          "recommendation": "NO-GO"
+        }
+      ],
+      "open_questions": [],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-notification-infrastructure-option-exploration.md"
+      ],
+      "tags": [
+        "multi-workflow",
+        "routing",
+        "KR-3",
+        "websocket"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-013",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "WebSocket reconnection gap can lose notifications during disconnect",
+      "recommendation": "Implement fetch-on-reconnect from persistent notification store",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-risk",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "severity": "HIGH",
+      "likelihood": "MEDIUM",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-002",
+      "mitigation_plan": "On WebSocket reconnect, immediately fetch GET /notifications?status=UNREAD&since={lastEventTimestamp}. Server-side persistence ensures nothing is lost. SWR already revalidates on reconnect - same pattern. Track lastEventTimestamp in notificationStore.",
+      "resolution_notes": "",
+      "tags": [
+        "websocket",
+        "reconnection",
+        "reliability",
+        "KR-4"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-014",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Notification flood under concurrent workflows causes UI performance degradation",
+      "recommendation": "Server-side batching + frontend throttling + priority-based display",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-risk",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "severity": "HIGH",
+      "likelihood": "HIGH",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-002",
+      "mitigation_plan": "Three-layer mitigation: (1) Server batches notification writes (max 1 per 500ms per workflow), (2) Frontend wsDispatcher throttles notification state updates (200ms debounce, matching existing SWR pattern), (3) Priority-based display: only critical/high get popup modal, normal/low increment bell counter only. Existing toast max-3-visible pattern serves as precedent.",
+      "resolution_notes": "",
+      "tags": [
+        "concurrency",
+        "performance",
+        "throttling",
+        "KR-3"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-015",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Cross-project notification blind spot - no mechanism to notify user about other projects",
+      "recommendation": "Periodic polling of unread count across all projects from NotificationCenter",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-risk",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "severity": "MEDIUM",
+      "likelihood": "MEDIUM",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-002",
+      "mitigation_plan": "Add lightweight endpoint GET /notifications/global-count that returns unread counts per project. NotificationCenter polls every 60s (same as current 30s pattern but for cross-project). Show aggregated badge on bell icon. When user navigates to project, WebSocket takes over for real-time. Global WebSocket channel is a future enhancement if polling proves insufficient.",
+      "resolution_notes": "",
+      "tags": [
+        "cross-project",
+        "routing",
+        "global"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-016",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Notification type proliferation leads to growing modal maintenance burden",
+      "recommendation": "Base modal component with pluggable content slots and type registry",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-risk",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "severity": "MEDIUM",
+      "likelihood": "MEDIUM",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-002",
+      "mitigation_plan": "Design NotificationResponseModal as a base component with: header (priority badge, title, timestamp), content slot (type-specific), actions slot (type-specific buttons). Each notification type registers a content renderer. Adding a new type = adding one content component, not modifying the modal system. Start with 4 types, expandable pattern.",
+      "resolution_notes": "",
+      "tags": [
+        "UI",
+        "modals",
+        "maintenance",
+        "extensibility"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-017",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "Notification data model - unified entity schema for all notification types",
+      "recommendation": "Single notification entity with notification_type discriminator and polymorphic fields",
+      "reasoning": "All 4 notification types (decision, approval, question, alert) share 80% of fields (id, type, priority, status, title, message, source_entity, project, workflow context, timestamps). Type-specific fields (ai_options, response) are nullable. Unified entity enables single store, single router, unified queries. PostgreSQL migration later can add JSON columns for type-specific data.",
+      "alternatives": [
+        "Separate entities per type (DecisionNotification, ApprovalNotification, etc.) - rejected: 4x CRUD endpoints, 4x stores",
+        "Extend existing entities with notification fields - rejected: pollutes entity schemas, unclear ownership"
+      ],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-architect",
+      "timestamp": "2026-03-14T18:20:39Z",
+      "tags": [
+        "data-model",
+        "notifications",
+        "schema"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-018",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "How to achieve >95% natural language to tool call success rate for 12 entity types (KR-1)",
+      "recommendation": "Fill CRUD tool gaps (archive/remove ops, AC template CRUD) + improve tool descriptions with entity-specific examples. Measure baseline before and after.",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "42 tools already registered covering 12 entity types",
+        "DELETE operations missing for ALL entity types - only status-based archival",
+        "AC templates lack create/update tools - only instantiate available",
+        "Generic tools (searchEntities, getEntity, listEntities) cover basic read for all types",
+        "Scope-based filtering limits visible tools to 8-12 per context, reducing confusion"
+      ],
+      "options": [
+        {
+          "name": "Enhance descriptions + few-shot examples",
+          "pros": [
+            "Low effort",
+            "Quick measurable improvement"
+          ],
+          "cons": [
+            "May not reach 95% alone"
+          ],
+          "recommendation": "PARTIAL"
+        },
+        {
+          "name": "Add entity routing/classifier layer",
+          "pros": [
+            "Guaranteed entity type selection"
+          ],
+          "cons": [
+            "Over-engineering",
+            "Added latency",
+            "Extra infrastructure"
+          ],
+          "recommendation": "NO-GO unless baseline <60%"
+        },
+        {
+          "name": "Fill CRUD gaps + improve descriptions",
+          "pros": [
+            "Complete coverage",
+            "Better descriptions",
+            "Measurable"
+          ],
+          "cons": [
+            "Medium effort (~15 new tools)"
+          ],
+          "recommendation": "GO"
+        }
+      ],
+      "open_questions": [
+        "What is the current baseline tool-call success rate?",
+        "Should DELETE tools use hard delete or archive semantics?"
+      ],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-entity-management-via-ai-sidebar---option-exploration.md"
+      ],
+      "tags": [
+        "kr-1",
+        "tool-registry",
+        "crud-coverage"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-019",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "How to implement slash command workflow sessions (KR-2)",
+      "recommendation": "Leverage existing skill injection system. Frontend SlashCommandRouter maps /command to skill name + session_type. Skill SKILL.md provides step-by-step instructions to LLM. No new backend infrastructure needed.",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "20 slash commands already defined in SlashCommandDropdown",
+        "Slash commands currently just inject text - no workflow session triggering",
+        "Session types (chat/plan/execute/verify/compound) stored but informational only",
+        "Skill injection via @-mention already works (load SKILL.md into context)",
+        "Backend has no special routing for slash command messages"
+      ],
+      "options": [
+        {
+          "name": "Frontend-driven session_type + backend behavior switch",
+          "pros": [
+            "Clean separation"
+          ],
+          "cons": [
+            "Tight FE/BE coupling",
+            "Backend changes needed"
+          ],
+          "recommendation": "PARTIAL"
+        },
+        {
+          "name": "Backend command parser",
+          "pros": [
+            "Single source of truth"
+          ],
+          "cons": [
+            "Duplicates FE parsing",
+            "Can conflict"
+          ],
+          "recommendation": "NO-GO"
+        },
+        {
+          "name": "Skill injection approach (reuse existing system)",
+          "pros": [
+            "Already partially built",
+            "Flexible",
+            "No new backend infra",
+            "Extensible via SKILL.md"
+          ],
+          "cons": [
+            "LLM may deviate from instructions"
+          ],
+          "recommendation": "GO"
+        }
+      ],
+      "open_questions": [
+        "Should workflow state tracking enforce tool ordering or just warn?",
+        "Which slash commands need dedicated workflow skills vs just text injection?"
+      ],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-entity-management-via-ai-sidebar---option-exploration.md"
+      ],
+      "tags": [
+        "kr-2",
+        "slash-commands",
+        "skill-injection",
+        "workflow-sessions"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-020",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "How to ensure real-time UI updates <1s after AI mutations (KR-3)",
+      "recommendation": "Verify existing wsDispatcher + TOOL_TO_ENTITY + SWR revalidation pipeline. Fix any mapping gaps. The infrastructure is already built and working.",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "SWR revalidation pipeline ALREADY WORKS via wsDispatcher",
+        "TOOL_TO_ENTITY mapping routes tool names to entity types for debounced SWR mutate()",
+        "MutationTracker (5s TTL) prevents WS echo double-processing",
+        "Toast notifications (500ms debounce) already show AI updated entities",
+        "Need to verify all tool names are in TOOL_TO_ENTITY mapping"
+      ],
+      "options": [
+        {
+          "name": "Verify existing pipeline + fix gaps",
+          "pros": [
+            "Minimal effort",
+            "Pipeline already proven"
+          ],
+          "cons": [
+            "May miss edge cases"
+          ],
+          "recommendation": "GO"
+        },
+        {
+          "name": "Add dedicated entity mutation events from tool handlers",
+          "pros": [
+            "Explicit triggers"
+          ],
+          "cons": [
+            "Medium effort",
+            "Redundant with existing pipeline"
+          ],
+          "recommendation": "PARTIAL - only if Option A reveals gaps"
+        },
+        {
+          "name": "Optimistic UI from tool result payloads",
+          "pros": [
+            "Instant 0ms update"
+          ],
+          "cons": [
+            "Schema coupling",
+            "Parsing complexity"
+          ],
+          "recommendation": "DEFER"
+        }
+      ],
+      "open_questions": [
+        "Are all 42 tool names mapped in TOOL_TO_ENTITY?",
+        "Does backend emit entity-specific WS events (task.created) after LLM tool execution?"
+      ],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-entity-management-via-ai-sidebar---option-exploration.md"
+      ],
+      "tags": [
+        "kr-3",
+        "real-time",
+        "swr",
+        "websocket",
+        "revalidation"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-021",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "How to maintain multi-turn conversation context without exceeding token limits (KR-4)",
+      "recommendation": "Hybrid approach: pin last N tool results + auto-generated session summary, sliding window for conversation messages. Configurable budget (default 30k tokens for history).",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-explore",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "exploration_type": "architecture",
+      "findings": [
+        "Sessions persist in Redis (24h TTL) with all messages stored",
+        "No token budget management exists - sessions will hit context limits",
+        "Agent loop has max_total_tokens (50k) but this is per-request, not cumulative",
+        "Tool results add significant token overhead per turn",
+        "Skill context budget (30k chars) already enforced but history is not"
+      ],
+      "options": [
+        {
+          "name": "Sliding window (keep N recent messages)",
+          "pros": [
+            "Simple",
+            "Predictable"
+          ],
+          "cons": [
+            "Loses early workflow context"
+          ],
+          "recommendation": "PARTIAL"
+        },
+        {
+          "name": "LLM summarization of old messages",
+          "pros": [
+            "Preserves key context"
+          ],
+          "cons": [
+            "Extra LLM call per truncation",
+            "Latency",
+            "Cost"
+          ],
+          "recommendation": "NO-GO for now"
+        },
+        {
+          "name": "Hybrid: pin tool results + sliding window",
+          "pros": [
+            "Preserves workflow state",
+            "Predictable budget",
+            "No extra LLM calls"
+          ],
+          "cons": [
+            "More complex state management"
+          ],
+          "recommendation": "GO"
+        }
+      ],
+      "open_questions": [
+        "What is the optimal number of tool results to pin?",
+        "Should session summaries be auto-generated or manual?"
+      ],
+      "blockers": [],
+      "ready_for_tracker": false,
+      "evidence_refs": [
+        "research/deep-explore-entity-management-via-ai-sidebar---option-exploration.md"
+      ],
+      "tags": [
+        "kr-4",
+        "multi-turn",
+        "context-window",
+        "token-management"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-022",
+      "task_id": "DISCOVERY",
+      "type": "exploration",
+      "issue": "Feasibility assessment for O-003 - Full Entity Management via AI Sidebar",
+      "recommendation": "CONDITIONAL GO. Average 3.8/5 across 10 dimensions. No hard binding constraints. Conditions: (1) measure baseline tool-call accuracy, (2) verify entity WS event emission.",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-feasibility",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "exploration_type": "feasibility",
+      "findings": [
+        "Technical: 4/5 - 42 tools exist, SWR pipeline works, skill injection built",
+        "Resource: 4/5 - single developer, all code in-house",
+        "Knowledge: 4/5 - existing patterns well-established",
+        "Organizational: 5/5 - solo developer, no coordination needed",
+        "Temporal: 3/5 - medium appetite realistic for incremental, tight for 95% target",
+        "Compositional: 4/5 - integration patterns proven, gaps are additive",
+        "Economic: 4/5 - marginal cost small, sidebar already exists",
+        "Scale: 4/5 - Redis/SWR handle reasonable scale",
+        "Cognitive: 3/5 - 42 tools + workflows = complex but manageable incrementally",
+        "Dependency: 3/5 - LLM tool-calling quality is external dependency (soft binding)",
+        "Average: 3.8/5 -> CONDITIONAL GO"
+      ],
+      "options": [],
+      "open_questions": [],
+      "blockers": [],
+      "ready_for_tracker": true,
+      "evidence_refs": [
+        "research/deep-feasibility-entity-management-via-ai-sidebar---feasibility-assessment.md"
+      ],
+      "tags": [
+        "feasibility",
+        "conditional-go"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-023",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "LLM tool confusion - wrong tool selection with 42+ tools in registry",
+      "recommendation": "Rely on scope-based filtering (limits to 8-12 visible tools per context) + improve tool descriptions to be more distinct. Add entity-type confirmation for destructive operations.",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-risk",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "severity": "HIGH",
+      "likelihood": "MEDIUM",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-003",
+      "mitigation_plan": "1. Scope filtering already limits visible tools. 2. Improve tool descriptions with entity-specific keywords. 3. Add confirmation step for mutations. 4. Measure success rate to quantify actual risk.",
+      "resolution_notes": "",
+      "tags": [
+        "risk",
+        "tool-confusion",
+        "llm-accuracy"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-024",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Data loss from DELETE/archive operations triggered by imprecise natural language",
+      "recommendation": "Use archive/status-change semantics instead of hard DELETE. Add two-step confirmation: LLM describes what it will modify, waits for user confirmation. Soft-delete with recovery period.",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-risk",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "severity": "HIGH",
+      "likelihood": "LOW",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-003",
+      "mitigation_plan": "1. Implement archive semantics, not hard DELETE (ADR-5). 2. Tool descriptions mandate confirmation before archival. 3. All archives are reversible. 4. Existing audit trail (changes.json) preserves history.",
+      "resolution_notes": "",
+      "tags": [
+        "risk",
+        "data-loss",
+        "delete-safety"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-025",
+      "task_id": "DISCOVERY",
+      "type": "risk",
+      "issue": "Context window exhaustion in multi-turn workflow sessions",
+      "recommendation": "Implement hybrid context management (ADR-3): pin tool results + session summary, sliding window for conversation. Set token budget per session with user-visible counter.",
+      "reasoning": "",
+      "alternatives": [],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-risk",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "severity": "MEDIUM",
+      "likelihood": "HIGH",
+      "linked_entity_type": "objective",
+      "linked_entity_id": "O-003",
+      "mitigation_plan": "1. Hybrid pinning (ADR-3) keeps workflow state while managing budget. 2. Token counter visible to user. 3. Auto-offer 'new session with summary' at 80% budget. 4. Configurable budget (default 30k tokens for history).",
+      "resolution_notes": "",
+      "tags": [
+        "risk",
+        "context-window",
+        "token-management"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-026",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "Slash Command Router - frontend mapping of /command to skill + session metadata",
+      "recommendation": "Implement SlashCommandRouter in forge-web that maps each /command to: skill name (for SKILL.md injection), session_type, and optional initial_hint. Reuses existing skill injection infrastructure.",
+      "reasoning": "Existing @-mention skill injection already loads SKILL.md into LLM context. Slash commands should reuse this mechanism. Frontend already detects slash commands (SlashCommandDropdown). Adding a mapping layer is minimal effort with maximum reuse.",
+      "alternatives": [
+        "Backend command parser (rejected: duplicates FE detection, couples parsing to BE)",
+        "Hard-coded per-command endpoints (rejected: prevents extensibility)",
+        "No special handling - just text injection (rejected: no workflow guidance for LLM)"
+      ],
+      "confidence": "HIGH",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-architect",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "tags": [
+        "architecture",
+        "slash-commands",
+        "adr-1"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-027",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "Workflow State Machine - session-level tracking for multi-step workflows",
+      "recommendation": "Add workflow_state to ChatSession: {workflow_id, current_step, completed_steps[], expected_tools[], allow_deviation}. Agent loop checks expected_tools before execution. Deviation triggers warning, not hard block.",
+      "reasoning": "LLMs are not state machines and skip steps. But hard blocking prevents legitimate creativity and error recovery. Soft enforcement (warn + audit) balances reliability with flexibility.",
+      "alternatives": [
+        "Hard state machine blocking (rejected: prevents LLM creativity and error recovery)",
+        "No enforcement, rely on skill instructions (rejected: LLMs demonstrably skip steps)",
+        "Client-side step tracking (rejected: cannot enforce at tool execution level)"
+      ],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-architect",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "tags": [
+        "architecture",
+        "workflow-state",
+        "adr-2"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    },
+    {
+      "id": "D-028",
+      "task_id": "DISCOVERY",
+      "type": "architecture",
+      "issue": "Context Window Manager - hybrid pinning strategy for multi-turn sessions",
+      "recommendation": "Pin last 5 tool results + auto-generated session summary (every 10 messages). Sliding window for conversation. Total history budget: 30k tokens configurable.",
+      "reasoning": "Pure sliding window loses workflow state. LLM summarization adds latency and cost. Hybrid approach preserves tool results (the core workflow state) while managing budget predictably. Simple rules, no AI-based importance scoring.",
+      "alternatives": [
+        "Pure sliding window (rejected: loses workflow context from early tool calls)",
+        "LLM summarization per turn (rejected: added latency and cost, quality uncertain)",
+        "Pin all tool results (rejected: no savings in tool-heavy workflows)"
+      ],
+      "confidence": "MEDIUM",
+      "status": "CLOSED",
+      "decided_by": "claude",
+      "file": "",
+      "scope": "deep-architect",
+      "timestamp": "2026-03-14T18:21:24Z",
+      "tags": [
+        "architecture",
+        "context-management",
+        "adr-3"
+      ],
+      "action": "accept",
+      "updated": "2026-03-14T18:29:05Z"
+    }
+  ],
+  "open_count": 0
+}

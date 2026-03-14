@@ -88,6 +88,7 @@ export default function ObjectiveDetailPage() {
   const [editScopes, setEditScopes] = useState<string[]>([]);
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editAssumptions, setEditAssumptions] = useState<string[]>([]);
+  const [editGuidelineIds, setEditGuidelineIds] = useState<string[]>([]);
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -263,6 +264,7 @@ export default function ObjectiveDetailPage() {
     setEditScopes([...objective.scopes]);
     setEditTags([...objective.tags]);
     setEditAssumptions([...objective.assumptions]);
+    setEditGuidelineIds([...(objective.guideline_ids || [])]);
     setEditing(true);
   };
 
@@ -278,6 +280,7 @@ export default function ObjectiveDetailPage() {
       if (JSON.stringify(editScopes) !== JSON.stringify(objective.scopes)) update.scopes = editScopes;
       if (JSON.stringify(editTags) !== JSON.stringify(objective.tags)) update.tags = editTags;
       if (JSON.stringify(editAssumptions) !== JSON.stringify(objective.assumptions)) update.assumptions = editAssumptions;
+      if (JSON.stringify(editGuidelineIds) !== JSON.stringify(objective.guideline_ids || [])) update.guideline_ids = editGuidelineIds;
 
       if (Object.keys(update).length > 0) {
         const updated = await objectivesApi.update(slug, id, update);
@@ -510,6 +513,11 @@ export default function ObjectiveDetailPage() {
             <fieldset>
               <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Assumptions</legend>
               <EditableList items={editAssumptions} setItems={setEditAssumptions} label="Assumptions" addLabel="Add assumption" rows={2} />
+            </fieldset>
+
+            <fieldset>
+              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Guidelines</legend>
+              <EditableList items={editGuidelineIds} setItems={setEditGuidelineIds} label="Guideline IDs" addLabel="Add guideline ID" />
             </fieldset>
 
             <div className="flex items-center gap-2 pt-2">
