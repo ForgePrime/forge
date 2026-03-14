@@ -1,7 +1,7 @@
 """LLM Session Manager — chat conversation persistence in Redis.
 
 Each conversation is a session with message history, token tracking,
-cost estimation, and a 24h TTL. Events are emitted on lifecycle changes.
+cost estimation, and a 14-day TTL. Events are emitted on lifecycle changes.
 """
 
 from __future__ import annotations
@@ -21,9 +21,10 @@ logger = logging.getLogger(__name__)
 # Per-session locks for concurrent access protection
 _session_locks: dict[str, asyncio.Lock] = {}
 
-SESSION_TTL_SECONDS = 24 * 60 * 60  # 24 hours
+SESSION_TTL_SECONDS = 14 * 24 * 60 * 60  # 14 days
 SESSION_KEY_PREFIX = "chat:session:"
 SESSION_INDEX_KEY = "chat:sessions"
+ENTITY_INDEX_PREFIX = "chat:entity:"
 
 
 @dataclass
@@ -98,8 +99,9 @@ class ChatSession:
 class SessionManager:
     """Manages chat sessions in Redis with TTL and event emission.
 
-    Sessions are stored as JSON in Redis with a 24h TTL.
+    Sessions are stored as JSON in Redis with a 14-day TTL.
     A session index set tracks all active session IDs.
+    A secondary entity index enables fast lookup by entity type+id.
     """
 
     def __init__(
@@ -160,6 +162,12 @@ class SessionManager:
 
         # Track in index
         await self._redis.sadd(SESSION_INDEX_KEY, session.session_id)
+
+        # Track in entity secondary index
+        if target_entity_type and target_entity_id:
+            entity_key = f"{ENTITY_INDEX_PREFIX}{target_entity_type}:{target_entity_id}"
+            await self._redis.sadd(entity_key, session.session_id)
+            await self._redis.expire(entity_key, SESSION_TTL_SECONDS)
 
         # Emit event
         if self._event_bus:
@@ -351,13 +359,18 @@ class SessionManager:
 
         Returns True if deleted, False if not found.
         """
-        # Load session first to get project for event emission
+        # Load session first to get project + entity info for cleanup
         session = await self.load(session_id)
         project = session.project if session else ""
 
         key = self._key(session_id)
         deleted = await self._redis.delete(key)
         await self._redis.srem(SESSION_INDEX_KEY, session_id)
+
+        # Clean up entity secondary index
+        if session and session.target_entity_type and session.target_entity_id:
+            entity_key = f"{ENTITY_INDEX_PREFIX}{session.target_entity_type}:{session.target_entity_id}"
+            await self._redis.srem(entity_key, session_id)
 
         # Clean up per-session lock
         _session_locks.pop(session_id, None)
@@ -410,6 +423,51 @@ class SessionManager:
             })
 
         # Sort by updated_at descending
+        summaries.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
+        return summaries[:limit]
+
+    async def filter_by_entity(
+        self, entity_type: str, entity_id: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """List sessions linked to a specific entity.
+
+        Uses the Redis secondary index chat:entity:{type}:{id} for fast lookup.
+
+        Returns list of session summaries sorted by updated_at desc.
+        """
+        entity_key = f"{ENTITY_INDEX_PREFIX}{entity_type}:{entity_id}"
+        session_ids = await self._redis.smembers(entity_key)
+        summaries = []
+
+        for sid in session_ids:
+            raw = await self._redis.get(self._key(sid))
+            if raw is None:
+                # Expired — clean up both indices
+                await self._redis.srem(entity_key, sid)
+                await self._redis.srem(SESSION_INDEX_KEY, sid)
+                continue
+            data = json.loads(raw)
+            summaries.append({
+                "session_id": data.get("session_id"),
+                "context_type": data.get("context_type"),
+                "context_id": data.get("context_id"),
+                "project": data.get("project"),
+                "session_type": data.get("session_type", "chat"),
+                "session_status": data.get("session_status", "active"),
+                "target_entity_type": data.get("target_entity_type", ""),
+                "target_entity_id": data.get("target_entity_id", ""),
+                "pause_reason": data.get("pause_reason", ""),
+                "blocked_by_decision_id": data.get("blocked_by_decision_id", ""),
+                "scopes": data.get("scopes", []),
+                "model_used": data.get("model_used"),
+                "message_count": len(data.get("messages", [])),
+                "total_tokens_in": data.get("total_tokens_in", 0),
+                "total_tokens_out": data.get("total_tokens_out", 0),
+                "estimated_cost": data.get("estimated_cost", 0.0),
+                "created_at": data.get("created_at"),
+                "updated_at": data.get("updated_at"),
+            })
+
         summaries.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
         return summaries[:limit]
 

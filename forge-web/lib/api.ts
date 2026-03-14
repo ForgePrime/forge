@@ -651,9 +651,14 @@ export const llm = {
   },
   getSession: (sessionId: string) =>
     get<ChatSession>(`/llm/sessions/${sessionId}`),
-  listSessions: (limit?: number) =>
-    list<{ sessions: ChatSession[]; count: number }>(
-      "/llm/sessions", limit ? { limit: String(limit) } : undefined),
+  listSessions: (opts?: { limit?: number; entity_type?: string; entity_id?: string }) => {
+    const params: Record<string, string> = {};
+    if (opts?.limit) params.limit = String(opts.limit);
+    if (opts?.entity_type) params.entity_type = opts.entity_type;
+    if (opts?.entity_id) params.entity_id = opts.entity_id;
+    return list<{ sessions: ChatSession[]; count: number }>(
+      "/llm/sessions", Object.keys(params).length > 0 ? params : undefined);
+  },
   deleteSession: (sessionId: string) =>
     remove<{ deleted: boolean; session_id: string }>(`/llm/sessions/${sessionId}`),
   resumeSession: (sessionId: string) =>

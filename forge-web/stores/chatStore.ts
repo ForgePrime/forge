@@ -541,7 +541,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   loadSessions: async (limit = 50) => {
     set({ sessionsLoading: true });
     try {
-      const result = await llm.listSessions(limit);
+      const result = await llm.listSessions({ limit });
       set({ sessionList: result.sessions as ChatSessionSummary[], sessionsLoading: false });
     } catch (e) {
       set({ sessionsLoading: false, error: e instanceof Error ? e.message : "Failed to load sessions" });

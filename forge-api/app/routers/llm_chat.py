@@ -895,10 +895,15 @@ async def update_config(
 @router.get("/sessions")
 async def list_sessions(
     limit: int = 50,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
     manager=Depends(get_session_manager),
 ) -> dict[str, Any]:
-    """List active LLM chat sessions."""
-    sessions = await manager.list_sessions(limit=limit)
+    """List active LLM chat sessions, optionally filtered by entity."""
+    if entity_type and entity_id:
+        sessions = await manager.filter_by_entity(entity_type, entity_id, limit=limit)
+    else:
+        sessions = await manager.list_sessions(limit=limit)
     return {"sessions": sessions, "count": len(sessions)}
 
 

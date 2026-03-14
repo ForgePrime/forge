@@ -394,7 +394,7 @@ function capitalize(s: string): string {
  */
 async function _tryResumeBlockedSessions(decisionId: string): Promise<void> {
   try {
-    const { sessions } = await llm.listSessions(200);
+    const { sessions } = await llm.listSessions({ limit: 200 });
     for (const session of sessions) {
       if (
         session.session_status === "paused" &&
