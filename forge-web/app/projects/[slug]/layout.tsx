@@ -9,6 +9,7 @@ import { dispatchWsEvent, setLastEventTimestamp } from "@/stores/wsDispatcher";
 import { DebugToggle } from "@/components/debug/DebugToggle";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
+import { WorkflowProgressBar } from "@/components/layout/WorkflowProgressBar";
 
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { useDebugPanelStore } from "@/stores/debugPanelStore";
@@ -116,6 +117,9 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
           </div>
         </div>
       </div>
+
+      {/* Workflow progress bar */}
+      <WorkflowProgressBar slug={slug} />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
