@@ -72,11 +72,19 @@ export function TaskCard({ task, slug, onStatusChange, onEdit, onClaim, claiming
         </div>
       </div>
       <div className="flex flex-wrap gap-1 mt-2">
+        {task.agent && (
+          <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+            {task.agent}
+          </span>
+        )}
         {task.scopes.map((s) => (
           <span key={s} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{s}</span>
         ))}
         {task.depends_on.length > 0 && (
           <span className="text-[10px] text-gray-400">depends: {task.depends_on.join(", ")}</span>
+        )}
+        {task.conflicts_with.length > 0 && (
+          <span className="text-[10px] text-amber-500">conflicts: {task.conflicts_with.join(", ")}</span>
         )}
       </div>
     </div>

@@ -11,6 +11,7 @@ import { StatusFilter } from "@/components/shared/StatusFilter";
 import { SuggestionPanel } from "@/components/ai/SuggestionPanel";
 import { TaskForm } from "@/components/forms/TaskForm";
 import { DraftPlanView } from "@/components/planning/DraftPlanView";
+import { ActiveTasksDashboard } from "@/components/execution/ActiveTasksDashboard";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Task, DraftPlan } from "@/lib/types";
 
@@ -29,6 +30,7 @@ export default function TasksPage() {
   const [draft, setDraft] = useState<DraftPlan | null>(null);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState("");
 
   const claimNext = useExecutionStore((s) => s.claimNext);
   const executionPhase = useExecutionStore((s) => s.phase);
@@ -155,7 +157,7 @@ export default function TasksPage() {
 
   const handleClaimNext = useCallback(async () => {
     setClaimError(null);
-    const task = await claimNext(slug);
+    const task = await claimNext(slug, agentName || undefined);
     if (task) {
       router.push(`/projects/${slug}/execution/${task.id}`);
     } else {
@@ -171,9 +173,28 @@ export default function TasksPage() {
 
   const handleClaimSpecific = useCallback(async (task: Task) => {
     setClaimError(null);
+
+    // Check for conflicts with active tasks
+    const activeTasks = items.filter((t) => t.status === "IN_PROGRESS" || t.status === "CLAIMING");
+    const conflicts: string[] = [];
+    for (const conflictId of task.conflicts_with ?? []) {
+      const activeConflict = activeTasks.find((t) => t.id === conflictId);
+      if (activeConflict) {
+        conflicts.push(`${conflictId}${activeConflict.agent ? ` (${activeConflict.agent})` : ""}: ${activeConflict.name}`);
+      }
+    }
+    for (const active of activeTasks) {
+      if ((active.conflicts_with ?? []).includes(task.id) && !conflicts.some((c) => c.startsWith(active.id))) {
+        conflicts.push(`${active.id}${active.agent ? ` (${active.agent})` : ""}: ${active.name}`);
+      }
+    }
+    if (conflicts.length > 0) {
+      setClaimError(`Conflict warning: ${task.id} conflicts with active task(s): ${conflicts.join("; ")}`);
+      return;
+    }
+
     setClaimingTaskId(task.id);
     try {
-      // For specific task claim, use the start status to claim it
       await updateTaskAction(slug, task.id, { status: "IN_PROGRESS" });
       mutate();
       router.push(`/projects/${slug}/execution/${task.id}`);
@@ -182,7 +203,7 @@ export default function TasksPage() {
     } finally {
       setClaimingTaskId(null);
     }
-  }, [slug, mutate, router]);
+  }, [slug, mutate, router, items]);
 
   const handleStatusChange = (id: string, status: string) => {
     updateTaskAction(slug, id, { status: status as Task["status"] });
@@ -220,6 +241,13 @@ export default function TasksPage() {
         </h2>
         <div className="flex items-center gap-3">
           <StatusFilter options={STATUSES} value={statusFilter} onChange={setStatusFilter} />
+          <input
+            type="text"
+            value={agentName}
+            onChange={(e) => setAgentName(e.target.value)}
+            placeholder="Agent name"
+            className="w-28 text-xs border rounded px-2 py-1.5 placeholder-gray-300 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
+          />
           <button
             onClick={handleClaimNext}
             disabled={isClaiming || todoCount === 0}
@@ -235,6 +263,8 @@ export default function TasksPage() {
           </button>
         </div>
       </div>
+      {/* Active tasks dashboard */}
+      <ActiveTasksDashboard slug={slug} />
       {/* Draft plan banner */}
       {draft && (
         <div className="mb-4">
