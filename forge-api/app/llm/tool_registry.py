@@ -32,6 +32,7 @@ _ENTITY_MAP: dict[str, tuple[str | None, str]] = {
     "changes": ("changes", "changes"),
     "lessons": ("lessons", "lessons"),
     "ac_templates": ("ac_templates", "ac_templates"),
+    "research": ("research", "research"),
     "skills": (None, "skills"),  # global entity
 }
 
@@ -1562,6 +1563,181 @@ async def _handle_update_knowledge(
     return {"error": f"Knowledge {k_id} not found"}
 
 
+async def _handle_create_research(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new research object."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    title = args.get("title")
+    if not title:
+        return {"error": "title is required"}
+    category = args.get("category")
+    if not category:
+        return {"error": "category is required"}
+    summary = args.get("summary")
+    if not summary:
+        return {"error": "summary is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "research")
+    items = data.get("research", [])
+    new_id = _next_id(items, "R")
+
+    research = {
+        "id": new_id,
+        "title": title,
+        "topic": args.get("topic", title),
+        "category": category,
+        "summary": summary,
+        "status": "DRAFT",
+        "content": args.get("content", ""),
+        "key_findings": args.get("key_findings", []),
+        "decision_ids": args.get("decision_ids", []),
+        "linked_entity_type": args.get("linked_entity_type"),
+        "linked_entity_id": args.get("linked_entity_id"),
+        "linked_idea_id": args.get("linked_idea_id"),
+        "skill": args.get("skill"),
+        "file_path": args.get("file_path"),
+        "scopes": args.get("scopes", []),
+        "tags": args.get("tags", []),
+        "created_by": "ai",
+    }
+
+    # Auto-generate file_path if content provided
+    if research["content"] and not research["file_path"]:
+        slug_part = title.lower().replace(" ", "-").replace(":", "").replace("/", "-")[:60]
+        skill_part = research["skill"] or "research"
+        research["file_path"] = f"research/{skill_part}-{slug_part}.md"
+
+    items.append(research)
+    data["research"] = items
+    await asyncio.to_thread(storage.save_data, project, "research", data)
+    return {"created": True, "id": new_id, "research": research}
+
+
+async def _handle_update_research(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update a research object — status, decision_ids, findings, etc."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    r_id = args.get("id")
+    if not r_id:
+        return {"error": "id is required"}
+
+    valid_transitions = {
+        "DRAFT": {"ACTIVE", "ARCHIVED"},
+        "ACTIVE": {"SUPERSEDED", "ARCHIVED"},
+        "SUPERSEDED": {"ARCHIVED"},
+    }
+
+    data = await asyncio.to_thread(storage.load_data, project, "research")
+    items = data.get("research", [])
+
+    for item in items:
+        if item.get("id") == r_id:
+            changed = []
+            # Status transition validation
+            if "status" in args and args["status"] is not None:
+                current = item.get("status", "DRAFT")
+                target = args["status"]
+                valid = valid_transitions.get(current, set())
+                if target not in valid:
+                    return {
+                        "error": f"Invalid status transition: {current} -> {target}. "
+                        f"Valid: {', '.join(sorted(valid)) or 'none (terminal)'}"
+                    }
+                item["status"] = target
+                changed.append("status")
+            for fld in ("title", "topic", "summary", "category", "key_findings",
+                        "decision_ids", "content", "file_path", "linked_idea_id",
+                        "scopes", "tags"):
+                if fld in args and args[fld] is not None:
+                    item[fld] = args[fld]
+                    changed.append(fld)
+            if not changed:
+                return {"error": "No fields to update"}
+            data["research"] = items
+            await asyncio.to_thread(storage.save_data, project, "research", data)
+            return {"updated": True, "id": r_id, "changed_fields": changed}
+    return {"error": f"Research {r_id} not found"}
+
+
+async def _handle_list_research(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """List research objects with optional filters."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "research")
+    items = data.get("research", [])
+
+    status = args.get("status")
+    category = args.get("category")
+    entity = args.get("entity")
+
+    if status:
+        items = [r for r in items if r.get("status") == status]
+    if category:
+        items = [r for r in items if r.get("category") == category]
+    if entity:
+        items = [r for r in items if r.get("linked_entity_id") == entity or r.get("linked_idea_id") == entity]
+
+    # Return condensed list
+    result = []
+    for r in items:
+        result.append({
+            "id": r["id"],
+            "title": r.get("title", ""),
+            "category": r.get("category", ""),
+            "status": r.get("status", "DRAFT"),
+            "summary": r.get("summary", "")[:200],
+            "linked_entity_id": r.get("linked_entity_id"),
+            "key_findings_count": len(r.get("key_findings", [])),
+            "decision_ids": r.get("decision_ids", []),
+        })
+    return {"research": result, "count": len(result)}
+
+
+async def _handle_get_research_context(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Get research linked to a specific entity (for LLM context assembly)."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    entity = args.get("entity")
+    if not entity:
+        return {"error": "entity is required (e.g., O-001, I-001)"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "research")
+    items = data.get("research", [])
+
+    matching = [
+        r for r in items
+        if r.get("linked_entity_id") == entity or r.get("linked_idea_id") == entity
+    ]
+
+    result = []
+    for r in matching:
+        result.append({
+            "id": r["id"],
+            "title": r.get("title", ""),
+            "category": r.get("category", ""),
+            "status": r.get("status", "DRAFT"),
+            "summary": r.get("summary", ""),
+            "key_findings": r.get("key_findings", []),
+            "decision_ids": r.get("decision_ids", []),
+            "file_path": r.get("file_path", ""),
+            "skill": r.get("skill", ""),
+        })
+    return {"research": result, "count": len(result), "entity": entity}
+
+
 async def _handle_create_guideline(
     args: dict[str, Any], storage: Any, context: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1673,6 +1849,110 @@ async def _handle_create_lesson(
     data["lessons"] = lessons
     await asyncio.to_thread(storage.save_data, project, "lessons", data)
     return {"created": True, "id": new_id, "lesson": lesson}
+
+
+# ---------------------------------------------------------------------------
+# Research handlers
+# ---------------------------------------------------------------------------
+
+async def _handle_create_research(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new research analysis object."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    title = args.get("title")
+    if not title:
+        return {"error": "title is required"}
+    category = args.get("category")
+    if not category:
+        return {"error": "category is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "research")
+    items = data.get("research", [])
+    new_id = _next_id(items, "R")
+    now = _now_iso()
+
+    research = {
+        "id": new_id,
+        "title": title,
+        "topic": args.get("topic", title),
+        "category": category,
+        "status": "DRAFT",
+        "summary": args.get("summary", ""),
+        "content": args.get("content", ""),
+        "key_findings": args.get("key_findings", []),
+        "linked_entity_type": args.get("linked_entity_type"),
+        "linked_entity_id": args.get("linked_entity_id"),
+        "linked_idea_id": args.get("linked_idea_id"),
+        "decision_ids": args.get("decision_ids", []),
+        "file_path": args.get("file_path"),
+        "scopes": args.get("scopes", []),
+        "tags": args.get("tags", []),
+        "skill": args.get("skill"),
+        "created_by": "ai",
+        "created_at": now,
+        "updated_at": now,
+    }
+    items.append(research)
+    data["research"] = items
+    await asyncio.to_thread(storage.save_data, project, "research", data)
+    return {"created": True, "id": new_id, "research": research}
+
+
+async def _handle_update_research(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Update a research object — status, findings, or metadata."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    r_id = args.get("id")
+    if not r_id:
+        return {"error": "id is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "research")
+    items = data.get("research", [])
+
+    for item in items:
+        if item.get("id") == r_id:
+            changed = []
+            for field in ("title", "topic", "category", "status", "summary",
+                          "content", "key_findings", "decision_ids",
+                          "file_path", "scopes", "tags"):
+                if field in args and args[field] is not None:
+                    item[field] = args[field]
+                    changed.append(field)
+            if not changed:
+                return {"error": "No fields to update"}
+            item["updated_at"] = _now_iso()
+            data["research"] = items
+            await asyncio.to_thread(storage.save_data, project, "research", data)
+            return {"updated": True, "id": r_id, "changed_fields": changed}
+
+    return {"error": f"Research {r_id} not found"}
+
+
+async def _handle_research_context(
+    args: dict[str, Any], storage: Any, context: dict[str, Any],
+) -> dict[str, Any]:
+    """Get research linked to a specific entity (objective or idea)."""
+    project = args.get("project") or context.get("project")
+    if not project:
+        return {"error": "project is required"}
+    entity_id = args.get("entity_id")
+    if not entity_id:
+        return {"error": "entity_id is required"}
+
+    data = await asyncio.to_thread(storage.load_data, project, "research")
+    items = data.get("research", [])
+    matched = [
+        r for r in items
+        if r.get("linked_entity_id") == entity_id
+        or r.get("linked_idea_id") == entity_id
+    ]
+    return {"research": matched, "count": len(matched), "entity": entity_id}
 
 
 async def _handle_record_change(
@@ -3214,6 +3494,117 @@ def create_default_registry() -> ToolRegistry:
         context_types=["global"],
         required_permission=None,
         handler=_handle_get_tool_contract,
+    ))
+
+    # --- Research tools (WRITE) ---
+
+    registry.register(ToolDef(
+        name="createResearch",
+        description="Create a research object with findings, linked entities, and optional full content.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Research title."},
+                "topic": {"type": "string", "description": "Research topic."},
+                "category": {
+                    "type": "string",
+                    "enum": ["architecture", "business", "domain", "feasibility", "risk", "technical"],
+                    "description": "Research category.",
+                },
+                "summary": {"type": "string", "description": "Brief summary of findings."},
+                "content": {"type": "string", "description": "Full analysis content (markdown)."},
+                "key_findings": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Bullet-point key findings.",
+                },
+                "linked_entity_type": {
+                    "type": "string", "enum": ["objective", "idea"],
+                    "description": "Type of linked entity.",
+                },
+                "linked_entity_id": {"type": "string", "description": "Entity ID (e.g., O-001, I-001)."},
+                "linked_idea_id": {"type": "string", "description": "Secondary idea link."},
+                "decision_ids": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Decision IDs from this research.",
+                },
+                "skill": {"type": "string", "description": "Skill that produced this research."},
+                "scopes": {"type": "array", "items": {"type": "string"}},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["title", "category", "summary"],
+        },
+        context_types=["research", "global"],
+        required_permission=("research", "write"),
+        handler=_handle_create_research,
+        scope="research",
+    ))
+
+    registry.register(ToolDef(
+        name="updateResearch",
+        description="Update a research object — status, decision_ids, key_findings, etc.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Research ID (e.g., R-001)."},
+                "status": {
+                    "type": "string",
+                    "enum": ["DRAFT", "ACTIVE", "SUPERSEDED", "ARCHIVED"],
+                    "description": "New status (must follow valid transitions).",
+                },
+                "title": {"type": "string"},
+                "summary": {"type": "string"},
+                "key_findings": {"type": "array", "items": {"type": "string"}},
+                "decision_ids": {"type": "array", "items": {"type": "string"}},
+                "content": {"type": "string"},
+                "scopes": {"type": "array", "items": {"type": "string"}},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["id"],
+        },
+        context_types=["research"],
+        required_permission=("research", "write"),
+        handler=_handle_update_research,
+        scope="research",
+    ))
+
+    registry.register(ToolDef(
+        name="listResearch",
+        description="List research objects with optional status/category/entity filters.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["DRAFT", "ACTIVE", "SUPERSEDED", "ARCHIVED"]},
+                "category": {
+                    "type": "string",
+                    "enum": ["architecture", "business", "domain", "feasibility", "risk", "technical"],
+                },
+                "entity": {"type": "string", "description": "Filter by linked entity ID."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+        },
+        context_types=["research", "global"],
+        required_permission=("research", "read"),
+        handler=_handle_list_research,
+        scope="research",
+    ))
+
+    registry.register(ToolDef(
+        name="getResearchContext",
+        description="Get research linked to a specific entity for LLM context (summary + findings + decisions).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "entity": {"type": "string", "description": "Entity ID (e.g., O-001, I-001)."},
+                "project": {"type": "string", "description": "Project slug."},
+            },
+            "required": ["entity"],
+        },
+        context_types=["research", "global"],
+        required_permission=("research", "read"),
+        handler=_handle_get_research_context,
+        scope="research",
     ))
 
     return registry
