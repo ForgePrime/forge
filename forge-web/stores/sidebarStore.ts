@@ -39,6 +39,8 @@ interface SidebarState {
   attachedSkills: AttachedSkillInfo[];
   /** Entity the sidebar is bound to (null = project-level). */
   targetEntity: TargetEntity | null;
+  /** Default scopes from entity_type_defaults config (auto-applied when entity bound). */
+  entityDefaultScopes: string[];
   /** Whether localStorage has been read. */
   _hydrated: boolean;
 }
@@ -57,6 +59,7 @@ interface SidebarActions {
   clearSkills: () => void;
   setTargetEntity: (entity: TargetEntity | null) => void;
   clearTargetEntity: () => void;
+  setEntityDefaultScopes: (scopes: string[]) => void;
 }
 
 function persist(state: SidebarState) {
@@ -85,6 +88,7 @@ export const useSidebarStore = create<SidebarState & SidebarActions>((set, get) 
   hiddenRoutes: [],
   attachedSkills: [],
   targetEntity: null,
+  entityDefaultScopes: [],
   _hydrated: false,
 
   hydrate: () => {
@@ -207,10 +211,14 @@ export const useSidebarStore = create<SidebarState & SidebarActions>((set, get) 
   },
 
   setTargetEntity: (entity) => {
-    set({ targetEntity: entity });
+    set({ targetEntity: entity, entityDefaultScopes: [] });
   },
 
   clearTargetEntity: () => {
-    set({ targetEntity: null });
+    set({ targetEntity: null, entityDefaultScopes: [] });
+  },
+
+  setEntityDefaultScopes: (scopes) => {
+    set({ entityDefaultScopes: scopes });
   },
 }));

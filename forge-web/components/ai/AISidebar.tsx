@@ -7,6 +7,7 @@ import { fetchContractsForScopes, getPermissionStatus, type CapabilityDef } from
 import { useAIPageContextSafe, serializePageContext, deriveScopesFromElements, type AIElementDescriptor } from "@/lib/ai-context";
 import { useSidebarStore, type SidebarTab } from "@/stores/sidebarStore";
 import { useChatStore } from "@/stores/chatStore";
+import { useProjectStore } from "@/stores/projectStore";
 import type { LLMConfig } from "@/lib/types";
 import LLMChat from "./LLMChat";
 import WorkflowProgress from "./WorkflowProgress";
@@ -170,11 +171,14 @@ function ScopesTab({
   pageElements?: AIElementDescriptor[];
   /** Current project slug for app context preview. */
   projectSlug?: string | null;
+  /** Scopes applied by entity_type_defaults. */
+  entityDefaultScopes?: string[];
 }) {
   const [contextExpanded, setContextExpanded] = useState(false);
   const [appContextExpanded, setAppContextExpanded] = useState(false);
   const activeSet = new Set(activeScopes);
   const disabledSet = new Set(disabledCapabilities);
+  const defaultSet = new Set(entityDefaultScopes ?? []);
 
   // Fetch App Context preview (SKILL text) from backend
   const disabledKey = disabledToolNames.length > 0 ? disabledToolNames.join(",") : "";
@@ -347,6 +351,9 @@ function ScopesTab({
                 className="rounded border-gray-300 text-forge-600 focus:ring-forge-500 h-3.5 w-3.5"
               />
               <span className="text-xs text-gray-700">{scope}</span>
+              {(defaultSet.has(scope) || defaultSet.has("*")) && (
+                <span className="text-[9px] bg-indigo-100 text-indigo-600 px-1 py-0.5 rounded">default</span>
+              )}
               <span className="text-[10px] text-gray-400 ml-auto">
                 {checked && capCount > 0 ? `${capCount} ops` : SCOPE_TO_CONTEXT_TYPE[scope]}
               </span>
@@ -685,6 +692,9 @@ export default function AISidebar() {
 
   const pathname = usePathname();
 
+  // Extract project slug from URL
+  const projectSlugFromPath = pathname?.match(/\/projects\/([^/]+)/)?.[1] ?? null;
+
   // Auto-detect entity from URL path: /projects/{slug}/{entityPlural}/{id}
   const setTargetEntity = useSidebarStore((s) => s.setTargetEntity);
   useEffect(() => {
@@ -706,6 +716,20 @@ export default function AISidebar() {
     }
   }, [pathname, setTargetEntity]);
 
+  // Apply entity_type_defaults scopes from project config
+  const projectDetails = useProjectStore((s) => s.details);
+  useEffect(() => {
+    if (!targetEntity || !projectSlugFromPath) {
+      useSidebarStore.getState().setEntityDefaultScopes([]);
+      return;
+    }
+    const detail = projectDetails[projectSlugFromPath];
+    const defaults = (detail?.config as Record<string, unknown>)?.entity_type_defaults as
+      Record<string, { scopes?: string[] }> | undefined;
+    const entityScopes = defaults?.[targetEntity.type]?.scopes ?? [];
+    useSidebarStore.getState().setEntityDefaultScopes(entityScopes);
+  }, [targetEntity, projectDetails, projectSlugFromPath]);
+
   // Resolve scopes from URL + overrides
   const { scopes: urlScopes, projectSlug, contextTypes, contextId: resolvedContextId } = useScopeResolver({
     addedScopes,
@@ -724,7 +748,10 @@ export default function AISidebar() {
   const annotationScopes = pageSnapshot && pageSnapshot.elements.size > 0
     ? deriveScopesFromElements(pageSnapshot.elements.values())
     : [];
-  const scopes = Array.from(new Set([...urlScopes, ...annotationScopes]));
+  const entityDefaultScopes = useSidebarStore((s) => s.entityDefaultScopes);
+  // "*" in entity defaults means all available scopes
+  const entityScopes = entityDefaultScopes.includes("*") ? urlScopes : entityDefaultScopes;
+  const scopes = Array.from(new Set([...urlScopes, ...annotationScopes, ...entityScopes]));
 
   // Sync scopes to active session backend when they change
   const scopesKey = scopes.join(",");
@@ -862,6 +889,7 @@ export default function AISidebar() {
             pageContextText={pageContextText}
             pageElements={pageSnapshot ? Array.from(pageSnapshot.elements.values()) : undefined}
             projectSlug={projectSlug}
+            entityDefaultScopes={entityDefaultScopes}
           />
         )}
 
