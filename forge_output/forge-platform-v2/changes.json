@@ -1,6 +1,6 @@
 {
   "project": "forge-platform-v2",
-  "updated": "2026-03-14T11:17:40Z",
+  "updated": "2026-03-14T11:19:20Z",
   "changes": [
     {
       "id": "C-143",
@@ -16311,6 +16311,177 @@
       "group_id": "T-229",
       "guidelines_checked": [],
       "timestamp": "2026-03-14T11:17:40Z"
+    },
+    {
+      "id": "C-858",
+      "task_id": "T-230",
+      "file": "forge-web/components/ai/AISidebar.tsx",
+      "action": "edit",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 3,
+      "lines_removed": 50,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
+    },
+    {
+      "id": "C-859",
+      "task_id": "T-230",
+      "file": "forge-web/components/ai/SkillCategorySection.tsx",
+      "action": "create",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 81,
+      "lines_removed": 0,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
+    },
+    {
+      "id": "C-860",
+      "task_id": "T-230",
+      "file": "forge-web/components/ai/ToolsTabEnhanced.tsx",
+      "action": "create",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 118,
+      "lines_removed": 0,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
+    },
+    {
+      "id": "C-861",
+      "task_id": "T-230",
+      "file": "forge_output/forge-platform-v2/changes.json",
+      "action": "edit",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 210,
+      "lines_removed": 1,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
+    },
+    {
+      "id": "C-862",
+      "task_id": "T-230",
+      "file": "forge_output/forge-platform-v2/decisions.json",
+      "action": "edit",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 270,
+      "lines_removed": 1,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
+    },
+    {
+      "id": "C-863",
+      "task_id": "T-230",
+      "file": "forge_output/forge-platform-v2/research.json",
+      "action": "edit",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 52,
+      "lines_removed": 4,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
+    },
+    {
+      "id": "C-864",
+      "task_id": "T-230",
+      "file": "forge_output/forge-platform-v2/research/deep-architect-web-workflow-architecture-adapting-forge-core-process-for-we.md",
+      "action": "edit",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 291,
+      "lines_removed": 0,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
+    },
+    {
+      "id": "C-865",
+      "task_id": "T-230",
+      "file": "forge_output/forge-platform-v2/tmp_research_explore.json",
+      "action": "edit",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 0,
+      "lines_removed": 26,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
+    },
+    {
+      "id": "C-866",
+      "task_id": "T-230",
+      "file": "forge_output/forge-platform-v2/tracker.json",
+      "action": "edit",
+      "summary": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports.",
+      "reasoning_trace": [
+        {
+          "step": "auto-complete",
+          "detail": "Created ToolsTabEnhanced (~110 LOC) with search input, category grouping from skill.categories, multi-category display, attach/checkmark toggle, and tab switch. Created SkillCategorySection (~85 LOC) as collapsible accordion. Replaced inline ToolsTab in AISidebar. Removed unused imports."
+        }
+      ],
+      "decision_ids": [],
+      "lines_added": 309,
+      "lines_removed": 1,
+      "group_id": "T-230",
+      "guidelines_checked": [],
+      "timestamp": "2026-03-14T11:19:20Z"
     }
   ]
 }

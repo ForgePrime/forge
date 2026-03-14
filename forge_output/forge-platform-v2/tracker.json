@@ -2,7 +2,7 @@
   "project": "forge-platform-v2",
   "goal": "Implement Forge Platform v2 Phases 2-4: Database & API, Web UI, AI Features — per docs/FORGE-PLATFORM-V2.md Sections 7-11. Builds on completed Phase 1 (forge-platform-v2-phase1).",
   "created": "2026-03-10T19:00:00Z",
-  "updated": "2026-03-14T11:17:44Z",
+  "updated": "2026-03-14T11:19:20Z",
   "config": {},
   "tasks": [
     {
@@ -7340,9 +7340,9 @@
       ],
       "origin": "O-025",
       "knowledge_ids": [],
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "started_at": "2026-03-14T11:17:44Z",
-      "completed_at": null,
+      "completed_at": "2026-03-14T11:19:20Z",
       "failed_reason": null,
       "test_requirements": {
         "unit": true,
@@ -7350,7 +7350,8 @@
         "e2e": false
       },
       "agent": "default",
-      "started_at_commit": "45346d0a6f168d57c1c9d4a16bbf0f63274b1a6e"
+      "started_at_commit": "45346d0a6f168d57c1c9d4a16bbf0f63274b1a6e",
+      "ac_reasoning": "AC verification: 1. Search filters by name/display_name: met. 2. Skills grouped by categories, expandable: met. 3. Multi-category display: met (loop over all cats). 4. Uncategorized fallback: met. 5. Attach adds chip + switches tab: met. 6. Already-attached shows checkmark: met (HiCheck icon). 7. AI annotations: met (2 useAIElement calls). 8. AISidebar replacement: met."
     },
     {
       "id": "T-231",
