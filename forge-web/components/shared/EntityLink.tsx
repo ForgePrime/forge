@@ -12,6 +12,7 @@ import {
   knowledge as knowledgeApi,
   guidelines as guidelinesApi,
   lessons as lessonsApi,
+  research as researchApi,
 } from "@/lib/api";
 
 interface EntityLinkProps {
@@ -30,6 +31,7 @@ const ENTITY_MAP: Record<string, { type: string; route: string; color: string }>
   I: { type: "idea", route: "ideas", color: "text-green-600" },
   G: { type: "guideline", route: "guidelines", color: "text-gray-600" },
   L: { type: "lesson", route: "lessons", color: "text-rose-600" },
+  R: { type: "research", route: "research", color: "text-indigo-600" },
 };
 
 function parseEntityId(id: string) {
@@ -91,6 +93,11 @@ async function fetchPreview(slug: string, entityId: string): Promise<EntityPrevi
       case "lesson": {
         const l = await lessonsApi.get(slug, entityId);
         data = { title: l.title, type: l.category };
+        break;
+      }
+      case "research": {
+        const r = await researchApi.get(slug, entityId);
+        data = { title: r.title, status: r.status, type: r.category, description: r.summary };
         break;
       }
     }

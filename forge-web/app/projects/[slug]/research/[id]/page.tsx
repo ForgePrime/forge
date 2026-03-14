@@ -173,14 +173,10 @@ export default function ResearchDetailPage() {
       {item.linked_entity_id && (
         <div className="rounded-lg border bg-white p-4">
           <h2 className="text-sm font-semibold mb-2">Linked Entity</h2>
-          <EntityLink
-            slug={slug}
-            entityType={item.linked_entity_type ?? "objective"}
-            entityId={item.linked_entity_id}
-          />
+          <EntityLink id={item.linked_entity_id} />
           {item.linked_idea_id && (
             <div className="mt-1">
-              <EntityLink slug={slug} entityType="idea" entityId={item.linked_idea_id} />
+              <EntityLink id={item.linked_idea_id} />
             </div>
           )}
         </div>
@@ -194,7 +190,7 @@ export default function ResearchDetailPage() {
           </h2>
           <div className="flex flex-wrap gap-2">
             {item.decision_ids.map((dId) => (
-              <EntityLink key={dId} slug={slug} entityType="decision" entityId={dId} />
+              <EntityLink key={dId} id={dId} />
             ))}
           </div>
         </div>
