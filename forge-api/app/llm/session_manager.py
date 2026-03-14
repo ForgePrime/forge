@@ -65,6 +65,7 @@ class ChatSession:
     model_used: str = ""
     pause_reason: str = ""             # "blocked_by_decision" | "" (empty = not paused)
     blocked_by_decision_id: str = ""   # Decision ID that caused pause (e.g., D-005)
+    workflow_state: dict | None = None  # {workflow_id, current_step, completed_steps[], expected_tools[], allow_deviation}
     created_at: str = ""
     updated_at: str = ""
 

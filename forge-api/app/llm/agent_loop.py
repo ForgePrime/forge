@@ -373,6 +373,21 @@ class AgentLoop:
                             "Please fix the JSON and try again."
                         }
                     else:
+                        # Workflow state check (soft enforcement)
+                        workflow_state = context.get("workflow_state")
+                        if workflow_state:
+                            from app.llm.workflow_state import check_tool_against_workflow, advance_workflow
+                            wf_check = check_tool_against_workflow(workflow_state, tool_name)
+                            if wf_check.get("warning"):
+                                logger.info("Workflow: %s", wf_check["warning"])
+                                # Inject warning as system message for LLM awareness
+                                conversation.append(Message(
+                                    role="system",
+                                    content=f"[Workflow note: {wf_check['warning']}]",
+                                ))
+                            if wf_check.get("step_advanced"):
+                                advance_workflow(workflow_state, tool_name, wf_check)
+
                         # Execute tool (with defense-in-depth permission check)
                         try:
                             tool_result = await self._tool_registry.execute(

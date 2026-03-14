@@ -313,6 +313,12 @@ async def chat(
             target_entity_id=body.target_entity_id or "",
             scopes=body.scopes or [],
         )
+        # Initialize workflow state for workflow-enabled session types
+        from app.llm.workflow_state import create_workflow_state
+        wf_state = create_workflow_state(session.session_type)
+        if wf_state:
+            session.workflow_state = wf_state
+            await session_manager.save(session)
     else:
         # Sync scopes if request scopes differ from session scopes
         # body.scopes=None means "not specified" (keep existing), body.scopes=[] means "clear"
@@ -528,6 +534,7 @@ async def chat(
                 "project": body.project,
                 "_tool_registry": tool_registry,
                 "session_scopes": session.scopes,
+                "workflow_state": session.workflow_state,
             },
             on_event=on_event,
         )
@@ -565,6 +572,13 @@ async def chat(
         cost_per_1k_input=caps.cost_per_1k_input,
         cost_per_1k_output=caps.cost_per_1k_output,
     )
+
+    # --- Persist updated workflow state (mutated in place by agent_loop) ---
+    if session.workflow_state:
+        loaded = await session_manager.load(session.session_id)
+        if loaded:
+            loaded.workflow_state = session.workflow_state
+            await session_manager.save(loaded)
 
     # --- Handle blocked_by_decision: pause the session ---
     if result.stop_reason == "blocked_by_decision" and result.blocked_by_decision_id:
