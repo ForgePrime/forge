@@ -133,6 +133,7 @@ class ChatResponse(BaseModel):
     total_output_tokens: int = 0
     stop_reason: str = ""
     context_budget_pct: float = 0.0  # Context window usage percentage (0-100)
+    workflow_state: dict[str, Any] | None = None  # Workflow progress for frontend
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +627,7 @@ async def chat(
         total_output_tokens=result.total_output_tokens,
         stop_reason=result.stop_reason,
         context_budget_pct=token_stats["usage_pct"],
+        workflow_state=session.workflow_state,
     )
 
 

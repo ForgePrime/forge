@@ -1168,6 +1168,20 @@ export interface ChatSendRequest {
   skill_names?: string[];
 }
 
+export interface WorkflowStep {
+  name: string;
+  expected_tools: string[];
+  description: string;
+}
+
+export interface WorkflowState {
+  workflow_id: string;
+  current_step: number;
+  completed_steps: string[];
+  steps: WorkflowStep[];
+  allow_deviation: boolean;
+}
+
 export interface ChatSendResponse {
   session_id: string;
   content: string;
@@ -1177,6 +1191,7 @@ export interface ChatSendResponse {
   total_input_tokens: number;
   total_output_tokens: number;
   stop_reason: string;
+  workflow_state?: WorkflowState | null;
 }
 
 export interface ProviderModel {

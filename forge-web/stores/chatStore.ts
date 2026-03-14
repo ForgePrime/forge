@@ -9,7 +9,7 @@
  */
 import { create } from "zustand";
 import type { ForgeEvent } from "@/lib/ws";
-import type { ChatMessage, ChatToolCall, ChatSendResponse, ChatSession } from "@/lib/types";
+import type { ChatMessage, ChatToolCall, ChatSendResponse, ChatSession, WorkflowState } from "@/lib/types";
 import { llm } from "@/lib/api";
 import { _notifyDebugListeners } from "@/lib/hooks/useStreamDebug";
 
@@ -27,6 +27,7 @@ export interface ChatConversation {
   totalTokensOut: number;
   estimatedCost: number;
   model: string;
+  workflowState?: WorkflowState | null;
 }
 
 /** Summary for session list (no full messages). */
@@ -323,6 +324,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
               totalTokensIn: conv.totalTokensIn + response.total_input_tokens,
               totalTokensOut: conv.totalTokensOut + response.total_output_tokens,
               model: response.model,
+              workflowState: response.workflow_state ?? conv.workflowState,
             },
           },
         };

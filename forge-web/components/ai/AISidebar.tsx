@@ -8,6 +8,7 @@ import { useSidebarStore, type SidebarTab } from "@/stores/sidebarStore";
 import { useChatStore } from "@/stores/chatStore";
 import type { LLMConfig } from "@/lib/types";
 import LLMChat from "./LLMChat";
+import WorkflowProgress from "./WorkflowProgress";
 import { useStreamDebug, subscribeToStreamEvents } from "@/lib/hooks/useStreamDebug";
 import { StreamView } from "./stream/StreamView";
 import useSWR from "swr";
@@ -593,6 +594,12 @@ export default function AISidebar() {
     setActiveTab,
   } = useSidebarStore();
 
+  // Active workflow state (reactive)
+  const activeWorkflow = useChatStore((s) => {
+    const sid = s.activeSessionId;
+    return sid ? s.conversations[sid]?.workflowState ?? null : null;
+  });
+
   // Hydrate from localStorage on mount
   useEffect(() => {
     hydrate();
@@ -696,6 +703,7 @@ export default function AISidebar() {
       <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
         {activeTab === "chat" && (
           <div className="flex flex-col flex-1 min-h-0">
+            {activeWorkflow && <WorkflowProgress workflow={activeWorkflow} />}
             <LLMChat
               contextType={primaryContextType}
               contextId={resolvedContextId ?? ""}
