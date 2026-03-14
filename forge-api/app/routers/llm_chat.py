@@ -132,6 +132,7 @@ class ChatResponse(BaseModel):
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     stop_reason: str = ""
+    context_budget_pct: float = 0.0  # Context window usage percentage (0-100)
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +586,13 @@ async def chat(
             except Exception:
                 logger.debug("Failed to emit chat.paused event", exc_info=True)
 
+    # Calculate context budget usage
+    from app.llm.context_window_manager import get_token_stats, DEFAULT_TOKEN_BUDGET
+    token_stats = get_token_stats(
+        result.messages,
+        budget=DEFAULT_TOKEN_BUDGET,
+    )
+
     return ChatResponse(
         session_id=session.session_id,
         content=result.content,
@@ -597,6 +605,7 @@ async def chat(
         total_input_tokens=result.total_input_tokens,
         total_output_tokens=result.total_output_tokens,
         stop_reason=result.stop_reason,
+        context_budget_pct=token_stats["usage_pct"],
     )
 
 
@@ -1216,35 +1225,6 @@ async def delete_chat_file(
 # ---------------------------------------------------------------------------
 # File content helpers for LLM context injection
 # ---------------------------------------------------------------------------
-
-async def get_session_file_contents(
-    redis,
-    session_id: str,
-) -> list[dict[str, str]]:
-    """Retrieve all file contents for a session — for LLM context injection.
-
-    Returns a list of dicts with 'filename' and 'content' keys.
-    This function is intended to be called from the chat endpoint or
-    context resolver to inject uploaded file content into the LLM prompt.
-    """
-    session_files_key = f"{SESSION_FILES_KEY_PREFIX}{session_id}{SESSION_FILES_KEY_SUFFIX}"
-    file_ids = await redis.smembers(session_files_key)
-
-    results = []
-    for fid in file_ids:
-        file_key = f"{FILE_KEY_PREFIX}{fid}"
-        raw = await redis.get(file_key)
-        if raw is None:
-            continue
-        file_data = json.loads(raw)
-        results.append({
-            "file_id": file_data["file_id"],
-            "filename": file_data["filename"],
-            "content": file_data["content"],
-        })
-
-    return results
-
 
 def _extract_pdf_text(content_bytes: bytes) -> str:
     """Attempt to extract text from PDF bytes.

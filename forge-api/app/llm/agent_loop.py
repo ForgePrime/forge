@@ -25,6 +25,7 @@ from core.llm.provider import (
     ProviderError,
     TokenUsage,
 )
+from app.llm.context_window_manager import trim_history, DEFAULT_TOKEN_BUDGET
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +203,10 @@ class AgentLoop:
                         total_input, total_output, iteration, model,
                         on_event, "Token limit exceeded",
                     )
+
+                # --- Trim conversation to fit token budget ---
+                history_budget = context.get("history_token_budget", DEFAULT_TOKEN_BUDGET)
+                conversation = trim_history(conversation, budget_tokens=history_budget)
 
                 # --- LLM call ---
                 iteration += 1
