@@ -23,8 +23,8 @@ import { isRecentMutation } from "@/lib/mutationTracker";
 import { llm } from "@/lib/api";
 import { useToastStore } from "./toastStore";
 import { useActivityStore } from "./activityStore";
-import { useNotificationStore } from "./notificationStore";
 import { useNotificationEntityStore } from "./notificationEntityStore";
+import { useNotificationModal } from "@/components/notifications/useNotificationModal";
 import { notifications as notificationsApi } from "@/lib/api";
 
 /** All stores that handle WS events, in dispatch order. */
@@ -236,16 +236,27 @@ export function dispatchWsEvent(event: ForgeEvent): void {
     store.getState().handleWsEvent(event);
   }
 
-  // Decision created → persistent notification popup (requires user action)
+  // Decision created → popup via unified notification modal
   if (event.event === "decision.created") {
     const payload = event.payload as Record<string, unknown>;
-    useNotificationStore.getState().addDecision({
-      decisionId: (payload.decision_id ?? payload.id ?? "") as string,
-      type: (payload.type ?? "standard") as string,
-      issue: (payload.issue ?? "") as string,
-      taskId: (payload.task_id as string) || undefined,
-      severity: (payload.severity as string) || undefined,
-      project: event.project,
+    useNotificationModal.getState().enqueuePopup({
+      id: `notif-${Date.now().toString(36)}`,
+      notification_type: "decision",
+      priority: (payload.severity as "critical" | "high" | "normal" | "low") ?? "normal",
+      status: "UNREAD",
+      title: (payload.issue ?? "") as string,
+      message: "",
+      source_event: "decision.created",
+      source_entity_type: "decision",
+      source_entity_id: (payload.decision_id ?? payload.id ?? "") as string,
+      project: event.project ?? "",
+      workflow_id: "",
+      workflow_step: "",
+      ai_options: [],
+      response: null,
+      response_at: null,
+      created_at: new Date().toISOString(),
+      resolved_at: null,
     });
   }
 
@@ -254,13 +265,25 @@ export function dispatchWsEvent(event: ForgeEvent): void {
     const payload = event.payload as Record<string, unknown>;
     const priority = (payload.priority as string) ?? "normal";
     if (priority === "critical" || priority === "high") {
-      // Immediate popup for critical/high
-      useNotificationStore.getState().addDecision({
-        decisionId: (payload.notification_id ?? "") as string,
-        type: (payload.notification_type ?? "alert") as string,
-        issue: (payload.title ?? "") as string,
-        severity: priority,
-        project: event.project,
+      // Immediate popup for critical/high via unified modal queue
+      useNotificationModal.getState().enqueuePopup({
+        id: (payload.notification_id ?? `notif-${Date.now().toString(36)}`) as string,
+        notification_type: (payload.notification_type ?? "alert") as string,
+        priority: priority as "critical" | "high",
+        status: "UNREAD",
+        title: (payload.title ?? "") as string,
+        message: (payload.message ?? "") as string,
+        source_event: "notification.created",
+        source_entity_type: (payload.source_entity_type ?? "") as string,
+        source_entity_id: (payload.source_entity_id ?? "") as string,
+        project: event.project ?? "",
+        workflow_id: (payload.workflow_id ?? "") as string,
+        workflow_step: (payload.workflow_step ?? "") as string,
+        ai_options: (payload.ai_options as Array<{ label: string; value: string; recommended?: boolean }>) ?? [],
+        response: null,
+        response_at: null,
+        created_at: new Date().toISOString(),
+        resolved_at: null,
       });
       // Critical also gets a toast
       if (priority === "critical") {
