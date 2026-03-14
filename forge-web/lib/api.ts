@@ -273,6 +273,7 @@ import type {
   LLMProvider, LLMProviderTestResult, LLMConfig, ProviderModel,
   BackendToolContract,
   WorkflowExecution, WorkflowStartRequest,
+  Notification, NotificationCreate, NotificationStatusUpdate, NotificationRespond, BulkStatusUpdate,
 } from "./types";
 
 // -- Projects --
@@ -737,6 +738,29 @@ export const debug = {
     get<DebugSession>(`/projects/${slug}/debug/sessions/${sessionId}`),
   clear: (slug: string) =>
     remove<{ cleared: number }>(`/projects/${slug}/debug/sessions`),
+};
+
+// -- Notifications (O-002) --
+export const notifications = {
+  list: (slug: string, params?: Record<string, string>) =>
+    list<{ notifications: Notification[]; total: number; unread_count: number }>(
+      projectPath(slug, "notifications"), params),
+  get: (slug: string, id: string) =>
+    get<Notification>(projectPath(slug, "notifications", id)),
+  create: (slug: string, data: NotificationCreate[]) =>
+    create<{ added: string[]; total: number; unread_count: number }>(
+      projectPath(slug, "notifications"), data),
+  update: (slug: string, id: string, data: NotificationStatusUpdate) =>
+    update<Notification>(projectPath(slug, "notifications", id), data),
+  respond: (slug: string, id: string, data: NotificationRespond) =>
+    create<Notification>(projectPath(slug, "notifications", id) + "/respond", data),
+  bulkUpdate: (slug: string, data: BulkStatusUpdate) =>
+    update<{ updated: string[]; count: number; unread_count: number }>(
+      projectPath(slug, "notifications") + "/bulk", data),
+  unreadCount: (slug: string) =>
+    get<{ unread_count: number }>(projectPath(slug, "notifications") + "/unread-count"),
+  remove: (slug: string, id: string) =>
+    remove<{ removed: string }>(projectPath(slug, "notifications", id)),
 };
 
 // -- Workflows (O-001) --

@@ -1315,3 +1315,66 @@ export interface WorkflowStartRequest {
 export interface WorkflowResumeRequest {
   user_response: unknown;
 }
+
+// ---------------------------------------------------------------------------
+// Notifications (O-002)
+// ---------------------------------------------------------------------------
+
+export type NotificationType = "decision" | "approval" | "question" | "alert";
+export type NotificationPriority = "critical" | "high" | "normal" | "low";
+export type NotificationStatus = "UNREAD" | "READ" | "DISMISSED" | "RESOLVED";
+
+export interface AiOption {
+  label: string;
+  action: string;
+  reasoning: string;
+}
+
+export interface Notification {
+  id: string;
+  notification_type: NotificationType;
+  priority: NotificationPriority;
+  status: NotificationStatus;
+  title: string;
+  message: string;
+  source_event: string;
+  source_entity_type: string;
+  source_entity_id: string;
+  project: string;
+  workflow_id: string;
+  workflow_step: string;
+  ai_options: AiOption[];
+  response: string | null;
+  response_at: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  updated_at?: string;
+  response_action?: string;
+}
+
+export interface NotificationCreate {
+  notification_type: NotificationType;
+  priority?: NotificationPriority;
+  title: string;
+  message?: string;
+  source_event?: string;
+  source_entity_type?: string;
+  source_entity_id?: string;
+  workflow_id?: string;
+  workflow_step?: string;
+  ai_options?: AiOption[];
+}
+
+export interface NotificationStatusUpdate {
+  status: NotificationStatus;
+}
+
+export interface NotificationRespond {
+  response: string;
+  action?: string;
+}
+
+export interface BulkStatusUpdate {
+  status: NotificationStatus;
+  notification_ids?: string[];
+}
