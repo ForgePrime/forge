@@ -37,7 +37,7 @@ description: "Get the next task from the pipeline and execute it with full trace
 | W3 | `python -m core.pipeline add-tasks {project} --data '{json}'` | Creates follow-up tasks for major findings | Step 5 — if verification finds big issues |
 | W4 | `python -m core.gates check {project} --task {task_id}` | Runs validation gates | Step 6 — before completion |
 | W5 | `git add -A && git commit -m "..."` | Commits changes | Step 6 — after validation |
-| W6 | `python -m core.pipeline complete {project} {task_id} --reasoning "..."` | Auto-records changes + marks DONE | Step 7 — after all validation |
+| W6 | `python -m core.pipeline complete {project} {task_id} --reasoning "..." [--ac-reasoning "..."]` | Auto-records changes + marks DONE | Step 7 — after all validation |
 | W7 | `python -m core.pipeline fail {project} {task_id} --reason "..."` | Marks task FAILED | On failure |
 
 ## Output
@@ -238,6 +238,23 @@ If deep-verify finds issues:
 
 **Skip deep-verify when:** task is trivial (config change, typo fix, docs-only), or task type is `chore`.
 
+**c. Acceptance Criteria checklist:**
+
+If the task has `acceptance_criteria`, go through each criterion explicitly:
+
+```
+AC Verification for {task_id}:
+1. [criterion text] — [PASS/FAIL: brief evidence]
+2. [criterion text] — [PASS/FAIL: brief evidence]
+...
+```
+
+All criteria must PASS before proceeding. If any criterion FAILS:
+- **Fixable now**: fix it, update changes
+- **Not fixable**: fail the task with `pipeline fail` explaining which criterion cannot be met
+
+Compose the AC reasoning summary for Step 7 (used in `--ac-reasoning`).
+
 ---
 
 ### Step 6 — Validate
@@ -263,11 +280,14 @@ git add -A && git commit -m "descriptive message"
 
 ### Step 7 — Complete
 
-Mark the task as DONE. Use `--reasoning` to explain the changes:
+Mark the task as DONE. Use `--reasoning` to explain the changes and `--ac-reasoning` to justify acceptance criteria:
 
 ```bash
-python -m core.pipeline complete {project} {task_id} --reasoning "What was done and why"
+python -m core.pipeline complete {project} {task_id} --reasoning "What was done and why" --ac-reasoning "AC verification: 1. [criterion]: met because [evidence]. 2. ..."
 ```
+
+If the task has acceptance criteria, `--ac-reasoning` is required. It should summarize
+how each criterion was verified (from Step 5c). Without it (and without `--force`), completion will be rejected.
 
 This auto-records any unrecorded git changes (committed + uncommitted since task start).
 

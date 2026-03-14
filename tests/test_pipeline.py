@@ -232,9 +232,153 @@ class TestStateTransitions:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name, task_id="T-001",
-                               agent=None, force=False, reasoning="")
+                               agent=None, force=False, reasoning="",
+                               ac_reasoning=None)
         with pytest.raises(SystemExit):
             cmd_complete(args)
+
+    def test_complete_with_ac_requires_reasoning(self, forge_env, project_name):
+        """Task with AC but no --ac-reasoning (and no --force) should exit."""
+        task = make_task("T-001", "ac-task", status="IN_PROGRESS",
+                         acceptance_criteria=["Feature X works", "Tests pass"])
+        tracker = {
+            "project": project_name,
+            "goal": "Test",
+            "created": "2025-01-01T00:00:00Z",
+            "updated": "2025-01-01T00:00:00Z",
+            "tasks": [task],
+        }
+        save_tracker(project_name, tracker)
+
+        changes_dir = Path("forge_output") / project_name
+        changes_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(
+            changes_dir / "changes.json",
+            {"project": project_name, "updated": "", "changes": [
+                {"id": "C-001", "task_id": "T-001", "file": "test.py",
+                 "action": "create", "summary": "test"}
+            ]},
+        )
+
+        args = SimpleNamespace(project=project_name, task_id="T-001",
+                               agent=None, force=False, reasoning="done",
+                               ac_reasoning=None)
+        with pytest.raises(SystemExit):
+            cmd_complete(args)
+
+    def test_complete_with_ac_and_reasoning_succeeds(self, forge_env, project_name):
+        """Task with AC + --ac-reasoning should complete successfully."""
+        task = make_task("T-001", "ac-task", status="IN_PROGRESS",
+                         acceptance_criteria=["Feature X works", "Tests pass"])
+        tracker = {
+            "project": project_name,
+            "goal": "Test",
+            "created": "2025-01-01T00:00:00Z",
+            "updated": "2025-01-01T00:00:00Z",
+            "tasks": [task],
+        }
+        save_tracker(project_name, tracker)
+
+        changes_dir = Path("forge_output") / project_name
+        changes_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(
+            changes_dir / "changes.json",
+            {"project": project_name, "updated": "", "changes": [
+                {"id": "C-001", "task_id": "T-001", "file": "test.py",
+                 "action": "create", "summary": "test"}
+            ]},
+        )
+
+        args = SimpleNamespace(project=project_name, task_id="T-001",
+                               agent=None, force=False, reasoning="done",
+                               ac_reasoning="1. Feature X works: verified. 2. Tests pass: pytest green.")
+        cmd_complete(args)
+
+        reloaded = load_tracker(project_name)
+        assert reloaded["tasks"][0]["status"] == "DONE"
+
+    def test_complete_without_ac_skips_check(self, forge_env, project_name):
+        """Task without AC should complete without --ac-reasoning."""
+        task = make_task("T-001", "no-ac-task", status="IN_PROGRESS")
+        tracker = {
+            "project": project_name,
+            "goal": "Test",
+            "created": "2025-01-01T00:00:00Z",
+            "updated": "2025-01-01T00:00:00Z",
+            "tasks": [task],
+        }
+        save_tracker(project_name, tracker)
+
+        changes_dir = Path("forge_output") / project_name
+        changes_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(
+            changes_dir / "changes.json",
+            {"project": project_name, "updated": "", "changes": [
+                {"id": "C-001", "task_id": "T-001", "file": "test.py",
+                 "action": "create", "summary": "test"}
+            ]},
+        )
+
+        args = SimpleNamespace(project=project_name, task_id="T-001",
+                               agent=None, force=False, reasoning="done",
+                               ac_reasoning=None)
+        cmd_complete(args)
+
+        reloaded = load_tracker(project_name)
+        assert reloaded["tasks"][0]["status"] == "DONE"
+
+    def test_complete_with_ac_force_bypasses(self, forge_env, project_name):
+        """--force bypasses AC reasoning requirement."""
+        task = make_task("T-001", "ac-force-task", status="IN_PROGRESS",
+                         acceptance_criteria=["Feature X works"])
+        tracker = {
+            "project": project_name,
+            "goal": "Test",
+            "created": "2025-01-01T00:00:00Z",
+            "updated": "2025-01-01T00:00:00Z",
+            "tasks": [task],
+        }
+        save_tracker(project_name, tracker)
+
+        args = SimpleNamespace(project=project_name, task_id="T-001",
+                               agent=None, force=True, reasoning="investigation only",
+                               ac_reasoning=None)
+        cmd_complete(args)
+
+        reloaded = load_tracker(project_name)
+        assert reloaded["tasks"][0]["status"] == "DONE"
+
+    def test_ac_reasoning_stored_on_task(self, forge_env, project_name):
+        """After complete with AC reasoning, task should have ac_reasoning field."""
+        task = make_task("T-001", "ac-stored-task", status="IN_PROGRESS",
+                         acceptance_criteria=["Criterion A met"])
+        tracker = {
+            "project": project_name,
+            "goal": "Test",
+            "created": "2025-01-01T00:00:00Z",
+            "updated": "2025-01-01T00:00:00Z",
+            "tasks": [task],
+        }
+        save_tracker(project_name, tracker)
+
+        changes_dir = Path("forge_output") / project_name
+        changes_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(
+            changes_dir / "changes.json",
+            {"project": project_name, "updated": "", "changes": [
+                {"id": "C-001", "task_id": "T-001", "file": "test.py",
+                 "action": "create", "summary": "test"}
+            ]},
+        )
+
+        ac_text = "Criterion A met: verified in integration test"
+        args = SimpleNamespace(project=project_name, task_id="T-001",
+                               agent=None, force=False, reasoning="done",
+                               ac_reasoning=ac_text)
+        cmd_complete(args)
+
+        reloaded = load_tracker(project_name)
+        assert reloaded["tasks"][0]["ac_reasoning"] == ac_text
 
 
 # ---------------------------------------------------------------------------

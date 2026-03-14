@@ -29,6 +29,7 @@ description: "Decompose a high-level goal into a tracked, dependency-aware task 
 | R8 | `python -m core.objectives show {project} {objective_id}` | Objective details + KRs | Step 2 — if planning from objective |
 | R9 | `python -m core.knowledge read {project}` | Available knowledge objects | Step 2 — for task knowledge assignment |
 | R10 | `python -m core.guidelines scopes {project}` | Available guideline scopes | Step 2 — for task scope assignment |
+| R11 | `python -m core.decisions read {project} --type risk` | Active risk decisions | Step 6 — inform task structure and AC |
 
 ## Write Commands
 
@@ -305,6 +306,23 @@ For each task, specify:
 - `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). **Only use scopes that exist in the project** (loaded via R10 in Step 2). Inherit from idea/objective scopes but narrow per task — a backend-only task should NOT get frontend scopes. `general` is always included automatically during execution.
 - `knowledge_ids`: list of Knowledge IDs (K-001, etc.) that provide context for this task. **Only assign knowledge relevant to the task** — if K-001 is about API patterns and the task is pure CSS, don't assign K-001. Inherit from source idea/objective but distribute selectively. Loaded by `pipeline context` for LLM assembly.
 - `test_requirements`: dict with boolean keys `unit`, `integration`, `e2e` indicating which test types this task needs.
+
+**Risk-informed decomposition:**
+
+Load active risk decisions that may affect task design (R11):
+```bash
+python -m core.decisions read {project} --type risk
+```
+
+For each OPEN or MITIGATED risk:
+- If the risk has a `mitigation_plan`, consider whether a task should implement that mitigation
+- If the risk affects specific components, ensure tasks touching those components have appropriate acceptance criteria that address the risk
+- HIGH-severity risks should result in explicit AC on relevant tasks (e.g., "Rate limiting handles 1000 req/s without degradation")
+
+If planning from an idea or objective, also check risks linked to that entity:
+```bash
+python -m core.decisions read {project} --entity {idea_or_objective_id}
+```
 
 Store as draft plan for review (W2):
 ```bash

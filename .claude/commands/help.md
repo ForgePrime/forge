@@ -10,13 +10,7 @@ Print the following guide:
 
 ## Forge Commands
 
-### Quick Path (start here for simple tasks)
-
-| Command | When to use |
-|---------|-------------|
-| `/do {task}` | **80% of tasks.** Simple bug fix, small feature, refactor, chore. One task, start to finish, minimum ceremony. |
-
-### Business Goals & Planning (complex work)
+### Business Goals & Planning
 
 | Command | When to use |
 |---------|-------------|
@@ -76,12 +70,7 @@ Print the following guide:
 
 ### Choose Your Track
 
-**Quick** (simple tasks — 80% of work):
-```
-/do {task}                          ← done
-```
-
-**Standard** (multi-task work):
+**Standard** (single or multi-task work):
 ```
 /plan {goal} → /run → /compound
 ```
@@ -91,4 +80,4 @@ Print the following guide:
 /objective → /idea → /discover → /decide → /plan → /run → /compound
 ```
 
-When in doubt, start with `/do`. Escalate to `/plan` if it gets complex.
+When in doubt, start with `/task`. Escalate to `/plan` if it gets complex.

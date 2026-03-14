@@ -919,6 +919,23 @@ def cmd_complete(args):
                   f"Use --force to complete anyway.", file=sys.stderr)
             sys.exit(1)
 
+    # Check acceptance criteria verification
+    if not force:
+        ac = task.get("acceptance_criteria", [])
+        if ac:
+            ac_reasoning = getattr(args, "ac_reasoning", None)
+            if not ac_reasoning:
+                print(f"WARNING: Task {args.task_id} has {len(ac)} acceptance criteria "
+                      f"but no --ac-reasoning provided.", file=sys.stderr)
+                print(f"  Acceptance criteria:", file=sys.stderr)
+                for i, criterion in enumerate(ac, 1):
+                    text = criterion if isinstance(criterion, str) else criterion.get("text", str(criterion))
+                    print(f"    {i}. {text}", file=sys.stderr)
+                print(f"  Provide --ac-reasoning to justify how each criterion is met, "
+                      f"or --force to bypass.", file=sys.stderr)
+                sys.exit(1)
+            task["ac_reasoning"] = ac_reasoning
+
     # Git workflow: push + PR + cleanup
     git_result = _apply_git_workflow_complete(args.project, tracker, task)
     if git_result:
@@ -2111,6 +2128,8 @@ def main():
     p.add_argument("--agent", default=None, help="Agent name (verified against claim)")
     p.add_argument("--force", action="store_true", help="Complete even without changes or with failed gates")
     p.add_argument("--reasoning", default=None, help="Why these changes were made (used for auto-recorded changes)")
+    p.add_argument("--ac-reasoning", default=None, dest="ac_reasoning",
+                   help="Justification that acceptance criteria are met (required when task has AC)")
 
     p = sub.add_parser("fail", help="Mark task FAILED")
     p.add_argument("project")

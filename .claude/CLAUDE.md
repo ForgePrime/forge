@@ -102,7 +102,7 @@ python -m core.pipeline approve-plan {project}           Approve draft → mater
 python -m core.pipeline update-task {project} --data '{...}' Update existing task
 python -m core.pipeline remove-task {project} {task_id}  Remove TODO task
 python -m core.pipeline next {project} [--agent name]    Get next task
-python -m core.pipeline complete {project} {task_id} [--force] [--reasoning "..."]  Mark done (auto-records git changes + checks gates)
+python -m core.pipeline complete {project} {task_id} [--force] [--reasoning "..."] [--ac-reasoning "..."]  Mark done (auto-records git changes + checks gates + verifies AC)
 python -m core.pipeline contract add-tasks               Show task contract
 python -m core.pipeline contract update-task             Show update contract
 python -m core.pipeline contract register-subtasks       Show subtask contract
@@ -300,13 +300,7 @@ python -m core.git_ops cleanup {project}         Clean up completed task branche
 
 ## Slash Commands
 
-### Quick Path (80% of tasks)
-
-| Command | Description |
-|---------|-------------|
-| `/do {task}` | **Quick path** — execute a single task start-to-finish with minimum ceremony. For simple bugs, small features, refactors. |
-
-### Full Workflow (complex work)
+### Workflow Commands
 
 | Command | Description |
 |---------|-------------|
@@ -363,6 +357,7 @@ Use `/decide` to review and close OPEN decisions.
 `pipeline complete` checks before marking DONE:
 - Changes must be recorded for the task (at least one entry in changes.json)
 - Gates must have passed (if gates were run)
+- Acceptance criteria must be verified with `--ac-reasoning` (if task has AC)
 - Use `--force` to bypass these checks when appropriate (e.g., investigation tasks with no code changes)
 
 ## Workflow
@@ -372,15 +367,6 @@ For brownfield projects (existing codebase):
 2. Then continue with `/plan {goal}` for specific work
 
 When user gives a goal, **choose the right track**:
-
-### Quick Track (simple tasks — 80% of work)
-
-```
-/do {task}    ← single task, start to finish, minimum ceremony
-```
-
-Use when: simple bug fix, small feature, refactor, chore, one-off task.
-Provides: pipeline tracking, auto-recorded changes, gates, global guidelines, reasoning.
 
 ### Standard Track (multi-task work)
 
@@ -406,10 +392,9 @@ Provides: everything — objectives, ideas, discovery, risk assessment, full tra
 
 | Signal | Track |
 |--------|-------|
-| "Fix this bug", "Rename X", "Add a test" | **Quick** (`/do`) |
+| "Fix this bug", "Rename X", "Add a test" | **Standard** (`/task` + `/next`) |
 | "Add feature X with Y and Z" | **Standard** (`/plan`) |
 | "We need to redesign the auth system" | **Full** (`/objective` → ...) |
-| User explicitly asks for quick/simple | **Quick** (`/do`) |
 | User explicitly asks for full analysis | **Full** |
 
 ### Full Track Details
