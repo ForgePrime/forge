@@ -8,7 +8,15 @@ import { create } from "zustand";
 
 const STORAGE_KEY = "forge-ai-sidebar";
 
+/** Maximum number of skills that can be attached to a single message. */
+export const MAX_ATTACHED_SKILLS = 5;
+
 export type SidebarTab = "chat" | "tools" | "scopes" | "conversations" | "debug";
+
+export interface AttachedSkillInfo {
+  name: string;
+  display_name: string;
+}
 
 interface SidebarState {
   /** Extra scopes added by user (beyond auto-detected). */
@@ -21,6 +29,8 @@ interface SidebarState {
   activeTab: SidebarTab;
   /** Route prefixes where sidebar is hidden. */
   hiddenRoutes: string[];
+  /** Skills attached by user for the current message. */
+  attachedSkills: AttachedSkillInfo[];
   /** Whether localStorage has been read. */
   _hydrated: boolean;
 }
@@ -34,6 +44,9 @@ interface SidebarActions {
   setActiveTab: (tab: SidebarTab) => void;
   toggleRouteVisibility: (route: string) => void;
   isRouteHidden: (pathname: string) => boolean;
+  attachSkill: (name: string, display_name: string) => void;
+  detachSkill: (name: string) => void;
+  clearSkills: () => void;
 }
 
 function persist(state: SidebarState) {
@@ -46,6 +59,7 @@ function persist(state: SidebarState) {
         disabledCapabilities: state.disabledCapabilities,
         activeTab: state.activeTab,
         hiddenRoutes: state.hiddenRoutes,
+        attachedSkills: state.attachedSkills,
       }),
     );
   } catch {
@@ -59,6 +73,7 @@ export const useSidebarStore = create<SidebarState & SidebarActions>((set, get) 
   disabledCapabilities: [],
   activeTab: "chat",
   hiddenRoutes: [],
+  attachedSkills: [],
   _hydrated: false,
 
   hydrate: () => {
@@ -73,6 +88,7 @@ export const useSidebarStore = create<SidebarState & SidebarActions>((set, get) 
           disabledCapabilities: data.disabledCapabilities ?? [],
           activeTab: data.activeTab ?? "chat",
           hiddenRoutes: data.hiddenRoutes ?? [],
+          attachedSkills: data.attachedSkills ?? [],
           _hydrated: true,
         });
         return;
@@ -151,5 +167,31 @@ export const useSidebarStore = create<SidebarState & SidebarActions>((set, get) 
 
   isRouteHidden: (pathname) => {
     return get().hiddenRoutes.some((prefix) => pathname.startsWith(prefix));
+  },
+
+  attachSkill: (name, display_name) => {
+    set((s) => {
+      if (s.attachedSkills.length >= MAX_ATTACHED_SKILLS) return s;
+      if (s.attachedSkills.some((sk) => sk.name === name)) return s;
+      const next = { ...s, attachedSkills: [...s.attachedSkills, { name, display_name }] };
+      persist(next);
+      return next;
+    });
+  },
+
+  detachSkill: (name) => {
+    set((s) => {
+      const next = { ...s, attachedSkills: s.attachedSkills.filter((sk) => sk.name !== name) };
+      persist(next);
+      return next;
+    });
+  },
+
+  clearSkills: () => {
+    set((s) => {
+      const next = { ...s, attachedSkills: [] };
+      persist(next);
+      return next;
+    });
   },
 }));
