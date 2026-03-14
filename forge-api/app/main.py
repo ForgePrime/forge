@@ -34,6 +34,7 @@ from app.routers import (
     research,
     skills,
     tasks,
+    workflows,
     ws,
 )
 
@@ -47,8 +48,10 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle — DB pool, Redis, storage adapter, LLM."""
 
     # --- Startup ---
-    # Database pool (only when using PostgreSQL storage)
-    if settings.storage_mode == "postgresql":
+    # Database pool — always created when DATABASE_URL is available.
+    # Used by workflow engine (O-001) regardless of storage_mode,
+    # and by entity storage when storage_mode == "postgresql".
+    if settings.database_url:
         app.state.db_pool = await asyncpg.create_pool(
             settings.database_url,
             min_size=2,
@@ -102,6 +105,42 @@ async def lifespan(app: FastAPI):
     # LLM Session Manager — chat conversation persistence in Redis
     from app.llm.session_manager import SessionManager
     app.state.session_manager = SessionManager(app.state.redis, app.state.event_bus)
+
+    # Workflow Engine (O-001) — only when DB pool is available
+    if app.state.db_pool is not None:
+        from app.workflow.store import WorkflowStore
+        from app.workflow.engine import WorkflowEngine
+        from app.workflow.models import StepType
+        from app.workflow.steps import (
+            ForgeCommandStepExecutor,
+            UserDecisionStepExecutor,
+        )
+
+        app.state.workflow_store = WorkflowStore(app.state.db_pool)
+        step_executors = {
+            StepType.forge_command: ForgeCommandStepExecutor(),
+            StepType.user_decision: UserDecisionStepExecutor(app.state.event_bus),
+        }
+        app.state.workflow_engine = WorkflowEngine(
+            store=app.state.workflow_store,
+            event_bus=app.state.event_bus,
+            step_executors=step_executors,
+        )
+        # Register built-in workflow definitions (if available)
+        try:
+            from app.workflow.presets import BUILTIN_DEFINITIONS
+            for defn in BUILTIN_DEFINITIONS.values():
+                app.state.workflow_engine.register_definition(defn)
+        except ImportError:
+            pass  # Presets not yet created (T-067)
+        # Recover stale executions from previous run
+        recovered = await app.state.workflow_engine.recover()
+        if recovered:
+            import logging
+            logging.getLogger(__name__).info("Recovered %d stale workflow(s)", recovered)
+    else:
+        app.state.workflow_store = None
+        app.state.workflow_engine = None
 
     yield
 
@@ -225,5 +264,7 @@ app.include_router(debug.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(ai.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(llm_chat.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(skills.router, prefix=PREFIX, dependencies=auth_deps)
+app.include_router(workflows.router, prefix=PREFIX, dependencies=auth_deps)
 app.include_router(ws.router)
 app.include_router(execution.ws_router)  # Execution WS — own auth, no HTTP deps
+app.include_router(workflows.ws_router)  # Workflow WS — own auth, no HTTP deps
