@@ -1,39 +1,36 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { projects as projectsApi, decisions as decisionsApi, llm } from "@/lib/api";
-import type { Decision } from "@/lib/types";
-import type { ChatSessionSummary } from "@/stores/chatStore";
+import { useState, useEffect, useRef } from "react";
+import { useParams } from "next/navigation";
+import { useEntityData } from "@/hooks/useEntityData";
+import { notifications as notificationsApi } from "@/lib/api";
+import { markAsRead, dismissNotification, markAllRead } from "@/stores/notificationEntityStore";
+import type { Notification, NotificationPriority, NotificationType } from "@/lib/types";
 
-const DISMISSED_KEY = "forge:dismissed-notifications";
+// ---------------------------------------------------------------------------
+// Priority / type constants
+// ---------------------------------------------------------------------------
 
-interface NotificationItem {
-  id: string;          // unique key for dedup + dismiss
-  type: "decision" | "session";
-  icon: string;
-  title: string;
-  project?: string;
-  href: string;
-  createdAt: string;
-}
+const PRIORITY_ORDER: Record<NotificationPriority, number> = {
+  critical: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
 
-function loadDismissed(): Set<string> {
-  try {
-    const raw = localStorage.getItem(DISMISSED_KEY);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch {
-    return new Set();
-  }
-}
+const PRIORITY_STYLES: Record<NotificationPriority, { badge: string; dot: string }> = {
+  critical: { badge: "bg-red-100 text-red-700", dot: "bg-red-500" },
+  high: { badge: "bg-orange-100 text-orange-700", dot: "bg-orange-500" },
+  normal: { badge: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
+  low: { badge: "bg-gray-100 text-gray-500", dot: "bg-gray-400" },
+};
 
-function saveDismissed(set: Set<string>): void {
-  try {
-    // Keep only last 500 dismissed IDs to prevent unbounded growth
-    const arr = Array.from(set).slice(-500);
-    localStorage.setItem(DISMISSED_KEY, JSON.stringify(arr));
-  } catch { /* localStorage full — ignore */ }
-}
+const TYPE_CONFIG: Record<NotificationType, { icon: string; style: string; label: string }> = {
+  decision: { icon: "D", style: "bg-purple-100 text-purple-600", label: "Decision" },
+  approval: { icon: "A", style: "bg-green-100 text-green-600", label: "Approval" },
+  question: { icon: "?", style: "bg-amber-100 text-amber-600", label: "Question" },
+  alert: { icon: "!", style: "bg-red-100 text-red-600", label: "Alert" },
+};
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -45,18 +42,44 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hrs / 24)}d`;
 }
 
+function isBlocking(n: Notification): boolean {
+  return n.notification_type === "decision" || n.notification_type === "approval" || n.notification_type === "question";
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<NotificationItem[]>([]);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
+  const params = useParams();
+  const slug = params?.slug as string | undefined;
 
-  // Load dismissed set on mount
-  useEffect(() => {
-    setDismissed(loadDismissed());
-  }, []);
+  // SWR-based reactive data (auto-revalidates on WS events via wsDispatcher)
+  const { items: rawItems, isLoading } = useEntityData<Notification>(
+    slug ?? null,
+    "notifications",
+  );
+
+  // Also fetch unread count from API for accurate badge
+  const { items: unreadItems } = useEntityData<Notification>(
+    slug ?? null,
+    "notifications",
+    { status: "UNREAD" },
+  );
+
+  const unreadCount = unreadItems.length;
+
+  // Sort: priority (critical first) then newest first
+  const sortedItems = [...rawItems]
+    .filter((n) => n.status !== "DISMISSED" && n.status !== "RESOLVED")
+    .sort((a, b) => {
+      const pa = PRIORITY_ORDER[a.priority] ?? 2;
+      const pb = PRIORITY_ORDER[b.priority] ?? 2;
+      if (pa !== pb) return pa - pb;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
   // Close on outside click
   useEffect(() => {
@@ -70,96 +93,30 @@ export function NotificationCenter() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  // Fetch notifications
-  const fetchItems = useCallback(async () => {
-    setLoading(true);
-    const all: NotificationItem[] = [];
-
-    try {
-      // 1. Fetch open decisions across all projects
-      const { projects: slugs } = await projectsApi.list();
-      const decisionPromises = slugs.map(async (slug) => {
-        try {
-          const { decisions } = await decisionsApi.list(slug, { status: "OPEN" });
-          return decisions.map((d: Decision) => ({
-            id: `decision:${slug}:${d.id}`,
-            type: "decision" as const,
-            icon: d.type === "risk" ? "!" : "D",
-            title: d.issue,
-            project: slug,
-            href: `/projects/${slug}/decisions/${d.id}`,
-            createdAt: d.created_at,
-          }));
-        } catch {
-          return [];
-        }
-      });
-      const decisionResults = await Promise.all(decisionPromises);
-      for (const batch of decisionResults) {
-        all.push(...batch);
-      }
-
-      // 2. Fetch paused sessions
-      try {
-        const { sessions } = await llm.listSessions(200);
-        for (const s of sessions as ChatSessionSummary[]) {
-          if (s.session_status === "paused") {
-            all.push({
-              id: `session:${s.session_id}`,
-              type: "session",
-              icon: "P",
-              title: s.blocked_by_decision_id
-                ? `Paused: awaiting ${s.blocked_by_decision_id}`
-                : "Session paused",
-              project: s.project || undefined,
-              href: `/sessions/${s.session_id}`,
-              createdAt: s.updated_at,
-            });
-          }
-        }
-      } catch { /* ignore session fetch failures */ }
-
-    } catch { /* ignore project fetch failures */ }
-
-    // Sort by date descending
-    all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    setItems(all);
-    setLoading(false);
-  }, []);
-
-  // Fetch when opened
-  useEffect(() => {
-    if (open) fetchItems();
-  }, [open, fetchItems]);
-
-  // Periodic background refresh for badge count (every 30s)
-  useEffect(() => {
-    fetchItems();
-    const interval = setInterval(fetchItems, 30_000);
-    return () => clearInterval(interval);
-  }, [fetchItems]);
-
-  const visibleItems = items.filter((item) => !dismissed.has(item.id));
-  const unreadCount = visibleItems.length;
-
-  const handleDismiss = (id: string, e: React.MouseEvent) => {
+  const handleDismiss = async (n: Notification, e: React.MouseEvent) => {
     e.stopPropagation();
-    const next = new Set(dismissed);
-    next.add(id);
-    setDismissed(next);
-    saveDismissed(next);
+    if (slug) {
+      await dismissNotification(slug, n.id);
+    }
   };
 
-  const handleClick = (item: NotificationItem) => {
-    router.push(item.href);
-    setOpen(false);
+  const handleMarkRead = async (n: Notification) => {
+    if (slug && n.status === "UNREAD") {
+      await markAsRead(slug, n.id);
+    }
   };
 
-  const handleDismissAll = () => {
-    const next = new Set(dismissed);
-    for (const item of visibleItems) next.add(item.id);
-    setDismissed(next);
-    saveDismissed(next);
+  const handleDismissAll = async () => {
+    if (slug) {
+      await markAllRead(slug);
+    }
+  };
+
+  const handleRespond = (n: Notification, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Response modal will be implemented in T-025/T-026
+    // For now, mark as read and navigate to source entity
+    handleMarkRead(n);
   };
 
   return (
@@ -183,67 +140,103 @@ export function NotificationCenter() {
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-80 max-h-96 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl z-[100]">
+        <div className="absolute right-0 top-full mt-1 w-96 max-h-[28rem] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl z-[100]">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-50">
             <span className="text-xs font-semibold text-gray-600">
-              Notifications {unreadCount > 0 && `(${unreadCount})`}
+              Notifications {unreadCount > 0 && `(${unreadCount} unread)`}
             </span>
             {unreadCount > 0 && (
               <button
                 onClick={handleDismissAll}
                 className="text-[10px] text-gray-400 hover:text-gray-600"
               >
-                Dismiss all
+                Mark all read
               </button>
             )}
           </div>
 
           {/* Items */}
-          {loading && visibleItems.length === 0 && (
+          {isLoading && sortedItems.length === 0 && (
             <p className="p-3 text-xs text-gray-400">Loading...</p>
           )}
 
-          {!loading && visibleItems.length === 0 && (
+          {!isLoading && sortedItems.length === 0 && (
             <p className="p-3 text-xs text-gray-400">No pending notifications</p>
           )}
 
-          {visibleItems.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => handleClick(item)}
-              className="flex items-start gap-2 px-3 py-2.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-            >
-              {/* Type icon */}
-              <span className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold ${
-                item.type === "decision"
-                  ? item.icon === "!" ? "bg-red-100 text-red-600" : "bg-purple-100 text-purple-600"
-                  : "bg-amber-100 text-amber-600"
-              }`}>
-                {item.icon}
-              </span>
+          {sortedItems.map((n) => {
+            const typeConf = TYPE_CONFIG[n.notification_type] ?? TYPE_CONFIG.alert;
+            const prioStyle = PRIORITY_STYLES[n.priority] ?? PRIORITY_STYLES.normal;
+            const unread = n.status === "UNREAD";
 
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-800 line-clamp-2">{item.title}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  {item.project && (
-                    <span className="text-[10px] text-gray-400">{item.project}</span>
+            return (
+              <div
+                key={n.id}
+                onClick={() => handleMarkRead(n)}
+                className={`flex items-start gap-2 px-3 py-2.5 cursor-pointer border-b border-gray-100 last:border-b-0 ${
+                  unread ? "bg-blue-50/40 hover:bg-blue-50" : "hover:bg-gray-50"
+                }`}
+              >
+                {/* Unread dot */}
+                <div className="w-2 flex-shrink-0 pt-2">
+                  {unread && (
+                    <span className={`inline-block w-2 h-2 rounded-full ${prioStyle.dot}`} />
                   )}
-                  <span className="text-[10px] text-gray-400">{relativeTime(item.createdAt)}</span>
+                </div>
+
+                {/* Type icon */}
+                <span className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold ${typeConf.style}`}>
+                  {typeConf.icon}
+                </span>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs line-clamp-2 ${unread ? "text-gray-900 font-medium" : "text-gray-600"}`}>
+                    {n.title}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    {/* Type badge */}
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${typeConf.style}`}>
+                      {typeConf.label}
+                    </span>
+                    {/* Priority badge */}
+                    {n.priority !== "normal" && (
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${prioStyle.badge}`}>
+                        {n.priority}
+                      </span>
+                    )}
+                    {/* Workflow ID */}
+                    {n.workflow_id && (
+                      <span className="text-[9px] text-gray-400">{n.workflow_id}</span>
+                    )}
+                    {/* Timestamp */}
+                    <span className="text-[9px] text-gray-400">{relativeTime(n.created_at)}</span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-1 flex-shrink-0">
+                  {isBlocking(n) && n.status !== "RESOLVED" && (
+                    <button
+                      onClick={(e) => handleRespond(n, e)}
+                      className="text-[10px] px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+                      title="Respond"
+                    >
+                      Respond
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => handleDismiss(n, e)}
+                    className="text-gray-300 hover:text-gray-500 text-xs"
+                    title="Dismiss"
+                  >
+                    x
+                  </button>
                 </div>
               </div>
-
-              {/* Dismiss */}
-              <button
-                onClick={(e) => handleDismiss(item.id, e)}
-                className="text-gray-300 hover:text-gray-500 text-xs flex-shrink-0"
-                title="Dismiss"
-              >
-                x
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
