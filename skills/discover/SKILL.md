@@ -19,23 +19,22 @@ description: "Discovery phase — explore options, assess feasibility, analyze r
 
 | ID | Command / Path | Returns | When |
 |----|----------------|---------|------|
-| R1 | `skills/deep-orchestration/SKILL.md` | Orchestration procedure | Step 1 — resolve orchestrator |
-| R2 | `skills/deep-align/SKILL.md` | Alignment procedure | Step 2 — before analysis |
-| R3 | `skills/deep-explore/SKILL.md` | Exploration procedure | Step 3 — resolve skills |
-| R4 | `skills/deep-risk/SKILL.md` | Risk analysis procedure | Step 3 |
-| R5 | `skills/deep-architect/SKILL.md` | Architecture procedure | Step 3 |
-| R6 | `skills/optional/deep-feasibility/SKILL.md` | Feasibility procedure | Step 3 |
-| R7 | `skills/optional/deep-requirements/SKILL.md` | Requirements procedure | Step 3 (optional) |
-| R8 | `python -m core.lessons read-all` | Lessons from past projects | Step 4 — context |
-| R9 | `python -m core.decisions read {project} --status OPEN` | Open decisions (if project exists) | Step 4 — context |
-| R10 | `ls forge_output/ 2>/dev/null` | Existing projects | Step 4 — context |
-| R11 | `python -m core.pipeline status {project}` | Current pipeline state | Step 4 — context (if project exists) |
-| R12 | `python -m core.guidelines context {project} --scopes "{idea_scopes}"` | Applicable guidelines (constraints for analysis) | Step 4 — context |
-| R13 | `python -m core.decisions contract add` | Contract for recording decisions | Step 6 — before recording |
-| R14 | `python -m core.lessons contract` | Contract for recording lessons | Step 6 — before recording |
-| R15 | `python -m core.research contract add` | Contract for recording research | Step 5 — before recording |
-| R16 | `python -m core.research contract update` | Contract for updating research | Step 6 — before updating |
-| R17 | `python -m core.domain_modules for-scopes --scopes "{s}" --phase vision` | Domain-specific questions | Step 2.5 — after alignment |
+| R1 | `skills/deep-align/SKILL.md` | Alignment procedure | Step 2 — before analysis |
+| R2 | `skills/deep-explore/SKILL.md` | Exploration procedure | Step 3 — resolve skills |
+| R3 | `skills/deep-risk/SKILL.md` | Risk analysis procedure | Step 3 |
+| R4 | `skills/deep-architect/SKILL.md` | Architecture procedure | Step 3 |
+| R5 | `skills/optional/deep-feasibility/SKILL.md` | Feasibility procedure | Step 3 |
+| R6 | `skills/optional/deep-requirements/SKILL.md` | Requirements procedure | Step 3 (optional) |
+| R7 | `python -m core.lessons read-all` | Lessons from past projects | Step 4 — context |
+| R8 | `python -m core.decisions read {project} --status OPEN` | Open decisions (if project exists) | Step 4 — context |
+| R9 | `ls forge_output/ 2>/dev/null` | Existing projects | Step 4 — context |
+| R10 | `python -m core.pipeline status {project}` | Current pipeline state | Step 4 — context (if project exists) |
+| R11 | `python -m core.guidelines context {project} --scopes "{idea_scopes}"` | Applicable guidelines (constraints for analysis) | Step 4 — context |
+| R12 | `python -m core.decisions contract add` | Contract for recording decisions | Step 6 — before recording |
+| R13 | `python -m core.lessons contract` | Contract for recording lessons | Step 6 — before recording |
+| R14 | `python -m core.research contract add` | Contract for recording research | Step 5 — before recording |
+| R15 | `python -m core.research contract update` | Contract for updating research | Step 6 — before updating |
+| R16 | `python -m core.domain_modules for-scopes --scopes "{s}" --phase vision` | Domain-specific questions | Step 2.5 — after alignment |
 
 ## Write Commands
 
@@ -79,9 +78,9 @@ description: "Discovery phase — explore options, assess feasibility, analyze r
 
 ## Overview
 
-Discovery is the phase BEFORE planning. It answers: "What should we build, is it feasible, what are the risks, and how should we architect it?" — using deep-* analysis skills coordinated by deep-orchestration.
+Discovery is the phase BEFORE planning. It answers: "What should we build, is it feasible, what are the risks, and how should we architect it?" — by coordinating deep-* analysis skills in a dependency-aware sequence.
 
-This skill is the bridge between Forge (execution engine) and deep-process-skill (analysis engine). Forge provides project context; deep-orchestration coordinates analysis; Forge records the results.
+This skill is the bridge between Forge (execution engine) and deep-* analysis skills. Forge provides project context; this skill coordinates analysis; Forge records the results.
 
 ## Prerequisites
 
@@ -93,13 +92,7 @@ Provenance: [Deep-Process](https://github.com/Deep-Process/deep-process).
 
 ---
 
-### Step 1 — Resolve the Orchestrator
-
-Read `skills/deep-orchestration/SKILL.md` — this is the conductor that coordinates analysis skills.
-
----
-
-### Step 2 — Align on Discovery Scope (medium alignment per `skills/deep-align/SKILL.md`)
+### Step 1 — Align on Discovery Scope (medium alignment per `skills/deep-align/SKILL.md`)
 
 Before running analysis, build shared understanding of what to explore:
 
@@ -118,7 +111,7 @@ Group questions in one message (1-3 questions max). If exploring a specific idea
 
 ---
 
-### Step 2.5 — Load Domain Questions
+### Step 1.5 — Load Domain Questions
 
 After alignment, load domain-specific vision questions:
 

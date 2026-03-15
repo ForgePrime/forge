@@ -33,8 +33,6 @@ Skills that should invoke domain modules:
 - `skills/plan/SKILL.md` — during task decomposition
 - `skills/next/SKILL.md` — during task execution
 - `skills/discover/SKILL.md` — during research/exploration
-- `skills/objective-definer/SKILL.md` — during objective definition
-
 ## How to Use (for calling skills)
 
 ### Step 1 — Determine active scopes
