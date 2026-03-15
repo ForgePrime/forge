@@ -3,7 +3,10 @@ import { notifications as notificationsApi } from "@/lib/api";
 import type { Notification, NotificationStatusUpdate, NotificationRespond, BulkStatusUpdate } from "@/lib/types";
 
 export const useNotificationEntityStore = createEntityStore<Notification>({
-  listFn: (s, p) => notificationsApi.list(s, p),
+  listFn: async (s, p) => {
+    const res = await notificationsApi.list(s, p);
+    return { ...res, count: res.total };
+  },
   responseKey: "notifications",
   getItemId: (item) => item.id,
   wsEvents: {

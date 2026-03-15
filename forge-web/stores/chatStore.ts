@@ -563,6 +563,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
         totalTokensOut: session.total_tokens_out,
         estimatedCost: session.estimated_cost,
         model: session.model_used ?? "",
+        contextBudgetPct: 0,
       };
       set((s) => ({
         conversations: { ...s.conversations, [sessionId]: conv },

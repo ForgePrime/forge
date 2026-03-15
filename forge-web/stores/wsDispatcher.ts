@@ -5,6 +5,7 @@
  */
 import { mutate } from "swr";
 import type { ForgeEvent } from "@/lib/ws";
+import type { NotificationType, AiOption } from "@/lib/types";
 import { useTaskStore } from "./taskStore";
 import { useDecisionStore } from "./decisionStore";
 import { useObjectiveStore } from "./objectiveStore";
@@ -268,7 +269,7 @@ export function dispatchWsEvent(event: ForgeEvent): void {
       // Immediate popup for critical/high via unified modal queue
       useNotificationModal.getState().enqueuePopup({
         id: (payload.notification_id ?? `notif-${Date.now().toString(36)}`) as string,
-        notification_type: (payload.notification_type ?? "alert") as string,
+        notification_type: (payload.notification_type ?? "alert") as NotificationType,
         priority: priority as "critical" | "high",
         status: "UNREAD",
         title: (payload.title ?? "") as string,
@@ -279,7 +280,7 @@ export function dispatchWsEvent(event: ForgeEvent): void {
         project: event.project ?? "",
         workflow_id: (payload.workflow_id ?? "") as string,
         workflow_step: (payload.workflow_step ?? "") as string,
-        ai_options: (payload.ai_options as Array<{ label: string; value: string; recommended?: boolean }>) ?? [],
+        ai_options: (payload.ai_options as AiOption[]) ?? [],
         response: null,
         response_at: null,
         created_at: new Date().toISOString(),

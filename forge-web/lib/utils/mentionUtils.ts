@@ -69,7 +69,7 @@ export function getCaretCoordinates(
   mirror.style.width = `${textarea.offsetWidth}px`;
 
   for (const prop of props) {
-    (mirror.style as Record<string, string>)[prop] = style.getPropertyValue(
+    (mirror.style as unknown as Record<string, string>)[prop] = style.getPropertyValue(
       prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`),
     );
   }

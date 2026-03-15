@@ -175,7 +175,6 @@ export function RequestDetailPanel({ entry }: { entry: ApiEntry }) {
               ? new ApiError(entry.status, entry.error, { method: entry.method, url: entry.url })
               : new Error(entry.error)
           }
-          id={`api-entry-error-${entry.id}`}
         />
       )}
 

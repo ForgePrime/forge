@@ -49,7 +49,7 @@ export function ToolsTabEnhanced() {
     }
     // Sort categories alphabetically, but Uncategorized last
     return new Map(
-      [...map.entries()].sort(([a], [b]) => {
+      Array.from(map.entries()).sort(([a], [b]) => {
         if (a === "Uncategorized") return 1;
         if (b === "Uncategorized") return -1;
         return a.localeCompare(b);
@@ -68,7 +68,7 @@ export function ToolsTabEnhanced() {
     id: "tools-tab-categories",
     type: "section",
     label: "Skill Categories",
-    value: [...categoryMap.keys()].join(", "),
+    value: Array.from(categoryMap.keys()).join(", "),
   });
 
   const handleAttach = (name: string, displayName: string) => {
@@ -102,7 +102,7 @@ export function ToolsTabEnhanced() {
             No skills match &ldquo;{search}&rdquo;
           </div>
         ) : (
-          [...categoryMap.entries()].map(([category, catSkills]) => (
+          Array.from(categoryMap.entries()).map(([category, catSkills]) => (
             <SkillCategorySection
               key={category}
               category={category}
