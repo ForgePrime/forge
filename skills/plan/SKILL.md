@@ -302,7 +302,11 @@ For each task, specify:
 - `id`: Use temporary IDs: `_1`, `_2`, `_3`, etc. These are auto-remapped to real `T-NNN` IDs when the plan is approved (`approve-plan`) or tasks are added (`add-tasks`). This prevents ID collisions between concurrent planning processes. Use temp IDs in `depends_on` and `conflicts_with` too — they will be remapped together.
 - `name`: kebab-case, descriptive (e.g., "setup-database-schema")
 - `description`: WHAT needs to be done (concrete, not vague). Include boundary when scope edge is ambiguous: "This task IS {X}. This task is NOT {Y}."
-- `instruction`: HOW to do it (step-by-step, mention specific files)
+- `instruction`: HOW to do it. Must include:
+  1. **Reference existing patterns**: Name the file/component to use as a model (e.g., "Follow the pattern in `src/components/EntityForm.tsx`")
+  2. **Name files to create/modify**: List exact file paths (e.g., "Create `src/api/routes/tasks.ts`")
+  3. **Name files NOT to modify**: Reinforce boundaries (e.g., "Do NOT modify `src/api/routes/auth.ts`")
+  4. **Step-by-step actions**: Concrete steps, not vague directives
 - `depends_on`: list of prerequisite task IDs (use temp IDs `_1`, `_2` for tasks in the same batch, or real `T-NNN` IDs for existing tasks)
 - `parallel`: true if this task can run alongside siblings
 - `conflicts_with`: list of task IDs modifying same files (supports temp IDs within the same batch)
@@ -310,6 +314,13 @@ For each task, specify:
 - `knowledge_ids`: list of Knowledge IDs (K-001, etc.) that provide context for this task. **Only assign knowledge relevant to the task** — if K-001 is about API patterns and the task is pure CSS, don't assign K-001. Inherit from source idea/objective but distribute selectively. Loaded by `pipeline context` for LLM assembly.
 - `test_requirements`: dict with boolean keys `unit`, `integration`, `e2e` indicating which test types this task needs.
 - `alignment`: the alignment contract from Step 3 (dict with `goal`, `boundaries`, `success`). All tasks share the same plan-level alignment. Required for feature/bug tasks planned via `/plan`. Narrowing `success` per task is encouraged when tasks cover different aspects of the goal.
+- `exclusions`: list of task-specific DO NOT rules. Generate from:
+  1. **Cross-task boundaries**: If T-005 does backend and T-008 does frontend, T-005 gets `"DO NOT modify frontend components or pages"`, T-008 gets `"DO NOT modify API routes or backend logic"`
+  2. **File-level exclusions**: Name specific files this task must NOT touch that a sibling task owns (e.g., `"DO NOT modify WorkflowList.tsx — that is T-012"`)
+  3. **Scope creep prevention**: Exclude work that belongs to a later task (e.g., `"DO NOT add error handling — that is T-015"`, `"DO NOT implement pagination — out of scope"`)
+  4. **Pattern violations**: Exclude anti-patterns for this codebase (e.g., `"DO NOT use inline styles — project uses CSS modules"`)
+
+  For chore/investigation tasks, exclusions are optional but recommended.
 - `acceptance_criteria`: list of concrete, verifiable conditions for DONE (2-5 per task). Generate from these sources:
   1. **Alignment success criteria** — from the alignment contract captured in Step 3. The `success` field defines what the user will test/observe. Derive at least one AC per task from this.
   2. **User's answer** to "what does done look like?" / "how will you verify?" (Step 3)
@@ -326,6 +337,23 @@ For each task, specify:
   | "Tests pass" | "Unit tests cover create, read, update, delete operations" |
 
   Skip AC for `investigation` and `chore` tasks — use `--force` on completion.
+
+  **AC should be functional, not metric-based:**
+  - Describe what the feature DOES from the user's perspective, not implementation metrics
+  - Good: "Jest przycisk 'Uruchom' na górze strony obok 'Edytuj'" / "Kliknięcie otwiera modal z listą kroków"
+  - Bad: "Component renders in under 100ms" / "Function has O(n) complexity"
+  - Exception: performance/infrastructure tasks where metrics ARE the deliverable
+
+**Cross-task exclusion derivation:**
+
+After defining all tasks, do a second pass to derive cross-task exclusions:
+1. Group tasks by the files/directories they modify
+2. For each group of tasks touching related areas, add exclusions that prevent overlap:
+   - If tasks are in the same domain (e.g., both backend), exclude specific files
+   - If tasks are in different domains (e.g., backend vs frontend), exclude the other domain entirely
+3. For sequential tasks (A depends on B), ensure B does not redo or undo A's work:
+   - B gets `"DO NOT revert changes from {A.id}"`
+   - If A creates an interface, B gets `"DO NOT modify the interface created by {A.id} — extend it instead"`
 
 **Risk-informed decomposition:**
 

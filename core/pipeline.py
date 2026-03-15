@@ -187,7 +187,8 @@ CONTRACTS = {
         "optional": ["description", "instruction", "depends_on", "parallel",
                       "conflicts_with", "skill", "acceptance_criteria",
                       "type", "blocked_by_decisions", "scopes", "origin",
-                      "knowledge_ids", "test_requirements", "alignment"],
+                      "knowledge_ids", "test_requirements", "alignment",
+                      "exclusions"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -201,6 +202,7 @@ CONTRACTS = {
             "knowledge_ids": list,
             "test_requirements": dict,
             "alignment": dict,
+            "exclusions": list,
         },
         "invariant_texts": [
             "id: task identifier — use temporary IDs (_1, _2, ...) for auto-assignment, or explicit T-NNN. Temp IDs are remapped to T-NNN at materialize time.",
@@ -218,6 +220,7 @@ CONTRACTS = {
             "knowledge_ids: list of Knowledge IDs (K-001, etc.) linked to this task for context assembly",
             "test_requirements: {unit: bool, integration: bool, e2e: bool, description: str} — what testing is needed",
             "alignment: dict with {goal, boundaries: {must, must_not, not_in_scope}, success} — persisted alignment contract from planning",
+            "exclusions: list of task-specific DO NOT rules — things this task must NOT do (e.g., 'DO NOT modify WorkflowList.tsx', 'DO NOT add error handling — that is T-015')",
             "Batch format: --data '{\"new_tasks\": [...], \"update_tasks\": [...]}' — atomically adds new tasks and updates existing tasks. update_tasks can reference temp IDs from new_tasks in depends_on/conflicts_with.",
         ],
         "example": [
@@ -257,7 +260,8 @@ CONTRACTS = {
         "optional": ["name", "description", "instruction", "depends_on",
                       "conflicts_with", "skill", "acceptance_criteria",
                       "type", "blocked_by_decisions", "scopes", "origin",
-                      "knowledge_ids", "test_requirements", "alignment"],
+                      "knowledge_ids", "test_requirements", "alignment",
+                      "exclusions"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -270,6 +274,7 @@ CONTRACTS = {
             "knowledge_ids": list,
             "test_requirements": dict,
             "alignment": dict,
+            "exclusions": list,
         },
         "invariant_texts": [
             "id: existing task ID to update",
@@ -446,6 +451,7 @@ def _build_task_entry(t: dict, source_idea_id: str = None, source_objective_id: 
         "origin": t.get("origin", source_idea_id or source_objective_id or ""),
         "knowledge_ids": t.get("knowledge_ids", []),
         "alignment": t.get("alignment"),
+        "exclusions": t.get("exclusions", []),
         "status": "TODO",
         "started_at": None,
         "completed_at": None,
@@ -1714,6 +1720,13 @@ def print_task_detail(task: dict):
             else:
                 print(f"  - [ ] {criterion}")
 
+    excl = task.get("exclusions", [])
+    if excl:
+        print(f"")
+        print(f"**Exclusions (DO NOT)**:")
+        for ex in excl:
+            print(f"  - {ex}")
+
     print(f"")
     print(f"When done: `python -m core.pipeline complete {{project}} {task['id']}`")
 
@@ -1788,6 +1801,15 @@ def cmd_context(args):
             print(f"**Success criteria**: {alignment['success']}")
         print()
 
+    # Exclusions (task-specific DO NOT rules)
+    excl = task.get("exclusions", [])
+    if excl:
+        print("### Exclusions")
+        print()
+        for ex in excl:
+            print(f"- **DO NOT**: {ex}")
+        print()
+
     # Dependency context
     deps = task.get("depends_on", [])
     if deps:
@@ -1852,57 +1874,54 @@ def cmd_context(args):
             print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
         print()
 
+    # Compute task_scopes (shared by guidelines and knowledge scope matching)
+    g_data = _s.load_data(args.project, 'guidelines')
+    project_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
+
+    task_scopes = set(task.get("scopes", []))
+    origin_for_scopes = task.get("origin", "")
+    if origin_for_scopes.startswith("O-") and _s.exists(args.project, 'objectives'):
+        obj_data_scopes = _s.load_data(args.project, 'objectives')
+        for obj in obj_data_scopes.get("objectives", []):
+            if obj["id"] == origin_for_scopes:
+                task_scopes.update(obj.get("scopes", []))
+                derived_gl_ids = set(obj.get("derived_guidelines", []))
+                if derived_gl_ids:
+                    for g in project_guidelines:
+                        if g["id"] in derived_gl_ids and g.get("scope"):
+                            task_scopes.add(g["scope"])
+                break
+    elif origin_for_scopes.startswith("I-") and _s.exists(args.project, 'ideas'):
+        ideas_data_sc = _s.load_data(args.project, 'ideas')
+        for idea in ideas_data_sc.get("ideas", []):
+            if idea["id"] == origin_for_scopes:
+                task_scopes.update(idea.get("scopes", []))
+                obj_ids_sc = {kr.split("/")[0] for kr in idea.get("advances_key_results", []) if "/" in kr}
+                if obj_ids_sc and _s.exists(args.project, 'objectives'):
+                    obj_data_sc = _s.load_data(args.project, 'objectives')
+                    for obj in obj_data_sc.get("objectives", []):
+                        if obj["id"] in obj_ids_sc:
+                            derived_gl_ids = set(obj.get("derived_guidelines", []))
+                            for g in project_guidelines:
+                                if g["id"] in derived_gl_ids and g.get("scope"):
+                                    task_scopes.add(g["scope"])
+                break
+    task_scopes.add("general")
+
     # Guidelines context (uses shared renderer from guidelines module)
-    # Load global guidelines (bypass scope filter) and project guidelines (scope-filtered)
     global_guidelines = []
     if args.project != "_global":
         g_global = _s.load_global('guidelines')
         global_guidelines = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
-    g_data = _s.load_data(args.project, 'guidelines')
-    project_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
-
     if global_guidelines or project_guidelines:
-        task_scopes = set(task.get("scopes", []))
-        # Expand scopes from objective's derived_guidelines (if origin is O-)
-        origin_for_scopes = task.get("origin", "")
-        if origin_for_scopes.startswith("O-") and _s.exists(args.project, 'objectives'):
-            obj_data_scopes = _s.load_data(args.project, 'objectives')
-            for obj in obj_data_scopes.get("objectives", []):
-                if obj["id"] == origin_for_scopes:
-                    # Add objective scopes
-                    task_scopes.update(obj.get("scopes", []))
-                    # Expand with scopes from derived_guidelines
-                    derived_gl_ids = set(obj.get("derived_guidelines", []))
-                    if derived_gl_ids:
-                        for g in project_guidelines:
-                            if g["id"] in derived_gl_ids and g.get("scope"):
-                                task_scopes.add(g["scope"])
-                    break
-        elif origin_for_scopes.startswith("I-") and _s.exists(args.project, 'ideas'):
-            # Expand scopes from idea -> objective -> derived_guidelines
-            ideas_data_sc = _s.load_data(args.project, 'ideas')
-            for idea in ideas_data_sc.get("ideas", []):
-                if idea["id"] == origin_for_scopes:
-                    task_scopes.update(idea.get("scopes", []))
-                    # Trace to objective
-                    obj_ids_sc = {kr.split("/")[0] for kr in idea.get("advances_key_results", []) if "/" in kr}
-                    if obj_ids_sc and _s.exists(args.project, 'objectives'):
-                        obj_data_sc = _s.load_data(args.project, 'objectives')
-                        for obj in obj_data_sc.get("objectives", []):
-                            if obj["id"] in obj_ids_sc:
-                                derived_gl_ids = set(obj.get("derived_guidelines", []))
-                                for g in project_guidelines:
-                                    if g["id"] in derived_gl_ids and g.get("scope"):
-                                        task_scopes.add(g["scope"])
-                    break
         from guidelines import render_guidelines_context
         lines = render_guidelines_context(project_guidelines, task_scopes, args.project,
                                            global_guidelines=global_guidelines)
         for line in lines:
             print(line)
 
-    # Knowledge context (from task.knowledge_ids + origin idea/objective)
+    # Knowledge context (from task.knowledge_ids + origin chain + scope matching)
     k_ids = set(task.get("knowledge_ids", []))
     origin_k = task.get("origin", "")
     if origin_k.startswith("I-"):
@@ -1911,7 +1930,6 @@ def cmd_context(args):
             for idea in ideas_data.get("ideas", []):
                 if idea["id"] == origin_k:
                     k_ids.update(idea.get("knowledge_ids", []))
-                    # Chain: idea -> advances_key_results -> objective -> knowledge_ids
                     obj_ids_k = {kr.split("/")[0] for kr in idea.get("advances_key_results", []) if "/" in kr}
                     if obj_ids_k and _s.exists(args.project, 'objectives'):
                         obj_data_k = _s.load_data(args.project, 'objectives')
@@ -1926,19 +1944,51 @@ def cmd_context(args):
                 if obj["id"] == origin_k:
                     k_ids.update(obj.get("knowledge_ids", []))
                     break
-    if k_ids and _s.exists(args.project, 'knowledge'):
+
+    # Load knowledge data once (used for both explicit and scope matching)
+    k_data = {}
+    if _s.exists(args.project, 'knowledge'):
         k_data = _s.load_data(args.project, 'knowledge')
+
+    # Scope-matched knowledge (additive to explicit IDs)
+    scope_matched_k_ids = set()
+    if task_scopes and k_data:
+        for k_obj in k_data.get("knowledge", []):
+            if k_obj.get("status") != "ACTIVE":
+                continue
+            k_scopes = set(k_obj.get("scopes", []))
+            if k_scopes & task_scopes and k_obj["id"] not in k_ids:
+                scope_matched_k_ids.add(k_obj["id"])
+
+    all_k_ids = k_ids | scope_matched_k_ids
+    if all_k_ids and k_data:
         k_objects = {k["id"]: k for k in k_data.get("knowledge", [])
                      if k.get("status") == "ACTIVE"}
-        linked = [k_objects[kid] for kid in sorted(k_ids) if kid in k_objects]
-        if linked:
-            print(f"### Knowledge ({len(linked)})")
+
+        explicit_linked = [k_objects[kid] for kid in sorted(k_ids) if kid in k_objects]
+        scope_linked = [k_objects[kid] for kid in sorted(scope_matched_k_ids) if kid in k_objects]
+
+        # Cap scope-matched at 10 to prevent context bloat
+        if len(scope_linked) > 10:
+            scope_linked = scope_linked[:10]
+
+        total = len(explicit_linked) + len(scope_linked)
+        if total > 0:
+            print(f"### Knowledge ({total})")
             print()
-            for k in linked:
+            for k in explicit_linked:
                 print(f"**{k['id']}**: {k['title']} [{k['category']}]")
                 content_preview = k.get("content", "")[:200]
                 if content_preview:
                     print(f"  {content_preview}")
+            if scope_linked:
+                print()
+                print(f"*Scope-matched ({len(scope_linked)}):*")
+                for k in scope_linked:
+                    print(f"**{k['id']}**: {k['title']} [{k['category']}]")
+                    content_preview = k.get("content", "")[:200]
+                    if content_preview:
+                        print(f"  {content_preview}")
             print()
 
     # Research context (from task origin -> idea/objective -> research)

@@ -1012,3 +1012,34 @@ class TestACReasoningValidation:
         reasoning = "AC 1: response time under 200ms — PASS: k6 shows p95=180ms"
         warnings = _validate_ac_reasoning(reasoning, ac)
         assert warnings == []
+
+
+# ---------------------------------------------------------------------------
+# Exclusions field
+# ---------------------------------------------------------------------------
+
+class TestExclusions:
+    """Tests for exclusions field on tasks."""
+
+    def test_build_task_entry_default_empty_exclusions(self):
+        """_build_task_entry defaults exclusions to empty list."""
+        entry = _build_task_entry({"id": "T-001", "name": "x"})
+        assert entry["exclusions"] == []
+
+    def test_build_task_entry_preserves_exclusions(self):
+        """_build_task_entry passes through exclusions field."""
+        excl = ["DO NOT modify X", "DO NOT add Y"]
+        entry = _build_task_entry({"id": "T-001", "name": "x", "exclusions": excl})
+        assert entry["exclusions"] == excl
+
+    def test_contract_accepts_exclusions(self):
+        """add-tasks contract accepts exclusions as list."""
+        data = [{"id": "T-001", "name": "x", "exclusions": ["DO NOT touch foo"]}]
+        errors = validate_contract(CONTRACTS["add-tasks"], data)
+        assert errors == []
+
+    def test_contract_rejects_non_list_exclusions(self):
+        """add-tasks contract rejects exclusions that aren't a list."""
+        data = [{"id": "T-001", "name": "x", "exclusions": "not a list"}]
+        errors = validate_contract(CONTRACTS["add-tasks"], data)
+        assert any("exclusions" in e.lower() or "list" in e for e in errors)

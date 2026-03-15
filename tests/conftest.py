@@ -50,7 +50,7 @@ def init_project(forge_env, project_name):
 def make_task(task_id, name="task", depends_on=None, status="TODO",
               conflicts_with=None, blocked_by_decisions=None,
               acceptance_criteria=None, task_type="feature",
-              scopes=None, origin="", parallel=False):
+              scopes=None, origin="", parallel=False, exclusions=None):
     """Helper to build a task dict."""
     return {
         "id": task_id,
@@ -66,6 +66,7 @@ def make_task(task_id, name="task", depends_on=None, status="TODO",
         "blocked_by_decisions": blocked_by_decisions or [],
         "scopes": scopes or [],
         "origin": origin,
+        "exclusions": exclusions or [],
         "status": status,
         "started_at": None,
         "completed_at": None,

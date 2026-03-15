@@ -65,6 +65,7 @@ Post-project:
 Task T-001
   │
   ├─ task.scopes ──→ load Guidelines matching scopes
+  │                  + Knowledge matching scopes (additive to explicit IDs)
   │                  + global guidelines (always)
   │
   ├─ task.origin ──→ Idea I-001 or Objective O-001
@@ -349,6 +350,7 @@ When adding tasks, each task supports:
 - `knowledge_ids` — list of Knowledge IDs (K-001, etc.) that provide context for this task. Loaded by `pipeline context`.
 - `test_requirements` — dict with `unit`, `integration`, `e2e` booleans indicating required test types.
 - `alignment` — dict with `{goal, boundaries: {must, must_not, not_in_scope}, success}` — persisted alignment contract from planning. Displayed in `pipeline context` and `print_task_detail`. Derive AC from `alignment.success`.
+- `exclusions` — list of task-specific DO NOT rules (e.g., `["DO NOT modify auth.ts", "DO NOT add pagination — that is T-015"]`). Displayed prominently in both `print_task_detail` and `pipeline context`.
 
 ### Plan Validation
 
