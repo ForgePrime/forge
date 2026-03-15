@@ -1,0 +1,9 @@
+{
+  "status": "ACTIVE",
+  "categories": ["entity"],
+  "tags": ["task", "execution"],
+  "scopes": ["tasks"],
+  "description": "Guides task execution with AC verification, decision recording, and change tracking",
+  "created_at": "2026-03-15T00:00:00Z",
+  "updated_at": "2026-03-15T00:00:00Z"
+}
