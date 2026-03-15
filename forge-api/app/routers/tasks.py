@@ -46,9 +46,13 @@ class TaskUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     instruction: str | None = None
+    type: str | None = None
     status: str | None = None
     failed_reason: str | None = None
+    depends_on: list[str] | None = None
     blocked_by_decisions: list[str] | None = None
+    acceptance_criteria: list[str] | None = None
+    scopes: list[str] | None = None
 
 
 class TaskComplete(BaseModel):

@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { decisionUpdateSchema, type DecisionUpdateForm } from "@/lib/schemas/decision";
 import {
   decisions as decisionsApi,
   tasks as tasksApi,
@@ -14,19 +17,67 @@ import { Badge, statusVariant } from "@/components/shared/Badge";
 import { Button } from "@/components/shared/Button";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { EntityLink } from "@/components/shared/EntityLink";
+import { TextField } from "@/components/forms/TextField";
+import { TextAreaField } from "@/components/forms/TextAreaField";
+import { SelectField } from "@/components/forms/SelectField";
+import { DynamicListField } from "@/components/forms/DynamicListField";
+import { useToastStore } from "@/stores/toastStore";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Decision, DecisionUpdate, DecisionStatus, Task, Idea, Guideline, ChatSession } from "@/lib/types";
 
-const STATUS_TRANSITIONS: Record<string, string[]> = {
-  OPEN: ["CLOSED", "DEFERRED", "ANALYZING"],
-  ANALYZING: ["OPEN", "CLOSED", "DEFERRED", "MITIGATED", "ACCEPTED"],
-  DEFERRED: ["OPEN", "CLOSED"],
-  MITIGATED: ["CLOSED"],
-  ACCEPTED: ["CLOSED"],
-  CLOSED: [],
-};
+const STATUS_OPTIONS = [
+  { value: "OPEN", label: "Open" },
+  { value: "CLOSED", label: "Closed" },
+  { value: "DEFERRED", label: "Deferred" },
+  { value: "ANALYZING", label: "Analyzing" },
+  { value: "MITIGATED", label: "Mitigated" },
+  { value: "ACCEPTED", label: "Accepted" },
+];
 
-const ENTITY_TYPE_OPTIONS = ["", "task", "idea", "objective", "research"];
+const CONFIDENCE_OPTIONS = [
+  { value: "HIGH", label: "High" },
+  { value: "MEDIUM", label: "Medium" },
+  { value: "LOW", label: "Low" },
+];
+
+const DECIDED_BY_OPTIONS = [
+  { value: "claude", label: "Claude" },
+  { value: "user", label: "User" },
+  { value: "imported", label: "Imported" },
+];
+
+const SEVERITY_OPTIONS = [
+  { value: "", label: "None" },
+  { value: "critical", label: "Critical" },
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
+];
+
+const LIKELIHOOD_OPTIONS = [
+  { value: "", label: "None" },
+  { value: "certain", label: "Certain" },
+  { value: "likely", label: "Likely" },
+  { value: "possible", label: "Possible" },
+  { value: "unlikely", label: "Unlikely" },
+];
+
+const EXPLORATION_TYPE_OPTIONS = [
+  { value: "", label: "None" },
+  { value: "domain", label: "Domain" },
+  { value: "architecture", label: "Architecture" },
+  { value: "business", label: "Business" },
+  { value: "risk", label: "Risk" },
+  { value: "feasibility", label: "Feasibility" },
+];
+
+const LINKED_ENTITY_TYPE_OPTIONS = [
+  { value: "", label: "None" },
+  { value: "task", label: "Task" },
+  { value: "idea", label: "Idea" },
+  { value: "objective", label: "Objective" },
+  { value: "research", label: "Research" },
+];
 
 export default function DecisionDetailPage() {
   const { slug, id } = useParams() as { slug: string; id: string };
@@ -38,37 +89,9 @@ export default function DecisionDetailPage() {
   // Edit mode
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Core edit state
-  const [editTaskId, setEditTaskId] = useState("");
-  const [editIssue, setEditIssue] = useState("");
-  const [editRecommendation, setEditRecommendation] = useState("");
-  const [editReasoning, setEditReasoning] = useState("");
-  const [editAlternatives, setEditAlternatives] = useState<string[]>([]);
-  const [editConfidence, setEditConfidence] = useState("MEDIUM");
-  const [editStatus, setEditStatus] = useState("OPEN");
-  const [editDecidedBy, setEditDecidedBy] = useState("claude");
-  const [editResolutionNotes, setEditResolutionNotes] = useState("");
-
-  // Metadata edit state
-  const [editFile, setEditFile] = useState("");
-  const [editScope, setEditScope] = useState("");
-  const [editTags, setEditTags] = useState<string[]>([]);
-  const [editEvidenceRefs, setEditEvidenceRefs] = useState<string[]>([]);
-
-  // Linked entity
-  const [editLinkedEntityType, setEditLinkedEntityType] = useState("");
-  const [editLinkedEntityId, setEditLinkedEntityId] = useState("");
-
-  // Risk fields
-  const [editSeverity, setEditSeverity] = useState("");
-  const [editLikelihood, setEditLikelihood] = useState("");
-  const [editMitigationPlan, setEditMitigationPlan] = useState("");
-
-  // Exploration fields
-  const [editExplorationType, setEditExplorationType] = useState("");
-  const [editOpenQuestions, setEditOpenQuestions] = useState<string[]>([]);
-  const [editBlockers, setEditBlockers] = useState<string[]>([]);
+  const editForm = useForm<DecisionUpdateForm>({
+    resolver: zodResolver(decisionUpdateSchema),
+  });
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -122,64 +145,66 @@ export default function DecisionDetailPage() {
 
   const startEdit = () => {
     if (!decision) return;
-    setEditTaskId(decision.task_id || "");
-    setEditIssue(decision.issue);
-    setEditRecommendation(decision.recommendation);
-    setEditReasoning(decision.reasoning || "");
-    setEditAlternatives([...decision.alternatives]);
-    setEditConfidence(decision.confidence);
-    setEditStatus(decision.status);
-    setEditDecidedBy(decision.decided_by);
-    setEditResolutionNotes(decision.resolution_notes || "");
-    setEditFile(decision.file || "");
-    setEditScope(decision.scope || "");
-    setEditTags([...decision.tags]);
-    setEditEvidenceRefs([...(decision.evidence_refs || [])]);
-    setEditLinkedEntityType(decision.linked_entity_type || "");
-    setEditLinkedEntityId(decision.linked_entity_id || "");
-    setEditSeverity(decision.severity || "");
-    setEditLikelihood(decision.likelihood || "");
-    setEditMitigationPlan(decision.mitigation_plan || "");
-    setEditExplorationType(decision.exploration_type || "");
-    setEditOpenQuestions([...(decision.open_questions || [])]);
-    setEditBlockers([...(decision.blockers || [])]);
+    editForm.reset({
+      task_id: decision.task_id || "",
+      issue: decision.issue,
+      recommendation: decision.recommendation,
+      reasoning: decision.reasoning || "",
+      alternatives: [...decision.alternatives],
+      confidence: decision.confidence,
+      status: decision.status,
+      decided_by: decision.decided_by,
+      resolution_notes: decision.resolution_notes || "",
+      file: decision.file || "",
+      scope: decision.scope || "",
+      tags: [...decision.tags],
+      evidence_refs: [...(decision.evidence_refs || [])],
+      linked_entity_type: decision.linked_entity_type || "",
+      linked_entity_id: decision.linked_entity_id || "",
+      severity: decision.severity || "",
+      likelihood: decision.likelihood || "",
+      mitigation_plan: decision.mitigation_plan || "",
+      exploration_type: decision.exploration_type || "",
+      open_questions: [...(decision.open_questions || [])],
+      blockers: [...(decision.blockers || [])],
+    });
     setEditing(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = editForm.handleSubmit(async (data) => {
     if (!decision) return;
     setSaving(true);
     setError(null);
     try {
       const update: DecisionUpdate = {};
 
-      if (editTaskId !== (decision.task_id || "")) update.task_id = editTaskId;
-      if (editIssue !== decision.issue) update.issue = editIssue;
-      if (editRecommendation !== decision.recommendation) update.recommendation = editRecommendation;
-      if (editReasoning !== (decision.reasoning || "")) update.reasoning = editReasoning;
-      if (JSON.stringify(editAlternatives) !== JSON.stringify(decision.alternatives)) update.alternatives = editAlternatives;
-      if (editConfidence !== decision.confidence) update.confidence = editConfidence as DecisionUpdate["confidence"];
-      if (editStatus !== decision.status) update.status = editStatus as DecisionStatus;
-      if (editDecidedBy !== decision.decided_by) update.decided_by = editDecidedBy as DecisionUpdate["decided_by"];
-      if (editResolutionNotes !== (decision.resolution_notes || "")) update.resolution_notes = editResolutionNotes;
-      if (editFile !== (decision.file || "")) update.file = editFile;
-      if (editScope !== (decision.scope || "")) update.scope = editScope;
-      if (JSON.stringify(editTags) !== JSON.stringify(decision.tags)) update.tags = editTags;
-      if (JSON.stringify(editEvidenceRefs) !== JSON.stringify(decision.evidence_refs || [])) update.evidence_refs = editEvidenceRefs;
-      if (editLinkedEntityType !== (decision.linked_entity_type || "")) update.linked_entity_type = editLinkedEntityType;
-      if (editLinkedEntityId !== (decision.linked_entity_id || "")) update.linked_entity_id = editLinkedEntityId;
+      if (data.task_id !== undefined && data.task_id !== (decision.task_id || "")) update.task_id = data.task_id;
+      if (data.issue && data.issue !== decision.issue) update.issue = data.issue;
+      if (data.recommendation && data.recommendation !== decision.recommendation) update.recommendation = data.recommendation;
+      if (data.reasoning !== undefined && data.reasoning !== (decision.reasoning || "")) update.reasoning = data.reasoning;
+      if (data.alternatives && JSON.stringify(data.alternatives) !== JSON.stringify(decision.alternatives)) update.alternatives = data.alternatives;
+      if (data.confidence && data.confidence !== decision.confidence) update.confidence = data.confidence;
+      if (data.status && data.status !== decision.status) update.status = data.status;
+      if (data.decided_by && data.decided_by !== decision.decided_by) update.decided_by = data.decided_by;
+      if (data.resolution_notes !== undefined && data.resolution_notes !== (decision.resolution_notes || "")) update.resolution_notes = data.resolution_notes;
+      if (data.file !== undefined && data.file !== (decision.file || "")) update.file = data.file;
+      if (data.scope !== undefined && data.scope !== (decision.scope || "")) update.scope = data.scope;
+      if (data.tags && JSON.stringify(data.tags) !== JSON.stringify(decision.tags)) update.tags = data.tags;
+      if (data.evidence_refs && JSON.stringify(data.evidence_refs) !== JSON.stringify(decision.evidence_refs || [])) update.evidence_refs = data.evidence_refs;
+      if (data.linked_entity_type !== undefined && data.linked_entity_type !== (decision.linked_entity_type || "")) update.linked_entity_type = data.linked_entity_type;
+      if (data.linked_entity_id !== undefined && data.linked_entity_id !== (decision.linked_entity_id || "")) update.linked_entity_id = data.linked_entity_id;
 
       // Risk-specific
       if (decision.type === "risk") {
-        if (editSeverity !== (decision.severity || "")) update.severity = editSeverity;
-        if (editLikelihood !== (decision.likelihood || "")) update.likelihood = editLikelihood;
-        if (editMitigationPlan !== (decision.mitigation_plan || "")) update.mitigation_plan = editMitigationPlan;
+        if (data.severity !== undefined && data.severity !== (decision.severity || "")) update.severity = data.severity;
+        if (data.likelihood !== undefined && data.likelihood !== (decision.likelihood || "")) update.likelihood = data.likelihood;
+        if (data.mitigation_plan !== undefined && data.mitigation_plan !== (decision.mitigation_plan || "")) update.mitigation_plan = data.mitigation_plan;
       }
       // Exploration-specific
       if (decision.type === "exploration") {
-        if (editExplorationType !== (decision.exploration_type || "")) update.exploration_type = editExplorationType;
-        if (JSON.stringify(editOpenQuestions) !== JSON.stringify(decision.open_questions || [])) update.open_questions = editOpenQuestions;
-        if (JSON.stringify(editBlockers) !== JSON.stringify(decision.blockers || [])) update.blockers = editBlockers;
+        if (data.exploration_type !== undefined && data.exploration_type !== (decision.exploration_type || "")) update.exploration_type = data.exploration_type;
+        if (data.open_questions && JSON.stringify(data.open_questions) !== JSON.stringify(decision.open_questions || [])) update.open_questions = data.open_questions;
+        if (data.blockers && JSON.stringify(data.blockers) !== JSON.stringify(decision.blockers || [])) update.blockers = data.blockers;
       }
 
       if (Object.keys(update).length > 0) {
@@ -187,12 +212,14 @@ export default function DecisionDetailPage() {
         setDecision(updated);
       }
       setEditing(false);
+      useToastStore.getState().addToast({ message: `${decision.id} updated`, entityId: decision.id, entityType: "decision", action: "updated" });
     } catch (e) {
       setError((e as Error).message);
+      useToastStore.getState().addToast({ message: `Failed to update ${decision.id}`, action: "failed" });
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   const handleDelete = async () => {
     if (!decision) return;
@@ -214,7 +241,6 @@ export default function DecisionDetailPage() {
   const isRisk = decision.type === "risk";
   const isExploration = decision.type === "exploration";
   const isClosed = decision.status === "CLOSED";
-  const allowedStatuses = [decision.status, ...(STATUS_TRANSITIONS[decision.status] || [])];
 
   return (
     <div className="flex gap-6">
@@ -276,279 +302,77 @@ export default function DecisionDetailPage() {
         )}
 
         {editing ? (
-          /* ===== Edit mode ===== */
-          <div className="space-y-5 border rounded-lg p-5 bg-gray-50">
-            {/* Core */}
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Core</legend>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Issue *</label>
-                  <textarea
-                    value={editIssue}
-                    onChange={(e) => setEditIssue(e.target.value)}
-                    rows={3}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Recommendation *</label>
-                  <textarea
-                    value={editRecommendation}
-                    onChange={(e) => setEditRecommendation(e.target.value)}
-                    rows={3}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Reasoning</label>
-                  <textarea
-                    value={editReasoning}
-                    onChange={(e) => setEditReasoning(e.target.value)}
-                    rows={4}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <EditableList
-                  items={editAlternatives}
-                  setItems={setEditAlternatives}
-                  label="Alternatives"
-                  addLabel="Add alternative"
-                  rows={2}
-                />
-              </div>
-            </fieldset>
+          /* ===== Edit mode (react-hook-form + zod) ===== */
+          <form onSubmit={handleSave} className="border rounded-lg p-5 bg-gray-50">
+            <TextAreaField name="issue" control={editForm.control} label="Issue" required rows={3} />
+            <TextAreaField name="recommendation" control={editForm.control} label="Recommendation" required rows={3} />
+            <TextAreaField name="reasoning" control={editForm.control} label="Reasoning" rows={4} />
+            <DynamicListField name="alternatives" control={editForm.control} label="Alternatives" addLabel="Add alternative" placeholder="Alternative approach..." />
 
-            {/* Status & Classification */}
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Status & Classification</legend>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    disabled={isClosed}
-                    className="w-full rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
-                  >
-                    {allowedStatuses.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                  {isClosed && <p className="text-[10px] text-gray-400 mt-1">CLOSED is terminal</p>}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Confidence</label>
-                  <select
-                    value={editConfidence}
-                    onChange={(e) => setEditConfidence(e.target.value)}
-                    className="w-full rounded-md border px-3 py-1.5 text-sm"
-                  >
-                    <option value="HIGH">HIGH</option>
-                    <option value="MEDIUM">MEDIUM</option>
-                    <option value="LOW">LOW</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Decided By</label>
-                  <select
-                    value={editDecidedBy}
-                    onChange={(e) => setEditDecidedBy(e.target.value)}
-                    className="w-full rounded-md border px-3 py-1.5 text-sm"
-                  >
-                    <option value="claude">claude</option>
-                    <option value="user">user</option>
-                    <option value="imported">imported</option>
-                  </select>
-                </div>
-              </div>
-            </fieldset>
+            <div className="grid grid-cols-3 gap-4">
+              <SelectField name="status" control={editForm.control} label="Status" options={STATUS_OPTIONS} disabled={isClosed} />
+              <SelectField name="confidence" control={editForm.control} label="Confidence" options={CONFIDENCE_OPTIONS} />
+              <SelectField name="decided_by" control={editForm.control} label="Decided By" options={DECIDED_BY_OPTIONS} />
+            </div>
 
-            {/* Risk Assessment */}
+            {/* Risk-specific fields */}
             {isRisk && (
-              <fieldset>
-                <legend className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-3">Risk Assessment</legend>
-                <div className="grid grid-cols-2 gap-4 mb-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Severity</label>
-                    <select
-                      value={editSeverity}
-                      onChange={(e) => setEditSeverity(e.target.value)}
-                      className="w-full rounded-md border px-3 py-1.5 text-sm"
-                    >
-                      <option value="">—</option>
-                      <option value="critical">Critical</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Likelihood</label>
-                    <select
-                      value={editLikelihood}
-                      onChange={(e) => setEditLikelihood(e.target.value)}
-                      className="w-full rounded-md border px-3 py-1.5 text-sm"
-                    >
-                      <option value="">—</option>
-                      <option value="certain">Certain</option>
-                      <option value="likely">Likely</option>
-                      <option value="possible">Possible</option>
-                      <option value="unlikely">Unlikely</option>
-                    </select>
-                  </div>
+              <div className="border-t pt-4 mt-2 mb-4">
+                <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-3">Risk Assessment</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <SelectField name="severity" control={editForm.control} label="Severity" options={SEVERITY_OPTIONS} />
+                  <SelectField name="likelihood" control={editForm.control} label="Likelihood" options={LIKELIHOOD_OPTIONS} />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Mitigation Plan</label>
-                  <textarea
-                    value={editMitigationPlan}
-                    onChange={(e) => setEditMitigationPlan(e.target.value)}
-                    rows={3}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-              </fieldset>
+                <TextAreaField name="mitigation_plan" control={editForm.control} label="Mitigation Plan" rows={3} />
+              </div>
             )}
 
-            {/* Exploration */}
+            {/* Exploration-specific fields */}
             {isExploration && (
-              <fieldset>
-                <legend className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">Exploration</legend>
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Exploration Type</label>
-                  <select
-                    value={editExplorationType}
-                    onChange={(e) => setEditExplorationType(e.target.value)}
-                    className="w-full rounded-md border px-3 py-1.5 text-sm"
-                  >
-                    <option value="">—</option>
-                    <option value="domain">Domain</option>
-                    <option value="architecture">Architecture</option>
-                    <option value="business">Business</option>
-                    <option value="risk">Risk</option>
-                    <option value="feasibility">Feasibility</option>
-                  </select>
-                </div>
-                <EditableList
-                  items={editOpenQuestions}
-                  setItems={setEditOpenQuestions}
-                  label="Open Questions"
-                  addLabel="Add question"
-                />
-                <div className="mt-3">
-                  <EditableList
-                    items={editBlockers}
-                    setItems={setEditBlockers}
-                    label="Blockers"
-                    addLabel="Add blocker"
-                  />
-                </div>
+              <div className="border-t pt-4 mt-2 mb-4">
+                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">Exploration</p>
+                <SelectField name="exploration_type" control={editForm.control} label="Exploration Type" options={EXPLORATION_TYPE_OPTIONS} />
+                <DynamicListField name="open_questions" control={editForm.control} label="Open Questions" addLabel="Add question" />
+                <DynamicListField name="blockers" control={editForm.control} label="Blockers" addLabel="Add blocker" />
                 {decision.findings && decision.findings.length > 0 && (
                   <p className="text-[10px] text-gray-400 mt-2">Findings and Options are read-only here. Edit via CLI if needed.</p>
                 )}
-              </fieldset>
+              </div>
             )}
 
-            {/* Linked Entity */}
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Linked Entity</legend>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Entity Type</label>
-                  <select
-                    value={editLinkedEntityType}
-                    onChange={(e) => setEditLinkedEntityType(e.target.value)}
-                    className="w-full rounded-md border px-3 py-1.5 text-sm"
-                  >
-                    {ENTITY_TYPE_OPTIONS.map((t) => (
-                      <option key={t} value={t}>{t || "— none —"}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Entity ID</label>
-                  <input
-                    value={editLinkedEntityId}
-                    onChange={(e) => setEditLinkedEntityId(e.target.value)}
-                    placeholder="I-001, O-001, T-001..."
-                    className="w-full rounded-md border px-3 py-1.5 text-sm"
-                  />
-                </div>
-              </div>
-            </fieldset>
+            <div className="grid grid-cols-2 gap-4">
+              <SelectField name="linked_entity_type" control={editForm.control} label="Linked Entity Type" options={LINKED_ENTITY_TYPE_OPTIONS} />
+              <TextField name="linked_entity_id" control={editForm.control} label="Linked Entity ID" placeholder="I-001, O-001, T-001..." />
+            </div>
 
-            {/* Context */}
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Context</legend>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Task ID</label>
-                <input
-                  value={editTaskId}
-                  onChange={(e) => setEditTaskId(e.target.value)}
-                  placeholder="T-001"
-                  className="w-full rounded-md border px-3 py-1.5 text-sm"
-                />
-              </div>
-            </fieldset>
+            <TextField name="task_id" control={editForm.control} label="Task ID" placeholder="T-001" />
 
-            {/* Metadata */}
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Metadata</legend>
-              <div className="grid grid-cols-2 gap-4 mb-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">File</label>
-                  <input
-                    value={editFile}
-                    onChange={(e) => setEditFile(e.target.value)}
-                    className="w-full rounded-md border px-3 py-1.5 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Scope</label>
-                  <input
-                    value={editScope}
-                    onChange={(e) => setEditScope(e.target.value)}
-                    className="w-full rounded-md border px-3 py-1.5 text-sm"
-                  />
-                </div>
-              </div>
-              <EditableList items={editTags} setItems={setEditTags} label="Tags" addLabel="Add tag" />
-              <div className="mt-3">
-                <EditableList items={editEvidenceRefs} setItems={setEditEvidenceRefs} label="Evidence Refs" addLabel="Add reference" />
-              </div>
-            </fieldset>
+            <div className="grid grid-cols-2 gap-4">
+              <TextField name="file" control={editForm.control} label="File" />
+              <TextField name="scope" control={editForm.control} label="Scope" />
+            </div>
+            <DynamicListField name="tags" control={editForm.control} label="Tags" addLabel="Add tag" />
+            <DynamicListField name="evidence_refs" control={editForm.control} label="Evidence Refs" addLabel="Add reference" />
 
-            {/* Resolution */}
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Resolution</legend>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Resolution Notes</label>
-                <textarea
-                  value={editResolutionNotes}
-                  onChange={(e) => setEditResolutionNotes(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                />
-              </div>
-            </fieldset>
+            <TextAreaField name="resolution_notes" control={editForm.control} label="Resolution Notes" rows={3} />
 
-            {/* Save / Cancel */}
             <div className="flex items-center gap-2 pt-2">
               <button
-                onClick={handleSave}
+                type="submit"
                 disabled={saving}
                 className="px-4 py-1.5 text-sm font-medium text-white bg-forge-600 rounded hover:bg-forge-700 disabled:opacity-50"
               >
                 {saving ? "Saving..." : "Save"}
               </button>
               <button
+                type="button"
                 onClick={() => setEditing(false)}
                 className="px-4 py-1.5 text-sm text-gray-600 border rounded hover:bg-gray-50"
               >
                 Cancel
               </button>
             </div>
-          </div>
+          </form>
         ) : (
           /* ===== Read mode ===== */
           <div>
@@ -642,58 +466,6 @@ export default function DecisionDetailPage() {
         onCancel={() => setDeleteOpen(false)}
         loading={deleting}
       />
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------------
- * Editable list helper (alternatives, tags, evidence refs, etc.)
- * --------------------------------------------------------------------------- */
-
-function EditableList({
-  items, setItems, label, addLabel, rows = 1,
-}: {
-  items: string[];
-  setItems: (items: string[]) => void;
-  label: string;
-  addLabel: string;
-  rows?: number;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
-        {label} ({items.length})
-      </label>
-      {items.map((item, i) => (
-        <div key={i} className="flex items-start gap-2 mb-1">
-          {rows > 1 ? (
-            <textarea
-              value={item}
-              onChange={(e) => { const next = [...items]; next[i] = e.target.value; setItems(next); }}
-              rows={rows}
-              className="flex-1 rounded-md border px-2 py-1 text-xs"
-            />
-          ) : (
-            <input
-              value={item}
-              onChange={(e) => { const next = [...items]; next[i] = e.target.value; setItems(next); }}
-              className="flex-1 rounded-md border px-2 py-1 text-xs"
-            />
-          )}
-          <button
-            onClick={() => setItems(items.filter((_, j) => j !== i))}
-            className="text-xs text-red-400 hover:text-red-600 mt-1"
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-      <button
-        onClick={() => setItems([...items, ""])}
-        className="text-xs text-forge-600 hover:underline mt-1"
-      >
-        + {addLabel}
-      </button>
     </div>
   );
 }

@@ -22,9 +22,13 @@ export const taskUpdateSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   instruction: z.string().optional(),
+  type: taskType.optional(),
   status: taskStatus.optional(),
   failed_reason: z.string().optional(),
+  depends_on: z.array(z.string()).optional(),
   blocked_by_decisions: z.array(z.string()).optional(),
+  acceptance_criteria: z.array(z.string()).optional(),
+  scopes: z.array(z.string()).optional(),
 });
 
 export type TaskCreateForm = z.infer<typeof taskCreateSchema>;

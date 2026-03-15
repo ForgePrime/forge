@@ -3,15 +3,30 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { taskUpdateSchema, type TaskUpdateForm } from "@/lib/schemas/task";
 import { tasks as tasksApi, decisions as decisionsApi, changes as changesApi, guidelines as guidelinesApi, knowledge as knowledgeApi } from "@/lib/api";
 import { Badge, statusVariant } from "@/components/shared/Badge";
 import { Button } from "@/components/shared/Button";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { EntityLink } from "@/components/shared/EntityLink";
+import { TextField } from "@/components/forms/TextField";
+import { TextAreaField } from "@/components/forms/TextAreaField";
+import { SelectField } from "@/components/forms/SelectField";
+import { DynamicListField } from "@/components/forms/DynamicListField";
 import { useChatStore } from "@/stores/chatStore";
 import { useSidebarStore } from "@/stores/sidebarStore";
+import { useToastStore } from "@/stores/toastStore";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Task, TaskUpdate, Decision, ChangeRecord, TaskContext, ContextSection, Guideline, Knowledge } from "@/lib/types";
+
+const TYPE_OPTIONS = [
+  { value: "feature", label: "Feature" },
+  { value: "bug", label: "Bug" },
+  { value: "chore", label: "Chore" },
+  { value: "investigation", label: "Investigation" },
+];
 
 type Tab = "overview" | "dependencies" | "decisions" | "changes" | "context";
 
@@ -43,13 +58,9 @@ export default function TaskDetailPage() {
   // Edit mode state
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editInstruction, setEditInstruction] = useState("");
-  const [editScopes, setEditScopes] = useState<string[]>([]);
-  const [editAC, setEditAC] = useState<string[]>([]);
-  const [editDependsOn, setEditDependsOn] = useState<string[]>([]);
-  const [editBlockedByDecisions, setEditBlockedByDecisions] = useState<string[]>([]);
+  const editForm = useForm<TaskUpdateForm>({
+    resolver: zodResolver(taskUpdateSchema),
+  });
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -133,40 +144,46 @@ export default function TaskDetailPage() {
 
   const startEdit = () => {
     if (!task) return;
-    setEditName(task.name);
-    setEditDescription(task.description || "");
-    setEditInstruction(task.instruction || "");
-    setEditScopes([...task.scopes]);
-    setEditAC([...task.acceptance_criteria]);
-    setEditDependsOn([...task.depends_on]);
-    setEditBlockedByDecisions([...task.blocked_by_decisions]);
+    editForm.reset({
+      name: task.name,
+      description: task.description || "",
+      instruction: task.instruction || "",
+      type: task.type,
+      scopes: [...task.scopes],
+      acceptance_criteria: [...task.acceptance_criteria],
+      depends_on: [...task.depends_on],
+      blocked_by_decisions: [...task.blocked_by_decisions],
+    });
     setEditing(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = editForm.handleSubmit(async (data) => {
     if (!task) return;
     setSaving(true);
     setError(null);
     try {
       const update: TaskUpdate = {};
-      if (editName !== task.name) update.name = editName;
-      if (editDescription !== (task.description || "")) update.description = editDescription;
-      if (editInstruction !== (task.instruction || "")) update.instruction = editInstruction;
-      if (JSON.stringify(editScopes) !== JSON.stringify(task.scopes)) update.scopes = editScopes;
-      if (JSON.stringify(editAC) !== JSON.stringify(task.acceptance_criteria)) update.acceptance_criteria = editAC;
-      if (JSON.stringify(editDependsOn) !== JSON.stringify(task.depends_on)) update.depends_on = editDependsOn;
-      if (JSON.stringify(editBlockedByDecisions) !== JSON.stringify(task.blocked_by_decisions)) update.blocked_by_decisions = editBlockedByDecisions;
+      if (data.name && data.name !== task.name) update.name = data.name;
+      if (data.description !== undefined && data.description !== (task.description || "")) update.description = data.description;
+      if (data.instruction !== undefined && data.instruction !== (task.instruction || "")) update.instruction = data.instruction;
+      if (data.type && data.type !== task.type) update.type = data.type;
+      if (data.scopes && JSON.stringify(data.scopes) !== JSON.stringify(task.scopes)) update.scopes = data.scopes;
+      if (data.acceptance_criteria && JSON.stringify(data.acceptance_criteria) !== JSON.stringify(task.acceptance_criteria)) update.acceptance_criteria = data.acceptance_criteria;
+      if (data.depends_on && JSON.stringify(data.depends_on) !== JSON.stringify(task.depends_on)) update.depends_on = data.depends_on;
+      if (data.blocked_by_decisions && JSON.stringify(data.blocked_by_decisions) !== JSON.stringify(task.blocked_by_decisions)) update.blocked_by_decisions = data.blocked_by_decisions;
       if (Object.keys(update).length > 0) {
         const updated = await tasksApi.update(slug, task.id, update);
         setTask(updated);
       }
       setEditing(false);
+      useToastStore.getState().addToast({ message: `${task.id} updated`, entityId: task.id, entityType: "task", action: "updated" });
     } catch (e) {
       setError((e as Error).message);
+      useToastStore.getState().addToast({ message: `Failed to update ${task.id}`, action: "failed" });
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   const handleDelete = async () => {
     if (!task) return;
@@ -326,82 +343,25 @@ export default function TaskDetailPage() {
 
       {/* Tab Content */}
       {tab === "overview" && editing ? (
-        <div className="space-y-4 border rounded-lg p-5 bg-gray-50">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
-            <input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="w-full rounded-md border px-3 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              rows={4}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Instruction</label>
-            <textarea
-              value={editInstruction}
-              onChange={(e) => setEditInstruction(e.target.value)}
-              rows={6}
-              className="w-full rounded-md border px-3 py-2 text-sm font-mono"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Scopes ({editScopes.length})</label>
-            {editScopes.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 mb-1">
-                <input value={s} onChange={(e) => { const next = [...editScopes]; next[i] = e.target.value; setEditScopes(next); }} className="flex-1 rounded-md border px-2 py-1 text-xs" />
-                <button onClick={() => setEditScopes(editScopes.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:text-red-600">Remove</button>
-              </div>
-            ))}
-            <button onClick={() => setEditScopes([...editScopes, ""])} className="text-xs text-forge-600 hover:underline mt-1">+ Add scope</button>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Acceptance Criteria ({editAC.length})</label>
-            {editAC.map((ac, i) => (
-              <div key={i} className="flex items-start gap-2 mb-1">
-                <textarea value={ac} onChange={(e) => { const next = [...editAC]; next[i] = e.target.value; setEditAC(next); }} rows={2} className="flex-1 rounded-md border px-2 py-1 text-xs" />
-                <button onClick={() => setEditAC(editAC.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:text-red-600 mt-1">Remove</button>
-              </div>
-            ))}
-            <button onClick={() => setEditAC([...editAC, ""])} className="text-xs text-forge-600 hover:underline mt-1">+ Add criterion</button>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Depends On ({editDependsOn.length})</label>
-            {editDependsOn.map((dep, i) => (
-              <div key={i} className="flex items-center gap-2 mb-1">
-                <input value={dep} onChange={(e) => { const next = [...editDependsOn]; next[i] = e.target.value; setEditDependsOn(next); }} placeholder="T-001" className="flex-1 rounded-md border px-2 py-1 text-xs" />
-                <button onClick={() => setEditDependsOn(editDependsOn.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:text-red-600">Remove</button>
-              </div>
-            ))}
-            <button onClick={() => setEditDependsOn([...editDependsOn, ""])} className="text-xs text-forge-600 hover:underline mt-1">+ Add dependency</button>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Blocked by Decisions ({editBlockedByDecisions.length})</label>
-            {editBlockedByDecisions.map((d, i) => (
-              <div key={i} className="flex items-center gap-2 mb-1">
-                <input value={d} onChange={(e) => { const next = [...editBlockedByDecisions]; next[i] = e.target.value; setEditBlockedByDecisions(next); }} placeholder="D-001" className="flex-1 rounded-md border px-2 py-1 text-xs" />
-                <button onClick={() => setEditBlockedByDecisions(editBlockedByDecisions.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:text-red-600">Remove</button>
-              </div>
-            ))}
-            <button onClick={() => setEditBlockedByDecisions([...editBlockedByDecisions, ""])} className="text-xs text-forge-600 hover:underline mt-1">+ Add decision</button>
-          </div>
+        <form onSubmit={handleSave} className="border rounded-lg p-5 bg-gray-50">
+          <TextField name="name" control={editForm.control} label="Name" required />
+          <TextAreaField name="description" control={editForm.control} label="Description" />
+          <TextAreaField name="instruction" control={editForm.control} label="Instruction" rows={6} />
+          <SelectField name="type" control={editForm.control} label="Type" options={TYPE_OPTIONS} />
+          <DynamicListField name="scopes" control={editForm.control} label="Scopes" addLabel="Add scope" placeholder="e.g., backend" />
+          <DynamicListField name="acceptance_criteria" control={editForm.control} label="Acceptance Criteria" addLabel="Add criterion" placeholder="What must be true when done?" />
+          <DynamicListField name="depends_on" control={editForm.control} label="Depends On" addLabel="Add dependency" placeholder="T-001" />
+          <DynamicListField name="blocked_by_decisions" control={editForm.control} label="Blocked by Decisions" addLabel="Add decision" placeholder="D-001" />
+
           <div className="flex items-center gap-2 pt-2">
-            <Button onClick={handleSave} disabled={saving} size="sm">
+            <Button type="submit" disabled={saving} size="sm">
               {saving ? "Saving..." : "Save"}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
               Cancel
             </Button>
           </div>
-        </div>
+        </form>
       ) : tab === "overview" ? (
         <OverviewTab task={task} slug={slug} guidelines={scopedGuidelines} knowledge={linkedKnowledge} />
       ) : null}

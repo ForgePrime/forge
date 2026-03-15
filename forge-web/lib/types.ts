@@ -118,9 +118,13 @@ export interface TaskUpdate {
   name?: string;
   description?: string;
   instruction?: string;
+  type?: TaskType;
   status?: TaskStatus;
   failed_reason?: string;
+  depends_on?: string[];
   blocked_by_decisions?: string[];
+  acceptance_criteria?: string[];
+  scopes?: string[];
 }
 
 export interface ContextSection {
