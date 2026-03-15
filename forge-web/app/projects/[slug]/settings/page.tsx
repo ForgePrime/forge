@@ -8,11 +8,12 @@ import {
   guidelines as guidelinesApi,
   health as healthApi,
   me as meApi,
+  skills as skillsApi,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/hooks/useWebSocket";
 import { Badge } from "@/components/shared/Badge";
 import { useAIPage } from "@/lib/ai-context";
-import type { ProjectDetail, Gate, Guideline } from "@/lib/types";
+import type { ProjectDetail, Gate, Guideline, Skill, EntitySkillsConfig } from "@/lib/types";
 
 export default function SettingsPage() {
   const { slug } = useParams() as { slug: string };
@@ -28,6 +29,7 @@ export default function SettingsPage() {
     <div className="space-y-8 max-w-3xl">
       <h2 className="text-lg font-semibold">Settings</h2>
       <ProjectConfigSection slug={slug} />
+      <EntitySkillsSection slug={slug} />
       <GatesSection slug={slug} />
       <GuidelineScopesSection slug={slug} />
       <ConnectionInfoSection slug={slug} />
@@ -132,6 +134,171 @@ function ProjectConfigSection({ slug }: { slug: string }) {
           <span>Tasks: {project.task_count}</span>
         </div>
       )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Entity Skills
+// ---------------------------------------------------------------------------
+
+const ENTITY_TYPES_LIST = [
+  { key: "objective", label: "Objectives", color: "#3B82F6" },
+  { key: "idea", label: "Ideas", color: "#8B5CF6" },
+  { key: "task", label: "Tasks", color: "#10B981" },
+  { key: "decision", label: "Decisions", color: "#F59E0B" },
+  { key: "knowledge", label: "Knowledge", color: "#6366F1" },
+  { key: "guideline", label: "Guidelines", color: "#14B8A6" },
+  { key: "research", label: "Research", color: "#EC4899" },
+];
+
+function EntitySkillsSection({ slug }: { slug: string }) {
+  const [entitySkills, setEntitySkills] = useState<EntitySkillsConfig>({});
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      projectsApi.get(slug),
+      skillsApi.list(),
+    ]).then(([project, skillsRes]) => {
+      setEntitySkills((project.config?.entity_skills as EntitySkillsConfig) ?? {});
+      setAvailableSkills(skillsRes.skills);
+      setLoading(false);
+    }).catch((e) => {
+      setError((e as Error).message);
+      setLoading(false);
+    });
+  }, [slug]);
+
+  const handleAdd = (entityType: string, skillName: string) => {
+    setEntitySkills((prev) => {
+      const current = prev[entityType] ?? [];
+      if (current.includes(skillName)) return prev;
+      return { ...prev, [entityType]: [...current, skillName] };
+    });
+  };
+
+  const handleRemove = (entityType: string, skillName: string) => {
+    setEntitySkills((prev) => {
+      const current = prev[entityType] ?? [];
+      const updated = current.filter((s) => s !== skillName);
+      if (updated.length === 0) {
+        const { [entityType]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [entityType]: updated };
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      const project = await projectsApi.get(slug);
+      const config = { ...project.config, entity_skills: entitySkills };
+      await projectsApi.update(slug, { config });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <p className="text-sm text-gray-400">Loading entity skills...</p>;
+
+  return (
+    <section className="border rounded-lg p-4">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">Entity Skills</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Assign skills to entity types. When working with an entity, assigned skills are available for auto-attach.
+      </p>
+
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+
+      <div className="space-y-3">
+        {ENTITY_TYPES_LIST.map(({ key, label, color }) => {
+          const assigned = entitySkills[key] ?? [];
+          const unassigned = availableSkills.filter(
+            (s) => !assigned.includes(s.name) && s.status === "ACTIVE",
+          );
+
+          return (
+            <div key={key} className="border rounded-md p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-xs font-medium text-gray-700">{label}</span>
+                <span className="text-[10px] text-gray-400">({assigned.length})</span>
+              </div>
+
+              {/* Assigned skill chips */}
+              <div className="flex flex-wrap gap-1 mb-2">
+                {assigned.map((skillName) => (
+                  <span
+                    key={skillName}
+                    className="inline-flex items-center gap-1 rounded-full bg-forge-100 px-2 py-0.5 text-[10px] font-medium text-forge-700"
+                  >
+                    {skillName}
+                    <button
+                      onClick={() => handleRemove(key, skillName)}
+                      className="ml-0.5 rounded-full hover:bg-forge-200"
+                      title={`Remove ${skillName}`}
+                    >
+                      <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </span>
+                ))}
+                {assigned.length === 0 && (
+                  <span className="text-[10px] text-gray-400 italic">No skills assigned</span>
+                )}
+              </div>
+
+              {/* Add skill dropdown */}
+              {unassigned.length > 0 && (
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleAdd(key, e.target.value);
+                      e.target.value = "";
+                    }
+                  }}
+                  className="text-[10px] border rounded px-1.5 py-0.5 text-gray-600"
+                  defaultValue=""
+                >
+                  <option value="" disabled>+ Add skill...</option>
+                  {unassigned.map((s) => (
+                    <option key={s.name} value={s.name}>
+                      {s.display_name || s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-2 mt-4">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-4 py-1.5 text-sm text-white bg-forge-600 rounded-md hover:bg-forge-700 disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save Entity Skills"}
+        </button>
+        {saved && <span className="text-xs text-green-600">Saved</span>}
+      </div>
     </section>
   );
 }

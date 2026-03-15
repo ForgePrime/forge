@@ -8,7 +8,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.dependencies import get_storage
+from app.dependencies import get_storage, get_skill_storage
 from app.routers._helpers import (
     _get_lock,
     check_project_exists,
@@ -73,9 +73,30 @@ async def get_project(slug: str, storage=Depends(get_storage)):
 
 
 @router.patch("/{slug}")
-async def update_project(slug: str, body: ProjectUpdate, storage=Depends(get_storage)):
+async def update_project(
+    slug: str,
+    body: ProjectUpdate,
+    storage=Depends(get_storage),
+    skill_storage=Depends(get_skill_storage),
+):
     """Update project goal and/or config."""
     await check_project_exists(storage, slug)
+
+    # Validate entity_skills references if present
+    if body.config and "entity_skills" in body.config:
+        entity_skills = body.config["entity_skills"]
+        if isinstance(entity_skills, dict):
+            available = await skill_storage.list_skills()
+            available_names = {s["name"] for s in available}
+            bad: list[str] = []
+            for _etype, skill_names in entity_skills.items():
+                if isinstance(skill_names, list):
+                    for sn in skill_names:
+                        if sn not in available_names:
+                            bad.append(sn)
+            if bad:
+                raise HTTPException(400, f"Unknown skill(s) in entity_skills: {', '.join(bad)}")
+
     async with _get_lock(slug, "tracker"):
         tracker = await load_entity(storage, slug, "tracker")
         if body.goal is not None:

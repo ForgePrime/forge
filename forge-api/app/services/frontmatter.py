@@ -18,6 +18,8 @@ class FrontmatterResult:
     version: str | None = None
     skill_id: str | None = None
     allowed_tools: list[str] = field(default_factory=list)
+    entity_types: list[str] = field(default_factory=list)
+    contract_refs: list[str] = field(default_factory=list)
     raw: dict = field(default_factory=dict)
     body: str = ""
     valid: bool = False
@@ -87,6 +89,20 @@ def parse_frontmatter(content: str) -> FrontmatterResult:
         # Parse inline list: [Read, Glob, Grep]
         result.allowed_tools = _parse_inline_list(tools)
 
+    # entity_types — which entity types this skill works with
+    et = raw.get("entity-types", raw.get("entity_types"))
+    if isinstance(et, list):
+        result.entity_types = [str(t).strip() for t in et]
+    elif isinstance(et, str):
+        result.entity_types = _parse_inline_list(et)
+
+    # contract_refs — which contracts this skill references
+    cr = raw.get("contract-refs", raw.get("contract_refs"))
+    if isinstance(cr, list):
+        result.contract_refs = [str(t).strip() for t in cr]
+    elif isinstance(cr, str):
+        result.contract_refs = _parse_inline_list(cr)
+
     # Validate required fields
     if not result.name:
         result.errors.append("Missing required field: name")
@@ -146,6 +162,10 @@ def merge_frontmatter_to_metadata(content: str) -> dict:
         meta["version"] = result.version
     if result.allowed_tools:
         meta["allowed_tools"] = result.allowed_tools
+    if result.entity_types:
+        meta["entity_types"] = result.entity_types
+    if result.contract_refs:
+        meta["contract_refs"] = result.contract_refs
 
     return meta
 

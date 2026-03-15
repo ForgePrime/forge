@@ -205,6 +205,8 @@ class SkillStorageService:
             "description": fm.description or config.get("description", ""),
             "version": fm.raw.get("version", "1.0.0"),
             "allowed_tools": fm.allowed_tools,
+            "entity_types": fm.entity_types,
+            "contract_refs": fm.contract_refs,
             "skill_md_content": md_content,
             # From _config.json
             "categories": config.get("categories", []),

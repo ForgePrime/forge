@@ -911,6 +911,8 @@ export interface Skill {
   skill_md_content: string | null;
   version: string;
   allowed_tools: string[];
+  entity_types: string[];
+  contract_refs: string[];
   evals_json: Array<Record<string, unknown>>;
   files: SkillFile[];
   teslint_config: Record<string, unknown> | null;
@@ -924,6 +926,9 @@ export interface Skill {
   created_at: string;
   updated_at: string;
 }
+
+/** Maps entity types to arrays of skill names. */
+export type EntitySkillsConfig = Record<string, string[]>;
 
 export interface SkillCreate {
   name: string;
