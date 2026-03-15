@@ -115,10 +115,10 @@ Bad: `Implement workflow execution UI` / `Handle edge cases`
 
 **instruction** must reference: exact file, exact pattern source, exact location within file.
 
-**acceptance_criteria** — state-based, one AC per `ui_state` minimum:
-- "When workflow has steps: modal shows numbered step list"
-- "When 0 steps: modal shows 'No steps defined', Confirm disabled"
-- "When running: Execute button disabled, shows 'Running...'"
+**acceptance_criteria** — use `Given {component state} When {user interaction} Then {visual + data change}` format. One AC per `ui_state` minimum:
+- "Given workflow has steps, When user opens modal, Then modal shows numbered step list"
+- "Given 0 steps, When user opens modal, Then modal shows 'No steps defined' AND Confirm disabled"
+- "Given execution running, When user views header, Then Execute button disabled, shows 'Running...'"
 
 **exclusions** — what NOT to modify, NOT to implement:
 - "Do NOT modify WorkflowList.tsx"

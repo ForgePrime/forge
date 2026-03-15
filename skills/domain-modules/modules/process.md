@@ -125,10 +125,10 @@ Bad: `Implement state machine` / `Handle state transitions`
 
 **instruction** must reference: which transition(s), which file/method, validation, side effects.
 
-**acceptance_criteria** — one AC per valid transition, one per forbidden transition, one per side effect:
-- "cancel_execution() on RUNNING changes status to CANCELLED"
-- "cancel_execution() on COMPLETED raises InvalidTransition"
-- "After cancel, EventBus.emit('execution.cancelled') called"
+**acceptance_criteria** — use `Given {current state} When {event} Then {new state + side effects}` format. One AC per valid transition, one per forbidden, one per side effect:
+- "Given RUNNING execution, When cancel_execution(), Then status=CANCELLED"
+- "Given COMPLETED execution, When cancel_execution(), Then raises InvalidTransition"
+- "Given RUNNING execution, When cancel_execution() succeeds, Then EventBus.emit('execution.cancelled') called"
 
 **exclusions** — which transitions NOT in this task, which side effects NOT in this task:
 - "Do NOT implement retry (FAILED→RUNNING) — that's T-006"

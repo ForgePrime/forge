@@ -117,10 +117,10 @@ Bad: `Implement workflow execution backend` / `Add error handling`
 
 **instruction** must reference: exact file, exact layer, exact pattern source, data contract (in/out).
 
-**acceptance_criteria** — behavior-based with exact HTTP status codes:
-- "POST /execute with valid workflow returns 201 with {execution_id, status: PENDING}"
-- "POST /execute on workflow with 0 steps returns 422"
-- "POST /execute on RUNNING workflow returns 409"
+**acceptance_criteria** — use `Given {auth + state} When {HTTP method + endpoint} Then {status code + response}` format:
+- "Given valid workflow, When POST /execute, Then 201 {execution_id, status: PENDING}"
+- "Given workflow with 0 steps, When POST /execute, Then 422 {error: 'no steps'}"
+- "Given RUNNING workflow, When POST /execute, Then 409 {error: 'already running'}"
 
 **exclusions** — layer boundaries, feature boundaries:
 - "This task creates service layer ONLY — do NOT modify router"

@@ -60,7 +60,7 @@ description: "Discovery phase — explore options, assess feasibility, analyze r
 
 ## Success Criteria
 
-- deep-orchestration was used to coordinate analysis skills (not ad-hoc)
+- Analysis skills were coordinated in dependency order (not ad-hoc)
 - At least deep-explore + one other skill (risk, feasibility, or architect) completed
 - Findings recorded as OPEN decisions with clear recommendations
 - User has enough information to make a GO / NO-GO decision
@@ -71,7 +71,7 @@ description: "Discovery phase — explore options, assess feasibility, analyze r
 
 - `docs/DESIGN.md` — Architecture overview
 - `docs/STANDARDS.md` — Skill standards
-- External: deep-orchestration, deep-explore, deep-risk, deep-architect SKILLs (in `skills/`)
+- External: deep-explore, deep-risk, deep-architect, deep-aggregate SKILLs (in `skills/`)
 - Optional: deep-feasibility, deep-requirements SKILLs (in `skills/optional/`)
 
 ---
@@ -125,7 +125,7 @@ yet, determine them from the description (see scope discovery in `skills/domain-
 
 ---
 
-### Step 3 — Determine Analysis Skills
+### Step 2 — Determine Analysis Skills
 
 Based on the confirmed scope (or explicit flags), determine which analysis skills are needed:
 
@@ -141,7 +141,7 @@ Read each needed skill from `skills/deep-{name}/SKILL.md` (or `skills/optional/d
 
 ---
 
-### Step 4 — Gather Forge Context
+### Step 3 — Gather Forge Context
 
 Before running analysis, gather project context to feed into the deep-* skills:
 
@@ -169,15 +169,11 @@ python -m core.guidelines context {project} --scopes "{idea_scopes_or_general}"
 
 Guidelines with weight `must` are **hard constraints** — deep-* skills MUST NOT propose options that violate them. Guidelines with weight `should` are **soft constraints** — deep-* skills may propose alternatives but must note the deviation.
 
-Pass these constraints as context when executing each deep-* skill in Step 5.
-
-Compile this as context input for the orchestrator.
+Pass these constraints as context when executing each deep-* skill in Step 4.
 
 ---
 
-### Step 5 — Execute via deep-orchestration
-
-Follow the deep-orchestration SKILL.md procedure:
+### Step 4 — Execute Analysis Skills
 
 1. **Define** — subject is the user's discovery topic, with Forge context gathered in Step 4
 2. **Sequence** — build the dependency graph for selected skills:
@@ -214,7 +210,7 @@ The `content` field causes the core module to:
 
 This creates a DRAFT research object. It will be updated to ACTIVE with decision_ids after Step 6.
 
-4. **Aggregate** — combine outputs per deep-orchestration Step 5
+4. **Aggregate** — invoke `skills/deep-aggregate/SKILL.md` to combine outputs. Flag cross-skill conflicts.
 
 Track execution:
 
@@ -227,9 +223,9 @@ Track execution:
 
 ---
 
-### Step 6 — Record Findings in Forge
+### Step 5 — Record Findings in Forge
 
-After orchestration completes, record findings as structured artifacts.
+After analysis completes, record findings as structured artifacts.
 
 If no project exists yet, create one with a slug derived from the topic:
 ```bash
@@ -315,7 +311,7 @@ Set `scopes` matching the objective/idea scopes — this enables `/plan` to find
 
 ---
 
-### Step 7 — Present Discovery Brief
+### Step 6 — Present Discovery Brief
 
 Present the combined findings to the user:
 

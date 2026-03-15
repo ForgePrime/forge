@@ -238,6 +238,14 @@ in planning decisions (Step 6).
 ```
 This will be stored on each task as the `alignment` field in Step 6. All tasks in the plan share the same top-level alignment, but `success` may be narrowed per task if they cover different aspects of the goal.
 
+**g. Persist alignment as Vision document** — store the confirmed alignment as a Knowledge object so it auto-loads into every task context via scope matching:
+```bash
+python -m core.knowledge add {project} --data - <<'EOF'
+[{"title": "Vision: {goal}", "category": "business-context", "scopes": ["{scopes}"], "content": "{alignment in natural language — goal, boundaries, success criteria, key design decisions}"}]
+EOF
+```
+This ensures that by task 5 of 8, the LLM still has the original vision in context — not just the local task instruction.
+
 ---
 
 ### Step 4 — Assess Complexity

@@ -120,10 +120,10 @@ Bad: `Add execution tables and models` / `Add data access`
 
 **instruction** must reference: exact migration file, exact columns/types/constraints, pattern source.
 
-**acceptance_criteria** — schema-precise:
-- "Migration creates `workflow_executions` with columns: id (uuid PK), workflow_id (uuid FK NOT NULL), status (enum), ..."
-- "Partial unique index on (workflow_id) WHERE status = 'RUNNING'"
-- "Migration reversible — downgrade drops tables"
+**acceptance_criteria** — use `Given {initial state} When {operation} Then {data invariant holds}` format:
+- "Given empty DB, When migration runs, Then `workflow_executions` exists with columns: id (uuid PK), workflow_id (uuid FK NOT NULL), status (enum)"
+- "Given execution RUNNING, When second execution created for same workflow, Then unique index violation"
+- "Given migration applied, When downgrade runs, Then table dropped cleanly"
 
 **exclusions**:
 - "Do NOT modify workflows table — relationship added in T-004"
