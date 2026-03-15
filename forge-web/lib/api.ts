@@ -788,3 +788,18 @@ export const workflows = {
     create<WorkflowExecution>(
       projectPath(slug, "workflows", extId) + "/cancel", {}),
 };
+
+// -- Forge Contracts (entity schemas) --
+export const forgeContracts = {
+  list: () =>
+    get<{ modules: { module: string; actions: string[] }[]; total: number }>("/contracts"),
+  get: (module: string, action: string) =>
+    get<{
+      module: string; action: string;
+      fields: { name: string; type: string; required: boolean; values?: string[]; nullable?: boolean }[];
+      invariants: string[];
+      example?: unknown;
+      notes?: string;
+      markdown: string;
+    }>(`/contracts/${module}/${action}`),
+};
