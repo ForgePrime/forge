@@ -3,15 +3,40 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ideaUpdateSchema, type IdeaUpdateForm } from "@/lib/schemas/idea";
 import { ideas as ideasApi, objectives as objectivesApi } from "@/lib/api";
 import { Badge, statusVariant } from "@/components/shared/Badge";
 import { Button } from "@/components/shared/Button";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { EntityLink } from "@/components/shared/EntityLink";
+import { TextField } from "@/components/forms/TextField";
+import { TextAreaField } from "@/components/forms/TextAreaField";
+import { SelectField } from "@/components/forms/SelectField";
+import { DynamicListField } from "@/components/forms/DynamicListField";
 import { useChatStore } from "@/stores/chatStore";
 import { useSidebarStore } from "@/stores/sidebarStore";
+import { useToastStore } from "@/stores/toastStore";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Idea, IdeaCategory, IdeaUpdate, Decision, Objective } from "@/lib/types";
+
+const CATEGORY_OPTIONS = [
+  { value: "feature", label: "Feature" },
+  { value: "improvement", label: "Improvement" },
+  { value: "experiment", label: "Experiment" },
+  { value: "migration", label: "Migration" },
+  { value: "refactor", label: "Refactor" },
+  { value: "infrastructure", label: "Infrastructure" },
+  { value: "business-opportunity", label: "Business Opportunity" },
+  { value: "research", label: "Research" },
+];
+
+const PRIORITY_OPTIONS = [
+  { value: "HIGH", label: "High" },
+  { value: "MEDIUM", label: "Medium" },
+  { value: "LOW", label: "Low" },
+];
 
 const STATUS_TRANSITIONS: Record<string, Array<{ label: string; target: string; className: string }>> = {
   DRAFT: [
@@ -38,14 +63,9 @@ export default function IdeaDetailPage() {
   // Edit mode state
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [editTitle, setEditTitle] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editCategory, setEditCategory] = useState<Idea["category"]>("feature");
-  const [editPriority, setEditPriority] = useState<"HIGH" | "MEDIUM" | "LOW">("MEDIUM");
-  const [editTags, setEditTags] = useState<string[]>([]);
-  const [editScopes, setEditScopes] = useState<string[]>([]);
-  const [editAdvancesKR, setEditAdvancesKR] = useState<string[]>([]);
-  const [editParentId, setEditParentId] = useState("");
+  const editForm = useForm<IdeaUpdateForm>({
+    resolver: zodResolver(ideaUpdateSchema),
+  });
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -107,42 +127,46 @@ export default function IdeaDetailPage() {
 
   const startEdit = () => {
     if (!idea) return;
-    setEditTitle(idea.title);
-    setEditDescription(idea.description || "");
-    setEditCategory(idea.category);
-    setEditPriority(idea.priority);
-    setEditTags([...idea.tags]);
-    setEditScopes([...(idea.scopes || [])]);
-    setEditAdvancesKR([...(idea.advances_key_results || [])]);
-    setEditParentId(idea.parent_id || "");
+    editForm.reset({
+      title: idea.title,
+      description: idea.description || "",
+      category: idea.category,
+      priority: idea.priority,
+      tags: [...idea.tags],
+      scopes: [...(idea.scopes || [])],
+      advances_key_results: [...(idea.advances_key_results || [])],
+      parent_id: idea.parent_id || "",
+    });
     setEditing(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = editForm.handleSubmit(async (data) => {
     if (!idea) return;
     setSaving(true);
     setError(null);
     try {
       const update: IdeaUpdate = {};
-      if (editTitle !== idea.title) update.title = editTitle;
-      if (editDescription !== (idea.description || "")) update.description = editDescription;
-      if (editCategory !== idea.category) update.category = editCategory;
-      if (editPriority !== idea.priority) update.priority = editPriority;
-      if (JSON.stringify(editTags) !== JSON.stringify(idea.tags)) update.tags = editTags;
-      if (JSON.stringify(editScopes) !== JSON.stringify(idea.scopes || [])) update.scopes = editScopes;
-      if (JSON.stringify(editAdvancesKR) !== JSON.stringify(idea.advances_key_results || [])) update.advances_key_results = editAdvancesKR;
-      if (editParentId !== (idea.parent_id || "")) update.parent_id = editParentId || undefined;
+      if (data.title && data.title !== idea.title) update.title = data.title;
+      if (data.description !== undefined && data.description !== (idea.description || "")) update.description = data.description;
+      if (data.category && data.category !== idea.category) update.category = data.category;
+      if (data.priority && data.priority !== idea.priority) update.priority = data.priority;
+      if (data.tags && JSON.stringify(data.tags) !== JSON.stringify(idea.tags)) update.tags = data.tags;
+      if (data.scopes && JSON.stringify(data.scopes) !== JSON.stringify(idea.scopes || [])) update.scopes = data.scopes;
+      if (data.advances_key_results && JSON.stringify(data.advances_key_results) !== JSON.stringify(idea.advances_key_results || [])) update.advances_key_results = data.advances_key_results;
+      if (data.parent_id !== undefined && data.parent_id !== (idea.parent_id || "")) update.parent_id = data.parent_id || undefined;
       if (Object.keys(update).length > 0) {
         const updated = await ideasApi.update(slug, idea.id, update);
         setIdea({ ...idea, ...updated });
       }
       setEditing(false);
+      useToastStore.getState().addToast({ message: `${idea.id} updated`, entityId: idea.id, entityType: "idea", action: "updated" });
     } catch (e) {
       setError((e as Error).message);
+      useToastStore.getState().addToast({ message: `Failed to update ${idea.id}`, action: "failed" });
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   const handleDelete = async () => {
     if (!idea) return;
@@ -274,147 +298,27 @@ export default function IdeaDetailPage() {
       )}
 
       {editing ? (
-        <div className="space-y-4 border rounded-lg p-5 bg-gray-50 mb-6">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
-            <input
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full rounded-md border px-3 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              rows={4}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-            />
-          </div>
+        <form onSubmit={handleSave} className="border rounded-lg p-5 bg-gray-50 mb-6">
+          <TextField name="title" control={editForm.control} label="Title" required />
+          <TextAreaField name="description" control={editForm.control} label="Description" />
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
-              <select
-                value={editCategory}
-                onChange={(e) => setEditCategory(e.target.value as IdeaCategory)}
-                className="w-full rounded-md border px-3 py-1.5 text-sm"
-              >
-                {["feature", "improvement", "experiment", "migration", "refactor", "infrastructure", "business-opportunity", "research"].map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Priority</label>
-              <select
-                value={editPriority}
-                onChange={(e) => setEditPriority(e.target.value as "HIGH" | "MEDIUM" | "LOW")}
-                className="w-full rounded-md border px-3 py-1.5 text-sm"
-              >
-                <option value="HIGH">HIGH</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="LOW">LOW</option>
-              </select>
-            </div>
+            <SelectField name="category" control={editForm.control} label="Category" options={CATEGORY_OPTIONS} />
+            <SelectField name="priority" control={editForm.control} label="Priority" options={PRIORITY_OPTIONS} />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Parent Idea</label>
-            <input
-              value={editParentId}
-              onChange={(e) => setEditParentId(e.target.value)}
-              placeholder="I-001 (leave empty for no parent)"
-              className="w-full rounded-md border px-3 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Tags ({editTags.length})
-            </label>
-            {editTags.map((tag, i) => (
-              <div key={i} className="flex items-center gap-2 mb-1">
-                <input
-                  value={tag}
-                  onChange={(e) => { const next = [...editTags]; next[i] = e.target.value; setEditTags(next); }}
-                  className="flex-1 rounded-md border px-2 py-1 text-xs"
-                />
-                <button
-                  onClick={() => setEditTags(editTags.filter((_, j) => j !== i))}
-                  className="text-xs text-red-400 hover:text-red-600"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => setEditTags([...editTags, ""])}
-              className="text-xs text-forge-600 hover:underline mt-1"
-            >
-              + Add tag
-            </button>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Scopes ({editScopes.length})
-            </label>
-            {editScopes.map((scope, i) => (
-              <div key={i} className="flex items-center gap-2 mb-1">
-                <input
-                  value={scope}
-                  onChange={(e) => { const next = [...editScopes]; next[i] = e.target.value; setEditScopes(next); }}
-                  className="flex-1 rounded-md border px-2 py-1 text-xs"
-                />
-                <button
-                  onClick={() => setEditScopes(editScopes.filter((_, j) => j !== i))}
-                  className="text-xs text-red-400 hover:text-red-600"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => setEditScopes([...editScopes, ""])}
-              className="text-xs text-forge-600 hover:underline mt-1"
-            >
-              + Add scope
-            </button>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Advances Key Results ({editAdvancesKR.length})
-            </label>
-            {editAdvancesKR.map((kr, i) => (
-              <div key={i} className="flex items-center gap-2 mb-1">
-                <input
-                  value={kr}
-                  onChange={(e) => { const next = [...editAdvancesKR]; next[i] = e.target.value; setEditAdvancesKR(next); }}
-                  placeholder="O-001/KR-1"
-                  className="flex-1 rounded-md border px-2 py-1 text-xs"
-                />
-                <button
-                  onClick={() => setEditAdvancesKR(editAdvancesKR.filter((_, j) => j !== i))}
-                  className="text-xs text-red-400 hover:text-red-600"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => setEditAdvancesKR([...editAdvancesKR, ""])}
-              className="text-xs text-forge-600 hover:underline mt-1"
-            >
-              + Add key result
-            </button>
-          </div>
+          <TextField name="parent_id" control={editForm.control} label="Parent Idea" placeholder="I-001 (leave empty for no parent)" />
+          <DynamicListField name="scopes" control={editForm.control} label="Scopes" addLabel="Add scope" placeholder="e.g., backend" />
+          <DynamicListField name="tags" control={editForm.control} label="Tags" addLabel="Add tag" placeholder="e.g., performance" />
+          <DynamicListField name="advances_key_results" control={editForm.control} label="Advances Key Results" addLabel="Add KR ref" placeholder="O-001/KR-1" />
+
           <div className="flex items-center gap-2 pt-2">
-            <Button onClick={handleSave} disabled={saving} size="sm">
+            <Button type="submit" disabled={saving} size="sm">
               {saving ? "Saving..." : "Save"}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
               Cancel
             </Button>
           </div>
-        </div>
+        </form>
       ) : (
         <>
           {/* Description */}

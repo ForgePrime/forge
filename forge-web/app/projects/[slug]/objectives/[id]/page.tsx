@@ -3,13 +3,27 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { objectiveUpdateSchema, type ObjectiveUpdateForm } from "@/lib/schemas/objective";
 import { objectives as objectivesApi, ideas as ideasApi, guidelines as guidelinesApi, knowledge as knowledgeApi, tasks as tasksApi } from "@/lib/api";
 import { Badge, statusVariant } from "@/components/shared/Badge";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import { TextField } from "@/components/forms/TextField";
+import { TextAreaField } from "@/components/forms/TextAreaField";
+import { SelectField } from "@/components/forms/SelectField";
+import { DynamicListField } from "@/components/forms/DynamicListField";
 import { useChatStore } from "@/stores/chatStore";
 import { useSidebarStore } from "@/stores/sidebarStore";
+import { useToastStore } from "@/stores/toastStore";
 import { useAIPage, useAIElement } from "@/lib/ai-context";
 import type { Objective, Idea, Guideline, Task, KeyResult, ObjectiveRelation, ObjectiveStatus, ObjectiveUpdate } from "@/lib/types";
+
+const APPETITE_OPTIONS = [
+  { value: "small", label: "Small (days)" },
+  { value: "medium", label: "Medium (weeks)" },
+  { value: "large", label: "Large (months)" },
+];
 
 const KR_STATUS_OPTIONS = ["NOT_STARTED", "IN_PROGRESS", "ACHIEVED"] as const;
 
@@ -82,13 +96,9 @@ export default function ObjectiveDetailPage() {
   // Full edit mode state
   const [editing, setEditing] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
-  const [editTitle, setEditTitle] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editAppetite, setEditAppetite] = useState<"small" | "medium" | "large">("medium");
-  const [editScopes, setEditScopes] = useState<string[]>([]);
-  const [editTags, setEditTags] = useState<string[]>([]);
-  const [editAssumptions, setEditAssumptions] = useState<string[]>([]);
-  const [editGuidelineIds, setEditGuidelineIds] = useState<string[]>([]);
+  const editForm = useForm<ObjectiveUpdateForm>({
+    resolver: zodResolver(objectiveUpdateSchema),
+  });
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -258,41 +268,45 @@ export default function ObjectiveDetailPage() {
   // Full edit mode
   const startEdit = () => {
     if (!objective) return;
-    setEditTitle(objective.title);
-    setEditDescription(objective.description || "");
-    setEditAppetite(objective.appetite);
-    setEditScopes([...objective.scopes]);
-    setEditTags([...objective.tags]);
-    setEditAssumptions([...objective.assumptions]);
-    setEditGuidelineIds([...(objective.guideline_ids || [])]);
+    editForm.reset({
+      title: objective.title,
+      description: objective.description || "",
+      appetite: objective.appetite,
+      scopes: [...objective.scopes],
+      tags: [...objective.tags],
+      assumptions: [...objective.assumptions],
+      guideline_ids: [...(objective.guideline_ids || [])],
+    });
     setEditing(true);
   };
 
-  const handleEditSave = async () => {
+  const handleEditSave = editForm.handleSubmit(async (data) => {
     if (!objective) return;
     setEditSaving(true);
     setError(null);
     try {
       const update: ObjectiveUpdate = {};
-      if (editTitle !== objective.title) update.title = editTitle;
-      if (editDescription !== (objective.description || "")) update.description = editDescription;
-      if (editAppetite !== objective.appetite) update.appetite = editAppetite;
-      if (JSON.stringify(editScopes) !== JSON.stringify(objective.scopes)) update.scopes = editScopes;
-      if (JSON.stringify(editTags) !== JSON.stringify(objective.tags)) update.tags = editTags;
-      if (JSON.stringify(editAssumptions) !== JSON.stringify(objective.assumptions)) update.assumptions = editAssumptions;
-      if (JSON.stringify(editGuidelineIds) !== JSON.stringify(objective.guideline_ids || [])) update.guideline_ids = editGuidelineIds;
+      if (data.title && data.title !== objective.title) update.title = data.title;
+      if (data.description !== undefined && data.description !== (objective.description || "")) update.description = data.description;
+      if (data.appetite && data.appetite !== objective.appetite) update.appetite = data.appetite;
+      if (data.scopes && JSON.stringify(data.scopes) !== JSON.stringify(objective.scopes)) update.scopes = data.scopes;
+      if (data.tags && JSON.stringify(data.tags) !== JSON.stringify(objective.tags)) update.tags = data.tags;
+      if (data.assumptions && JSON.stringify(data.assumptions) !== JSON.stringify(objective.assumptions)) update.assumptions = data.assumptions;
+      if (data.guideline_ids && JSON.stringify(data.guideline_ids) !== JSON.stringify(objective.guideline_ids || [])) update.guideline_ids = data.guideline_ids;
 
       if (Object.keys(update).length > 0) {
         const updated = await objectivesApi.update(slug, id, update);
         setObjective(updated);
       }
       setEditing(false);
+      useToastStore.getState().addToast({ message: `${objective.id} updated`, entityId: objective.id, entityType: "objective", action: "updated" });
     } catch (e) {
       setError((e as Error).message);
+      useToastStore.getState().addToast({ message: `Failed to update ${objective.id}`, action: "failed" });
     } finally {
       setEditSaving(false);
     }
-  };
+  });
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -465,77 +479,33 @@ export default function ObjectiveDetailPage() {
         )}
 
         {editing ? (
-          /* ===== Full Edit mode ===== */
-          <div className="space-y-5 border rounded-lg p-5 bg-gray-50 mt-4">
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Core</legend>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
-                  <input
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-                  <textarea
-                    value={editDescription}
-                    onChange={(e) => setEditDescription(e.target.value)}
-                    rows={4}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Appetite</label>
-                  <select
-                    value={editAppetite}
-                    onChange={(e) => setEditAppetite(e.target.value as "small" | "medium" | "large")}
-                    className="w-full rounded-md border px-3 py-1.5 text-sm"
-                  >
-                    <option value="small">small</option>
-                    <option value="medium">medium</option>
-                    <option value="large">large</option>
-                  </select>
-                </div>
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Metadata</legend>
-              <EditableList items={editScopes} setItems={setEditScopes} label="Scopes" addLabel="Add scope" />
-              <div className="mt-3">
-                <EditableList items={editTags} setItems={setEditTags} label="Tags" addLabel="Add tag" />
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Assumptions</legend>
-              <EditableList items={editAssumptions} setItems={setEditAssumptions} label="Assumptions" addLabel="Add assumption" rows={2} />
-            </fieldset>
-
-            <fieldset>
-              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Guidelines</legend>
-              <EditableList items={editGuidelineIds} setItems={setEditGuidelineIds} label="Guideline IDs" addLabel="Add guideline ID" />
-            </fieldset>
+          /* ===== Full Edit mode (react-hook-form + zod) ===== */
+          <form onSubmit={handleEditSave} className="border rounded-lg p-5 bg-gray-50 mt-4">
+            <TextField name="title" control={editForm.control} label="Title" required />
+            <TextAreaField name="description" control={editForm.control} label="Description" />
+            <SelectField name="appetite" control={editForm.control} label="Appetite" options={APPETITE_OPTIONS} />
+            <DynamicListField name="scopes" control={editForm.control} label="Scopes" addLabel="Add scope" placeholder="e.g., backend" />
+            <DynamicListField name="tags" control={editForm.control} label="Tags" addLabel="Add tag" placeholder="e.g., performance" />
+            <DynamicListField name="assumptions" control={editForm.control} label="Assumptions" addLabel="Add assumption" placeholder="What must hold true?" />
+            <DynamicListField name="guideline_ids" control={editForm.control} label="Guideline IDs" addLabel="Add guideline ID" placeholder="G-001" />
 
             <div className="flex items-center gap-2 pt-2">
               <button
-                onClick={handleEditSave}
+                type="submit"
                 disabled={editSaving}
                 className="px-4 py-1.5 text-sm font-medium text-white bg-forge-600 rounded hover:bg-forge-700 disabled:opacity-50"
               >
                 {editSaving ? "Saving..." : "Save"}
               </button>
               <button
+                type="button"
                 onClick={() => setEditing(false)}
                 className="px-4 py-1.5 text-sm text-gray-600 border rounded hover:bg-gray-50"
               >
                 Cancel
               </button>
             </div>
-          </div>
+          </form>
         ) : (
           /* ===== Read mode ===== */
           <>
@@ -790,58 +760,6 @@ export default function ObjectiveDetailPage() {
           </ul>
         </section>
       )}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------------
- * Editable list helper
- * --------------------------------------------------------------------------- */
-
-function EditableList({
-  items, setItems, label, addLabel, rows = 1,
-}: {
-  items: string[];
-  setItems: (items: string[]) => void;
-  label: string;
-  addLabel: string;
-  rows?: number;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
-        {label} ({items.length})
-      </label>
-      {items.map((item, i) => (
-        <div key={i} className="flex items-start gap-2 mb-1">
-          {rows > 1 ? (
-            <textarea
-              value={item}
-              onChange={(e) => { const next = [...items]; next[i] = e.target.value; setItems(next); }}
-              rows={rows}
-              className="flex-1 rounded-md border px-2 py-1 text-xs"
-            />
-          ) : (
-            <input
-              value={item}
-              onChange={(e) => { const next = [...items]; next[i] = e.target.value; setItems(next); }}
-              className="flex-1 rounded-md border px-2 py-1 text-xs"
-            />
-          )}
-          <button
-            onClick={() => setItems(items.filter((_, j) => j !== i))}
-            className="text-xs text-red-400 hover:text-red-600 mt-1"
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-      <button
-        onClick={() => setItems([...items, ""])}
-        className="text-xs text-forge-600 hover:underline mt-1"
-      >
-        + {addLabel}
-      </button>
     </div>
   );
 }
