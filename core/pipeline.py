@@ -1241,56 +1241,60 @@ def cmd_complete(args):
     # Check that gates passed (mechanical enforcement)
     _check_gates_before_complete(args.project, args.task_id, task, tracker, force)
 
-    # Check acceptance criteria verification (skip for MINIMAL and LIGHT)
-    if not force and ceremony not in ("MINIMAL", "LIGHT"):
-        ac = task.get("acceptance_criteria", [])
-        if ac:
-            # Mechanical verification of structured AC (test/command)
-            ac_results, has_mechanical = _verify_acceptance_criteria(task)
-            if has_mechanical:
-                failed_ac = [r for r in ac_results if not r["passed"]]
-                if ac_results:
-                    print(f"  AC Verification ({len(ac_results)} mechanical):")
-                    for r in ac_results:
-                        status = "PASS" if r["passed"] else "FAIL"
-                        print(f"    [{status}] {r['text']} ({r['verification']})")
-                        if not r["passed"]:
-                            for line in r["output"].split("\n")[:3]:
-                                if line.strip():
-                                    print(f"           {line.strip()}")
-                if failed_ac:
-                    print(f"\nERROR: {len(failed_ac)} mechanical AC verification(s) failed. "
-                          f"Fix and retry.", file=sys.stderr)
-                    sys.exit(1)
-                task["ac_verification_results"] = ac_results
+    # --- Mechanical AC verification: ALWAYS runs regardless of ceremony level ---
+    # Mechanical AC (verification: "test"|"command") is not ceremony — it's a gate.
+    # If you defined a command to verify AC, it runs. Period.
+    ac = task.get("acceptance_criteria", [])
+    if ac:
+        ac_results, has_mechanical = _verify_acceptance_criteria(task)
+        if has_mechanical:
+            failed_ac = [r for r in ac_results if not r["passed"]]
+            if ac_results:
+                print(f"  AC Verification ({len(ac_results)} mechanical):")
+                for r in ac_results:
+                    status = "PASS" if r["passed"] else "FAIL"
+                    print(f"    [{status}] {r['text']} ({r['verification']})")
+                    if not r["passed"]:
+                        for line in r["output"].split("\n")[:3]:
+                            if line.strip():
+                                print(f"           {line.strip()}")
+            if failed_ac:
+                print(f"\nERROR: {len(failed_ac)} mechanical AC verification(s) failed. "
+                      f"Fix and retry.", file=sys.stderr)
+                sys.exit(1)
+            task["ac_verification_results"] = ac_results
 
-            # Manual AC still needs --ac-reasoning
-            manual_ac = [c for c in ac if isinstance(c, str) or
-                         (isinstance(c, dict) and c.get("verification", "manual") == "manual")]
-            if manual_ac:
-                ac_reasoning = getattr(args, "ac_reasoning", None)
-                if not ac_reasoning:
-                    print(f"WARNING: Task {args.task_id} has {len(manual_ac)} manual acceptance criteria "
-                          f"but no --ac-reasoning provided.", file=sys.stderr)
-                    print(f"  Manual criteria:", file=sys.stderr)
-                    for i, criterion in enumerate(manual_ac, 1):
-                        text = criterion if isinstance(criterion, str) else criterion.get("text", str(criterion))
-                        print(f"    {i}. {text}", file=sys.stderr)
-                    print(f"  Provide --ac-reasoning to justify how each criterion is met, "
-                          f"or --force to bypass.", file=sys.stderr)
-                    sys.exit(1)
-                task["ac_reasoning"] = ac_reasoning
-                # Validate AC reasoning quality (advisory)
-                ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
-                if ac_warnings:
-                    print(f"**AC REASONING WARNINGS** ({len(ac_warnings)}):", file=sys.stderr)
-                    for w in ac_warnings:
-                        print(w, file=sys.stderr)
-                    print("Tip: address each criterion with 'AC N: [criterion] — PASS|FAIL: [evidence]'",
-                          file=sys.stderr)
-            elif not has_mechanical:
-                # No AC at all (shouldn't happen but safety)
-                pass
+    # --- Manual AC reasoning: required for STANDARD/FULL ceremony ---
+    if not force and ceremony not in ("MINIMAL", "LIGHT") and ac:
+        manual_ac = [c for c in ac if isinstance(c, str) or
+                     (isinstance(c, dict) and c.get("verification", "manual") == "manual")]
+        if manual_ac:
+            ac_reasoning = getattr(args, "ac_reasoning", None)
+            if not ac_reasoning:
+                print(f"ERROR: Task {args.task_id} has {len(manual_ac)} manual acceptance criteria "
+                      f"but no --ac-reasoning provided.", file=sys.stderr)
+                print(f"  Manual criteria:", file=sys.stderr)
+                for i, criterion in enumerate(manual_ac, 1):
+                    text = criterion if isinstance(criterion, str) else criterion.get("text", str(criterion))
+                    print(f"    {i}. {text}", file=sys.stderr)
+                print(f"  Provide --ac-reasoning with concrete evidence (min 50 chars) for each criterion.",
+                      file=sys.stderr)
+                sys.exit(1)
+            if len(ac_reasoning.strip()) < 50:
+                print(f"ERROR: --ac-reasoning too short ({len(ac_reasoning.strip())} chars). "
+                      f"Minimum 50 characters required. Provide concrete evidence, "
+                      f"not just 'done' or 'verified'.", file=sys.stderr)
+                sys.exit(1)
+            task["ac_reasoning"] = ac_reasoning
+            # Validate AC reasoning quality (blocking, not advisory)
+            ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
+            if ac_warnings:
+                print(f"**AC REASONING ISSUES** ({len(ac_warnings)}):", file=sys.stderr)
+                for w in ac_warnings:
+                    print(w, file=sys.stderr)
+                print("Each criterion needs evidence: 'AC N: [criterion] — PASS: [concrete proof]'",
+                      file=sys.stderr)
+                sys.exit(1)
 
     # Process deferred items — auto-create OPEN decisions
     # Required for STANDARD/FULL: agent must explicitly state what's covered vs deferred
@@ -1356,12 +1360,18 @@ def cmd_complete(args):
     total = len(tracker["tasks"])
     print(f"Task {args.task_id} ({task['name']}): -> DONE  [{done_count}/{total}]")
 
-    # KR progress reminder: trace task → origin → objective
-    _print_kr_reminder(args.project, task)
+    # KR auto-update: trace task → origin → objective, update descriptive KRs
+    _auto_update_kr(args.project, task, tracker)
 
 
-def _print_kr_reminder(project: str, task: dict):
-    """Print KR progress reminder after task completion."""
+def _auto_update_kr(project: str, task: dict, tracker: dict):
+    """Auto-update objective KRs after task completion.
+
+    - Descriptive KRs: NOT_STARTED → IN_PROGRESS when first task done,
+      → ACHIEVED when ALL tasks for this objective are done.
+    - Numeric KRs: not auto-updated (require human judgment).
+    - Logs what changed.
+    """
     origin = task.get("origin", "")
     _s = _get_storage()
     obj_ids = set()
@@ -1380,17 +1390,52 @@ def _print_kr_reminder(project: str, task: dict):
         return
 
     obj_data = _s.load_data(project, 'objectives')
+    all_tasks = tracker.get("tasks", [])
+    changed = False
+
     for obj in obj_data.get("objectives", []):
-        if obj["id"] in obj_ids and obj.get("status") == "ACTIVE":
-            print(f"\n  Objective {obj['id']}: {obj['title']}")
-            for kr in obj.get("key_results", []):
-                target = kr.get("target")
-                if target is not None:
-                    baseline = kr.get("baseline", 0)
-                    current = kr.get("current", baseline)
-                    pct = _objective_kr_pct(baseline, target, current)
-                    print(f"    {kr['id']}: {current}/{target} ({pct}%)")
-            print(f"  Consider updating KR progress: /objectives {obj['id']} update")
+        if obj["id"] not in obj_ids or obj.get("status") != "ACTIVE":
+            continue
+
+        # Count tasks linked to this objective
+        obj_tasks = [t for t in all_tasks if t.get("origin") == obj["id"]]
+        done_tasks = [t for t in obj_tasks if t["status"] in ("DONE", "SKIPPED")]
+        all_done = len(obj_tasks) > 0 and len(done_tasks) == len(obj_tasks)
+
+        print(f"\n  Objective {obj['id']}: {obj['title']}  [{len(done_tasks)}/{len(obj_tasks)} tasks]")
+
+        for kr in obj.get("key_results", []):
+            # Numeric KRs: show progress, don't auto-update
+            target = kr.get("target")
+            if target is not None:
+                baseline = kr.get("baseline", 0)
+                current = kr.get("current", baseline)
+                pct = _objective_kr_pct(baseline, target, current)
+                print(f"    {kr['id']}: {current}/{target} ({pct}%) — update manually if changed")
+                continue
+
+            # Descriptive KRs: auto-update status
+            old_status = kr.get("status", "NOT_STARTED")
+            if all_done and old_status != "ACHIEVED":
+                kr["status"] = "ACHIEVED"
+                kr["achieved_at"] = now_iso()
+                kr["achieved_by_task"] = task["id"]
+                print(f"    {kr['id']}: {old_status} → ACHIEVED (all {len(obj_tasks)} tasks done)")
+                changed = True
+            elif not all_done and old_status == "NOT_STARTED" and len(done_tasks) > 0:
+                kr["status"] = "IN_PROGRESS"
+                kr["started_by_task"] = task["id"]
+                print(f"    {kr['id']}: NOT_STARTED → IN_PROGRESS ({len(done_tasks)}/{len(obj_tasks)} tasks done)")
+                changed = True
+            else:
+                print(f"    {kr['id']}: {old_status}")
+
+        obj["updated"] = now_iso()
+
+    if changed:
+        obj_data["updated"] = now_iso()
+        _s.save_data(project, 'objectives', obj_data)
+        print(f"  KR progress saved.")
 
 
 def cmd_fail(args):
@@ -1406,17 +1451,40 @@ def cmd_fail(args):
 
 
 def cmd_skip(args):
-    """Mark task as SKIPPED."""
+    """Mark task as SKIPPED. Requires --reason. Feature/bug tasks also require --force."""
     tracker = load_tracker(args.project)
     task = find_task(tracker, args.task_id)
+    reason = getattr(args, "reason", None) or ""
+    force = getattr(args, "force", False)
+
+    if not reason.strip():
+        print(f"ERROR: --reason is required when skipping a task. "
+              f"Explain why this task cannot be completed.", file=sys.stderr)
+        sys.exit(1)
+
+    if len(reason.strip()) < 50:
+        print(f"ERROR: --reason too short ({len(reason.strip())} chars). "
+              f"Minimum 50 characters. Provide a real explanation, not a placeholder.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    task_type = task.get("type", "feature")
+    if task_type in ("feature", "bug") and not force:
+        print(f"ERROR: Cannot skip {task_type} task {args.task_id} without --force. "
+              f"Feature and bug tasks represent committed deliverables. "
+              f"Use --force --reason '...' to confirm this is intentional.",
+              file=sys.stderr)
+        sys.exit(1)
 
     task["status"] = "SKIPPED"
+    task["skip_reason"] = reason.strip()
     task["completed_at"] = now_iso()
     save_tracker(args.project, tracker)
 
     done_count = sum(1 for t in tracker["tasks"] if t["status"] in ("DONE", "SKIPPED"))
     total = len(tracker["tasks"])
     print(f"Task {args.task_id} ({task['name']}): -> SKIPPED  [{done_count}/{total}]")
+    print(f"  Reason: {reason.strip()}")
 
 
 def cmd_status(args):
@@ -1962,16 +2030,45 @@ def print_task_detail(task: dict):
     if ac:
         print(f"")
         print(f"**Acceptance Criteria**:")
+        has_mechanical = False
+        has_manual = False
         for criterion in ac:
             if isinstance(criterion, dict):
                 text = criterion.get("text", "")
+                verification = criterion.get("verification", "manual")
                 tmpl = criterion.get("from_template")
-                if tmpl:
-                    print(f"  - [ ] {text} (from {tmpl})")
+                if verification in ("test", "command"):
+                    has_mechanical = True
+                    cmd = criterion.get("command") or criterion.get("test_path") or ""
+                    if tmpl:
+                        print(f"  - [ ] {text} (from {tmpl}) [{verification}: `{cmd}`]")
+                    else:
+                        print(f"  - [ ] {text} [{verification}: `{cmd}`]")
                 else:
-                    print(f"  - [ ] {text}")
+                    has_manual = True
+                    if tmpl:
+                        print(f"  - [ ] {text} (from {tmpl})")
+                    else:
+                        print(f"  - [ ] {text}")
             else:
+                has_manual = True
                 print(f"  - [ ] {criterion}")
+
+        # AC verification instructions for LLM
+        print(f"")
+        print(f"**AC Verification Requirements**:")
+        if has_mechanical:
+            print(f"  Mechanical AC (test/command) will be executed automatically at completion.")
+            print(f"  These BLOCK completion if they fail — regardless of task type or ceremony level.")
+        if has_manual:
+            print(f"  Manual AC requires --ac-reasoning with CONCRETE EVIDENCE for each criterion.")
+            print(f"  Rules:")
+            print(f"    - Minimum 50 characters total")
+            print(f"    - Each AC must be addressed: 'AC N: [criterion text] — PASS: [evidence]'")
+            print(f"    - Evidence must be specific: file path, command output, test result, or observable fact")
+            print(f"    - 'Done', 'verified', 'works as expected' are NOT acceptable evidence")
+            print(f"    - If you ran a command to verify, include the command and its output")
+            print(f"    - If you read code to verify, cite the file and line numbers")
 
     excl = task.get("exclusions", [])
     if excl:
@@ -2655,34 +2752,45 @@ def _validate_plan_references(entries: list, project: str) -> list:
 
 
 def _validate_ac_reasoning(ac_reasoning: str, ac_list: list) -> list:
-    """Validate that AC reasoning addresses each criterion. Returns list of warning strings."""
-    warnings = []
+    """Validate that AC reasoning addresses each criterion with evidence.
+
+    Returns list of error strings. Empty = valid.
+    Checks:
+    - Each AC is addressed (by number or text fragment)
+    - PASS/FAIL verdict is present
+    - Reasoning is not just filler words
+    """
+    errors = []
     reasoning_lower = ac_reasoning.lower()
 
-    # Check that reasoning mentions each AC (by number or text fragment)
-    for i, criterion in enumerate(ac_list, 1):
+    # Reject filler-only reasoning
+    filler_patterns = {"done", "verified", "works", "completed", "all good",
+                       "looks good", "checked", "confirmed", "ok", "passed"}
+    stripped_words = set(reasoning_lower.replace(".", "").replace(",", "").split())
+    if stripped_words.issubset(filler_patterns | {"ac", "all", "the", "is", "are", "and", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-", ":", "—"}):
+        errors.append("  AC reasoning contains only filler words. Provide concrete evidence.")
+
+    # Filter to only manual AC for validation
+    manual_ac = [c for c in ac_list if isinstance(c, str) or
+                 (isinstance(c, dict) and c.get("verification", "manual") == "manual")]
+
+    # Check that reasoning mentions each manual AC (by number or text fragment)
+    for i, criterion in enumerate(manual_ac, 1):
         text = criterion if isinstance(criterion, str) else criterion.get("text", "")
-        # Look for "AC-{i}:" or "AC{i}:" or "{i}." or "{i}:" patterns
         markers = [f"ac-{i}:", f"ac{i}:", f"ac {i}:", f"{i}.", f"{i}:"]
-        # Also check if a significant fragment of the AC text appears
         text_fragment = text[:30].lower().strip()
 
         found = any(m in reasoning_lower for m in markers) or (
             len(text_fragment) > 10 and text_fragment in reasoning_lower
         )
         if not found:
-            warnings.append(f"  AC {i} not addressed: \"{text[:60]}\"")
+            errors.append(f"  AC {i} not addressed: \"{text[:60]}\"")
 
     # Check for PASS/FAIL keywords
-    if "pass" not in reasoning_lower and "met" not in reasoning_lower:
-        warnings.append("  No PASS/met verdict found in reasoning")
+    if "pass" not in reasoning_lower and "met" not in reasoning_lower and "verified" not in reasoning_lower:
+        errors.append("  No PASS/met/verified verdict found in reasoning")
 
-    # Check for test mapping (AC→test traceability)
-    has_test_ref = "→ test:" in reasoning_lower or "→ no test" in reasoning_lower or "-> test:" in reasoning_lower or "-> no test" in reasoning_lower
-    if not has_test_ref:
-        warnings.append("  No test mapping found — consider mapping each AC to a test (→ Test: file::test_name)")
-
-    return warnings
+    return errors
 
 
 # -- AC Quality --
@@ -3148,9 +3256,11 @@ def main():
     p.add_argument("--reason", default=None)
     p.add_argument("--agent", default=None, help="Agent name")
 
-    p = sub.add_parser("skip", help="Mark task SKIPPED")
+    p = sub.add_parser("skip", help="Mark task SKIPPED (requires --reason)")
     p.add_argument("project")
     p.add_argument("task_id")
+    p.add_argument("--reason", required=True, help="Why this task is being skipped (min 50 chars)")
+    p.add_argument("--force", action="store_true", help="Required for feature/bug tasks")
 
     p = sub.add_parser("status", help="Status dashboard")
     p.add_argument("project")

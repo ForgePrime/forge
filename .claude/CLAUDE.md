@@ -28,7 +28,10 @@ These are opt-in tools, not required steps.
 
 - **Readiness gate**: `draft-plan --assumptions '[...]'` rejects plan at 5+ HIGH-severity assumptions
 - **Gates enforcement**: `complete` blocks feature/bug tasks when required gates fail
-- **Executable AC**: structured AC with `verification: "test"|"command"` runs mechanically at completion
+- **Mechanical AC always runs**: structured AC with `verification: "test"|"command"` runs at completion **regardless of ceremony level or task type**. This is a gate, not ceremony.
+- **AC evidence required**: manual AC needs `--ac-reasoning` with concrete proof (min 50 chars). Each criterion must be addressed with specific evidence (file paths, command output, test results). Filler words like "done" or "verified" are rejected.
+- **Skip requires justification**: `skip` requires `--reason` (min 50 chars). Feature/bug tasks also require `--force`.
+- **KR auto-update**: completing a task with `origin: "O-XXX"` auto-updates descriptive KR statuses (NOT_STARTED → IN_PROGRESS → ACHIEVED). Numeric KRs require manual update.
 - **Contract alignment**: `begin` warns when task instruction doesn't reference upstream `produces` contracts
 - **Lean context**: `begin --lean` skips Knowledge, Research, Business Context, Lessons for simple tasks
 - **Coverage gate**: `draft-plan --coverage '[...]'` rejects plan if any source requirement has status MISSING. DEFERRED/OUT_OF_SCOPE require reason.

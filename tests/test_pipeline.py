@@ -41,7 +41,7 @@ from pipeline import (
     _warn_ac_quality,
     _validate_plan_references,
     _validate_ac_reasoning,
-    _print_kr_reminder,
+    _auto_update_kr,
 )
 from contracts import validate_contract, atomic_write_json
 from conftest import make_task
@@ -189,7 +189,7 @@ class TestStateTransitions:
         assert "compilation error" in reloaded["tasks"][0]["failed_reason"]
 
     def test_todo_to_skipped(self, forge_env, project_name):
-        """skip moves TODO -> SKIPPED."""
+        """skip moves TODO -> SKIPPED (requires --reason, feature needs --force)."""
         tracker = {
             "project": project_name,
             "goal": "Test",
@@ -199,11 +199,16 @@ class TestStateTransitions:
         }
         save_tracker(project_name, tracker)
 
-        args = SimpleNamespace(project=project_name, task_id="T-001")
+        args = SimpleNamespace(
+            project=project_name, task_id="T-001",
+            reason="This task is blocked by external dependency and cannot proceed at this time.",
+            force=True,
+        )
         cmd_skip(args)
 
         reloaded = load_tracker(project_name)
         assert reloaded["tasks"][0]["status"] == "SKIPPED"
+        assert reloaded["tasks"][0]["skip_reason"] is not None
 
     def test_complete_with_force_bypasses_changes_check(self, forge_env, project_name):
         """--force allows completing without recorded changes."""
@@ -377,7 +382,7 @@ class TestStateTransitions:
             ]},
         )
 
-        ac_text = "Criterion A met: verified in integration test"
+        ac_text = "AC 1: Criterion A met — PASS: verified via integration test in tests/test_criterion.py::test_a, returns 200 OK"
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="done",
                                ac_reasoning=ac_text, deferred="[]")
