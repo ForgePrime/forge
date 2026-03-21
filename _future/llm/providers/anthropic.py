@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator
 
-from core.llm.provider import (
+from _future.llm.provider import (
     CompletionConfig,
     CompletionResult,
     Message,

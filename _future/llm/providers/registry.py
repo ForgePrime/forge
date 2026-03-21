@@ -28,7 +28,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from core.llm.provider import LLMProvider, ProviderError
+from _future.llm.provider import LLMProvider, ProviderError
 
 # Try to import tomllib (Python 3.11+) or tomli as fallback
 try:
@@ -77,7 +77,7 @@ def _create_provider(name: str, config: dict[str, Any], ui_keys: dict[str, str] 
     config_with_name = {**config, "_provider_name": name}
 
     if provider_type == "anthropic":
-        from core.llm.providers.anthropic import AnthropicProvider
+        from _future.llm.providers.anthropic import AnthropicProvider
 
         api_key = _resolve_api_key(config_with_name, ui_keys)
         if not api_key:
@@ -91,7 +91,7 @@ def _create_provider(name: str, config: dict[str, Any], ui_keys: dict[str, str] 
         )
 
     elif provider_type == "openai":
-        from core.llm.providers.openai import OpenAIProvider
+        from _future.llm.providers.openai import OpenAIProvider
 
         api_key = _resolve_api_key(config_with_name, ui_keys)
         if not api_key:
@@ -106,7 +106,7 @@ def _create_provider(name: str, config: dict[str, Any], ui_keys: dict[str, str] 
         )
 
     elif provider_type == "ollama":
-        from core.llm.providers.ollama import OllamaProvider
+        from _future.llm.providers.ollama import OllamaProvider
 
         return OllamaProvider(
             model=config.get("model", "llama3.1"),
@@ -116,7 +116,7 @@ def _create_provider(name: str, config: dict[str, Any], ui_keys: dict[str, str] 
         )
 
     elif provider_type == "claude-code":
-        from core.llm.providers.claude_code import ClaudeCodeProvider
+        from _future.llm.providers.claude_code import ClaudeCodeProvider
 
         return ClaudeCodeProvider(
             model=config.get("model", "sonnet"),

@@ -263,7 +263,7 @@ async def _llm_enrich(
     if provider is None:
         return None
     try:
-        from core.llm.provider import CompletionConfig, Message
+        from _future.llm.provider import CompletionConfig, Message
 
         config = CompletionConfig(
             temperature=0.3,

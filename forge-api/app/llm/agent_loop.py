@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Awaitable, Callable
 
-from core.llm.provider import (
+from _future.llm.provider import (
     CompletionConfig,
     CompletionResult,
     LLMProvider,

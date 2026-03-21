@@ -1,6 +1,6 @@
 """Knowledge management contracts — suggestion, extraction, impact assessment."""
 
-from core.llm.contract import LLMContract, RetryStrategy, ValidationRule
+from _future.llm.contract import LLMContract, RetryStrategy, ValidationRule
 
 
 KnowledgeSuggestionContract = LLMContract(

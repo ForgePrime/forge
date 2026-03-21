@@ -1,6 +1,6 @@
 """Review contracts — code review, verification."""
 
-from core.llm.contract import LLMContract, RetryStrategy, ValidationRule
+from _future.llm.contract import LLMContract, RetryStrategy, ValidationRule
 
 
 CodeReviewContract = LLMContract(

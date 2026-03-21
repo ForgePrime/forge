@@ -1,6 +1,6 @@
 """Analysis contracts — risk assessment, lesson promotion."""
 
-from core.llm.contract import LLMContract, RetryStrategy, ValidationRule
+from _future.llm.contract import LLMContract, RetryStrategy, ValidationRule
 
 
 RiskAssessmentContract = LLMContract(

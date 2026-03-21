@@ -1,26 +1,26 @@
 """Contract registry — all 12 built-in contracts from Section 6.3."""
 
-from core.llm.contract import ContractRegistry, LLMContract
+from _future.llm.contract import ContractRegistry, LLMContract
 
-from core.llm.contracts.task_execution import (
+from _future.llm.contracts.task_execution import (
     TaskExecutionContract,
     QuickTaskContract,
 )
-from core.llm.contracts.knowledge import (
+from _future.llm.contracts.knowledge import (
     KnowledgeSuggestionContract,
     KnowledgeExtractionContract,
     ImpactAssessmentContract,
 )
-from core.llm.contracts.planning import (
+from _future.llm.contracts.planning import (
     PlanDecompositionContract,
     ACSuggestionContract,
     GuidelineMatchContract,
 )
-from core.llm.contracts.analysis import (
+from _future.llm.contracts.analysis import (
     RiskAssessmentContract,
     LessonPromotionContract,
 )
-from core.llm.contracts.review import (
+from _future.llm.contracts.review import (
     CodeReviewContract,
     VerificationContract,
 )

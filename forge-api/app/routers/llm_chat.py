@@ -255,7 +255,7 @@ async def chat(
     Orchestrates: session → context → permissions → agent loop → save.
     Emits WS events for real-time streaming.
     """
-    from core.llm.provider import CompletionConfig, Message, ProviderError
+    from _future.llm.provider import CompletionConfig, Message, ProviderError
     from app.llm.agent_loop import AgentLoop, StreamEvent
     from app.llm.context_resolver import ContextResolver
     from app.llm.permissions import PermissionEngine
@@ -718,7 +718,7 @@ async def list_provider_models(
     Tries dynamic listing via API. Falls back to static model caps
     if provider can't be instantiated (e.g., no API key).
     """
-    from core.llm.provider import ProviderError
+    from _future.llm.provider import ProviderError
 
     # Inject UI keys before accessing provider
     if config.api_keys:
@@ -742,21 +742,21 @@ async def list_provider_models(
 def _static_model_list(provider_type: str) -> list[dict[str, Any]]:
     """Return hardcoded model list for a provider type."""
     if provider_type == "anthropic":
-        from core.llm.providers.anthropic import _MODEL_CAPS
+        from _future.llm.providers.anthropic import _MODEL_CAPS
         return [
             {"id": k, "name": k, "context_window": v["max_context_window"],
              "max_output": v["max_output_tokens"], "supports_vision": v.get("supports_vision", False)}
             for k, v in _MODEL_CAPS.items()
         ]
     elif provider_type == "openai":
-        from core.llm.providers.openai import _MODEL_CAPS
+        from _future.llm.providers.openai import _MODEL_CAPS
         return [
             {"id": k, "name": k, "context_window": v["max_context_window"],
              "max_output": v["max_output_tokens"], "supports_vision": v.get("supports_vision", False)}
             for k, v in _MODEL_CAPS.items()
         ]
     elif provider_type == "claude-code":
-        from core.llm.providers.claude_code import _MODEL_CAPS
+        from _future.llm.providers.claude_code import _MODEL_CAPS
         return [
             {"id": k, "name": k, "context_window": v["max_context_window"],
              "max_output": v["max_output_tokens"], "supports_vision": v.get("supports_vision", False)}
@@ -772,7 +772,7 @@ async def test_provider(
     config=Depends(get_llm_config),
 ) -> ProviderTestResponse:
     """Test connection to an LLM provider with a simple completion call."""
-    from core.llm.provider import (
+    from _future.llm.provider import (
         CompletionConfig,
         Message,
         ProviderError,

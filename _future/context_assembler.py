@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.llm.provider import ProviderCapabilities
+from _future.llm.provider import ProviderCapabilities
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +324,7 @@ class ContextAssembler:
     def _gather_system_contract(contract: Any) -> Section:
         """Priority 1: System contract (role, output format, constraints)."""
         try:
-            from core.llm.contract import LLMContract, render_contract
+            from _future.llm.contract import LLMContract, render_contract
             if isinstance(contract, LLMContract):
                 content = render_contract(contract)
             else:

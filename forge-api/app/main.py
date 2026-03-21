@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
 
     # LLM Provider Registry — load from providers.toml
     from pathlib import Path
-    from core.llm.providers.registry import ProviderRegistry
+    from _future.llm.providers.registry import ProviderRegistry
 
     llm_config_path = Path(settings.llm_config_path)
     if llm_config_path.exists():

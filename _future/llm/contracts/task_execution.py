@@ -1,6 +1,6 @@
 """Task execution contracts — for executing tasks via LLM."""
 
-from core.llm.contract import LLMContract, RetryStrategy, ValidationRule
+from _future.llm.contract import LLMContract, RetryStrategy, ValidationRule
 
 
 TaskExecutionContract = LLMContract(

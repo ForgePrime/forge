@@ -12,7 +12,7 @@ import urllib.request
 import urllib.error
 from typing import Any, AsyncIterator
 
-from core.llm.provider import (
+from _future.llm.provider import (
     CompletionConfig,
     CompletionResult,
     Message,

@@ -1,6 +1,6 @@
 """Planning contracts — plan decomposition, AC suggestion, guideline matching."""
 
-from core.llm.contract import LLMContract, RetryStrategy, ValidationRule
+from _future.llm.contract import LLMContract, RetryStrategy, ValidationRule
 
 
 PlanDecompositionContract = LLMContract(

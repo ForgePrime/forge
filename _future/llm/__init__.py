@@ -26,7 +26,7 @@ If reactivating platform mode:
 Architecture reference: docs/FORGE-PLATFORM-V2.md Section 6
 """
 
-from core.llm.provider import (
+from _future.llm.provider import (
     CompletionConfig,
     CompletionResult,
     LLMProvider,
@@ -38,7 +38,7 @@ from core.llm.provider import (
     ToolDefinition,
 )
 
-from core.llm.contract import (
+from _future.llm.contract import (
     ContractError,
     ContractNotFoundError,
     ContractRegistry,
@@ -54,7 +54,7 @@ from core.llm.contract import (
     # Context Assembly (ContextAssembler) moved to _future/context_assembler.py
     # It is not used by the active CLI flow. See _future/ for details.
 
-from core.llm.providers import ProviderRegistry, get_provider
+from _future.llm.providers import ProviderRegistry, get_provider
 
 __all__ = [
     # Provider
