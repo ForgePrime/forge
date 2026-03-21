@@ -35,6 +35,7 @@ Commands:
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -42,6 +43,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from contracts import render_contract, validate_contract
 from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
+import gates as _gates_mod
 
 CLAIM_WAIT_SECONDS = 1.5
 
@@ -362,17 +364,21 @@ CONTRACTS = {
         "description": "Draft plan wraps an array of tasks (same schema as add-tasks) with metadata about the source objective/idea. "
                        "Stored in tracker.json['draft_plan']. Approve with approve-plan to materialize.",
         "required": ["tasks"],
-        "optional": ["idea_id", "objective_id"],
+        "optional": ["idea_id", "objective_id", "assumptions"],
         "types": {
             "tasks": list,
+            "assumptions": list,
         },
         "invariant_texts": [
             "tasks: JSON array of task objects — each task follows the add-tasks contract (id, name required; see `pipeline contract add-tasks`)",
             "idea_id: source idea ID (I-NNN) this plan was derived from",
             "objective_id: source objective ID (O-NNN) this plan was derived from",
+            "assumptions: optional JSON array of {assumption: str, basis: str, severity: 'HIGH'|'MED'|'LOW'} — readiness gate",
+            "If 5+ HIGH-severity assumptions provided, draft is REJECTED (readiness gate fails)",
+            "If 3-4 HIGH: warning printed but draft saved",
             "Only ONE draft plan exists at a time — new draft overwrites previous",
             "Draft is NOT materialized until `approve-plan` is called",
-            "CLI usage: python -m core.pipeline draft-plan {project} --data '[{tasks}]' [--idea I-NNN] [--objective O-NNN]",
+            "CLI usage: python -m core.pipeline draft-plan {project} --data '[{tasks}]' [--idea I-NNN] [--objective O-NNN] [--assumptions '[...]']",
             "The --data argument is the tasks array (not the wrapper). idea_id and objective_id are passed as --idea and --objective flags.",
         ],
         "example": [
@@ -695,7 +701,7 @@ def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning
             "file": filepath,
             "action": action,
             "summary": reasoning or "(auto-recorded at completion)",
-            "reasoning_trace": [{"step": "auto-complete", "detail": reasoning}] if reasoning else [],
+            "reasoning_trace": [],
             "decision_ids": [],
             "lines_added": added,
             "lines_removed": removed,
@@ -1010,7 +1016,170 @@ def cmd_begin(args):
     ctx_args = _CtxArgs()
     ctx_args.project = args.project
     ctx_args.task_id = task["id"]
+    ctx_args.lean = getattr(args, "lean", False)
     cmd_context(ctx_args)
+
+
+def _verify_acceptance_criteria(task):
+    """Mechanically verify structured acceptance criteria.
+
+    AC can be:
+    - Plain string: treated as verification='manual' (needs --ac-reasoning)
+    - Structured dict: {text, verification: 'test'|'command'|'manual', test_path?, command?}
+
+    Returns (results, has_mechanical) where:
+    - results: list of {text, verification, passed, output} for mechanical AC
+    - has_mechanical: True if any AC has test/command verification
+    """
+    import subprocess as _sp
+
+    ac_list = task.get("acceptance_criteria", [])
+    results = []
+    has_mechanical = False
+
+    for ac in ac_list:
+        if isinstance(ac, str):
+            continue  # Plain string = manual, handled by --ac-reasoning
+
+        if not isinstance(ac, dict):
+            continue
+
+        verification = ac.get("verification", "manual")
+        text = ac.get("text", str(ac))
+
+        if verification == "manual":
+            continue
+
+        has_mechanical = True
+
+        if verification == "test":
+            test_path = ac.get("test_path", "")
+            if not test_path:
+                results.append({"text": text, "verification": "test",
+                                "passed": False, "output": "No test_path specified"})
+                continue
+            try:
+                result = _sp.run(
+                    f"pytest {test_path} -x -q",
+                    shell=True, capture_output=True, text=True,
+                    encoding="utf-8", timeout=120
+                )
+                results.append({"text": text, "verification": "test",
+                                "passed": result.returncode == 0,
+                                "output": (result.stdout + result.stderr)[:500]})
+            except _sp.TimeoutExpired:
+                results.append({"text": text, "verification": "test",
+                                "passed": False, "output": "Test timed out (120s)"})
+
+        elif verification == "command":
+            command = ac.get("command", "")
+            if not command:
+                results.append({"text": text, "verification": "command",
+                                "passed": False, "output": "No command specified"})
+                continue
+            try:
+                result = _sp.run(
+                    command, shell=True, capture_output=True, text=True,
+                    encoding="utf-8", timeout=120
+                )
+                results.append({"text": text, "verification": "command",
+                                "passed": result.returncode == 0,
+                                "output": (result.stdout + result.stderr)[:500]})
+            except _sp.TimeoutExpired:
+                results.append({"text": text, "verification": "command",
+                                "passed": False, "output": "Command timed out (120s)"})
+
+    return results, has_mechanical
+
+
+def _check_gates_before_complete(project, task_id, task, tracker, force):
+    """Mechanically enforce gate checks before task completion.
+
+    - If --force and task type is chore/investigation: bypass gates entirely
+    - If --force and task type is feature/bug: reject (gates are mandatory)
+    - If gates not configured: pass (nothing to check)
+    - If gate_results missing: auto-run gates
+    - If required gates failed: exit(1)
+    """
+    task_type = task.get("type", "feature")
+    force_exempt_types = ("chore", "investigation")
+
+    if force and task_type in force_exempt_types:
+        return  # --force allowed for chore/investigation
+
+    gates_config = tracker.get("gates", [])
+    if not gates_config:
+        return  # No gates configured
+
+    if force and task_type not in force_exempt_types:
+        print(f"ERROR: --force cannot bypass gates for {task_type} tasks. "
+              f"Fix gate failures first.", file=sys.stderr)
+        sys.exit(1)
+
+    # Auto-run gates if not yet run
+    gate_results = task.get("gate_results", {})
+    if not gate_results:
+        print(f"  Running gates before completion...")
+        _ns = type("NS", (), {"project": project, "task": task_id})()
+        all_passed = _gates_mod.cmd_check(_ns)
+        # Reload tracker since cmd_check may have saved results
+        tracker_reloaded = load_tracker(project)
+        for t in tracker_reloaded.get("tasks", []):
+            if t["id"] == task_id:
+                task.update(t)
+                break
+        gate_results = task.get("gate_results", {})
+
+    if not gate_results.get("all_passed", True):
+        required_gates = {gc["name"] for gc in gates_config if gc.get("required", True)}
+        failed = [g["name"] for g in gate_results.get("results", [])
+                  if not g.get("passed")]
+        required_failed = [name for name in failed if name in required_gates]
+        if required_failed:
+            print(f"ERROR: Required gates failed: {', '.join(required_failed)}. "
+                  f"Fix issues and re-run gates.", file=sys.stderr)
+            sys.exit(1)
+        else:
+            print(f"  Advisory gates failed: {', '.join(failed)} (non-blocking).")
+
+
+def _determine_ceremony_level(task, diff_file_count=0):
+    """Auto-detect ceremony level based on task type and complexity.
+
+    Returns: 'MINIMAL', 'LIGHT', 'STANDARD', or 'FULL'
+    - MINIMAL: chore/investigation — reasoning optional, AC not required, --force allowed
+    - LIGHT: bug with <= 3 files — reasoning required, AC not required
+    - STANDARD: feature with <= 3 AC — reasoning + AC reasoning required
+    - FULL: everything else — all checks required
+    """
+    task_type = task.get("type", "feature")
+    ac_count = len(task.get("acceptance_criteria", []))
+
+    if task_type in ("chore", "investigation"):
+        return "MINIMAL"
+    if task_type == "bug" and diff_file_count <= 3:
+        return "LIGHT"
+    if task_type == "feature" and ac_count <= 3:
+        return "STANDARD"
+    return "FULL"
+
+
+def _count_diff_files(base_commit, cwd=None):
+    """Count files changed since base_commit."""
+    import subprocess as _sp
+    if not base_commit:
+        return 0
+    try:
+        result = _sp.run(
+            f"git diff --name-only {base_commit}",
+            shell=True, capture_output=True, text=True,
+            encoding="utf-8", timeout=10, cwd=cwd
+        )
+        if result.returncode == 0:
+            return len([f for f in result.stdout.strip().split("\n") if f.strip()])
+    except Exception:
+        pass
+    return 0
 
 
 def cmd_complete(args):
@@ -1020,6 +1189,15 @@ def cmd_complete(args):
     agent = getattr(args, "agent", None)
     force = getattr(args, "force", False)
     reasoning = getattr(args, "reasoning", None) or ""
+
+    # Determine ceremony level
+    base_commit = task.get("started_at_commit", "")
+    git_cwd = task.get("worktree_path")
+    if git_cwd and not os.path.isdir(git_cwd):
+        git_cwd = None
+    diff_count = _count_diff_files(base_commit, cwd=git_cwd)
+    ceremony = _determine_ceremony_level(task, diff_count)
+    print(f"  Ceremony level: {ceremony} ({task.get('type', 'feature')}, {diff_count} files changed)")
 
     # Verify agent ownership if task was claimed
     if task.get("agent") and agent and task["agent"] != agent:
@@ -1036,20 +1214,21 @@ def cmd_complete(args):
                   file=sys.stderr)
             sys.exit(1)
 
+    # Check reasoning (required for LIGHT, STANDARD, FULL)
+    if not force and ceremony not in ("MINIMAL",) and not reasoning.strip():
+        print(f"WARNING: --reasoning is required for {ceremony} ceremony level.",
+              file=sys.stderr)
+        sys.exit(1)
+
     # Auto-record changes from git before checking
-    base_commit = task.get("started_at_commit", "")
     if base_commit:
-        # Use worktree path for git commands if task was executed in a worktree
-        git_cwd = task.get("worktree_path")
-        if git_cwd and not os.path.isdir(git_cwd):
-            git_cwd = None  # Worktree removed, fall back to main repo
         auto_count = _auto_record_changes(args.project, args.task_id, base_commit,
                                            reasoning, cwd=git_cwd)
         if auto_count:
             print(f"  Auto-recorded {auto_count} change(s) from git.")
 
-    # Check that changes were recorded for this task
-    if not force:
+    # Check that changes were recorded for this task (skip for MINIMAL/LIGHT)
+    if not force and ceremony not in ("MINIMAL", "LIGHT"):
         storage = _get_storage()
         changes_data = storage.load_data(args.project, 'changes')
         task_changes = [c for c in changes_data.get("changes", [])
@@ -1059,40 +1238,59 @@ def cmd_complete(args):
                   f"Use --force to complete anyway.", file=sys.stderr)
             sys.exit(1)
 
-    # Check that gates passed
-    if not force:
-        gate_results = task.get("gate_results", {})
-        if gate_results and not gate_results.get("all_passed", True):
-            failed = [g["name"] for g in gate_results.get("results", [])
-                      if not g.get("passed")]
-            print(f"WARNING: Gates failed: {', '.join(failed)}. "
-                  f"Use --force to complete anyway.", file=sys.stderr)
-            sys.exit(1)
+    # Check that gates passed (mechanical enforcement)
+    _check_gates_before_complete(args.project, args.task_id, task, tracker, force)
 
-    # Check acceptance criteria verification
-    if not force:
+    # Check acceptance criteria verification (skip for MINIMAL and LIGHT)
+    if not force and ceremony not in ("MINIMAL", "LIGHT"):
         ac = task.get("acceptance_criteria", [])
         if ac:
-            ac_reasoning = getattr(args, "ac_reasoning", None)
-            if not ac_reasoning:
-                print(f"WARNING: Task {args.task_id} has {len(ac)} acceptance criteria "
-                      f"but no --ac-reasoning provided.", file=sys.stderr)
-                print(f"  Acceptance criteria:", file=sys.stderr)
-                for i, criterion in enumerate(ac, 1):
-                    text = criterion if isinstance(criterion, str) else criterion.get("text", str(criterion))
-                    print(f"    {i}. {text}", file=sys.stderr)
-                print(f"  Provide --ac-reasoning to justify how each criterion is met, "
-                      f"or --force to bypass.", file=sys.stderr)
-                sys.exit(1)
-            task["ac_reasoning"] = ac_reasoning
-            # Validate AC reasoning quality (advisory)
-            ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
-            if ac_warnings:
-                print(f"**AC REASONING WARNINGS** ({len(ac_warnings)}):", file=sys.stderr)
-                for w in ac_warnings:
-                    print(w, file=sys.stderr)
-                print("Tip: address each criterion with 'AC N: [criterion] — PASS|FAIL: [evidence]'",
-                      file=sys.stderr)
+            # Mechanical verification of structured AC (test/command)
+            ac_results, has_mechanical = _verify_acceptance_criteria(task)
+            if has_mechanical:
+                failed_ac = [r for r in ac_results if not r["passed"]]
+                if ac_results:
+                    print(f"  AC Verification ({len(ac_results)} mechanical):")
+                    for r in ac_results:
+                        status = "PASS" if r["passed"] else "FAIL"
+                        print(f"    [{status}] {r['text']} ({r['verification']})")
+                        if not r["passed"]:
+                            for line in r["output"].split("\n")[:3]:
+                                if line.strip():
+                                    print(f"           {line.strip()}")
+                if failed_ac:
+                    print(f"\nERROR: {len(failed_ac)} mechanical AC verification(s) failed. "
+                          f"Fix and retry.", file=sys.stderr)
+                    sys.exit(1)
+                task["ac_verification_results"] = ac_results
+
+            # Manual AC still needs --ac-reasoning
+            manual_ac = [c for c in ac if isinstance(c, str) or
+                         (isinstance(c, dict) and c.get("verification", "manual") == "manual")]
+            if manual_ac:
+                ac_reasoning = getattr(args, "ac_reasoning", None)
+                if not ac_reasoning:
+                    print(f"WARNING: Task {args.task_id} has {len(manual_ac)} manual acceptance criteria "
+                          f"but no --ac-reasoning provided.", file=sys.stderr)
+                    print(f"  Manual criteria:", file=sys.stderr)
+                    for i, criterion in enumerate(manual_ac, 1):
+                        text = criterion if isinstance(criterion, str) else criterion.get("text", str(criterion))
+                        print(f"    {i}. {text}", file=sys.stderr)
+                    print(f"  Provide --ac-reasoning to justify how each criterion is met, "
+                          f"or --force to bypass.", file=sys.stderr)
+                    sys.exit(1)
+                task["ac_reasoning"] = ac_reasoning
+                # Validate AC reasoning quality (advisory)
+                ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
+                if ac_warnings:
+                    print(f"**AC REASONING WARNINGS** ({len(ac_warnings)}):", file=sys.stderr)
+                    for w in ac_warnings:
+                        print(w, file=sys.stderr)
+                    print("Tip: address each criterion with 'AC N: [criterion] — PASS|FAIL: [evidence]'",
+                          file=sys.stderr)
+            elif not has_mechanical:
+                # No AC at all (shouldn't happen but safety)
+                pass
 
     # Git workflow: push + PR + cleanup
     git_result = _apply_git_workflow_complete(args.project, tracker, task)
@@ -1101,6 +1299,7 @@ def cmd_complete(args):
 
     task["status"] = "DONE"
     task["completed_at"] = now_iso()
+    task["ceremony_level"] = ceremony
     save_tracker(args.project, tracker)
 
     done_count = sum(1 for t in tracker["tasks"] if t["status"] in ("DONE", "SKIPPED"))
@@ -1769,12 +1968,103 @@ def _estimate_context_size(project: str, task_ids: set) -> int:
     return total
 
 
+def _check_plan_staleness(task, tracker):
+    """Check if files mentioned in task instruction were modified since plan approval.
+
+    Uses git log to detect external changes. Returns list of warning strings.
+    """
+    import subprocess as _sp
+
+    approved_at = tracker.get("plan_approved_at")
+    if not approved_at:
+        return []
+
+    instruction = (task.get("instruction") or "") + " " + (task.get("description") or "")
+    if not instruction.strip():
+        return []
+
+    # Extract file paths from instruction (patterns: backtick paths, quoted paths, common extensions)
+    path_patterns = re.findall(
+        r'`([^`]+\.[a-zA-Z]{1,5})`'           # `path/to/file.ext`
+        r'|(?:^|\s)([\w/\-\.]+\.[a-zA-Z]{1,5})'  # bare path/to/file.ext
+        r'|(?:^|\s)([\w/\-]+/[\w/\-]+)',            # directory/paths
+        instruction
+    )
+    # Flatten and deduplicate
+    candidates = set()
+    for groups in path_patterns:
+        for g in groups:
+            if g and len(g) > 3 and '/' in g:
+                candidates.add(g.strip())
+
+    if not candidates:
+        return []
+
+    warnings = []
+    for filepath in sorted(candidates):
+        try:
+            result = _sp.run(
+                f'git log --oneline --since="{approved_at}" -- "{filepath}"',
+                shell=True, capture_output=True, text=True,
+                encoding="utf-8", timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                commits = result.stdout.strip().split("\n")
+                warnings.append(
+                    f"`{filepath}` modified since plan approval ({len(commits)} commit(s)): "
+                    f"{commits[0][:60]}"
+                )
+        except Exception:
+            pass
+
+    return warnings
+
+
+def _check_contract_alignment(task, tracker):
+    """Check if task instruction references key terms from dependency produces contracts.
+
+    Returns list of warning strings (empty if all aligned).
+    """
+    warnings = []
+    instruction = ((task.get("instruction") or "") + " " + (task.get("description") or "")).lower()
+    if not instruction.strip():
+        return warnings
+
+    stop_words = {"http", "https", "with", "from", "that", "this", "will", "must",
+                  "should", "into", "when", "then", "each", "also", "used", "none"}
+
+    for dep_id in task.get("depends_on", []):
+        dep_task = None
+        for t in tracker["tasks"]:
+            if t["id"] == dep_id:
+                dep_task = t
+                break
+        if not dep_task or not dep_task.get("produces"):
+            continue
+
+        for key, val in dep_task["produces"].items():
+            val_str = str(val).lower()
+            terms = re.split(r'[\s/\->{},():\[\]]+', val_str)
+            terms = [t for t in terms if len(t) > 3 and t not in stop_words]
+
+            if terms and not any(term in instruction for term in terms):
+                warnings.append(
+                    f"Dependency {dep_id} produces `{key}: {val}` "
+                    f"but task instruction does not reference it. Verify alignment."
+                )
+
+    return warnings
+
+
 def cmd_context(args):
     """Show aggregated context for a task: dependency outputs, decisions, changes."""
     tracker = load_tracker(args.project)
     task = find_task(tracker, args.task_id)
+    lean = getattr(args, "lean", False)
 
     print(f"## Context for {args.task_id}: {task['name']}")
+    if lean:
+        print("*(lean mode — Knowledge, Research, Business Context, Lessons skipped)*")
     print()
 
     # Pre-load decisions (used in multiple sections below)
@@ -1821,6 +2111,19 @@ def cmd_context(args):
             print(f"- **DO NOT**: {ex}")
         print()
 
+    # Plan staleness check: were files modified since plan approval?
+    staleness_warnings = _check_plan_staleness(task, tracker)
+    if staleness_warnings:
+        print("### Plan Staleness Warnings")
+        print()
+        print("These files were modified **after** the plan was approved. Your task instruction may be outdated:")
+        print()
+        for w in staleness_warnings:
+            print(f"- {w}")
+        print()
+        print("**Action**: Read the modified files before starting. If changes conflict with your instruction, create an OPEN decision.")
+        print()
+
     # Dependency context
     deps = task.get("depends_on", [])
     if deps:
@@ -1838,6 +2141,15 @@ def cmd_context(args):
                     print(f"    {key}: {val}")
             print()
 
+        # Contract alignment check
+        contract_warnings = _check_contract_alignment(task, tracker)
+        if contract_warnings:
+            print("### Contract Alignment Warnings")
+            print()
+            for w in contract_warnings:
+                print(f"- {w}")
+            print()
+
         # Show changes from dependency tasks
         changes_data = _s.load_data(args.project, 'changes')
         dep_changes = [c for c in changes_data.get("changes", [])
@@ -1851,6 +2163,13 @@ def cmd_context(args):
                 summary = c.get("summary", "")[:50]
                 print(f"| {c['task_id']} | {c['file']} | {c['action']} | {summary} |")
             print()
+            # Prominent instruction to read dependency files
+            dep_files = sorted({c["file"] for c in dep_changes if c.get("file")})
+            if dep_files:
+                print("**READ THESE FILES before starting** (modified by dependencies):")
+                for f in dep_files:
+                    print(f"  - `{f}`")
+                print()
 
         # Show decisions from dependency tasks
         if dec_data:
@@ -1880,15 +2199,16 @@ def cmd_context(args):
                 print(f"- **{d['id']}** ({d.get('status', '')}): {d.get('issue', '')}")
             print()
 
-    # Show relevant lessons
-    lessons_data = _s.load_data(args.project, 'lessons')
-    lessons = lessons_data.get("lessons", [])
-    if lessons:
-        print(f"### Relevant Lessons")
-        print()
-        for l in lessons:
-            print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
-        print()
+    # Show relevant lessons (skip in lean mode)
+    if not lean:
+        lessons_data = _s.load_data(args.project, 'lessons')
+        lessons = lessons_data.get("lessons", [])
+        if lessons:
+            print(f"### Relevant Lessons")
+            print()
+            for l in lessons:
+                print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
+            print()
 
     # Compute task_scopes (shared by guidelines and knowledge scope matching)
     g_data = _s.load_data(args.project, 'guidelines')
@@ -1930,6 +2250,11 @@ def cmd_context(args):
         g_global = _s.load_global('guidelines')
         global_guidelines = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
+    # In lean mode, only show must-weight guidelines
+    if lean:
+        project_guidelines = [g for g in project_guidelines if g.get("weight") == "must"]
+        global_guidelines = [g for g in global_guidelines if g.get("weight") == "must"]
+
     if global_guidelines or project_guidelines:
         from guidelines import render_guidelines_context
         lines = render_guidelines_context(project_guidelines, task_scopes, args.project,
@@ -1961,9 +2286,9 @@ def cmd_context(args):
                     k_ids.update(obj.get("knowledge_ids", []))
                     break
 
-    # Load knowledge data once (used for both explicit and scope matching)
+    # Load knowledge data once (used for both explicit and scope matching; skip in lean mode)
     k_data = {}
-    if _s.exists(args.project, 'knowledge'):
+    if not lean and _s.exists(args.project, 'knowledge'):
         k_data = _s.load_data(args.project, 'knowledge')
 
     # Scope-matched knowledge (additive to explicit IDs)
@@ -2007,8 +2332,8 @@ def cmd_context(args):
                         print(f"  {content_preview}")
             print()
 
-    # Research context (from task origin -> idea/objective -> research)
-    if _s.exists(args.project, 'research'):
+    # Research context (from task origin -> idea/objective -> research; skip in lean mode)
+    if not lean and _s.exists(args.project, 'research'):
         r_data = _s.load_data(args.project, 'research')
         active_research = [r for r in r_data.get("research", [])
                           if r.get("status") == "ACTIVE"]
@@ -2068,9 +2393,9 @@ def cmd_context(args):
             print(f"{test_req['description']}")
         print()
 
-    # Business context: trace task → origin → objective (F-001: graceful degradation)
+    # Business context: trace task → origin → objective (skip in lean mode)
     origin = task.get("origin", "")
-    if origin.startswith("O-"):
+    if not lean and origin.startswith("O-"):
         # Direct objective origin (from /plan O-001)
         if _s.exists(args.project, 'objectives'):
             obj_data = _s.load_data(args.project, 'objectives')
@@ -2093,7 +2418,7 @@ def cmd_context(args):
                     print(f"  Origin: objective {origin}")
                     print()
                     break
-    elif origin.startswith("I-"):
+    elif not lean and origin.startswith("I-"):
         if _s.exists(args.project, 'ideas') and _s.exists(args.project, 'objectives'):
             ideas_data = _s.load_data(args.project, 'ideas')
             obj_data = _s.load_data(args.project, 'objectives')
@@ -2354,6 +2679,39 @@ def _warn_ac_quality(tasks: list) -> bool:
 
 # -- CLI --
 
+def _check_assumptions_readiness(assumptions_raw):
+    """Parse and validate assumptions for readiness gate.
+
+    Returns (parsed_assumptions, high_count).
+    Exits on invalid JSON or schema.
+    """
+    try:
+        assumptions = load_json_data(assumptions_raw)
+    except (json.JSONDecodeError, Exception) as e:
+        print(f"ERROR: Invalid assumptions JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(assumptions, list):
+        print("ERROR: --assumptions must be a JSON array", file=sys.stderr)
+        sys.exit(1)
+
+    valid_severities = {"HIGH", "MED", "LOW"}
+    for i, a in enumerate(assumptions):
+        if not isinstance(a, dict):
+            print(f"ERROR: Assumption {i+1} must be an object with assumption, basis, severity", file=sys.stderr)
+            sys.exit(1)
+        for field in ("assumption", "basis", "severity"):
+            if field not in a:
+                print(f"ERROR: Assumption {i+1} missing required field '{field}'", file=sys.stderr)
+                sys.exit(1)
+        if a["severity"] not in valid_severities:
+            print(f"ERROR: Assumption {i+1} severity must be HIGH, MED, or LOW (got '{a['severity']}')", file=sys.stderr)
+            sys.exit(1)
+
+    high_count = sum(1 for a in assumptions if a["severity"] == "HIGH")
+    return assumptions, high_count
+
+
 def cmd_draft_plan(args):
     """Store a draft plan for user review before materializing into pipeline."""
     tracker = load_tracker(args.project)
@@ -2376,12 +2734,27 @@ def cmd_draft_plan(args):
             print(f"  {e}", file=sys.stderr)
         sys.exit(1)
 
+    # Readiness gate: check assumptions if provided
+    assumptions = None
+    high_count = 0
+    assumptions_raw = getattr(args, "assumptions", None)
+    if assumptions_raw:
+        assumptions, high_count = _check_assumptions_readiness(assumptions_raw)
+        if high_count >= 5:
+            print(f"ERROR: Readiness gate FAILED — {high_count} HIGH-severity assumptions.", file=sys.stderr)
+            print("A plan built on 5+ unverified assumptions is not a plan. Clarify before planning:", file=sys.stderr)
+            for a in assumptions:
+                if a["severity"] == "HIGH":
+                    print(f"  - {a['assumption']} (basis: {a['basis']})", file=sys.stderr)
+            sys.exit(1)
+
     # Store draft (overwrite previous draft)
     tracker["draft_plan"] = {
         "source_idea_id": args.idea if hasattr(args, "idea") and args.idea else None,
         "source_objective_id": args.objective if hasattr(args, "objective") and args.objective else None,
         "created": now_iso(),
         "tasks": draft_tasks,
+        "assumptions": assumptions,
     }
 
     save_tracker(args.project, tracker)
@@ -2399,12 +2772,25 @@ def cmd_draft_plan(args):
         print("Tip: fix invalid origins/scopes/knowledge_ids before approving.")
         print()
 
+    # Assumptions warnings
+    if assumptions and 3 <= high_count <= 4:
+        print(f"**ASSUMPTION WARNING**: {high_count} HIGH-severity assumptions — verify before Phase 1.")
+        for a in assumptions:
+            if a["severity"] == "HIGH":
+                print(f"  - {a['assumption']}")
+        print()
+
     print(f"## Draft Plan: {args.project}")
     if tracker["draft_plan"]["source_idea_id"]:
         print(f"Source idea: {tracker['draft_plan']['source_idea_id']}")
     if tracker["draft_plan"].get("source_objective_id"):
         print(f"Source objective: {tracker['draft_plan']['source_objective_id']}")
     print(f"Tasks in draft: {len(draft_tasks)}")
+    if assumptions:
+        high = sum(1 for a in assumptions if a["severity"] == "HIGH")
+        med = sum(1 for a in assumptions if a["severity"] == "MED")
+        low = sum(1 for a in assumptions if a["severity"] == "LOW")
+        print(f"Assumptions: {len(assumptions)} ({high} HIGH, {med} MED, {low} LOW)")
     print()
 
     _print_draft_tasks(draft_tasks)
@@ -2503,6 +2889,7 @@ def cmd_approve_plan(args):
 
         # Materialize
         tracker["tasks"].extend(entries)
+        tracker["plan_approved_at"] = now_iso()
 
         # Clear draft
         tracker.pop("draft_plan", None)
@@ -2595,6 +2982,8 @@ def main():
     p = sub.add_parser("begin", help="Claim next task and show full execution context")
     p.add_argument("project")
     p.add_argument("--agent", default=None, help="Agent name for multi-agent claim")
+    p.add_argument("--lean", action="store_true", default=False,
+                   help="Lean context: skip Knowledge, Research, Business Context, Lessons")
 
     p = sub.add_parser("complete", help="Mark task DONE")
     p.add_argument("project")
@@ -2636,6 +3025,8 @@ def main():
     p = sub.add_parser("context", help="Aggregated context for a task")
     p.add_argument("project")
     p.add_argument("task_id")
+    p.add_argument("--lean", action="store_true", default=False,
+                   help="Lean mode: skip Knowledge, Research, Business Context, Lessons")
 
     p = sub.add_parser("config", help="Set/show project configuration")
     p.add_argument("project")
@@ -2646,6 +3037,8 @@ def main():
     p.add_argument("--data", required=True, help="JSON array of tasks (same format as add-tasks)")
     p.add_argument("--idea", default=None, help="Source idea ID (I-NNN)")
     p.add_argument("--objective", default=None, help="Source objective ID (O-NNN)")
+    p.add_argument("--assumptions", default=None,
+                   help="JSON array of {assumption, basis, severity} for readiness gate")
 
     p = sub.add_parser("show-draft", help="Show current draft plan")
     p.add_argument("project")

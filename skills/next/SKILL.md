@@ -45,6 +45,12 @@ gates must pass before completion.
 python -m core.pipeline begin {project}
 ```
 
+For simple tasks (chore, small bug), use lean context to reduce output:
+```bash
+python -m core.pipeline begin {project} --lean
+```
+Lean mode skips Knowledge, Research, Business Context, Lessons and shows only must-weight guidelines.
+
 This single command:
 - Claims the next available task (or resumes an IN_PROGRESS one)
 - Prints the full execution context: dependencies, guidelines, knowledge, research, business context, active risks, test requirements
@@ -65,6 +71,23 @@ python -m core.ideas show {project} {origin_id}
 - Read the task instruction carefully
 - Open and read every file mentioned in the instruction
 - Understand the existing code patterns before changing anything
+
+**Check for conflicts before writing code:**
+
+After reading the code, before changing anything, check for contradictions:
+
+1. **Instruction vs. existing code**: Does the instruction ask you to do something that contradicts how the existing code works? Example: instruction says "add middleware to app.ts" but app.ts uses a different middleware pattern than assumed.
+2. **Instruction vs. upstream contract**: Does a dependency task's `produces` contract describe an interface different from what the instruction expects? Example: upstream says `POST /users → 201 {id, email}` but instruction assumes `{userId, emailAddress}`.
+3. **Instruction vs. exclusions**: Does the instruction implicitly require modifying files that another task's exclusions forbid?
+
+**If you find a conflict — STOP. Do not silently pick one interpretation.**
+
+Surface it as an OPEN decision:
+```bash
+python -m core.decisions add {project} --data '[{"task_id": "{task_id}", "type": "implementation", "issue": "CONFLICT: Instruction says X but code/contract says Y", "recommendation": "Proceed with Y (matches existing code)", "alternatives": ["Follow instruction literally (X)", "Follow existing code (Y)"], "status": "OPEN", "decided_by": "claude"}]'
+```
+
+State both versions explicitly. Let the user decide. The failure mode this prevents: agent silently picks one interpretation, builds the wrong thing, discovers the conflict at integration time when it's expensive to fix.
 
 For complex feature tasks, optionally load domain execution guidance:
 
@@ -105,13 +128,17 @@ Use `type: "implementation"`, `task_id: "{task_id}"`, and include `reasoning` an
 
 ---
 
-### Step 3 — Record Changes (optional mid-task)
+### Step 3 — Record Changes (usually skip)
 
-Changes are **auto-recorded at completion** (Step 6) from git diff. This step
-is only needed if you want per-file reasoning traces or to link specific
-changes to decisions mid-task.
+**Most tasks: skip this step.** Changes are auto-recorded from git diff at completion (Step 6). You don't need to manually record anything.
 
-For detailed per-file recording:
+Manual recording is ONLY useful when you need to:
+- Link a specific file change to a specific decision ID mid-task
+- Add per-file reasoning that goes beyond the task-level `--reasoning`
+
+If neither applies — move to Step 4.
+
+For the rare case when you need manual recording:
 ```bash
 python -m core.changes record {project} --data '[...]'
 ```
@@ -197,7 +224,48 @@ Use the structured format `AC N: [criterion] — PASS|FAIL: [evidence]` — the 
 
 This auto-records any unrecorded git changes (committed + uncommitted since task start).
 
-Then immediately proceed to the next task (loop back to Step 1).
+Then immediately proceed to Step 6.5 before starting the next task.
+
+---
+
+### Step 6.5 — Post-completion Sanity Check
+
+**Skip for MINIMAL and LIGHT ceremony levels.** Mandatory for STANDARD and FULL.
+
+After completing a task, verify that what you actually changed matches what was asked and what downstream tasks expect.
+
+**a. Review your diff:**
+
+```bash
+git diff HEAD~1 --stat
+git diff HEAD~1
+```
+
+**b. Compare against task instruction:**
+
+- List every file you modified
+- Check each file against the task's `instruction` — did you touch only files mentioned?
+- If you modified files not in the instruction, ask: was it necessary or scope creep?
+
+**c. Compare against upstream contracts:**
+
+- If dependency tasks had `produces` contracts (shown in `begin` output), verify your implementation honors them
+- Example: if upstream says `endpoint: "POST /users → 201 {id, email}"`, verify your code calls that exact endpoint with that exact shape
+
+**d. Check downstream expectations:**
+
+- If THIS task has `produces`, verify your output matches the contract
+- Downstream tasks will rely on this — a mismatch here propagates errors
+
+**e. Act on findings:**
+
+- **Files match, contracts match**: proceed to Step 1 (next task)
+- **Extra files modified (benign)**: note in reasoning, proceed
+- **Contract mismatch or wrong files**: create a follow-up task:
+  ```bash
+  python -m core.pipeline add-tasks {project} --data '[{"id": "_1", "name": "fix-drift-from-{task_id}", "type": "bug", "description": "Post-completion check found: {description of mismatch}", "depends_on": [], "acceptance_criteria": ["..."]}]'
+  ```
+  Then proceed to next task — the fix is tracked, not silently ignored.
 
 ---
 

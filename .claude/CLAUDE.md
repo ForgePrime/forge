@@ -1,47 +1,36 @@
-# Forge — Structured Change Orchestrator
+# Forge — Change Orchestrator
 
-You are operating inside Forge, a change orchestration system.
-Every code change must be **planned, tracked, reasoned about, and auditable**.
+You are operating inside Forge. Your job: plan work, execute it, and leave a trail that makes sense.
 
 ## Core Principle
 
-You do NOT just write code. You:
-1. **Align** — build shared understanding before execution (deep-align)
-2. **Plan** — decompose the goal into tasks with dependencies
-3. **Track** — every task has a status in the pipeline
-4. **Decide** — record architectural and implementation decisions with reasoning
-5. **Execute** — make changes, recording what you changed and why
-6. **Validate** — run tests/checks before marking complete
+1. **Understand** — read the code, list your assumptions, check for conflicts
+2. **Plan** — decompose into tasks with a dependency graph
+3. **Execute** — implement, validate (gates + tests), record what changed
 
-## Entity Hierarchy
+That's it. Don't add ceremony that doesn't help you deliver correctly.
+
+## What matters
 
 ```
-Objective (why) ──→ Ideas (what) ──→ Tasks (how) ──→ Changes + Decisions
-       │                  │                │
-       ├─ derives Guidelines          ├─ context: Guidelines, Knowledge, Research, Risks
-       ├─ researched by Research      ├─ produces contracts for downstream tasks
-       └─ measured by KR progress     └─ validated by Gates
-
-Post-project: /compound ──→ Lessons (cross-project learning)
+Tasks (core) ──→ Dependencies + Produces contracts
+  │
+  ├─ validated by Gates (tests, lint — mechanically enforced)
+  ├─ guided by Guidelines (project rules loaded by scope)
+  └─ documented by Decisions (only when deviating or choosing between alternatives)
 ```
 
-### Data flow at task execution (`pipeline context`)
+**Available for complex projects** (use via `/discover`, `/objective`):
+Ideas, Objectives, Knowledge, Research, AC Templates, Domain Modules, Lessons.
+These are opt-in tools, not required steps.
 
-```
-Task T-001
-  │
-  ├─ task.scopes ──→ load Guidelines + Knowledge matching scopes (+ global)
-  │
-  ├─ task.origin ──→ Idea I-001 or Objective O-001
-  │   ├─ idea.advances_key_results ──→ Objective O-001 (title, KR progress)
-  │   └─ Research R-NNN (summary, key_findings, decision_ids)
-  │
-  ├─ task.depends_on ──→ completed tasks (Changes, Decisions, produces contracts)
-  │
-  ├─ task.origin ──→ active Risk decisions
-  │
-  └─ task.blocked_by_decisions ──→ must be CLOSED before start
-```
+## Mechanical Guardrails
+
+- **Readiness gate**: `draft-plan --assumptions '[...]'` rejects plan at 5+ HIGH-severity assumptions
+- **Gates enforcement**: `complete` blocks feature/bug tasks when required gates fail
+- **Executable AC**: structured AC with `verification: "test"|"command"` runs mechanically at completion
+- **Contract alignment**: `begin` warns when task instruction doesn't reference upstream `produces` contracts
+- **Lean context**: `begin --lean` skips Knowledge, Research, Business Context, Lessons for simple tasks
 
 ## CLI Reference
 
@@ -60,23 +49,23 @@ Use `--help` for full syntax. Use `contract` subcommand for entity JSON format.
 
 | Command | Description |
 |---------|-------------|
-| `/objective {title}` | Define business objective with measurable key results |
-| `/idea {title}` | Add idea to staging area |
-| `/discover {topic\|idea_id}` | Explore options, assess risks, design architecture |
-| `/plan {goal\|idea_id}` | Decompose into task graph (draft → approve) |
+| `/plan {goal}` | Decompose into task graph (draft → approve) |
 | `/next` | Get and execute next task |
 | `/run [tasks]` | Execute tasks continuously: `/run`, `/run 3`, `/run T-003..T-007` |
+| `/task {description}` | Quick-add a single task |
+| `/status` | Show current project status |
 | `/decide` | Review and resolve open decisions |
-| `/risk [title\|id] [action]` | Manage risks |
+| `/discover {topic}` | Explore options, assess risks, design architecture |
+| `/objective {title}` | Define business objective with measurable key results |
 | `/review {task_id}` | Deep code review (critical tasks only) |
 | `/compound` | Extract lessons learned |
 | `/onboard` | Import brownfield project knowledge |
-| `/task {description}` | Quick-add a single task |
-| `/status` | Show current project status |
-| `/log` | Show full audit trail |
 | `/guideline {text}` / `/guidelines` | Add/manage project guidelines |
+| `/idea {title}` / `/ideas` | Add/manage ideas (staging area) |
+| `/risk [title\|id] [action]` | Manage risks |
+| `/log` | Show full audit trail |
 | `/knowledge`, `/research`, `/ac-template` | Manage knowledge, research, AC templates |
-| `/objectives`, `/ideas` | Manage objectives and ideas |
+| `/objectives` | Manage objectives |
 | `/help` | Show all commands |
 
 ## Task Properties
@@ -84,69 +73,47 @@ Use `--help` for full syntax. Use `contract` subcommand for entity JSON format.
 When adding tasks, each task supports:
 - `id`, `name`, `description`, `instruction` — basic info
 - `type` — `feature` (default), `bug`, `chore`, `investigation`
-- `acceptance_criteria` — conditions that must be true when DONE
+- `acceptance_criteria` — conditions that must be true when DONE. Supports plain strings (manual verification) and structured: `{text, verification: "test"|"command"|"manual", test_path?, command?}`
 - `depends_on` — task IDs that must complete first
-- `blocked_by_decisions` — decision IDs that must be CLOSED before start
-- `parallel`, `conflicts_with` — multi-agent coordination
-- `skill` — path to SKILL.md for structured execution
-- `scopes` — guideline scopes (e.g., `["backend", "database"]`). `general` always included.
-- `origin` — source (idea ID like `I-001`, or free text)
-- `knowledge_ids` — Knowledge IDs (K-001) to load as context
-- `test_requirements` — `{unit, integration, e2e}` booleans
-- `alignment` — `{goal, boundaries: {must, must_not, not_in_scope}, success}` — persisted from planning
-- `exclusions` — task-specific DO NOT rules
 - `produces` — semantic contract for downstream consumers (e.g., `{"endpoint": "POST /users → 201 {id, email}"}`)
+- `exclusions` — task-specific DO NOT rules
+- `alignment` — `{goal, boundaries: {must, must_not, not_in_scope}, success}`
+- `scopes` — guideline scopes (e.g., `["backend", "database"]`). `general` always included.
+- `parallel`, `conflicts_with` — multi-agent coordination
+- `blocked_by_decisions` — decision IDs that must be CLOSED before start
+- `skill` — path to SKILL.md for structured execution
+- `origin`, `knowledge_ids`, `test_requirements` — optional context
 
 ### Validation
 
 - **Planning**: feature/bug tasks MUST have `acceptance_criteria`. Temp IDs (`_1`, `_2`) auto-remap to `T-NNN`.
-- **Completion**: changes recorded + gates passed + AC verified with `--ac-reasoning` (per-criterion + `→ Test:` mapping). Use `--force` to bypass.
+- **Completion**: gates must pass (mechanical enforcement for feature/bug) + AC verified. Ceremony level auto-detected (MINIMAL/LIGHT/STANDARD/FULL) from task type and diff size.
 - **Batch format**: `{"new_tasks": [...], "update_tasks": [...]}` for atomic add + update.
 
 ## Workflow
 
-### Choose the right track
-
-| Signal | Track |
-|--------|-------|
-| "Fix this bug", "Add a test" | **Standard** (`/task` + `/next`) |
-| "Add feature X with Y and Z" | **Standard** (`/plan`) |
-| "Design the system first, then build" | **Architecture-first** |
-| "Redesign the auth system", full analysis | **Full** |
-
-### Standard Track
+### Default: plan and execute
 ```
-/plan {goal}  ──→  /next|/run  ──→  /compound
+/plan {goal}  ──→  /run  ──→  done
 ```
 
-### Full Track
+### For complex work: discover first
 ```
-/objective ──→ /idea ──→ /discover ──→ /plan ──→ /next|/run ──→ /compound
-  (why)        (what)     (assess)     (how)    (execute)      (learn)
-```
-
-### Architecture-first Track
-```
-/objective ──→ /discover --full ──→ /knowledge add ──→ /plan ──→ /next|/run
-  (why)         (design+assess)     (persist design)   (tasks)   (build)
+/objective ──→ /discover ──→ /plan ──→ /run ──→ /compound
 ```
 
-Discovery findings that should persist → Knowledge objects → assigned to tasks via `knowledge_ids`.
-
-### Brownfield Projects
+### For brownfield projects
 Run `/onboard` first — discover project, import decisions/conventions, configure gates.
 
 ## Rules
 
-- **NEVER skip the pipeline**. Every change goes through plan → execute → record.
-- **Record decisions** for any non-trivial choice (architecture, library, pattern, trade-off).
-- **Record changes** for every file you create, edit, or delete.
-- **reasoning_trace is mandatory** — explain WHY, not just WHAT.
-- **Contracts on first use** — run `contract` the first time you use an entity type in a session. Pipeline validates input and error messages show correct format.
-- **When unsure, create an OPEN decision** — let the human decide.
-- **Tests before completion** — run tests/lint before marking a task DONE.
-- **Use --force on complete** only for tasks with no code changes.
-- **Use `--data -` with heredoc** for complex JSON (see `docs/CLI-REFERENCE.md`).
+- **Use the pipeline.** Every change goes through plan → execute → complete.
+- **Changes are auto-recorded** from git at completion. Manual recording only when linking changes to specific decisions mid-task.
+- **Record decisions** when deviating from task instruction or choosing between alternatives that affect downstream tasks. Not for every obvious choice.
+- **Contracts on first use** — run `contract` the first time you use an entity type in a session.
+- **When you find a conflict, surface it** — create an OPEN decision with both sides stated. Do NOT silently pick one interpretation.
+- **When unsure, ask** — create an OPEN decision or ask the user directly.
+- **Gates are enforced** — required gates must pass before feature/bug tasks can complete. `--force` only works for chore/investigation.
 
 ## Current Project
 
@@ -164,10 +131,5 @@ All Forge state goes to `forge_output/{project}/`:
 - `tracker.json` — pipeline state (tasks + draft_plan)
 - `decisions.json` — decisions + explorations + risks
 - `changes.json` — change records
-- `lessons.json` — compound learning
 - `guidelines.json` — project standards
-- `ideas.json` — idea staging area
-- `objectives.json` — business objectives + KRs
-- `knowledge.json` — domain knowledge
-- `ac_templates.json` — reusable AC templates
-- `research.json` — structured analysis (from /discover)
+- `lessons.json`, `objectives.json`, `ideas.json`, `knowledge.json`, `research.json`, `ac_templates.json` — optional context

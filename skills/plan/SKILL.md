@@ -40,6 +40,7 @@ description: "Decompose a high-level goal into a tracked, dependency-aware task 
 | W2b | `python -m core.pipeline approve-plan {project}` | Materializes draft into pipeline | Step 7 — after user approval |
 | W2c | `python -m core.pipeline add-tasks {project} --data '{json}'` | Direct task addition (alternative to draft) | Step 5 — when bypassing draft review |
 | W3 | `python -m core.decisions add {project} --data '{json}'` | Records planning decisions | Step 4 — for architectural choices | `python -m core.decisions contract add` |
+| W4 | `python -m core.knowledge add {project} --data '[...]'` | Stores Impact Map as knowledge object | Step 6.5 — after decomposition, before draft |
 
 ## Output
 
@@ -400,6 +401,100 @@ If there are APPROVED ideas advancing this objective, consider using them as int
 
 ---
 
+### Step 6a — Readiness Check (mandatory)
+
+Before committing to this plan, honestly assess what you KNOW vs what you ASSUME.
+
+**Produce this table:**
+
+```
+## Readiness Check
+
+| # | I ASSUME that... | BECAUSE... | If wrong, impact is... |
+|---|------------------|------------|------------------------|
+| 1 | [assumption about code/system/behavior] | [evidence: file read, grep result, or just "seems likely"] | HIGH/MED/LOW |
+```
+
+**Severity:**
+- **HIGH**: wrong assumption would change the architecture, data model, or task structure
+- **MED**: wrong assumption would change one component's implementation
+- **LOW**: wrong assumption would change an implementation detail only
+
+**Rules:**
+- 0-2 HIGH: proceed to Impact Map
+- 3-4 HIGH: proceed but add to draft header: `⚠️ High assumption risk — verify before Phase 1`
+- **5+ HIGH: STOP. Do NOT draft the plan.** Instead, ask the user to clarify. List your HIGH assumptions as questions. A plan built on 5+ guesses is not a plan — it's a gamble.
+
+**What counts as ASSUMED (not KNOWN):**
+- You didn't read the file, you inferred from the directory name
+- You read the file but didn't verify how it's used by other files
+- The behavior is undocumented and you're guessing from naming conventions
+- You're assuming a library/framework works a certain way without checking docs
+
+**What counts as KNOWN:**
+- You read the actual code and it explicitly does X
+- The test suite verifies this behavior
+- Configuration file explicitly sets this value
+
+This gate exists because the most common failure mode is: agent reads 5 files, understands 3, plans as if it understood 5. The plan looks good. Execution reveals the 2 misunderstood files break everything.
+
+**Mechanical enforcement**: Pass assumptions to `draft-plan` with `--assumptions`:
+```bash
+python -m core.pipeline draft-plan {project} --data '[...]' --assumptions '[{"assumption": "DB supports JSON columns", "basis": "PostgreSQL docs", "severity": "LOW"}, {"assumption": "middleware runs in order", "basis": "read app.ts:15", "severity": "HIGH"}]'
+```
+- 5+ HIGH → `draft-plan` exits with error (`sys.exit(1)`), draft NOT saved
+- 3-4 HIGH → warning in draft header
+- Assumptions stored on `tracker.draft_plan.assumptions`
+
+---
+
+### Step 6.5 — Impact Map (Standard/Complex only)
+
+**Skip for Quick track.**
+
+Before drafting the plan, produce an **Impact Map** that proves understanding of the codebase you are about to modify. This prevents plans built on surface-level directory scans.
+
+For each file that any task will create or modify:
+
+1. **Read the file** (or the directory it will be created in)
+2. **Search for usages**: `grep` for imports, function calls, references across the codebase
+3. **Identify invariants**: ordering constraints, interface contracts, configuration dependencies
+
+Produce this table:
+
+```
+## Impact Map
+
+| File | Action | Depended on by | Invariants |
+|------|--------|----------------|------------|
+| src/api/auth.ts | modify | routes/*.ts, middleware/rate-limit.ts | Must run BEFORE rate-limit middleware |
+| src/models/user.ts | create | api/auth.ts, api/users.ts | Matches DB migration schema |
+| migrations/002_sessions.sql | create | — | Must run AFTER 001_users.sql |
+
+### Integration Points
+1. {file} exports {symbol} used by {N consumers} — signature change is breaking
+2. {config key} is read at {location} — change requires restart
+
+### Assumptions
+- "Database migrations run before app start" — VERIFIED (read docker-compose.yml:12)
+- "Rate limiter is stateless" — UNVERIFIED (must check during T-003)
+```
+
+**Rules:**
+- Every file mentioned in task instructions MUST appear in the Impact Map
+- Every UNVERIFIED assumption must be assigned to a task for verification
+- If you discover an invariant that affects task ordering, update `depends_on` accordingly
+
+Store the Impact Map as a knowledge object (W4):
+
+```bash
+python -m core.knowledge add {project} --data '[{"title": "Impact Map: {goal}", "category": "architecture", "scopes": ["{scopes}"], "content": "{impact map markdown}"}]'
+```
+
+Tasks will receive this knowledge via `knowledge_ids` in `pipeline context`.
+
+---
+
 ### Step 7 — Configure Project
 
 Set up project configuration for gates and git:
@@ -415,6 +510,35 @@ python -m core.gates config {project} --data '[{"name": "test", "command": "pyte
 
 Adapt commands to the project's actual tech stack. If unsure about commands,
 create an OPEN decision asking the user.
+
+---
+
+### Step 7.5 — Plan Quality Test (mandatory)
+
+Before showing the draft to the user, test it yourself.
+
+**Test 1: Can you start coding?**
+
+Take the **first task** from the draft. Read its `instruction` field.
+Ask yourself: *Can I open an editor right now and know exactly what to build — without asking anything?*
+
+If NO: the instruction is too vague. Common problems:
+- "Implement the auth system" — implement WHAT? Which files? What pattern to follow?
+- "Set up the database" — which tables? Which columns? Which migration tool?
+- "Add error handling" — which errors? What response format? Where?
+
+Fix the instruction until the answer is YES.
+
+**Test 2: Can you finish?**
+
+Take the **last task** from the draft. Same question.
+The last task often has the worst instructions because planning fatigue sets in.
+
+**Test 3: Do tasks connect?**
+
+Pick any task with `depends_on`. Read its instruction. Does it reference what the dependency `produces`? If a task depends on T-001 but its instruction never mentions T-001's output, the connection is imaginary.
+
+If any test fails: fix the task before drafting. Do NOT show a plan you couldn't execute yourself.
 
 ---
 

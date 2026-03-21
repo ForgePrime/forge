@@ -73,7 +73,6 @@ CONTRACTS = {
         "invariant_texts": [
             "task_id must reference an existing task in the pipeline",
             "file must be a relative path from project root",
-            "reasoning_trace: array of {step, detail} objects explaining the change",
             "decision_ids: list of D-NNN IDs that led to this change",
             "group_id: links related changes across files (e.g. a refactor touching 5 files)",
             "guidelines_checked: list of G-NNN IDs that were verified during this change",
@@ -84,11 +83,6 @@ CONTRACTS = {
                 "file": "src/middleware/auth.ts",
                 "action": "create",
                 "summary": "JWT validation middleware with RS256 support",
-                "reasoning_trace": [
-                    {"step": "design", "detail": "Chose middleware pattern over per-route guards for DRY"},
-                    {"step": "implementation", "detail": "Used jsonwebtoken library, RS256 algorithm per D-001"},
-                    {"step": "security", "detail": "Added token expiry check, audience validation"},
-                ],
                 "decision_ids": ["D-001"],
                 "lines_added": 45,
             },
@@ -97,9 +91,6 @@ CONTRACTS = {
                 "file": "src/routes/api.ts",
                 "action": "edit",
                 "summary": "Added auth middleware to protected routes",
-                "reasoning_trace": [
-                    {"step": "integration", "detail": "Applied middleware to /api/* routes, excluded /api/health"},
-                ],
                 "decision_ids": ["D-001"],
                 "group_id": "auth-middleware-integration",
                 "lines_added": 3,
