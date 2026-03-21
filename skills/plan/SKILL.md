@@ -542,6 +542,37 @@ If any test fails: fix the task before drafting. Do NOT show a plan you couldn't
 
 ---
 
+### Step 7.6 — Coverage Check (mandatory)
+
+Open the source document (page spec, requirement doc, analysis file) that defines what you're building. For every concrete requirement or UI element in the source:
+
+| Source doc requirement | Covered by task | Status |
+|------------------------|----------------|--------|
+| 3 sub-tabs (Active, All, Previously Purchased) | T-008 | COVERED |
+| Sales type override per customer | — | DEFERRED: needs business rule clarification |
+| Country-scoped access for OpCo role | — | DEFERRED: needs auth refactor |
+
+Every requirement must be one of:
+- **COVERED** — a task implements it, and the task's instruction mentions it
+- **DEFERRED** — intentionally postponed, with a reason
+- **OUT_OF_SCOPE** — explicitly excluded, with a reason
+
+**There is no MISSING.** If a requirement isn't covered and you can't justify deferring it, add it to a task.
+
+**Mechanical enforcement**: Pass coverage to `draft-plan` with `--coverage`:
+```bash
+python -m core.pipeline draft-plan {project} --data '[...]' --coverage '[
+  {"requirement": "3 sub-tabs", "status": "COVERED", "covered_by": "T-008"},
+  {"requirement": "sales type override", "status": "DEFERRED", "reason": "needs business rule clarification"},
+  {"requirement": "country scoping", "status": "DEFERRED", "reason": "needs auth refactor"}
+]'
+```
+- Any requirement with status `MISSING` → `draft-plan` exits with error, draft NOT saved
+- `DEFERRED` and `OUT_OF_SCOPE` require a `reason` field — no reason = error
+- Coverage summary printed in draft header
+
+---
+
 ### Step 8 — Review and Approve
 
 The draft plan is displayed automatically by `draft-plan`. Present it to the user:

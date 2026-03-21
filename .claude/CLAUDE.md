@@ -31,6 +31,8 @@ These are opt-in tools, not required steps.
 - **Executable AC**: structured AC with `verification: "test"|"command"` runs mechanically at completion
 - **Contract alignment**: `begin` warns when task instruction doesn't reference upstream `produces` contracts
 - **Lean context**: `begin --lean` skips Knowledge, Research, Business Context, Lessons for simple tasks
+- **Coverage gate**: `draft-plan --coverage '[...]'` rejects plan if any source requirement has status MISSING. DEFERRED/OUT_OF_SCOPE require reason.
+- **Plan staleness**: `begin` warns when files in task instruction were modified (committed) since plan approval
 
 ## CLI Reference
 
