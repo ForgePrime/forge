@@ -115,12 +115,8 @@ def _trace(project: str, entry: dict):
         pass  # Tracing failure must never break the pipeline
 
 
-if sys.platform == "win32":
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
+from _compat import configure_encoding
+configure_encoding()
 
 
 # -- Storage --
