@@ -1,9 +1,20 @@
 """
-Context Assembly Engine — composes LLM execution context from heterogeneous objects.
+Context Assembly Engine — FUTURE / NOT CURRENTLY USED.
 
-Gathers task details, guidelines, knowledge, dependencies, risks, and business
-context via StorageAdapter, then assembles them into a priority-ordered, token-
-budgeted context suitable for LLM consumption.
+Moved from core/llm/context.py to _future/ on 2026-03-21.
+
+This module is NOT used by the active CLI flow. The active context system is
+cmd_context() in core/pipeline.py, which prints directly to stdout.
+
+ContextAssembler was designed for a future platform mode where Forge runs as
+an API server and context is assembled server-side with token budgeting.
+Its architecture has value for:
+- Multi-agent mode with smaller models (Haiku) that need tight token budgets
+- Platform mode (forge-api) where context is returned as structured data
+- Large projects where context exceeds model limits
+
+If you activate platform mode or multi-agent, sync this with cmd_context()
+in pipeline.py first — they may have diverged.
 
 Architecture reference: docs/FORGE-PLATFORM-V2.md Section 5.1-5.2
 
@@ -99,6 +110,8 @@ SECTION_DEFS = [
                header="## Guidelines (SHOULD)"),
     SectionDef("dependency_context", priority=5, max_pct=0.10, truncatable=True,
                header="## Dependency Context"),
+    SectionDef("decisions_context",  priority=5, max_pct=0.05, truncatable=True,
+               header="## Decisions"),
     SectionDef("risk_context",       priority=6, max_pct=0.05, truncatable=True,
                header="## Risks"),
     SectionDef("business_context",   priority=7, max_pct=0.05, truncatable=True,
@@ -185,15 +198,19 @@ class ContextAssembler:
             ctx.warnings.append(f"Task {task_id} not found in tracker")
             return ctx
 
+        # Compute task scopes with objective inheritance (matches cmd_context behavior)
+        task_scopes = self._compute_task_scopes(project, task, cache)
+
         # Gather all sections
         sections: list[Section] = []
 
         if contract is not None:
             sections.append(self._gather_system_contract(contract))
         sections.append(self._gather_task_content(task))
-        sections.extend(self._gather_guidelines(project, task, cache))
-        sections.extend(self._gather_knowledge(project, task, tracker, cache))
+        sections.extend(self._gather_guidelines(project, task, cache, task_scopes))
+        sections.extend(self._gather_knowledge(project, task, tracker, cache, task_scopes))
         sections.append(self._gather_dependencies(project, task, tracker, cache))
+        sections.append(self._gather_decisions(project, task, cache))
         sections.append(self._gather_risks(project, task, cache))
         sections.append(self._gather_business_context(project, task, cache))
         sections.append(self._gather_test_context(project, tracker))
@@ -269,6 +286,40 @@ class ContextAssembler:
                 return t
         return None
 
+    def _compute_task_scopes(self, project: str, task: dict,
+                              cache: dict) -> set[str]:
+        """Compute effective scopes: task.scopes + inherited from objective/idea + 'general'.
+
+        Matches cmd_context scope computation in pipeline.py.
+        """
+        task_scopes = set(task.get("scopes", []))
+        origin = task.get("origin", "")
+
+        if origin.startswith("O-") and self._cached_exists(cache, project, 'objectives'):
+            obj_data = self._cached_load(cache, project, 'objectives')
+            for obj in obj_data.get("objectives", []):
+                if obj["id"] == origin:
+                    task_scopes.update(obj.get("scopes", []))
+                    break
+
+        elif origin.startswith("I-") and self._cached_exists(cache, project, 'ideas'):
+            ideas_data = self._cached_load(cache, project, 'ideas')
+            for idea in ideas_data.get("ideas", []):
+                if idea["id"] == origin:
+                    task_scopes.update(idea.get("scopes", []))
+                    # Also inherit from linked objectives
+                    obj_ids = {kr.split("/")[0] for kr in idea.get("advances_key_results", [])
+                               if "/" in kr}
+                    if obj_ids and self._cached_exists(cache, project, 'objectives'):
+                        obj_data = self._cached_load(cache, project, 'objectives')
+                        for obj in obj_data.get("objectives", []):
+                            if obj["id"] in obj_ids:
+                                task_scopes.update(obj.get("scopes", []))
+                    break
+
+        task_scopes.add("general")
+        return task_scopes
+
     @staticmethod
     def _gather_system_contract(contract: Any) -> Section:
         """Priority 1: System contract (role, output format, constraints)."""
@@ -299,15 +350,66 @@ class ContextAssembler:
             lines.append(f"\n**Description**: {task['description']}")
         if task.get("instruction"):
             lines.append(f"\n**Instruction**: {task['instruction']}")
+
+        # Alignment contract
+        alignment = task.get("alignment")
+        if alignment:
+            lines.append("\n**Alignment Contract**:")
+            if alignment.get("goal"):
+                lines.append(f"  Goal: {alignment['goal']}")
+            bounds = alignment.get("boundaries", {})
+            if bounds.get("must"):
+                lines.append("  Must: " + "; ".join(bounds["must"]))
+            if bounds.get("must_not"):
+                lines.append("  Must NOT: " + "; ".join(bounds["must_not"]))
+            if bounds.get("not_in_scope"):
+                lines.append("  Not in scope: " + "; ".join(bounds["not_in_scope"]))
+            if alignment.get("success"):
+                lines.append(f"  Success: {alignment['success']}")
+
+        # Acceptance criteria with verification type
+        has_mechanical = False
+        has_manual = False
         if task.get("acceptance_criteria"):
             lines.append("\n**Acceptance Criteria**:")
             for ac in task["acceptance_criteria"]:
                 if isinstance(ac, str):
+                    has_manual = True
                     lines.append(f"- {ac}")
                 elif isinstance(ac, dict):
-                    lines.append(f"- {ac.get('text', '')}")
+                    verification = ac.get("verification", "manual")
+                    text = ac.get("text", "")
+                    if verification in ("test", "command"):
+                        has_mechanical = True
+                        cmd = ac.get("command") or ac.get("test_path") or ""
+                        lines.append(f"- {text} [{verification}: `{cmd}`]")
+                    else:
+                        has_manual = True
+                        lines.append(f"- {text}")
                     if ac.get("from_template"):
                         lines.append(f"  (from {ac['from_template']})")
+
+            # AC verification instructions
+            if has_mechanical:
+                lines.append("\nMechanical AC (test/command) will be executed automatically at completion.")
+            if has_manual:
+                lines.append("\nManual AC requires --ac-reasoning with CONCRETE EVIDENCE (min 50 chars).")
+                lines.append("Format: 'AC N: [criterion] — PASS: [file path, command output, or observable fact]'")
+
+        # Exclusions
+        excl = task.get("exclusions", [])
+        if excl:
+            lines.append("\n**Exclusions (DO NOT)**:")
+            for ex in excl:
+                lines.append(f"- {ex}")
+
+        # Produces
+        produces = task.get("produces")
+        if produces:
+            lines.append("\n**Produces (contract for downstream tasks)**:")
+            for key, val in produces.items():
+                lines.append(f"  {key}: {val}")
+
         test_req = task.get("test_requirements")
         if test_req:
             parts = []
@@ -334,11 +436,14 @@ class ContextAssembler:
         )
 
     def _gather_guidelines(self, project: str, task: dict,
-                           cache: dict | None = None) -> list[Section]:
+                           cache: dict | None = None,
+                           task_scopes: set[str] | None = None) -> list[Section]:
         """Priority 1 (must) + Priority 4 (should): Guidelines filtered by scopes."""
         if cache is None:
             cache = {}
-        task_scopes = set(task.get("scopes", []))
+        if task_scopes is None:
+            task_scopes = set(task.get("scopes", []))
+            task_scopes.add("general")
         all_guidelines = []
 
         # Project guidelines
@@ -393,16 +498,20 @@ class ContextAssembler:
         return sections
 
     def _gather_knowledge(self, project: str, task: dict,
-                          tracker: dict, cache: dict | None = None) -> list[Section]:
+                          tracker: dict, cache: dict | None = None,
+                          task_scopes: set[str] | None = None) -> list[Section]:
         """Priority 2 (required) + Priority 3 (context): Knowledge objects."""
         if cache is None:
             cache = {}
+        if task_scopes is None:
+            task_scopes = set(task.get("scopes", []))
+            task_scopes.add("general")
         if not self._cached_exists(cache, project, 'knowledge'):
             return []
 
         k_data = self._cached_load(cache, project, 'knowledge')
         all_knowledge = {k["id"]: k for k in k_data.get("knowledge", [])
-                         if k.get("status") == "ACTIVE"}
+                         if k.get("status") in ("ACTIVE", "DRAFT")}
 
         if not all_knowledge:
             return []
@@ -419,6 +528,15 @@ class ContextAssembler:
                         task_k_ids.update(idea.get("knowledge_ids", []))
                         break
 
+        # Inherit from origin objective
+        if task.get("origin") and task["origin"].startswith("O-"):
+            if self._cached_exists(cache, project, 'objectives'):
+                obj_data = self._cached_load(cache, project, 'objectives')
+                for obj in obj_data.get("objectives", []):
+                    if obj["id"] == task["origin"]:
+                        task_k_ids.update(obj.get("knowledge_ids", []))
+                        break
+
         # Determine required vs context from linked_entities
         required_ids = set()
         context_ids = set()
@@ -433,6 +551,17 @@ class ContextAssembler:
 
         # Also add task-level knowledge_ids as required
         required_ids.update(task_k_ids & set(all_knowledge.keys()))
+
+        # Scope-matched knowledge (additive, capped at 10, matches cmd_context)
+        for k_id, k_obj in all_knowledge.items():
+            if k_id in required_ids or k_id in context_ids:
+                continue
+            k_scopes = set(k_obj.get("scopes", []))
+            if k_scopes & task_scopes:
+                context_ids.add(k_id)
+                if len(context_ids) >= 10:
+                    break
+
         # Move any that are also in context_ids to required
         context_ids -= required_ids
 
@@ -513,6 +642,49 @@ class ContextAssembler:
             truncatable=True,
         )
 
+    def _gather_decisions(self, project: str, task: dict,
+                          cache: dict | None = None) -> Section:
+        """Priority 5: Decisions relevant to this task."""
+        if cache is None:
+            cache = {}
+        if not self._cached_exists(cache, project, 'decisions'):
+            return Section(name="decisions_context", priority=5, content="")
+
+        dec_data = self._cached_load(cache, project, 'decisions')
+        all_decisions = dec_data.get("decisions", [])
+
+        # Decisions for this task + decisions affecting this task + from dependencies
+        deps = set(task.get("depends_on", []))
+        relevant = []
+        for d in all_decisions:
+            if d.get("type") == "risk":
+                continue  # Risks handled separately
+            if d.get("task_id") == task["id"]:
+                relevant.append(d)
+            elif task["id"] in (d.get("affects") or []):
+                relevant.append(d)
+            elif d.get("task_id") in deps:
+                relevant.append(d)
+
+        if not relevant:
+            return Section(name="decisions_context", priority=5, content="")
+
+        lines = []
+        for d in relevant:
+            status = d.get("status", "")
+            lines.append(f"**{d['id']}** ({status}): {d.get('issue', '')}")
+            if d.get("recommendation"):
+                lines.append(f"  → {d['recommendation']}")
+
+        content = "\n\n".join(lines)
+        return Section(
+            name="decisions_context",
+            priority=5,
+            content=content,
+            token_estimate=estimate_tokens(content),
+            truncatable=True,
+        )
+
     def _gather_risks(self, project: str, task: dict,
                       cache: dict | None = None) -> Section:
         """Priority 6: Risk decisions linked to this task or its origin idea."""
@@ -557,53 +729,72 @@ class ContextAssembler:
 
     def _gather_business_context(self, project: str, task: dict,
                                  cache: dict | None = None) -> Section:
-        """Priority 7: Business context via origin idea → objective."""
+        """Priority 7: Business context — objective KRs via origin O-XXX or I-XXX."""
         if cache is None:
             cache = {}
-        if not (task.get("origin") and task["origin"].startswith("I-")):
-            return Section(name="business_context", priority=7, content="")
-
-        if not self._cached_exists(cache, project, 'ideas'):
+        origin = task.get("origin", "")
+        if not origin:
             return Section(name="business_context", priority=7, content="")
         if not self._cached_exists(cache, project, 'objectives'):
             return Section(name="business_context", priority=7, content="")
 
-        ideas = self._cached_load(cache, project, 'ideas')
         objectives = self._cached_load(cache, project, 'objectives')
-
-        origin_idea = None
-        for idea in ideas.get("ideas", []):
-            if idea["id"] == task["origin"]:
-                origin_idea = idea
-                break
-
-        if not origin_idea or not origin_idea.get("advances_key_results"):
-            return Section(name="business_context", priority=7, content="")
-
-        # Find linked objectives
-        obj_ids = {kr_ref.split("/")[0] for kr_ref in origin_idea["advances_key_results"]
-                   if "/" in kr_ref}
-        linked_objs = [o for o in objectives.get("objectives", []) if o["id"] in obj_ids]
-
-        if not linked_objs:
-            return Section(name="business_context", priority=7, content="")
-
         lines = []
-        for obj in linked_objs:
-            lines.append(f"**{obj['id']}**: {obj['title']} [{obj.get('status', '')}]")
-            relevant_kr_ids = {kr_ref.split("/")[1] for kr_ref in origin_idea["advances_key_results"]
-                               if kr_ref.startswith(obj["id"] + "/")}
-            for kr in obj.get("key_results", []):
-                if kr["id"] in relevant_kr_ids:
-                    target = kr.get("target")
-                    if target is not None:
-                        current = kr.get("current", kr.get("baseline", 0))
-                        lines.append(f"  {kr['id']}: {kr.get('metric', '')} — {current}/{target}")
-                    else:
-                        desc = kr.get("description") or kr.get("metric", "")
-                        status = kr.get("status", "")
-                        lines.append(f"  {kr['id']}: {desc} [{status}]")
-        lines.append(f"\nVia idea: {origin_idea['id']} \"{origin_idea['title']}\"")
+
+        # Direct objective origin: show all KRs
+        if origin.startswith("O-"):
+            for obj in objectives.get("objectives", []):
+                if obj["id"] == origin:
+                    lines.append(f"**{obj['id']}**: {obj['title']} [{obj.get('status', '')}]")
+                    for kr in obj.get("key_results", []):
+                        target = kr.get("target")
+                        if target is not None:
+                            baseline = kr.get("baseline", 0)
+                            current = kr.get("current", baseline)
+                            pct = int((current - baseline) / (target - baseline) * 100) if target != baseline else 0
+                            lines.append(f"  {kr['id']}: {kr.get('metric', '')} — {current}/{target} ({pct}%)")
+                        else:
+                            desc = kr.get("description") or kr.get("metric", "")
+                            status = kr.get("status", "")
+                            lines.append(f"  {kr['id']}: {desc} [{status}]")
+                    break
+
+        # Idea origin: show linked objectives via advances_key_results
+        elif origin.startswith("I-"):
+            if not self._cached_exists(cache, project, 'ideas'):
+                return Section(name="business_context", priority=7, content="")
+            ideas = self._cached_load(cache, project, 'ideas')
+            origin_idea = None
+            for idea in ideas.get("ideas", []):
+                if idea["id"] == origin:
+                    origin_idea = idea
+                    break
+            if not origin_idea or not origin_idea.get("advances_key_results"):
+                return Section(name="business_context", priority=7, content="")
+
+            obj_ids = {kr_ref.split("/")[0] for kr_ref in origin_idea["advances_key_results"]
+                       if "/" in kr_ref}
+            for obj in objectives.get("objectives", []):
+                if obj["id"] in obj_ids:
+                    lines.append(f"**{obj['id']}**: {obj['title']} [{obj.get('status', '')}]")
+                    relevant_kr_ids = {kr_ref.split("/")[1]
+                                       for kr_ref in origin_idea["advances_key_results"]
+                                       if kr_ref.startswith(obj["id"] + "/")}
+                    for kr in obj.get("key_results", []):
+                        if kr["id"] in relevant_kr_ids:
+                            target = kr.get("target")
+                            if target is not None:
+                                current = kr.get("current", kr.get("baseline", 0))
+                                lines.append(f"  {kr['id']}: {kr.get('metric', '')} — {current}/{target}")
+                            else:
+                                desc = kr.get("description") or kr.get("metric", "")
+                                status = kr.get("status", "")
+                                lines.append(f"  {kr['id']}: {desc} [{status}]")
+            if origin_idea:
+                lines.append(f"\nVia idea: {origin_idea['id']} \"{origin_idea['title']}\"")
+
+        if not lines:
+            return Section(name="business_context", priority=7, content="")
 
         content = "\n".join(lines)
         return Section(

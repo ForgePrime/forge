@@ -35,6 +35,7 @@ These are opt-in tools, not required steps.
 - **Contract alignment**: `begin` warns when task instruction doesn't reference upstream `produces` contracts
 - **Lean context**: `begin --lean` skips Knowledge, Research, Business Context, Lessons for simple tasks
 - **Coverage gate**: `draft-plan --coverage '[...]'` rejects plan if any source requirement has status MISSING. DEFERRED/OUT_OF_SCOPE require reason.
+- **Plan context auto-load**: `draft-plan` automatically loads must-guidelines, objectives, knowledge and shows them. It validates that tasks reference proper scopes (matching their origin objective's scopes) and that must-guideline scopes are covered by the plan. `approve-plan` blocks if context errors exist (use `--force` to override).
 - **Plan staleness**: `begin` warns when files in task instruction were modified (committed) since plan approval
 
 ## CLI Reference

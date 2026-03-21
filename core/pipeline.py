@@ -2751,6 +2751,132 @@ def _validate_plan_references(entries: list, project: str) -> list:
     return warnings
 
 
+def _validate_plan_context(entries: list, project: str) -> tuple[list, list]:
+    """Auto-load project context and validate plan against it.
+
+    Returns (errors: list[str], context_summary: list[str]).
+    Errors are blocking. Context summary is informational (shows what exists).
+
+    Checks:
+    1. Feature/bug tasks with origin O-XXX should inherit objective's scopes
+    2. Tasks should reference valid scopes from existing guidelines
+    3. Must-guidelines exist but no task references their scope → warning
+    4. Knowledge exists but no task links it → warning
+    5. Objective KR exists but no task addresses it → warning
+    """
+    errors = []
+    summary = []
+    _s = _get_storage()
+
+    # -- Load project context --
+    must_guidelines = []
+    all_guidelines = []
+    all_knowledge = []
+    all_objectives = []
+    objective_scopes = {}  # O-XXX -> set of scopes
+
+    if _s.exists(project, 'guidelines'):
+        g_data = _s.load_data(project, 'guidelines')
+        all_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
+        must_guidelines = [g for g in all_guidelines if g.get("weight") == "must"]
+
+    if _s.exists(project, 'knowledge'):
+        k_data = _s.load_data(project, 'knowledge')
+        all_knowledge = [k for k in k_data.get("knowledge", []) if k.get("status") in ("ACTIVE", "DRAFT")]
+
+    if _s.exists(project, 'objectives'):
+        obj_data = _s.load_data(project, 'objectives')
+        all_objectives = [o for o in obj_data.get("objectives", []) if o.get("status") == "ACTIVE"]
+        objective_scopes = {o["id"]: set(o.get("scopes", [])) for o in all_objectives}
+
+    # -- Context summary (always printed so LLM sees what exists) --
+    if must_guidelines:
+        summary.append(f"  MUST guidelines ({len(must_guidelines)}):")
+        for g in must_guidelines:
+            summary.append(f"    {g['id']} [{g.get('scope', 'general')}]: {g.get('title', g.get('content', '')[:60])}")
+
+    guideline_scopes = {g.get("scope", "general") for g in all_guidelines}
+    if guideline_scopes:
+        summary.append(f"  Available scopes: {', '.join(sorted(guideline_scopes))}")
+
+    if all_knowledge:
+        summary.append(f"  Knowledge objects ({len(all_knowledge)}):")
+        for k in all_knowledge:
+            scopes_str = f" [{', '.join(k.get('scopes', []))}]" if k.get('scopes') else ""
+            summary.append(f"    {k['id']}: {k.get('title', '')}{scopes_str}")
+
+    if all_objectives:
+        summary.append(f"  Active objectives ({len(all_objectives)}):")
+        for o in all_objectives:
+            kr_count = len(o.get("key_results", []))
+            scopes_str = f" [{', '.join(o.get('scopes', []))}]" if o.get('scopes') else ""
+            summary.append(f"    {o['id']}: {o.get('title', '')} ({kr_count} KRs){scopes_str}")
+
+    # -- Validation checks --
+
+    # Collect what the plan references
+    plan_scopes = set()
+    plan_origins = set()
+    plan_knowledge_ids = set()
+    for t in entries:
+        plan_scopes.update(t.get("scopes", []))
+        if t.get("origin"):
+            plan_origins.add(t["origin"])
+        plan_knowledge_ids.update(t.get("knowledge_ids", []))
+
+    # Check 1: Tasks with origin O-XXX should have scopes from that objective
+    for t in entries:
+        tid = t.get("id", "?")
+        ttype = t.get("type", "feature")
+        origin = t.get("origin", "")
+        task_scopes = set(t.get("scopes", []))
+
+        if origin.startswith("O-") and origin in objective_scopes:
+            obj_scopes = objective_scopes[origin]
+            if obj_scopes and not task_scopes:
+                errors.append(
+                    f"  {tid}: origin {origin} has scopes {obj_scopes} but task has no scopes. "
+                    f"Add scopes to ensure correct guidelines are loaded during execution."
+                )
+            elif obj_scopes and not (task_scopes & obj_scopes):
+                errors.append(
+                    f"  {tid}: origin {origin} has scopes {obj_scopes} but task scopes {task_scopes} "
+                    f"don't overlap. Task may miss relevant guidelines during execution."
+                )
+
+    # Check 2: Must-guidelines scopes are covered by plan
+    if must_guidelines:
+        must_scopes = {g.get("scope", "general") for g in must_guidelines} - {"general"}
+        uncovered_must_scopes = must_scopes - plan_scopes
+        if uncovered_must_scopes:
+            errors.append(
+                f"  MUST guidelines exist for scopes {uncovered_must_scopes} but NO task in the plan "
+                f"has these scopes. Tasks without proper scopes will NOT receive these guidelines "
+                f"during execution. Add scopes to relevant tasks."
+            )
+
+    # Check 3: Knowledge exists but no task references it
+    if all_knowledge and not plan_knowledge_ids:
+        k_ids = [k["id"] for k in all_knowledge]
+        summary.append(
+            f"  NOTE: {len(all_knowledge)} knowledge object(s) exist ({', '.join(k_ids)}) "
+            f"but no task in the plan references knowledge_ids. "
+            f"Consider linking relevant knowledge to tasks."
+        )
+
+    # Check 4: Active objectives exist but no task has origin
+    obj_ids_in_plan = {o for o in plan_origins if o.startswith("O-")}
+    unlinked_objs = [o for o in all_objectives if o["id"] not in obj_ids_in_plan]
+    if unlinked_objs and plan_origins:
+        # Only warn if some tasks DO have origin — means LLM is aware of objectives
+        for o in unlinked_objs:
+            summary.append(
+                f"  NOTE: Objective {o['id']} ({o.get('title', '')}) has no tasks in this plan."
+            )
+
+    return errors, summary
+
+
 def _validate_ac_reasoning(ac_reasoning: str, ac_list: list) -> list:
     """Validate that AC reasoning addresses each criterion with evidence.
 
@@ -3015,6 +3141,20 @@ def cmd_draft_plan(args):
         print("Tip: fix invalid origins/scopes/knowledge_ids before approving.")
         print()
 
+    # Context validation: auto-load project context, validate plan against it
+    ctx_errors, ctx_summary = _validate_plan_context(draft_tasks, args.project)
+    if ctx_summary:
+        print()
+        print("**PROJECT CONTEXT** (auto-loaded — verify your plan accounts for these):")
+        for line in ctx_summary:
+            print(line)
+        print()
+    if ctx_errors:
+        print(f"**CONTEXT ERRORS** ({len(ctx_errors)}) — fix before approving:")
+        for e in ctx_errors:
+            print(e)
+        print()
+
     # Assumptions warnings
     if assumptions and 3 <= high_count <= 4:
         print(f"**ASSUMPTION WARNING**: {high_count} HIGH-severity assumptions — verify before Phase 1.")
@@ -3131,6 +3271,16 @@ def cmd_approve_plan(args):
             print(f"**REFERENCE WARNINGS** ({len(ref_warnings)}):", file=sys.stderr)
             for w in ref_warnings:
                 print(w, file=sys.stderr)
+
+        # Context validation (blocking: scope/guideline mismatches)
+        ctx_errors, _ = _validate_plan_context(entries, args.project)
+        if ctx_errors:
+            print(f"ERROR: Context validation failed ({len(ctx_errors)} issues):", file=sys.stderr)
+            for e in ctx_errors:
+                print(e, file=sys.stderr)
+            print("Fix scope assignments or use --force to override.", file=sys.stderr)
+            if not getattr(args, "force", False):
+                sys.exit(1)
 
         # Validate DAG
         all_tasks = tracker["tasks"] + entries
@@ -3305,6 +3455,7 @@ def main():
 
     p = sub.add_parser("approve-plan", help="Approve draft plan and materialize into pipeline")
     p.add_argument("project")
+    p.add_argument("--force", action="store_true", help="Override context validation errors")
 
     p = sub.add_parser("contract", help="Print contract spec (no project needed)")
     p.add_argument("name", choices=sorted(CONTRACTS.keys()))
