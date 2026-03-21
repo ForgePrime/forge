@@ -1119,7 +1119,7 @@ def cmd_begin(args):
     })
 
 
-def _verify_acceptance_criteria(task):
+def _verify_acceptance_criteria(task, project=None):
     """Mechanically verify structured acceptance criteria.
 
     AC can be:
@@ -1135,6 +1135,7 @@ def _verify_acceptance_criteria(task):
     ac_list = task.get("acceptance_criteria", [])
     results = []
     has_mechanical = False
+    task_id = task.get("id", "?")
 
     for ac in ac_list:
         if isinstance(ac, str):
@@ -1157,18 +1158,32 @@ def _verify_acceptance_criteria(task):
                 results.append({"text": text, "verification": "test",
                                 "passed": False, "output": "No test_path specified"})
                 continue
+            cmd_str = f"pytest {test_path} -x -q"
+            if project:
+                _trace(project, {"event": "ac.run_test", "task": task_id,
+                       "ac_text": text, "command": cmd_str, "test_path": test_path})
             try:
+                _t = time.time()
                 result = _sp.run(
-                    f"pytest {test_path} -x -q",
+                    cmd_str,
                     shell=True, capture_output=True, text=True,
                     encoding="utf-8", timeout=120
                 )
+                _dur = int((time.time() - _t) * 1000)
+                output = (result.stdout + result.stderr)[:500]
+                passed = result.returncode == 0
                 results.append({"text": text, "verification": "test",
-                                "passed": result.returncode == 0,
-                                "output": (result.stdout + result.stderr)[:500]})
+                                "passed": passed, "output": output})
+                if project:
+                    _trace(project, {"event": "ac.test_result", "task": task_id,
+                           "ac_text": text, "passed": passed, "returncode": result.returncode,
+                           "duration_ms": _dur, "output": output[:300]})
             except _sp.TimeoutExpired:
                 results.append({"text": text, "verification": "test",
                                 "passed": False, "output": "Test timed out (120s)"})
+                if project:
+                    _trace(project, {"event": "ac.test_timeout", "task": task_id,
+                           "ac_text": text, "timeout": 120})
 
         elif verification == "command":
             command = ac.get("command", "")
@@ -1176,17 +1191,31 @@ def _verify_acceptance_criteria(task):
                 results.append({"text": text, "verification": "command",
                                 "passed": False, "output": "No command specified"})
                 continue
+            if project:
+                _trace(project, {"event": "ac.run_command", "task": task_id,
+                       "ac_text": text, "command": command})
             try:
+                _t = time.time()
                 result = _sp.run(
                     command, shell=True, capture_output=True, text=True,
                     encoding="utf-8", timeout=120
                 )
+                _dur = int((time.time() - _t) * 1000)
+                output = (result.stdout + result.stderr)[:500]
+                passed = result.returncode == 0
                 results.append({"text": text, "verification": "command",
-                                "passed": result.returncode == 0,
-                                "output": (result.stdout + result.stderr)[:500]})
+                                "passed": passed, "output": output})
+                if project:
+                    _trace(project, {"event": "ac.command_result", "task": task_id,
+                           "ac_text": text, "command": command, "passed": passed,
+                           "returncode": result.returncode, "duration_ms": _dur,
+                           "output": output[:300]})
             except _sp.TimeoutExpired:
                 results.append({"text": text, "verification": "command",
                                 "passed": False, "output": "Command timed out (120s)"})
+                if project:
+                    _trace(project, {"event": "ac.command_timeout", "task": task_id,
+                           "ac_text": text, "command": command, "timeout": 120})
 
     return results, has_mechanical
 
@@ -1204,13 +1233,16 @@ def _check_gates_before_complete(project, task_id, task, tracker, force):
     force_exempt_types = ("chore", "investigation")
 
     if force and task_type in force_exempt_types:
+        _trace(project, {"event": "gates.skipped_force", "task": task_id, "type": task_type})
         return  # --force allowed for chore/investigation
 
     gates_config = tracker.get("gates", [])
     if not gates_config:
+        _trace(project, {"event": "gates.none_configured", "task": task_id})
         return  # No gates configured
 
     if force and task_type not in force_exempt_types:
+        _trace(project, {"event": "gates.force_rejected", "task": task_id, "type": task_type})
         print(f"ERROR: --force cannot bypass gates for {task_type} tasks. "
               f"Fix gate failures first.", file=sys.stderr)
         sys.exit(1)
@@ -1218,6 +1250,9 @@ def _check_gates_before_complete(project, task_id, task, tracker, force):
     # Auto-run gates if not yet run
     gate_results = task.get("gate_results", {})
     if not gate_results:
+        _trace(project, {"event": "gates.auto_run", "task": task_id,
+               "gates": [{"name": g["name"], "command": g["command"],
+                          "required": g.get("required", True)} for g in gates_config]})
         print(f"  Running gates before completion...")
         _ns = type("NS", (), {"project": project, "task": task_id})()
         all_passed = _gates_mod.cmd_check(_ns)
@@ -1234,6 +1269,10 @@ def _check_gates_before_complete(project, task_id, task, tracker, force):
         failed = [g["name"] for g in gate_results.get("results", [])
                   if not g.get("passed")]
         required_failed = [name for name in failed if name in required_gates]
+        _trace(project, {"event": "gates.evaluation", "task": task_id,
+               "all_passed": False, "failed": failed,
+               "required_failed": required_failed,
+               "results": gate_results.get("results", [])})
         if required_failed:
             print(f"ERROR: Required gates failed: {', '.join(required_failed)}. "
                   f"Fix issues and re-run gates.", file=sys.stderr)
@@ -1382,7 +1421,7 @@ def cmd_complete(args):
                          "type": "manual" if isinstance(c, str) else c.get("verification", "manual")}
                         for c in ac]})
     if ac:
-        ac_results, has_mechanical = _verify_acceptance_criteria(task)
+        ac_results, has_mechanical = _verify_acceptance_criteria(task, project=args.project)
         if has_mechanical:
             failed_ac = [r for r in ac_results if not r["passed"]]
             _trace(args.project, {"event": "complete.ac_mechanical", "task": args.task_id,
@@ -1569,6 +1608,8 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
                     break
 
     if not obj_ids or not _s.exists(project, 'objectives'):
+        _trace(project, {"event": "kr_update.no_objectives", "task": task.get("id"),
+               "origin": origin, "obj_ids": list(obj_ids)})
         return
 
     obj_data = _s.load_data(project, 'objectives')
@@ -1603,11 +1644,19 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
                 kr["achieved_at"] = now_iso()
                 kr["achieved_by_task"] = task["id"]
                 print(f"    {kr['id']}: {old_status} → ACHIEVED (all {len(obj_tasks)} tasks done)")
+                _trace(project, {"event": "kr_update.change", "task": task.get("id"),
+                       "objective": obj["id"], "kr": kr["id"],
+                       "old_status": old_status, "new_status": "ACHIEVED",
+                       "done_tasks": len(done_tasks), "total_tasks": len(obj_tasks)})
                 changed = True
             elif not all_done and old_status == "NOT_STARTED" and len(done_tasks) > 0:
                 kr["status"] = "IN_PROGRESS"
                 kr["started_by_task"] = task["id"]
                 print(f"    {kr['id']}: NOT_STARTED → IN_PROGRESS ({len(done_tasks)}/{len(obj_tasks)} tasks done)")
+                _trace(project, {"event": "kr_update.change", "task": task.get("id"),
+                       "objective": obj["id"], "kr": kr["id"],
+                       "old_status": "NOT_STARTED", "new_status": "IN_PROGRESS",
+                       "done_tasks": len(done_tasks), "total_tasks": len(obj_tasks)})
                 changed = True
             else:
                 print(f"    {kr['id']}: {old_status}")
@@ -1618,6 +1667,8 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
         obj_data["updated"] = now_iso()
         _s.save_data(project, 'objectives', obj_data)
         print(f"  KR progress saved.")
+        _trace(project, {"event": "kr_update.saved", "task": task.get("id"),
+               "objectives_updated": list(obj_ids)})
 
 
 def cmd_fail(args):
@@ -2530,6 +2581,11 @@ def cmd_context(args):
         print("No dependencies — this is a root task.")
         print()
 
+    if deps:
+        _ctx_trace["sections_shown"].append("dependencies")
+        _ctx_trace["dependency_count"] = len(deps)
+        _ctx_trace["dependency_ids"] = deps
+
     # Show open decisions for this task
     if dec_data:
         task_decisions = [d for d in dec_data.get("decisions", [])
@@ -2564,6 +2620,8 @@ def cmd_context(args):
             for l in lessons:
                 print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
             print()
+            _ctx_trace["sections_shown"].append("lessons")
+            _ctx_trace["lessons_count"] = len(lessons)
 
     # Compute task_scopes (shared by guidelines and knowledge scope matching)
     g_data = _s.load_data(args.project, 'guidelines')
@@ -2736,6 +2794,8 @@ def cmd_context(args):
                 if r.get("decision_ids"):
                     print(f"  Related decisions: {', '.join(r['decision_ids'])}")
             print()
+            _ctx_trace["sections_shown"].append("research")
+            _ctx_trace["research_count"] = len(unique)
 
     # Test requirements
     test_req = task.get("test_requirements")
@@ -2817,6 +2877,10 @@ def cmd_context(args):
                                     print(f"  {kr['id']}: {desc} [{status}]")
                     print(f"  Via idea: {origin_idea['id']} \"{origin_idea['title']}\"")
                     print()
+                    _ctx_trace["sections_shown"].append("business_context_via_idea")
+
+    if origin.startswith("O-"):
+        _ctx_trace["sections_shown"].append("business_context_via_objective")
 
     # Risks (type=risk decisions) linked to this task or origin idea
     if _s.exists(args.project, 'decisions'):
@@ -2847,6 +2911,8 @@ def cmd_context(args):
                 if r.get("mitigation_plan"):
                     print(f"  Mitigation: {r['mitigation_plan'][:80]}")
             print()
+            _ctx_trace["sections_shown"].append("risks")
+            _ctx_trace["risks_count"] = len(task_risks)
 
     # Context budget estimate
     all_task_ids = set(deps) | {args.task_id}
@@ -3291,8 +3357,17 @@ def cmd_draft_plan(args):
         print("ERROR: --data must be a JSON array", file=sys.stderr)
         sys.exit(1)
 
+    _trace(args.project, {"event": "draft_plan.start",
+           "task_count": len(draft_tasks),
+           "has_assumptions": bool(getattr(args, "assumptions", None)),
+           "has_coverage": bool(getattr(args, "coverage", None)),
+           "objective": getattr(args, "objective", None),
+           "idea": getattr(args, "idea", None)})
+
     # Validate against add-tasks contract
     errors = validate_contract(CONTRACTS["add-tasks"], draft_tasks)
+    _trace(args.project, {"event": "draft_plan.contract_validation",
+           "errors": len(errors), "first_errors": errors[:5]})
     if errors:
         print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
         for e in errors[:10]:
