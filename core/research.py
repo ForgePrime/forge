@@ -17,32 +17,14 @@ Commands:
     contract     {name}                                              Print contract spec
 """
 
-import argparse
-import json
 import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
-from storage import JSONFileStorage, load_json_data, now_iso
 
-from _compat import configure_encoding
-configure_encoding()
-
-
-# -- Storage --
-
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    return storage.load_data(project, 'research')
-
-
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    storage.save_data(project, 'research', data)
+from entity_base import EntityModule, make_cli
+from storage import JSONFileStorage
 
 
 # -- Constants --
@@ -152,84 +134,36 @@ CONTRACTS = {
 }
 
 
-# -- Helpers --
+# -- Module --
 
-def find_research(data: dict, research_id: str) -> dict | None:
-    """Find research object by ID."""
-    for r in data.get("research", []):
-        if r["id"] == research_id:
-            return r
-    return None
+class Research(EntityModule):
+    entity_type = "research"
+    list_key = "research"
+    id_prefix = "R"
+    contracts = CONTRACTS
+    display_name = "Research"
+    dedup_keys = ("category", "title")
 
-
-def _next_id(data: dict) -> str:
-    """Generate next R-NNN ID."""
-    existing = [
-        int(r["id"].split("-")[1]) for r in data.get("research", [])
-        if r.get("id", "").startswith("R-")
-    ]
-    num = max(existing, default=0) + 1
-    return f"R-{num:03d}"
-
-
-# -- Commands --
-
-def cmd_add(args):
-    """Create research objects."""
-    try:
-        new_items = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(new_items, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
-
-    errors = validate_contract(CONTRACTS["add"], new_items)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    # Dedup by (category, title) — normalized
-    existing_keys = {
-        (r.get("category", "").lower().strip(), r.get("title", "").lower().strip())
-        for r in data.get("research", [])
-    }
-
-    added = []
-    skipped = []
-    for item in new_items:
-        category = item["category"].lower().strip()
-        key = (category, item["title"].lower().strip())
-        if key in existing_keys:
-            skipped.append(f"Duplicate: {item['title'][:50]}")
-            continue
-
-        r_id = _next_id(data)
+    def build_entity(self, input_item, entity_id, timestamp, args):
+        category = input_item["category"].lower().strip()
 
         # Validate linked entity
-        entity_type = item.get("linked_entity_type")
-        entity_id = item.get("linked_entity_id")
-        if entity_type and not entity_id:
-            print(f"WARNING: linked_entity_type set but linked_entity_id missing for '{item['title']}'",
+        entity_type = input_item.get("linked_entity_type")
+        entity_id_val = input_item.get("linked_entity_id")
+        if entity_type and not entity_id_val:
+            print(f"WARNING: linked_entity_type set but linked_entity_id missing for '{input_item['title']}'",
                   file=sys.stderr)
-        if entity_id and not entity_type:
-            print(f"WARNING: linked_entity_id set but linked_entity_type missing for '{item['title']}'",
+        if entity_id_val and not entity_type:
+            print(f"WARNING: linked_entity_id set but linked_entity_type missing for '{input_item['title']}'",
                   file=sys.stderr)
 
-        # Handle content → file writing
-        content = item.get("content")
-        file_path = item.get("file_path")
+        # Handle content -> file writing
+        content = input_item.get("content")
+        file_path = input_item.get("file_path")
         if content and not file_path:
             # Auto-generate file_path from skill + title
-            skill = item.get("skill", "research")
-            slug = item["title"].lower()
+            skill = input_item.get("skill", "research")
+            slug = input_item["title"].lower()
             slug = slug.replace(" ", "-").replace(":", "")[:60]
             # Keep only safe chars
             slug = "".join(c for c in slug if c.isalnum() or c == "-")
@@ -245,96 +179,101 @@ def cmd_add(args):
                 f.write(content)
             print(f"  Wrote research file: {file_path}")
 
-        research = {
-            "id": r_id,
-            "title": item["title"],
-            "topic": item["topic"],
+        return {
+            "id": entity_id,
+            "title": input_item["title"],
+            "topic": input_item["topic"],
             "status": "DRAFT",
             "category": category,
             "linked_entity_type": entity_type,
-            "linked_entity_id": entity_id,
-            "linked_idea_id": item.get("linked_idea_id"),
-            "skill": item.get("skill"),
+            "linked_entity_id": entity_id_val,
+            "linked_idea_id": input_item.get("linked_idea_id"),
+            "skill": input_item.get("skill"),
             "file_path": file_path,
-            "summary": item["summary"],
-            "key_findings": item.get("key_findings", []),
-            "decision_ids": item.get("decision_ids", []),
-            "scopes": item.get("scopes", []),
-            "tags": item.get("tags", []),
+            "summary": input_item["summary"],
+            "key_findings": input_item.get("key_findings", []),
+            "decision_ids": input_item.get("decision_ids", []),
+            "scopes": input_item.get("scopes", []),
+            "tags": input_item.get("tags", []),
             "created_at": timestamp,
             "updated_at": timestamp,
-            "created_by": item.get("created_by", "claude"),
+            "created_by": input_item.get("created_by", "claude"),
         }
 
-        data["research"].append(research)
-        existing_keys.add(key)
-        added.append(r_id)
+    def apply_filters(self, items, args):
+        if getattr(args, "status", None):
+            items = [r for r in items if r.get("status") == args.status]
+        if getattr(args, "category", None):
+            items = [r for r in items if r.get("category") == args.category.lower().strip()]
+        if getattr(args, "entity", None):
+            entity_id = args.entity
+            items = [r for r in items
+                     if r.get("linked_entity_id") == entity_id
+                     or r.get("linked_idea_id") == entity_id]
+        return items
 
-    save_json(args.project, data)
+    def render_list(self, items, args):
+        print(f"## Research: {args.project}")
+        filters = []
+        if getattr(args, "status", None):
+            filters.append(f"status={args.status}")
+        if getattr(args, "category", None):
+            filters.append(f"category={args.category}")
+        if getattr(args, "entity", None):
+            filters.append(f"entity={args.entity}")
+        if filters:
+            print(f"Filter: {', '.join(filters)}")
+        print(f"Count: {len(items)}")
+        print()
 
-    print(f"Research saved: {args.project}")
-    if added:
-        print(f"  Added: {len(added)} ({', '.join(added)})")
-    if skipped:
-        print(f"  Skipped (duplicate): {len(skipped)}")
-    print(f"  Total: {len(data['research'])}")
+        if not items:
+            print("(none)")
+            return
+
+        print("| ID | Category | Status | Entity | Title |")
+        print("|----|----------|--------|--------|-------|")
+        for r in items:
+            title = r.get("title", "")[:40]
+            entity = r.get("linked_entity_id") or "\u2014"
+            print(f"| {r['id']} | {r.get('category', '')} | {r.get('status', '')} "
+                  f"| {entity} | {title} |")
+
+    def apply_update(self, item, update, timestamp):
+        # Status transition validation
+        if "status" in update:
+            new_status = update["status"]
+            current_status = item.get("status", "DRAFT")
+            if new_status not in VALID_TRANSITIONS.get(current_status, set()):
+                print(f"  WARNING: Invalid transition {current_status} -> {new_status} for {update['id']}. "
+                      f"Valid: {VALID_TRANSITIONS.get(current_status, set())}",
+                      file=sys.stderr)
+                return False
+
+        # Update fields
+        updatable = ["title", "topic", "status", "category", "summary",
+                     "key_findings", "decision_ids", "file_path",
+                     "linked_idea_id", "scopes", "tags"]
+        for field in updatable:
+            if field in update:
+                item[field] = update[field]
+
+        item["updated_at"] = timestamp
 
 
-def cmd_read(args):
-    """List/filter research objects."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'research'):
-        print(f"No research for '{args.project}' yet.")
-        return
+_mod = Research()
 
-    data = storage.load_data(args.project, 'research')
-    items = data.get("research", [])
+# Public API used by other modules
+load_or_create = _mod.load
+save_json = _mod.save
+find_research = _mod.find_by_id
 
-    # Filter
-    if args.status:
-        items = [r for r in items if r.get("status") == args.status]
-    if args.category:
-        items = [r for r in items if r.get("category") == args.category.lower().strip()]
-    if args.entity:
-        entity_id = args.entity
-        items = [r for r in items
-                 if r.get("linked_entity_id") == entity_id
-                 or r.get("linked_idea_id") == entity_id]
 
-    # Sort by ID
-    items.sort(key=lambda r: r.get("id", ""))
-
-    # Render
-    print(f"## Research: {args.project}")
-    filters = []
-    if args.status:
-        filters.append(f"status={args.status}")
-    if args.category:
-        filters.append(f"category={args.category}")
-    if args.entity:
-        filters.append(f"entity={args.entity}")
-    if filters:
-        print(f"Filter: {', '.join(filters)}")
-    print(f"Count: {len(items)}")
-    print()
-
-    if not items:
-        print("(none)")
-        return
-
-    print("| ID | Category | Status | Entity | Title |")
-    print("|----|----------|--------|--------|-------|")
-    for r in items:
-        title = r.get("title", "")[:40]
-        entity = r.get("linked_entity_id") or "—"
-        print(f"| {r['id']} | {r.get('category', '')} | {r.get('status', '')} "
-              f"| {entity} | {title} |")
-
+# -- Custom commands --
 
 def cmd_show(args):
     """Show full details of a research object."""
-    data = load_or_create(args.project)
-    r = find_research(data, args.research_id)
+    data = _mod.load(args.project)
+    r = _mod.find_by_id(data, args.research_id)
     if not r:
         print(f"ERROR: Research '{args.research_id}' not found.", file=sys.stderr)
         sys.exit(1)
@@ -392,63 +331,6 @@ def cmd_show(args):
     print(f"Updated: {r.get('updated_at', '')}")
 
 
-def cmd_update(args):
-    """Update research objects."""
-    try:
-        updates = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(updates, list):
-        updates = [updates]
-
-    errors = validate_contract(CONTRACTS["update"], updates)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    updated = []
-    for u in updates:
-        r = find_research(data, u["id"])
-        if not r:
-            print(f"  WARNING: Research {u['id']} not found, skipping", file=sys.stderr)
-            continue
-
-        # Status transition validation
-        if "status" in u:
-            new_status = u["status"]
-            current_status = r.get("status", "DRAFT")
-            if new_status not in VALID_TRANSITIONS.get(current_status, set()):
-                print(f"  WARNING: Invalid transition {current_status} -> {new_status} for {u['id']}. "
-                      f"Valid: {VALID_TRANSITIONS.get(current_status, set())}",
-                      file=sys.stderr)
-                continue
-
-        # Update fields
-        updatable = ["title", "topic", "status", "category", "summary",
-                     "key_findings", "decision_ids", "file_path",
-                     "linked_idea_id", "scopes", "tags"]
-        for field in updatable:
-            if field in u:
-                r[field] = u[field]
-
-        r["updated_at"] = timestamp
-        updated.append(u["id"])
-
-    save_json(args.project, data)
-
-    if updated:
-        print(f"Updated: {', '.join(updated)}")
-    else:
-        print("No research objects were updated.")
-
-
 def cmd_context(args):
     """Load research context for an entity (objective or idea).
 
@@ -457,7 +339,7 @@ def cmd_context(args):
     2. Secondary match: linked_idea_id == entity_id
     3. Indirect (for objectives): ideas that advance this objective's KRs -> research linked to those ideas
     """
-    data = load_or_create(args.project)
+    data = _mod.load(args.project)
     entity_id = args.entity
     active = [r for r in data.get("research", []) if r.get("status") == "ACTIVE"]
 
@@ -505,59 +387,34 @@ def cmd_context(args):
         print()
 
 
-def cmd_contract(args):
-    """Print contract spec."""
-    if args.name not in CONTRACTS:
-        print(f"ERROR: Unknown contract '{args.name}'. Available: {', '.join(sorted(CONTRACTS.keys()))}",
-              file=sys.stderr)
-        sys.exit(1)
-    print(render_contract(args.name, CONTRACTS[args.name]))
-
-
 # -- CLI --
 
-def main():
-    parser = argparse.ArgumentParser(description="Forge Research — structured analysis output")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("add", help="Create research objects")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
-    p = sub.add_parser("read", help="List/filter research")
-    p.add_argument("project")
-    p.add_argument("--status", choices=sorted(VALID_STATUSES))
-    p.add_argument("--category", choices=sorted(VALID_CATEGORIES))
-    p.add_argument("--entity", help="Filter by linked entity ID (O-NNN or I-NNN)")
+def _setup_extra_parsers(sub):
+    # Add filter args to the read parser created by make_cli
+    read_parser = sub.choices["read"]
+    read_parser.add_argument("--status", choices=sorted(VALID_STATUSES))
+    read_parser.add_argument("--category", choices=sorted(VALID_CATEGORIES))
+    read_parser.add_argument("--entity", help="Filter by linked entity ID (O-NNN or I-NNN)")
 
     p = sub.add_parser("show", help="Show research details")
     p.add_argument("project")
     p.add_argument("research_id")
 
-    p = sub.add_parser("update", help="Update research")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
     p = sub.add_parser("context", help="Research context for entity")
     p.add_argument("project")
     p.add_argument("--entity", required=True, help="Entity ID (O-NNN or I-NNN)")
 
-    p = sub.add_parser("contract", help="Print contract spec (no project needed)")
-    p.add_argument("name", choices=sorted(CONTRACTS.keys()))
-    p.add_argument("_extra", nargs="*", help=argparse.SUPPRESS)
 
-    args = parser.parse_args()
-
-    commands = {
-        "add": cmd_add,
-        "read": cmd_read,
-        "show": cmd_show,
-        "update": cmd_update,
-        "context": cmd_context,
-        "contract": cmd_contract,
-    }
-
-    commands[args.command](args)
+def main():
+    make_cli(
+        _mod,
+        extra_commands={
+            "show": cmd_show,
+            "context": cmd_context,
+        },
+        setup_extra_parsers=_setup_extra_parsers,
+        description="Forge Research — structured analysis output",
+    )
 
 
 if __name__ == "__main__":

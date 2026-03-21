@@ -26,31 +26,13 @@ Commands:
 """
 
 import argparse
-import json
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
-from storage import JSONFileStorage, load_json_data, now_iso
 
-from _compat import configure_encoding
-configure_encoding()
-
-
-# -- Storage --
-
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    return storage.load_data(project, 'lessons')
-
-
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    storage.save_data(project, 'lessons', data)
+from entity_base import EntityModule, make_cli
+from storage import JSONFileStorage, now_iso
 
 
 # -- Contract --
@@ -62,14 +44,14 @@ CONTRACTS = {
                       "promoted_to_guideline", "promoted_to_knowledge"],
         "enums": {
             "category": {
-                "pattern-discovered",   # Reusable pattern found
-                "mistake-avoided",      # What NOT to do
-                "decision-validated",   # A decision proved correct
-                "decision-reversed",    # A decision proved wrong
-                "tool-insight",         # Better way to use a tool/library
-                "architecture-lesson",  # Structural insight
-                "process-improvement",  # Better workflow
-                "market-insight",       # Business/market pattern discovered
+                "pattern-discovered",
+                "mistake-avoided",
+                "decision-validated",
+                "decision-reversed",
+                "tool-insight",
+                "architecture-lesson",
+                "process-improvement",
+                "market-insight",
             },
             "severity": {"critical", "important", "minor"},
         },
@@ -110,89 +92,61 @@ CONTRACTS = {
 }
 
 
-# -- Commands --
+# -- Module --
 
-def cmd_add(args):
-    """Add lessons learned."""
-    try:
-        new_lessons = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+class Lessons(EntityModule):
+    entity_type = "lessons"
+    list_key = "lessons"
+    id_prefix = "L"
+    contracts = CONTRACTS
+    display_name = "Lessons"
 
-    if not isinstance(new_lessons, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
-
-    errors = validate_contract(CONTRACTS["add"], new_lessons)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    existing_ids = [
-        int(l["id"].split("-")[1]) for l in data.get("lessons", [])
-        if l.get("id", "").startswith("L-")
-    ]
-    next_id = max(existing_ids, default=0) + 1
-
-    added = []
-    for l in new_lessons:
-        lesson = {
-            "id": f"L-{next_id:03d}",
-            "category": l["category"],
-            "title": l["title"],
-            "detail": l["detail"],
-            "task_id": l.get("task_id", ""),
-            "decision_ids": l.get("decision_ids", []),
-            "severity": l.get("severity", "important"),
-            "applies_to": l.get("applies_to", ""),
-            "tags": l.get("tags", []),
+    def build_entity(self, input_item, entity_id, timestamp, args):
+        return {
+            "id": entity_id,
+            "category": input_item["category"],
+            "title": input_item["title"],
+            "detail": input_item["detail"],
+            "task_id": input_item.get("task_id", ""),
+            "decision_ids": input_item.get("decision_ids", []),
+            "severity": input_item.get("severity", "important"),
+            "applies_to": input_item.get("applies_to", ""),
+            "tags": input_item.get("tags", []),
             "project": args.project,
             "timestamp": timestamp,
         }
-        data["lessons"].append(lesson)
-        added.append(lesson["id"])
-        next_id += 1
 
-    save_json(args.project, data)
+    def print_add_summary(self, project, data, added, skipped):
+        print(f"Lessons recorded: {project}")
+        print(f"  Added: {len(added)} ({', '.join(added)})")
+        print(f"  Total: {len(self.items(data))}")
 
-    print(f"Lessons recorded: {args.project}")
-    print(f"  Added: {len(added)} ({', '.join(added)})")
-    print(f"  Total: {len(data['lessons'])}")
-
-
-def cmd_read(args):
-    """Read lessons for a project."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'lessons'):
-        print(f"No lessons recorded for '{args.project}' yet.")
-        return
-
-    data = storage.load_data(args.project, 'lessons')
-    lessons = data.get("lessons", [])
-
-    print(f"## Lessons: {args.project}")
-    print(f"Count: {len(lessons)}")
-    print()
-
-    if not lessons:
-        print("(none)")
-        return
-
-    for l in lessons:
-        severity_icon = {"critical": "!!!", "important": " ! ", "minor": "   "}.get(l.get("severity", ""), "   ")
-        print(f"### {l['id']} [{severity_icon}] {l['title']}")
-        print(f"Category: {l['category']} | Applies to: {l.get('applies_to', '(general)')}")
-        print(f"{l['detail']}")
-        if l.get("tags"):
-            print(f"Tags: {', '.join(l['tags'])}")
+    def render_list(self, items, args):
+        print(f"## Lessons: {args.project}")
+        print(f"Count: {len(items)}")
         print()
+        if not items:
+            print("(none)")
+            return
+        for l in items:
+            severity_icon = {"critical": "!!!", "important": " ! ", "minor": "   "}.get(
+                l.get("severity", ""), "   ")
+            print(f"### {l['id']} [{severity_icon}] {l['title']}")
+            print(f"Category: {l['category']} | Applies to: {l.get('applies_to', '(general)')}")
+            print(f"{l['detail']}")
+            if l.get("tags"):
+                print(f"Tags: {', '.join(l['tags'])}")
+            print()
 
+
+_mod = Lessons()
+
+# Public API used by other modules
+load_or_create = _mod.load
+save_json = _mod.save
+
+
+# -- Custom commands --
 
 def cmd_read_all(args):
     """Read lessons across all projects (with optional filtering)."""
@@ -212,7 +166,6 @@ def cmd_read_all(args):
         print("No lessons recorded across any project.")
         return
 
-    # Apply filters
     if args.severity:
         all_lessons = [l for l in all_lessons if l.get("severity") == args.severity]
     if args.category:
@@ -222,17 +175,14 @@ def cmd_read_all(args):
         all_lessons = [l for l in all_lessons
                        if filter_tags & {t.lower() for t in l.get("tags", [])}]
 
-    # Sort by severity then timestamp
     severity_order = {"critical": 0, "important": 1, "minor": 2}
     all_lessons.sort(key=lambda l: (severity_order.get(l.get("severity", "minor"), 2), l.get("timestamp", "")))
 
-    # Apply limit
     limit = args.limit or 0
     total_before_limit = len(all_lessons)
     if limit > 0:
         all_lessons = all_lessons[:limit]
 
-    # Show filters
     filters = []
     if args.severity:
         filters.append(f"severity={args.severity}")
@@ -286,10 +236,8 @@ def cmd_promote(args):
         print("Skipping.")
         return
 
-    # Load global guidelines
     global_data = storage.load_global('guidelines')
 
-    # Check for duplicate
     for g in global_data.get("guidelines", []):
         if g.get("title", "").lower() == found["title"].lower():
             print(f"WARNING: Guideline with similar title already exists: {g['id']}")
@@ -297,14 +245,12 @@ def cmd_promote(args):
             print("Skipping promotion.")
             return
 
-    # Generate next ID
     existing_ids = [
         int(g["id"].split("-")[1]) for g in global_data.get("guidelines", [])
         if g.get("id", "").startswith("G-")
     ]
     next_id = max(existing_ids, default=0) + 1
 
-    # Map severity to weight
     weight_map = {"critical": "must", "important": "should", "minor": "may"}
     weight = weight_map.get(found.get("severity", "important"), "should")
     if args.weight:
@@ -328,7 +274,6 @@ def cmd_promote(args):
     global_data["guidelines"].append(guideline)
     storage.save_global('guidelines', global_data)
 
-    # Update lesson with promoted_to_guideline reference
     lesson_project = found.get("project", project)
     lesson_data = storage.load_data(lesson_project, 'lessons')
     for l in lesson_data.get("lessons", []):
@@ -352,7 +297,6 @@ def cmd_promote_knowledge(args):
         print("No projects found.", file=sys.stderr)
         sys.exit(1)
 
-    # Find the lesson across all projects
     found = None
     lesson_project = None
     for project in projects:
@@ -370,16 +314,13 @@ def cmd_promote_knowledge(args):
         print(f"ERROR: Lesson {args.lesson_id} not found", file=sys.stderr)
         sys.exit(1)
 
-    # Check if already promoted
     if found.get("promoted_to_knowledge"):
         print(f"WARNING: Lesson {args.lesson_id} already promoted to {found['promoted_to_knowledge']}")
         print("Skipping.")
         return
 
-    # Determine target project (use lesson's project)
     target_project = lesson_project
 
-    # Map lesson category to knowledge category
     category_map = {
         "pattern-discovered": "code-patterns",
         "mistake-avoided": "technical-context",
@@ -392,7 +333,6 @@ def cmd_promote_knowledge(args):
     }
     category = args.category or category_map.get(found.get("category", ""), "technical-context")
 
-    # Load knowledge data and check for duplicates
     k_data = storage.load_data(target_project, 'knowledge')
     existing_keys = {
         (k.get("category", "").lower().strip(), k.get("title", "").lower().strip())
@@ -414,7 +354,7 @@ def cmd_promote_knowledge(args):
     if args.scopes:
         scopes = [s.strip() for s in args.scopes.split(",")]
     elif found.get("tags"):
-        scopes = found["tags"][:3]  # Use first 3 tags as scopes
+        scopes = found["tags"][:3]
 
     knowledge = {
         "id": k_id,
@@ -460,7 +400,6 @@ def cmd_promote_knowledge(args):
     k_data["knowledge"].append(knowledge)
     storage.save_data(target_project, 'knowledge', k_data)
 
-    # Update lesson with promoted_to_knowledge reference
     lesson_data = storage.load_data(lesson_project, 'lessons')
     for l in lesson_data.get("lessons", []):
         if l["id"] == found["id"]:
@@ -478,24 +417,9 @@ def cmd_promote_knowledge(args):
           f"--data '{{\"id\": \"{k_id}\", \"status\": \"ACTIVE\"}}'")
 
 
-def cmd_contract(args):
-    """Print contract spec."""
-    print(render_contract("add", CONTRACTS["add"]))
-
-
 # -- CLI --
 
-def main():
-    parser = argparse.ArgumentParser(description="Forge Lessons -- compound learning from project execution")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("add", help="Add lessons learned")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
-    p = sub.add_parser("read", help="Read lessons for project")
-    p.add_argument("project")
-
+def _setup_extra_parsers(sub):
     p = sub.add_parser("read-all", help="Read lessons across all projects")
     p.add_argument("--severity", help="Filter by severity (critical, important, minor)")
     p.add_argument("--category", help="Filter by category")
@@ -505,28 +429,26 @@ def main():
     p = sub.add_parser("promote", help="Promote a lesson to a global guideline")
     p.add_argument("lesson_id", help="Lesson ID (e.g. L-001)")
     p.add_argument("--scope", help="Guideline scope (default: general)")
-    p.add_argument("--weight", choices=["must", "should", "may"], help="Override weight (default: based on severity)")
+    p.add_argument("--weight", choices=["must", "should", "may"],
+                   help="Override weight (default: based on severity)")
 
     p = sub.add_parser("promote-knowledge", help="Promote a lesson to a knowledge object")
     p.add_argument("lesson_id", help="Lesson ID (e.g. L-001)")
     p.add_argument("--category", help="Knowledge category (default: inferred from lesson category)")
     p.add_argument("--scopes", help="Comma-separated scopes (default: from lesson tags)")
 
-    p = sub.add_parser("contract", help="Print contract spec (no project needed)")
-    p.add_argument("_extra", nargs="*", help=argparse.SUPPRESS)
 
-    args = parser.parse_args()
-
-    commands = {
-        "add": cmd_add,
-        "read": cmd_read,
-        "read-all": cmd_read_all,
-        "promote": cmd_promote,
-        "promote-knowledge": cmd_promote_knowledge,
-        "contract": cmd_contract,
-    }
-
-    commands[args.command](args)
+def main():
+    make_cli(
+        _mod,
+        extra_commands={
+            "read-all": cmd_read_all,
+            "promote": cmd_promote,
+            "promote-knowledge": cmd_promote_knowledge,
+        },
+        setup_extra_parsers=_setup_extra_parsers,
+        description="Forge Lessons -- compound learning from project execution",
+    )
 
 
 if __name__ == "__main__":

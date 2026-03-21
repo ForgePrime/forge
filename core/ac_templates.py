@@ -19,31 +19,16 @@ Commands:
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
-from storage import JSONFileStorage, load_json_data, now_iso
+from entity_base import EntityModule, make_cli
+from storage import now_iso
 
 from _compat import configure_encoding
 configure_encoding()
-
-
-# -- Storage --
-
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    return storage.load_data(project, 'ac_templates')
-
-
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    storage.save_data(project, 'ac_templates', data)
 
 
 # -- Constants --
@@ -145,24 +130,6 @@ CONTRACTS = {
 
 # -- Helpers --
 
-def find_template(data: dict, template_id: str) -> dict | None:
-    """Find AC template by ID."""
-    for t in data.get("ac_templates", []):
-        if t["id"] == template_id:
-            return t
-    return None
-
-
-def _next_id(data: dict) -> str:
-    """Generate next AC-NNN ID."""
-    existing = [
-        int(t["id"].split("-")[1]) for t in data.get("ac_templates", [])
-        if t.get("id", "").startswith("AC-")
-    ]
-    num = max(existing, default=0) + 1
-    return f"AC-{num:03d}"
-
-
 def _extract_placeholders(template: str) -> set[str]:
     """Extract {placeholder} names from a template string."""
     return set(re.findall(r"\{(\w+)\}", template))
@@ -190,138 +157,174 @@ def _validate_params_definition(parameters: list, placeholders: set) -> list[str
     return errors
 
 
-# -- Commands --
+# -- EntityModule subclass --
 
-def cmd_add(args):
-    """Create AC templates."""
-    try:
-        new_items = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+class AcTemplates(EntityModule):
+    entity_type = "ac_templates"
+    list_key = "ac_templates"
+    id_prefix = "AC"
+    contracts = CONTRACTS
+    display_name = "AC Templates"
+    dedup_keys = ("category", "title")
 
-    if not isinstance(new_items, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
+    def cmd_add(self, args):
+        """Create AC templates with parameter validation."""
+        items = self._parse_and_validate(args.data, "add")
 
-    errors = validate_contract(CONTRACTS["add"], new_items)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+        # Original requires a list (not single object)
+        # _parse_and_validate wraps single in list, but original required array input
+        # Keep consistent: _parse_and_validate handles this fine.
 
-    data = load_or_create(args.project)
-    timestamp = now_iso()
+        data = self.load(args.project)
+        timestamp = now_iso()
+        existing = self.existing_dedup_keys(data)
 
-    # Dedup by (category, title) — normalized
-    existing_keys = {
-        (t.get("category", "").lower().strip(), t.get("title", "").lower().strip())
-        for t in data.get("ac_templates", [])
-    }
+        added = []
+        skipped = []
+        for item in items:
+            category = item["category"].lower().strip()
+            key = (category, item["title"].lower().strip())
+            if key in existing:
+                skipped.append(f"Duplicate: {item['title'][:50]}")
+                continue
 
-    added = []
-    skipped = []
-    for item in new_items:
-        category = item["category"].lower().strip()
-        key = (category, item["title"].lower().strip())
-        if key in existing_keys:
-            skipped.append(f"Duplicate: {item['title'][:50]}")
-            continue
+            # Validate parameters against template placeholders
+            parameters = item.get("parameters", [])
+            placeholders = _extract_placeholders(item["template"])
+            param_errors = _validate_params_definition(parameters, placeholders)
+            if param_errors:
+                for pe in param_errors:
+                    print(f"  WARNING: {pe}", file=sys.stderr)
 
-        # Validate parameters against template placeholders
-        parameters = item.get("parameters", [])
-        placeholders = _extract_placeholders(item["template"])
-        param_errors = _validate_params_definition(parameters, placeholders)
-        if param_errors:
-            for pe in param_errors:
-                print(f"  WARNING: {pe}", file=sys.stderr)
+            ac_id = self.make_id(self.next_num(data))
+            status = item.get("status", "ACTIVE")
+            template = {
+                "id": ac_id,
+                "title": item["title"],
+                "description": item.get("description", ""),
+                "template": item["template"],
+                "category": category,
+                "parameters": parameters,
+                "scopes": item.get("scopes", []),
+                "tags": item.get("tags", []),
+                "verification_method": item.get("verification_method", ""),
+                "status": status,
+                "usage_count": 0,
+                "occurrences": item.get("occurrences", 1),
+                "source_tasks": item.get("source_tasks", []),
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            }
 
-        ac_id = _next_id(data)
-        status = item.get("status", "ACTIVE")
-        template = {
-            "id": ac_id,
-            "title": item["title"],
-            "description": item.get("description", ""),
-            "template": item["template"],
-            "category": category,
-            "parameters": parameters,
-            "scopes": item.get("scopes", []),
-            "tags": item.get("tags", []),
-            "verification_method": item.get("verification_method", ""),
-            "status": status,
-            "usage_count": 0,
-            "occurrences": item.get("occurrences", 1),
-            "source_tasks": item.get("source_tasks", []),
-            "created_at": timestamp,
-            "updated_at": timestamp,
-        }
+            data[self.list_key].append(template)
+            existing.add(key)
+            added.append(ac_id)
 
-        data["ac_templates"].append(template)
-        existing_keys.add(key)
-        added.append(ac_id)
+        self.save(args.project, data)
+        self.print_add_summary(args.project, data, added, skipped)
 
-    save_json(args.project, data)
+    def apply_filters(self, items: list, args) -> list:
+        """Filter by category, scope, status."""
+        if getattr(args, "category", None):
+            items = [t for t in items if t.get("category") == args.category.lower().strip()]
+        if getattr(args, "scope", None):
+            scope = args.scope.lower().strip()
+            items = [t for t in items if scope in t.get("scopes", [])]
+        if getattr(args, "status", None):
+            items = [t for t in items if t.get("status") == args.status]
+        return items
 
-    print(f"AC Templates saved: {args.project}")
-    if added:
-        print(f"  Added: {len(added)} ({', '.join(added)})")
-    if skipped:
-        print(f"  Skipped (duplicate): {len(skipped)}")
-    print(f"  Total: {len(data['ac_templates'])}")
+    def render_list(self, items: list, args):
+        """Render AC templates table with occurrences column."""
+        print(f"## {self.display_name}: {args.project}")
+        filters = []
+        if getattr(args, "category", None):
+            filters.append(f"category={args.category}")
+        if getattr(args, "scope", None):
+            filters.append(f"scope={args.scope}")
+        if filters:
+            print(f"Filter: {', '.join(filters)}")
+        print(f"Count: {len(items)}")
+        print()
+
+        if not items:
+            print("(none)")
+            return
+
+        print("| ID | Category | Status | Uses | Occ | Title |")
+        print("|----|----------|--------|------|-----|-------|")
+        for t in items:
+            title = t.get("title", "")[:45]
+            occ = t.get("occurrences", 1) if t.get("status") == "PROPOSED" else ""
+            print(f"| {t['id']} | {t.get('category', '')} | {t.get('status', '')} "
+                  f"| {t.get('usage_count', 0)} | {occ} | {title} |")
+
+    def cmd_update(self, args):
+        """Update AC templates with source_tasks append-merge and template validation."""
+        updates = self._parse_and_validate(args.data, "update")
+        data = self.load(args.project)
+        timestamp = now_iso()
+
+        updated = []
+        for u in updates:
+            t = self.find_by_id(data, u["id"])
+            if not t:
+                print(f"  WARNING: Template {u['id']} not found, skipping", file=sys.stderr)
+                continue
+
+            # Validate template + params consistency if template is changed
+            if "template" in u:
+                params = u.get("parameters", t.get("parameters", []))
+                placeholders = _extract_placeholders(u["template"])
+                param_errors = _validate_params_definition(params, placeholders)
+                if param_errors:
+                    for pe in param_errors:
+                        print(f"  WARNING: {pe}", file=sys.stderr)
+
+            updatable = ["title", "template", "description", "category",
+                         "parameters", "scopes", "tags", "verification_method",
+                         "status", "occurrences"]
+            for field in updatable:
+                if field in u:
+                    t[field] = u[field]
+
+            # source_tasks: append-merge (not replace)
+            if "source_tasks" in u:
+                existing_st = t.get("source_tasks", [])
+                for st in u["source_tasks"]:
+                    if st not in existing_st:
+                        existing_st.append(st)
+                t["source_tasks"] = existing_st
+
+            t["updated_at"] = timestamp
+            updated.append(u["id"])
+
+        self.save(args.project, data)
+
+        if updated:
+            print(f"Updated: {', '.join(updated)}")
+        else:
+            print("No templates were updated.")
 
 
-def cmd_read(args):
-    """List/filter AC templates."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'ac_templates'):
-        print(f"No AC templates for '{args.project}' yet.")
-        return
+# -- Module instance and compatibility aliases --
 
-    data = storage.load_data(args.project, 'ac_templates')
-    items = data.get("ac_templates", [])
+_mod = AcTemplates()
 
-    # Filter
-    if args.category:
-        items = [t for t in items if t.get("category") == args.category.lower().strip()]
-    if args.scope:
-        scope = args.scope.lower().strip()
-        items = [t for t in items if scope in t.get("scopes", [])]
-    if args.status:
-        items = [t for t in items if t.get("status") == args.status]
+load_or_create = _mod.load
+save_json = _mod.save
+find_template = _mod.find_by_id
+cmd_add = _mod.cmd_add
+cmd_read = _mod.cmd_read
+cmd_update = _mod.cmd_update
 
-    # Sort by ID
-    items.sort(key=lambda t: t.get("id", ""))
 
-    # Render
-    print(f"## AC Templates: {args.project}")
-    filters = []
-    if args.category:
-        filters.append(f"category={args.category}")
-    if args.scope:
-        filters.append(f"scope={args.scope}")
-    if filters:
-        print(f"Filter: {', '.join(filters)}")
-    print(f"Count: {len(items)}")
-    print()
-
-    if not items:
-        print("(none)")
-        return
-
-    print("| ID | Category | Status | Uses | Occ | Title |")
-    print("|----|----------|--------|------|-----|-------|")
-    for t in items:
-        title = t.get("title", "")[:45]
-        occ = t.get("occurrences", 1) if t.get("status") == "PROPOSED" else ""
-        print(f"| {t['id']} | {t.get('category', '')} | {t.get('status', '')} "
-              f"| {t.get('usage_count', 0)} | {occ} | {title} |")
-
+# -- Custom commands (standalone functions) --
 
 def cmd_show(args):
     """Show full details of an AC template."""
-    data = load_or_create(args.project)
-    t = find_template(data, args.template_id)
+    data = _mod.load(args.project)
+    t = _mod.find_by_id(data, args.template_id)
     if not t:
         print(f"ERROR: Template '{args.template_id}' not found.", file=sys.stderr)
         sys.exit(1)
@@ -376,73 +379,10 @@ def cmd_show(args):
     print(f"Updated: {t.get('updated_at', '')}")
 
 
-def cmd_update(args):
-    """Update AC templates."""
-    try:
-        updates = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(updates, list):
-        updates = [updates]
-
-    errors = validate_contract(CONTRACTS["update"], updates)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    updated = []
-    for u in updates:
-        t = find_template(data, u["id"])
-        if not t:
-            print(f"  WARNING: Template {u['id']} not found, skipping", file=sys.stderr)
-            continue
-
-        # Validate template + params consistency if template is changed
-        if "template" in u:
-            params = u.get("parameters", t.get("parameters", []))
-            placeholders = _extract_placeholders(u["template"])
-            param_errors = _validate_params_definition(params, placeholders)
-            if param_errors:
-                for pe in param_errors:
-                    print(f"  WARNING: {pe}", file=sys.stderr)
-
-        updatable = ["title", "template", "description", "category",
-                     "parameters", "scopes", "tags", "verification_method",
-                     "status", "occurrences"]
-        for field in updatable:
-            if field in u:
-                t[field] = u[field]
-
-        # source_tasks: append-merge (not replace)
-        if "source_tasks" in u:
-            existing_st = t.get("source_tasks", [])
-            for st in u["source_tasks"]:
-                if st not in existing_st:
-                    existing_st.append(st)
-            t["source_tasks"] = existing_st
-
-        t["updated_at"] = timestamp
-        updated.append(u["id"])
-
-    save_json(args.project, data)
-
-    if updated:
-        print(f"Updated: {', '.join(updated)}")
-    else:
-        print("No templates were updated.")
-
-
 def cmd_instantiate(args):
     """Instantiate a template with concrete parameters."""
-    data = load_or_create(args.project)
-    t = find_template(data, args.template_id)
+    data = _mod.load(args.project)
+    t = _mod.find_by_id(data, args.template_id)
     if not t:
         print(f"ERROR: Template '{args.template_id}' not found.", file=sys.stderr)
         sys.exit(1)
@@ -498,7 +438,7 @@ def cmd_instantiate(args):
     # Increment usage count
     t["usage_count"] = t.get("usage_count", 0) + 1
     t["updated_at"] = now_iso()
-    save_json(args.project, data)
+    _mod.save(args.project, data)
 
     # Output structured AC
     result = {
@@ -510,62 +450,37 @@ def cmd_instantiate(args):
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
-def cmd_contract(args):
-    """Print contract spec."""
-    if args.name not in CONTRACTS:
-        print(f"ERROR: Unknown contract '{args.name}'. "
-              f"Available: {', '.join(sorted(CONTRACTS.keys()))}",
-              file=sys.stderr)
-        sys.exit(1)
-    print(render_contract(args.name, CONTRACTS[args.name]))
-
-
 # -- CLI --
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Forge AC Templates — reusable acceptance criteria")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("add", help="Create AC templates")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
-    p = sub.add_parser("read", help="List/filter templates")
-    p.add_argument("project")
-    p.add_argument("--category", choices=sorted(VALID_CATEGORIES))
-    p.add_argument("--scope")
-    p.add_argument("--status", choices=["ACTIVE", "PROPOSED", "DEPRECATED"])
+def _setup_extra_parsers(sub):
+    """Add filter args to read parser and custom subparsers for show/instantiate."""
+    # Add filter args to the read parser created by make_cli
+    read_parser = sub.choices["read"]
+    if read_parser:
+        read_parser.add_argument("--category", choices=sorted(VALID_CATEGORIES))
+        read_parser.add_argument("--scope")
+        read_parser.add_argument("--status", choices=["ACTIVE", "PROPOSED", "DEPRECATED"])
 
     p = sub.add_parser("show", help="Show template details")
     p.add_argument("project")
     p.add_argument("template_id")
-
-    p = sub.add_parser("update", help="Update templates")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
 
     p = sub.add_parser("instantiate", help="Instantiate template with params")
     p.add_argument("project")
     p.add_argument("template_id")
     p.add_argument("--params", default="{}")
 
-    p = sub.add_parser("contract", help="Print contract spec (no project needed)")
-    p.add_argument("name", choices=sorted(CONTRACTS.keys()))
-    p.add_argument("_extra", nargs="*", help=argparse.SUPPRESS)
 
-    args = parser.parse_args()
-
-    commands = {
-        "add": cmd_add,
-        "read": cmd_read,
-        "show": cmd_show,
-        "update": cmd_update,
-        "instantiate": cmd_instantiate,
-        "contract": cmd_contract,
-    }
-
-    commands[args.command](args)
+def main():
+    make_cli(
+        _mod,
+        extra_commands={
+            "show": cmd_show,
+            "instantiate": cmd_instantiate,
+        },
+        setup_extra_parsers=_setup_extra_parsers,
+        description="Forge AC Templates — reusable acceptance criteria",
+    )
 
 
 if __name__ == "__main__":

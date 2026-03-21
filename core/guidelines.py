@@ -22,32 +22,13 @@ Commands:
 """
 
 import argparse
-import json
-import os
 import sys
 from pathlib import Path
 
-# Import contracts from sibling module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
-from storage import JSONFileStorage, load_json_data, now_iso
 
-from _compat import configure_encoding
-configure_encoding()
-
-
-# -- Storage --
-
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    return storage.load_data(project, 'guidelines')
-
-
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    storage.save_data(project, 'guidelines', data)
+from entity_base import EntityModule, make_cli
+from storage import JSONFileStorage, now_iso
 
 
 # -- Contracts --
@@ -121,201 +102,117 @@ CONTRACTS = {
 }
 
 
-# -- Commands --
+# -- Module --
 
-def cmd_add(args):
-    """Add guidelines to the registry."""
-    try:
-        new_guidelines = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+class Guidelines(EntityModule):
+    entity_type = "guidelines"
+    list_key = "guidelines"
+    id_prefix = "G"
+    display_name = "Guidelines"
+    contracts = CONTRACTS
+    dedup_keys = ("scope", "title")
 
-    if not isinstance(new_guidelines, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
-
-    errors = validate_contract(CONTRACTS["add"], new_guidelines)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    # Find next G-NNN ID
-    existing_ids = [
-        int(g["id"].split("-")[1]) for g in data.get("guidelines", [])
-        if g.get("id", "").startswith("G-")
-    ]
-    next_id = max(existing_ids, default=0) + 1
-
-    # Dedup by (scope, title) — normalized
-    existing_keys = {
-        (g.get("scope", "").lower().strip(), g.get("title", "").lower().strip())
-        for g in data.get("guidelines", [])
-    }
-
-    added = []
-    skipped = []
-    for g in new_guidelines:
-        scope = g["scope"].lower().strip()
-        key = (scope, g["title"].lower().strip())
-        if key in existing_keys:
-            skipped.append(f"Duplicate: {g['title'][:50]}")
-            continue
-
-        guideline = {
-            "id": f"G-{next_id:03d}",
-            "title": g["title"],
-            "scope": scope,
-            "content": g["content"],
-            "rationale": g.get("rationale", ""),
-            "examples": g.get("examples", []),
-            "tags": g.get("tags", []),
-            "weight": g.get("weight", "should"),
-            "derived_from": g.get("derived_from", ""),
+    def build_entity(self, input_item, entity_id, timestamp, args):
+        return {
+            "id": entity_id,
+            "title": input_item["title"],
+            "scope": input_item["scope"].lower().strip(),
+            "content": input_item["content"],
+            "rationale": input_item.get("rationale", ""),
+            "examples": input_item.get("examples", []),
+            "tags": input_item.get("tags", []),
+            "weight": input_item.get("weight", "should"),
+            "derived_from": input_item.get("derived_from", ""),
             "status": "ACTIVE",
             "created": timestamp,
             "updated": timestamp,
         }
 
-        data["guidelines"].append(guideline)
-        existing_keys.add(key)
-        added.append(guideline["id"])
-        next_id += 1
+    def print_add_summary(self, project, data, added, skipped):
+        active_count = sum(1 for g in self.items(data) if g.get("status") == "ACTIVE")
+        print(f"Guidelines saved: {project}")
+        if added:
+            print(f"  Added: {len(added)} ({', '.join(added)})")
+        if skipped:
+            print(f"  Skipped (duplicate): {len(skipped)}")
+        print(f"  Total: {len(self.items(data))} | Active: {active_count}")
 
-    save_json(args.project, data)
+    def apply_filters(self, items, args):
+        if getattr(args, "scope", None):
+            items = [g for g in items if g.get("scope") == args.scope.lower().strip()]
+        if getattr(args, "status", None):
+            items = [g for g in items if g.get("status") == args.status]
+        if getattr(args, "weight", None):
+            items = [g for g in items if g.get("weight") == args.weight]
+        return items
 
-    active_count = sum(1 for g in data["guidelines"] if g.get("status") == "ACTIVE")
-    print(f"Guidelines saved: {args.project}")
-    if added:
-        print(f"  Added: {len(added)} ({', '.join(added)})")
-    if skipped:
-        print(f"  Skipped (duplicate): {len(skipped)}")
-    print(f"  Total: {len(data['guidelines'])} | Active: {active_count}")
-
-
-def cmd_read(args):
-    """Read guidelines (optionally filtered)."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'guidelines'):
-        print(f"No guidelines for '{args.project}' yet.")
-        return
-
-    data = storage.load_data(args.project, 'guidelines')
-    guidelines = data.get("guidelines", [])
-
-    # Filter
-    if args.scope:
-        guidelines = [g for g in guidelines if g.get("scope") == args.scope.lower().strip()]
-    if args.status:
-        guidelines = [g for g in guidelines if g.get("status") == args.status]
-    if args.weight:
-        guidelines = [g for g in guidelines if g.get("weight") == args.weight]
-
-    # Sort by ID
-    guidelines.sort(key=lambda g: g.get("id", ""))
-
-    # Render
-    print(f"## Guidelines: {args.project}")
-    filters = []
-    if args.scope:
-        filters.append(f"scope={args.scope}")
-    if args.status:
-        filters.append(f"status={args.status}")
-    if args.weight:
-        filters.append(f"weight={args.weight}")
-    if filters:
-        print(f"Filter: {', '.join(filters)}")
-    print(f"Count: {len(guidelines)}")
-    print()
-
-    if not guidelines:
-        print("(none)")
-        return
-
-    print("| ID | Scope | Weight | Title | Status |")
-    print("|----|-------|--------|-------|--------|")
-    for g in guidelines:
-        title = g.get("title", "")[:50]
-        print(f"| {g['id']} | {g.get('scope', '')} | {g.get('weight', '')} | {title} | {g.get('status', '')} |")
-
-    # Show full content below table
-    print()
-    for g in guidelines:
-        print(f"### {g['id']}: {g['title']}")
-        derived = f" | **Derived from**: {g['derived_from']}" if g.get("derived_from") else ""
-        print(f"**Scope**: {g['scope']} | **Weight**: {g['weight']} | **Status**: {g['status']}{derived}")
-        print()
-        print(g.get("content", ""))
-        if g.get("rationale"):
-            print()
-            print(f"**Rationale**: {g['rationale']}")
-        if g.get("examples"):
-            print()
-            print("**Examples**:")
-            for ex in g["examples"]:
-                print(f"  - {ex}")
+    def render_list(self, items, args):
+        print(f"## Guidelines: {args.project}")
+        filters = []
+        if getattr(args, "scope", None):
+            filters.append(f"scope={args.scope}")
+        if getattr(args, "status", None):
+            filters.append(f"status={args.status}")
+        if getattr(args, "weight", None):
+            filters.append(f"weight={args.weight}")
+        if filters:
+            print(f"Filter: {', '.join(filters)}")
+        print(f"Count: {len(items)}")
         print()
 
+        if not items:
+            print("(none)")
+            return
 
-def cmd_update(args):
-    """Update guideline fields."""
-    try:
-        updates = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        print("| ID | Scope | Weight | Title | Status |")
+        print("|----|-------|--------|-------|--------|")
+        for g in items:
+            title = g.get("title", "")[:50]
+            print(f"| {g['id']} | {g.get('scope', '')} | {g.get('weight', '')} | {title} | {g.get('status', '')} |")
 
-    if not isinstance(updates, list):
-        updates = [updates]
+        # Show full content below table
+        print()
+        for g in items:
+            print(f"### {g['id']}: {g['title']}")
+            derived = f" | **Derived from**: {g['derived_from']}" if g.get("derived_from") else ""
+            print(f"**Scope**: {g['scope']} | **Weight**: {g['weight']} | **Status**: {g['status']}{derived}")
+            print()
+            print(g.get("content", ""))
+            if g.get("rationale"):
+                print()
+                print(f"**Rationale**: {g['rationale']}")
+            if g.get("examples"):
+                print()
+                print("**Examples**:")
+                for ex in g["examples"]:
+                    print(f"  - {ex}")
+            print()
 
-    errors = validate_contract(CONTRACTS["update"], updates)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    guidelines_by_id = {g["id"]: g for g in data.get("guidelines", [])}
-    timestamp = now_iso()
-
-    updated = []
-    for u in updates:
-        g_id = u["id"]
-        if g_id not in guidelines_by_id:
-            print(f"  WARNING: Guideline {g_id} not found, skipping", file=sys.stderr)
-            continue
-
-        g = guidelines_by_id[g_id]
-        updatable = ["title", "content", "status", "rationale", "scope",
-                      "examples", "tags", "weight", "derived_from"]
+    def apply_update(self, item, update, timestamp):
+        updatable = ["title", "scope", "content", "rationale",
+                      "examples", "tags", "weight", "status", "derived_from"]
         for field in updatable:
-            if field in u:
+            if field in update:
                 if field == "scope":
-                    g[field] = u[field].lower().strip()
+                    item[field] = update[field].lower().strip()
                 else:
-                    g[field] = u[field]
-        g["updated"] = timestamp
-        updated.append(g_id)
+                    item[field] = update[field]
+        item["updated"] = timestamp
 
-    # Update in-place (preserve original list order)
-    for g in data.get("guidelines", []):
-        if g["id"] in guidelines_by_id:
-            g.update(guidelines_by_id[g["id"]])
-    save_json(args.project, data)
 
-    active_count = sum(1 for g in data["guidelines"] if g.get("status") == "ACTIVE")
-    print(f"Updated {len(updated)} guidelines: {args.project}")
-    for g_id in updated:
-        g = guidelines_by_id[g_id]
-        print(f"  {g_id}: {g.get('title', '')[:40]} ({g.get('status', '')})")
-    print(f"  Active: {active_count}")
+_mod = Guidelines()
 
+# Public API used by other modules
+load_or_create = _mod.load
+save_json = _mod.save
+
+# Test compatibility exports
+cmd_add = _mod.cmd_add
+cmd_read = _mod.cmd_read
+cmd_update = _mod.cmd_update
+
+
+# -- Custom commands (standalone) --
 
 def render_guidelines_context(active_guidelines: list, scopes: set, project: str = "",
                                global_guidelines: list = None) -> list:
@@ -507,34 +404,18 @@ def cmd_import(args):
     print(f"  Total in {args.project}: {len(target_data['guidelines'])}")
 
 
-def cmd_contract(args):
-    """Print contract spec for a command."""
-    if args.name not in CONTRACTS:
-        print(f"ERROR: Unknown contract '{args.name}'", file=sys.stderr)
-        print(f"Available: {', '.join(sorted(CONTRACTS.keys()))}", file=sys.stderr)
-        sys.exit(1)
-    print(render_contract(args.name, CONTRACTS[args.name]))
-
-
 # -- CLI --
 
-def main():
-    parser = argparse.ArgumentParser(description="Forge Guidelines -- project standards registry")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("add", help="Add guidelines")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
-    p = sub.add_parser("read", help="Read guidelines")
-    p.add_argument("project")
-    p.add_argument("--scope", help="Filter by scope")
-    p.add_argument("--status", help="Filter by status")
-    p.add_argument("--weight", help="Filter by weight")
-
-    p = sub.add_parser("update", help="Update guidelines")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
+def _setup_extra_parsers(sub):
+    # Add extra args to the 'read' parser — we need to get it from the subparsers
+    # Since make_cli creates 'read' before calling this, we access it via choices
+    read_parser = sub.choices.get("read")
+    if read_parser:
+        read_parser.add_argument("--scope", help="Filter by scope")
+        read_parser.add_argument("--status", choices=["ACTIVE", "DEPRECATED"],
+                                  help="Filter by status")
+        read_parser.add_argument("--weight", choices=["must", "should", "may"],
+                                  help="Filter by weight")
 
     p = sub.add_parser("context", help="Formatted guidelines for LLM context")
     p.add_argument("project")
@@ -548,23 +429,18 @@ def main():
     p.add_argument("--source", required=True, help="Source project to import from")
     p.add_argument("--scope", help="Only import guidelines with this scope")
 
-    p = sub.add_parser("contract", help="Print contract spec (no project needed)")
-    p.add_argument("name", choices=sorted(CONTRACTS.keys()))
-    p.add_argument("_extra", nargs="*", help=argparse.SUPPRESS)
 
-    args = parser.parse_args()
-
-    commands = {
-        "add": cmd_add,
-        "read": cmd_read,
-        "update": cmd_update,
-        "context": cmd_context,
-        "scopes": cmd_scopes,
-        "import": cmd_import,
-        "contract": cmd_contract,
-    }
-
-    commands[args.command](args)
+def main():
+    make_cli(
+        _mod,
+        extra_commands={
+            "context": cmd_context,
+            "scopes": cmd_scopes,
+            "import": cmd_import,
+        },
+        setup_extra_parsers=_setup_extra_parsers,
+        description="Forge Guidelines -- project standards registry",
+    )
 
 
 if __name__ == "__main__":

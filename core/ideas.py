@@ -38,50 +38,36 @@ Commands:
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
-# Import contracts from sibling module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
+
+from entity_base import EntityModule, make_cli
 from storage import JSONFileStorage, load_json_data, now_iso
 
-from _compat import configure_encoding
-configure_encoding()
 
+# -- Constants --
 
-# -- Storage --
+VALID_CATEGORIES = {"feature", "improvement", "experiment",
+                    "migration", "refactor", "infrastructure",
+                    "business-opportunity", "research"}
 
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    data = storage.load_data(project, 'ideas')
-    # Migration: READY → APPROVED, PARKED → DRAFT
-    for idea in data.get("ideas", []):
-        if idea.get("status") == "READY":
-            idea["status"] = "APPROVED"
-        elif idea.get("status") == "PARKED":
-            idea["status"] = "DRAFT"
-            existing = idea.get("exploration_notes", "")
-            separator = "\n\n---\n\n" if existing else ""
-            idea["exploration_notes"] = existing + separator + "--- Unparked (auto-migrated from PARKED status)"
-    return data
+VALID_STATUSES = {"DRAFT", "EXPLORING", "APPROVED",
+                  "COMMITTED", "REJECTED"}
 
+# Valid status transitions (via cmd_update only).
+# APPROVED → COMMITTED is handled by cmd_commit (or pipeline approve-plan), not update.
+VALID_TRANSITIONS = {
+    "DRAFT": {"EXPLORING", "REJECTED"},
+    "EXPLORING": {"APPROVED", "REJECTED", "DRAFT"},
+    "APPROVED": {"REJECTED"},
+    "REJECTED": {"DRAFT"},  # can reopen
+    "COMMITTED": set(),  # terminal — no transitions allowed
+}
 
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    storage.save_data(project, 'ideas', data)
-
-
-def find_idea(data: dict, idea_id: str) -> dict:
-    """Find idea by ID. Exits with error if not found."""
-    for idea in data.get("ideas", []):
-        if idea["id"] == idea_id:
-            return idea
-    print(f"ERROR: Idea '{idea_id}' not found.", file=sys.stderr)
-    sys.exit(1)
+# Valid relation types between ideas
+VALID_RELATION_TYPES = {"depends_on", "related_to", "supersedes", "duplicates"}
 
 
 # -- Contracts --
@@ -189,67 +175,44 @@ CONTRACTS = {
     },
 }
 
-# Valid status transitions (via cmd_update only).
-# APPROVED → COMMITTED is handled by cmd_commit (or pipeline approve-plan), not update.
-VALID_TRANSITIONS = {
-    "DRAFT": {"EXPLORING", "REJECTED"},
-    "EXPLORING": {"APPROVED", "REJECTED", "DRAFT"},
-    "APPROVED": {"REJECTED"},
-    "REJECTED": {"DRAFT"},  # can reopen
-    "COMMITTED": set(),  # terminal — no transitions allowed
-}
 
-# Valid relation types between ideas
-VALID_RELATION_TYPES = {"depends_on", "related_to", "supersedes", "duplicates"}
+# -- Module --
 
+class Ideas(EntityModule):
+    entity_type = "ideas"
+    list_key = "ideas"
+    id_prefix = "I"
+    display_name = "Ideas"
+    contracts = CONTRACTS
+    dedup_keys = ()  # ideas don't dedup
 
-# -- Commands --
+    def load(self, project: str) -> dict:
+        """Load with migration: READY → APPROVED, PARKED → DRAFT."""
+        data = self.storage.load_data(project, self.entity_type)
+        # Migration: READY → APPROVED, PARKED → DRAFT
+        for idea in data.get("ideas", []):
+            if idea.get("status") == "READY":
+                idea["status"] = "APPROVED"
+            elif idea.get("status") == "PARKED":
+                idea["status"] = "DRAFT"
+                existing = idea.get("exploration_notes", "")
+                separator = "\n\n---\n\n" if existing else ""
+                idea["exploration_notes"] = existing + separator + "--- Unparked (auto-migrated from PARKED status)"
+        return data
 
-def cmd_add(args):
-    """Add ideas to the staging area."""
-    try:
-        new_ideas = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+    def build_entity(self, input_item, entity_id, timestamp, args):
+        """Create idea dict from input."""
+        data = self.load(args.project)
+        existing_idea_ids = {i["id"] for i in data.get("ideas", [])}
 
-    if not isinstance(new_ideas, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
-
-    errors = validate_contract(CONTRACTS["add"], new_ideas)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    # Find next I-NNN ID
-    existing_ids = [
-        int(i["id"].split("-")[1]) for i in data.get("ideas", [])
-        if i.get("id", "").startswith("I-")
-    ]
-    next_id = max(existing_ids, default=0) + 1
-
-    # Collect existing idea IDs for parent_id / relation validation
-    existing_idea_ids = {i["id"] for i in data.get("ideas", [])}
-
-    added = []
-    for item in new_ideas:
         # Validate parent_id
-        parent_id = item.get("parent_id")
+        parent_id = input_item.get("parent_id")
         if parent_id and parent_id not in existing_idea_ids:
-            # May reference an idea being added in the same batch
-            pending_ids = {f"I-{next_id + j:03d}" for j in range(len(new_ideas))}
-            if parent_id not in pending_ids:
-                print(f"  WARNING: parent_id '{parent_id}' not found in ideas",
-                      file=sys.stderr)
+            print(f"  WARNING: parent_id '{parent_id}' not found in ideas",
+                  file=sys.stderr)
 
         # Validate relations
-        relations = item.get("relations", [])
+        relations = input_item.get("relations", [])
         validated_relations = []
         for rel in relations:
             if not isinstance(rel, dict):
@@ -267,20 +230,20 @@ def cmd_add(args):
                 "target_id": rel.get("target_id", ""),
             })
 
-        idea = {
-            "id": f"I-{next_id:03d}",
-            "title": item["title"],
-            "description": item["description"],
-            "category": item.get("category", "feature"),
-            "priority": item.get("priority", "MEDIUM"),
-            "tags": item.get("tags", []),
-            "related_ideas": item.get("related_ideas", []),
-            "guidelines": item.get("guidelines", []),
+        return {
+            "id": entity_id,
+            "title": input_item["title"],
+            "description": input_item["description"],
+            "category": input_item.get("category", "feature"),
+            "priority": input_item.get("priority", "MEDIUM"),
+            "tags": input_item.get("tags", []),
+            "related_ideas": input_item.get("related_ideas", []),
+            "guidelines": input_item.get("guidelines", []),
             "parent_id": parent_id,
             "relations": validated_relations,
-            "scopes": item.get("scopes", []),
-            "advances_key_results": item.get("advances_key_results", []),
-            "knowledge_ids": item.get("knowledge_ids", []),
+            "scopes": input_item.get("scopes", []),
+            "advances_key_results": input_item.get("advances_key_results", []),
+            "knowledge_ids": input_item.get("knowledge_ids", []),
             "status": "DRAFT",
             "rejection_reason": "",
             "merged_into": "",
@@ -290,71 +253,165 @@ def cmd_add(args):
             "updated": timestamp,
         }
 
-        data["ideas"].append(idea)
-        existing_idea_ids.add(idea["id"])
-        added.append(idea["id"])
-        next_id += 1
+    def print_add_summary(self, project, data, added, skipped):
+        status_counts = _status_counts(data)
+        print(f"Ideas saved: {project}")
+        print(f"  Added: {len(added)} ({', '.join(added)})")
+        print(f"  Total: {len(data['ideas'])} | {_format_counts(status_counts)}")
 
-    save_json(args.project, data)
+    def apply_filters(self, items, args):
+        """Filter by status, category, parent."""
+        if args.status:
+            items = [i for i in items if i.get("status") == args.status]
+        if args.category:
+            items = [i for i in items if i.get("category") == args.category]
+        if hasattr(args, "parent") and args.parent:
+            if args.parent == "root":
+                items = [i for i in items if not i.get("parent_id")]
+            else:
+                items = [i for i in items if i.get("parent_id") == args.parent]
+        return items
 
-    status_counts = _status_counts(data)
-    print(f"Ideas saved: {args.project}")
-    print(f"  Added: {len(added)} ({', '.join(added)})")
-    print(f"  Total: {len(data['ideas'])} | {_format_counts(status_counts)}")
+    def render_list(self, items, args):
+        """Table with hierarchy column."""
+        print(f"## Ideas: {args.project}")
+        filters = []
+        if args.status:
+            filters.append(f"status={args.status}")
+        if args.category:
+            filters.append(f"category={args.category}")
+        if hasattr(args, "parent") and args.parent:
+            filters.append(f"parent={args.parent}")
+        if filters:
+            print(f"Filter: {', '.join(filters)}")
+        print(f"Count: {len(items)}")
+        print()
+
+        if not items:
+            print("(none)")
+            return
+
+        print("| ID | Parent | Category | Priority | Title | Status |")
+        print("|----|--------|----------|----------|-------|--------|")
+        for i in items:
+            title = i.get("title", "")[:40]
+            status = i.get("status", "")
+            parent = i.get("parent_id", "") or "\u2014"
+            if status == "REJECTED" and i.get("merged_into"):
+                status = f"MERGED\u2192{i['merged_into']}"
+            print(f"| {i['id']} | {parent} | {i.get('category', '')} | {i.get('priority', '')} | {title} | {status} |")
+
+    def cmd_update(self, args):
+        """Update idea fields and status with complex validation."""
+        try:
+            updates = load_json_data(args.data)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        if not isinstance(updates, list):
+            updates = [updates]
+
+        from contracts import validate_contract
+        errors = validate_contract(CONTRACTS["update"], updates)
+        if errors:
+            print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
+            for e in errors[:10]:
+                print(f"  {e}", file=sys.stderr)
+            sys.exit(1)
+
+        data = self.load(args.project)
+        timestamp = now_iso()
+
+        updated = []
+        for u in updates:
+            idea = None
+            for i in data.get("ideas", []):
+                if i["id"] == u["id"]:
+                    idea = i
+                    break
+            if idea is None:
+                print(f"  WARNING: Idea {u['id']} not found, skipping", file=sys.stderr)
+                continue
+
+            # Validate status transition
+            if "status" in u:
+                new_status = u["status"]
+                current = idea["status"]
+                if current == "COMMITTED":
+                    print(f"  WARNING: Idea {u['id']} is COMMITTED (terminal state), cannot change status", file=sys.stderr)
+                    continue
+                if new_status not in VALID_TRANSITIONS.get(current, set()):
+                    print(f"  WARNING: Invalid transition {current}\u2192{new_status} for {u['id']}. "
+                          f"Valid: {', '.join(sorted(VALID_TRANSITIONS.get(current, set()))) or 'none'}",
+                          file=sys.stderr)
+                    continue
+
+            # Apply updates
+            updatable = ["title", "description", "status", "category", "priority",
+                         "rejection_reason", "merged_into", "tags", "related_ideas",
+                         "guidelines", "parent_id", "scopes", "advances_key_results",
+                         "knowledge_ids"]
+            for field in updatable:
+                if field in u:
+                    idea[field] = u[field]
+
+            # exploration_notes: append, not replace
+            if "exploration_notes" in u:
+                existing = idea.get("exploration_notes", "")
+                separator = "\n\n---\n\n" if existing else ""
+                idea["exploration_notes"] = existing + separator + u["exploration_notes"]
+
+            # relations: append-merge (add new, don't replace existing)
+            if "relations" in u:
+                existing_rels = idea.get("relations", [])
+                existing_keys = {(r.get("type"), r.get("target_id")) for r in existing_rels}
+                for rel in u["relations"]:
+                    if not isinstance(rel, dict):
+                        continue
+                    rel_type = rel.get("type", "")
+                    target = rel.get("target_id", "")
+                    if rel_type not in VALID_RELATION_TYPES:
+                        print(f"  WARNING: invalid relation type '{rel_type}', skipping",
+                              file=sys.stderr)
+                        continue
+                    if (rel_type, target) not in existing_keys:
+                        existing_rels.append({"type": rel_type, "target_id": target})
+                        existing_keys.add((rel_type, target))
+                idea["relations"] = existing_rels
+
+            idea["updated"] = timestamp
+            updated.append(u["id"])
+
+        self.save(args.project, data)
+
+        status_counts = _status_counts(data)
+        print(f"Updated {len(updated)} ideas: {args.project}")
+        for idea_id in updated:
+            idea = next(i for i in data["ideas"] if i["id"] == idea_id)
+            print(f"  {idea_id}: {idea.get('title', '')[:40]} ({idea.get('status', '')})")
+        print(f"  {_format_counts(status_counts)}")
 
 
-def cmd_read(args):
-    """Read ideas (optionally filtered)."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'ideas'):
-        print(f"No ideas for '{args.project}' yet.")
-        return
+_mod = Ideas()
 
-    data = storage.load_data(args.project, 'ideas')
-    ideas = data.get("ideas", [])
+# Public API used by other modules
+load_or_create = _mod.load
+save_json = _mod.save
+find_idea = _mod.find_by_id
 
-    # Filter
-    if args.status:
-        ideas = [i for i in ideas if i.get("status") == args.status]
-    if args.category:
-        ideas = [i for i in ideas if i.get("category") == args.category]
-    if hasattr(args, "parent") and args.parent:
-        if args.parent == "root":
-            ideas = [i for i in ideas if not i.get("parent_id")]
-        else:
-            ideas = [i for i in ideas if i.get("parent_id") == args.parent]
+# Expose commands as module-level functions (used by tests and other modules)
+cmd_add = _mod.cmd_add
+cmd_read = _mod.cmd_read
+cmd_update = _mod.cmd_update
 
-    # Sort by ID
-    ideas.sort(key=lambda i: i.get("id", ""))
 
-    # Render
-    print(f"## Ideas: {args.project}")
-    filters = []
-    if args.status:
-        filters.append(f"status={args.status}")
-    if args.category:
-        filters.append(f"category={args.category}")
-    if hasattr(args, "parent") and args.parent:
-        filters.append(f"parent={args.parent}")
-    if filters:
-        print(f"Filter: {', '.join(filters)}")
-    print(f"Count: {len(ideas)}")
-    print()
+def ideas_path(project: str) -> str:
+    """Return the path to the ideas JSON file for a project."""
+    return str(_mod.storage._path(project, 'ideas'))
 
-    if not ideas:
-        print("(none)")
-        return
 
-    print("| ID | Parent | Category | Priority | Title | Status |")
-    print("|----|--------|----------|----------|-------|--------|")
-    for i in ideas:
-        title = i.get("title", "")[:40]
-        status = i.get("status", "")
-        parent = i.get("parent_id", "") or "—"
-        if status == "REJECTED" and i.get("merged_into"):
-            status = f"MERGED→{i['merged_into']}"
-        print(f"| {i['id']} | {parent} | {i.get('category', '')} | {i.get('priority', '')} | {title} | {status} |")
-
+# -- Custom commands (standalone) --
 
 def cmd_show(args):
     """Show full details for a single idea."""
@@ -364,7 +421,11 @@ def cmd_show(args):
         sys.exit(1)
 
     data = storage.load_data(args.project, 'ideas')
-    idea = find_idea(data, args.idea_id)
+    idea_obj = _mod.find_by_id(data, args.idea_id)
+    if idea_obj is None:
+        print(f"ERROR: Idea '{args.idea_id}' not found.", file=sys.stderr)
+        sys.exit(1)
+    idea = idea_obj
     dec_data = None  # loaded on demand below
 
     print(f"## Idea {idea['id']}: {idea['title']}")
@@ -395,7 +456,7 @@ def cmd_show(args):
     if idea.get("parent_id"):
         chain = _get_parent_chain(all_ideas, idea["id"])
         if chain:
-            print(f"### Hierarchy: {' → '.join(chain)}")
+            print(f"### Hierarchy: {' \u2192 '.join(chain)}")
             print()
 
     children = [i for i in all_ideas if i.get("parent_id") == idea["id"]]
@@ -494,7 +555,7 @@ def cmd_show(args):
             for d in other_decisions:
                 print(f"- **{d['id']}** ({d.get('status', '')}): {d.get('issue', '')}")
                 if d.get("recommendation"):
-                    print(f"  → {d['recommendation']}")
+                    print(f"  \u2192 {d['recommendation']}")
             print()
 
     # Next steps hint
@@ -506,101 +567,14 @@ def cmd_show(args):
         print(f"**Next**: `/plan {idea['id']}` to create task graph from this idea")
 
 
-def cmd_update(args):
-    """Update idea fields and status."""
-    try:
-        updates = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(updates, list):
-        updates = [updates]
-
-    errors = validate_contract(CONTRACTS["update"], updates)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    updated = []
-    for u in updates:
-        idea = None
-        for i in data.get("ideas", []):
-            if i["id"] == u["id"]:
-                idea = i
-                break
-        if idea is None:
-            print(f"  WARNING: Idea {u['id']} not found, skipping", file=sys.stderr)
-            continue
-
-        # Validate status transition
-        if "status" in u:
-            new_status = u["status"]
-            current = idea["status"]
-            if current == "COMMITTED":
-                print(f"  WARNING: Idea {u['id']} is COMMITTED (terminal state), cannot change status", file=sys.stderr)
-                continue
-            if new_status not in VALID_TRANSITIONS.get(current, set()):
-                print(f"  WARNING: Invalid transition {current}→{new_status} for {u['id']}. "
-                      f"Valid: {', '.join(sorted(VALID_TRANSITIONS.get(current, set()))) or 'none'}",
-                      file=sys.stderr)
-                continue
-
-        # Apply updates
-        updatable = ["title", "description", "status", "category", "priority",
-                     "rejection_reason", "merged_into", "tags", "related_ideas",
-                     "guidelines", "parent_id", "scopes", "advances_key_results",
-                     "knowledge_ids"]
-        for field in updatable:
-            if field in u:
-                idea[field] = u[field]
-
-        # exploration_notes: append, not replace
-        if "exploration_notes" in u:
-            existing = idea.get("exploration_notes", "")
-            separator = "\n\n---\n\n" if existing else ""
-            idea["exploration_notes"] = existing + separator + u["exploration_notes"]
-
-        # relations: append-merge (add new, don't replace existing)
-        if "relations" in u:
-            existing_rels = idea.get("relations", [])
-            existing_keys = {(r.get("type"), r.get("target_id")) for r in existing_rels}
-            for rel in u["relations"]:
-                if not isinstance(rel, dict):
-                    continue
-                rel_type = rel.get("type", "")
-                target = rel.get("target_id", "")
-                if rel_type not in VALID_RELATION_TYPES:
-                    print(f"  WARNING: invalid relation type '{rel_type}', skipping",
-                          file=sys.stderr)
-                    continue
-                if (rel_type, target) not in existing_keys:
-                    existing_rels.append({"type": rel_type, "target_id": target})
-                    existing_keys.add((rel_type, target))
-            idea["relations"] = existing_rels
-
-        idea["updated"] = timestamp
-        updated.append(u["id"])
-
-    save_json(args.project, data)
-
-    status_counts = _status_counts(data)
-    print(f"Updated {len(updated)} ideas: {args.project}")
-    for idea_id in updated:
-        idea = next(i for i in data["ideas"] if i["id"] == idea_id)
-        print(f"  {idea_id}: {idea.get('title', '')[:40]} ({idea.get('status', '')})")
-    print(f"  {_format_counts(status_counts)}")
-
-
 def cmd_commit(args):
     """Mark an APPROVED idea as COMMITTED — ready for /plan."""
-    data = load_or_create(args.project)
-    idea = find_idea(data, args.idea_id)
+    data = _mod.load(args.project)
+    idea_obj = _mod.find_by_id(data, args.idea_id)
+    if idea_obj is None:
+        print(f"ERROR: Idea '{args.idea_id}' not found.", file=sys.stderr)
+        sys.exit(1)
+    idea = idea_obj
 
     if idea["status"] != "APPROVED":
         print(f"ERROR: Idea {args.idea_id} must be APPROVED before commit (is {idea['status']}).",
@@ -633,7 +607,7 @@ def cmd_commit(args):
     idea["committed_at"] = now_iso()
     idea["updated"] = now_iso()
 
-    save_json(args.project, data)
+    _mod.save(args.project, data)
 
     # Present context for /plan
     print(f"## Idea {idea['id']} committed: {idea['title']}")
@@ -664,7 +638,7 @@ def cmd_commit(args):
         closed_decisions = [d for d in related if d.get("status") == "CLOSED"]
 
         if open_decisions:
-            print(f"### Open Decisions ({len(open_decisions)}) — resolve before /plan")
+            print(f"### Open Decisions ({len(open_decisions)}) \u2014 resolve before /plan")
             for d in open_decisions:
                 print(f"- **{d['id']}**: {d.get('issue', '')}")
             print()
@@ -675,21 +649,12 @@ def cmd_commit(args):
                 rec = d.get("recommendation", "")
                 override = d.get("override_value", "")
                 value = override if override else rec
-                print(f"- **{d['id']}**: {d.get('issue', '')} → {value}")
+                print(f"- **{d['id']}**: {d.get('issue', '')} \u2192 {value}")
             print()
 
     print("### Next Step")
     print(f"Run `/plan {idea['id']}` to create task graph.")
     print(f"Tasks will carry `origin: \"{idea['id']}\"` for traceability.")
-
-
-def cmd_contract(args):
-    """Print contract spec for a command."""
-    if args.name not in CONTRACTS:
-        print(f"ERROR: Unknown contract '{args.name}'", file=sys.stderr)
-        print(f"Available: {', '.join(sorted(CONTRACTS.keys()))}", file=sys.stderr)
-        sys.exit(1)
-    print(render_contract(args.name, CONTRACTS[args.name]))
 
 
 # -- Helpers --
@@ -729,48 +694,38 @@ def _get_parent_chain(all_ideas: list, idea_id: str) -> list:
 
 # -- CLI --
 
-def main():
-    parser = argparse.ArgumentParser(description="Forge Ideas -- staging area for proposals and plans")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("add", help="Add ideas")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
-    p = sub.add_parser("read", help="Read ideas")
-    p.add_argument("project")
-    p.add_argument("--status", help="Filter by status")
-    p.add_argument("--category", help="Filter by category")
-    p.add_argument("--parent", help="Filter by parent ID (or 'root' for top-level)")
+def _setup_extra_parsers(sub):
+    # Add extra args to the 'read' parser (already created by make_cli)
+    read_parser = sub.choices.get("read") or sub._name_parser_map.get("read")
+    if read_parser:
+        read_parser.add_argument("--status",
+                                 choices=sorted(VALID_STATUSES),
+                                 help="Filter by status")
+        read_parser.add_argument("--category",
+                                 choices=sorted(VALID_CATEGORIES),
+                                 help="Filter by category")
+        read_parser.add_argument("--parent",
+                                 help="Filter by parent ID (or 'root' for top-level)")
 
     p = sub.add_parser("show", help="Show full idea details")
     p.add_argument("project")
     p.add_argument("idea_id")
 
-    p = sub.add_parser("update", help="Update ideas")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
     p = sub.add_parser("commit", help="Mark APPROVED idea as COMMITTED")
     p.add_argument("project")
     p.add_argument("idea_id")
 
-    p = sub.add_parser("contract", help="Print contract spec (no project needed)")
-    p.add_argument("name", choices=sorted(CONTRACTS.keys()))
-    p.add_argument("_extra", nargs="*", help=argparse.SUPPRESS)
 
-    args = parser.parse_args()
-
-    commands = {
-        "add": cmd_add,
-        "read": cmd_read,
-        "show": cmd_show,
-        "update": cmd_update,
-        "commit": cmd_commit,
-        "contract": cmd_contract,
-    }
-
-    commands[args.command](args)
+def main():
+    make_cli(
+        _mod,
+        extra_commands={
+            "show": cmd_show,
+            "commit": cmd_commit,
+        },
+        setup_extra_parsers=_setup_extra_parsers,
+        description="Forge Ideas -- staging area for proposals and plans",
+    )
 
 
 if __name__ == "__main__":

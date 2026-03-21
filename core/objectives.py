@@ -33,41 +33,28 @@ Commands:
     contract {name}                            Print contract spec
 """
 
-import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
+
+from entity_base import EntityModule, make_cli
 from storage import JSONFileStorage, load_json_data, now_iso
 
-from _compat import configure_encoding
-configure_encoding()
 
+# -- Constants --
 
-# -- Storage --
+VALID_STATUSES = {"ACTIVE", "ACHIEVED", "ABANDONED", "PAUSED"}
 
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    return storage.load_data(project, 'objectives')
+VALID_TRANSITIONS = {
+    "ACTIVE": {"ACHIEVED", "ABANDONED", "PAUSED"},
+    "PAUSED": {"ACTIVE", "ABANDONED"},
+    "ACHIEVED": {"ACTIVE"},      # reopen if KRs regress
+    "ABANDONED": {"ACTIVE"},     # reopen if circumstances change
+}
 
-
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    storage.save_data(project, 'objectives', data)
-
-
-def find_objective(data: dict, obj_id: str) -> dict:
-    """Find objective by ID. Exits with error if not found."""
-    for obj in data.get("objectives", []):
-        if obj["id"] == obj_id:
-            return obj
-    print(f"ERROR: Objective '{obj_id}' not found.", file=sys.stderr)
-    sys.exit(1)
+KR_STATUSES = {"NOT_STARTED", "IN_PROGRESS", "ACHIEVED"}
 
 
 # -- Contracts --
@@ -202,54 +189,21 @@ CONTRACTS = {
     },
 }
 
-VALID_STATUSES = {"ACTIVE", "ACHIEVED", "ABANDONED", "PAUSED"}
 
-VALID_TRANSITIONS = {
-    "ACTIVE": {"ACHIEVED", "ABANDONED", "PAUSED"},
-    "PAUSED": {"ACTIVE", "ABANDONED"},
-    "ACHIEVED": {"ACTIVE"},      # reopen if KRs regress
-    "ABANDONED": {"ACTIVE"},     # reopen if circumstances change
-}
+# -- Module --
 
+class Objectives(EntityModule):
+    entity_type = "objectives"
+    list_key = "objectives"
+    id_prefix = "O"
+    display_name = "Objectives"
+    dedup_keys = ()
+    contracts = CONTRACTS
 
-# -- Commands --
-
-def cmd_add(args):
-    """Add objectives with key results."""
-    try:
-        new_objectives = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(new_objectives, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
-
-    errors = validate_contract(CONTRACTS["add"], new_objectives)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    # Find next O-NNN ID
-    existing_ids = [
-        int(o["id"].split("-")[1]) for o in data.get("objectives", [])
-        if o.get("id", "").startswith("O-")
-    ]
-    next_id = max(existing_ids, default=0) + 1
-
-    added = []
-    for item in new_objectives:
-        obj_id = f"O-{next_id:03d}"
-
+    def build_entity(self, input_item, entity_id, timestamp, args):
         # Build key results with IDs
         key_results = []
-        for kr_idx, kr in enumerate(item["key_results"], 1):
+        for kr_idx, kr in enumerate(input_item["key_results"], 1):
             kr_data = {"id": f"KR-{kr_idx}"}
             # Numeric KR fields (metric + target)
             if kr.get("metric"):
@@ -264,79 +218,169 @@ def cmd_add(args):
                     kr_data["status"] = kr.get("status", "NOT_STARTED")
             key_results.append(kr_data)
 
-        obj = {
-            "id": obj_id,
-            "title": item["title"],
-            "description": item["description"],
+        return {
+            "id": entity_id,
+            "title": input_item["title"],
+            "description": input_item["description"],
             "key_results": key_results,
-            "appetite": item.get("appetite", "medium"),
-            "scope": item.get("scope", "project"),
-            "assumptions": item.get("assumptions", []),
-            "tags": item.get("tags", []),
-            "scopes": item.get("scopes", []),
-            "derived_guidelines": item.get("derived_guidelines", []),
-            "knowledge_ids": item.get("knowledge_ids", []),
-            "guideline_ids": item.get("guideline_ids", []),
-            "relations": item.get("relations", []),
+            "appetite": input_item.get("appetite", "medium"),
+            "scope": input_item.get("scope", "project"),
+            "assumptions": input_item.get("assumptions", []),
+            "tags": input_item.get("tags", []),
+            "scopes": input_item.get("scopes", []),
+            "derived_guidelines": input_item.get("derived_guidelines", []),
+            "knowledge_ids": input_item.get("knowledge_ids", []),
+            "guideline_ids": input_item.get("guideline_ids", []),
+            "relations": input_item.get("relations", []),
             "status": "ACTIVE",
             "created": timestamp,
             "updated": timestamp,
         }
 
-        data["objectives"].append(obj)
-        added.append(obj_id)
-        next_id += 1
+    def print_add_summary(self, project, data, added, skipped):
+        print(f"Objectives saved: {project}")
+        if added:
+            print(f"  Added: {len(added)} ({', '.join(added)})")
+        for obj_id in added:
+            obj = next(o for o in data["objectives"] if o["id"] == obj_id)
+            print(f"  {obj_id}: {obj['title']}")
+            for kr in obj["key_results"]:
+                if kr.get("metric"):
+                    direction = "\u2191" if kr["target"] > kr["baseline"] else "\u2193"
+                    print(f"    {kr['id']}: {kr['metric']} \u2014 {kr['baseline']} {direction} {kr['target']}")
+                else:
+                    print(f"    {kr['id']}: {kr.get('description', '(descriptive)')}")
 
-    save_json(args.project, data)
+    def apply_filters(self, items, args):
+        if getattr(args, 'status', None):
+            items = [o for o in items if o.get("status") == args.status]
+        return items
 
-    print(f"Objectives saved: {args.project}")
-    print(f"  Added: {len(added)} ({', '.join(added)})")
-    for obj_id in added:
-        obj = next(o for o in data["objectives"] if o["id"] == obj_id)
-        print(f"  {obj_id}: {obj['title']}")
-        for kr in obj["key_results"]:
-            if kr.get("metric"):
-                direction = "↑" if kr["target"] > kr["baseline"] else "↓"
-                print(f"    {kr['id']}: {kr['metric']} — {kr['baseline']} {direction} {kr['target']}")
-            else:
-                print(f"    {kr['id']}: {kr.get('description', '(descriptive)')}")
+    def render_list(self, items, args):
+        print(f"## Objectives: {args.project}")
+        if getattr(args, 'status', None):
+            print(f"Filter: status={args.status}")
+        print(f"Count: {len(items)}")
+        print()
+
+        if not items:
+            print("(none)")
+            return
+
+        print("| ID | Status | Appetite | Title | KR Progress |")
+        print("|----|--------|----------|-------|-------------|")
+        for o in items:
+            kr_summary = _kr_progress_summary(o.get("key_results", []))
+            title = o.get("title", "")[:35]
+            print(f"| {o['id']} | {o.get('status', '')} | {o.get('appetite', '')} | {title} | {kr_summary} |")
+
+    def cmd_update(self, args):
+        """Update objective fields and KR progress."""
+        try:
+            updates = load_json_data(args.data)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        if not isinstance(updates, list):
+            updates = [updates]
+
+        from contracts import validate_contract
+        errors = validate_contract(CONTRACTS["update"], updates)
+        if errors:
+            print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
+            for e in errors[:10]:
+                print(f"  {e}", file=sys.stderr)
+            sys.exit(1)
+
+        data = self.load(args.project)
+        timestamp = now_iso()
+
+        updated = []
+        for u in updates:
+            obj = self.find_by_id(data, u["id"])
+            if obj is None:
+                print(f"  WARNING: Objective {u['id']} not found, skipping", file=sys.stderr)
+                continue
+
+            # Simple field updates
+            for field in ["title", "description", "appetite", "assumptions", "tags",
+                           "scopes", "derived_guidelines", "knowledge_ids",
+                           "guideline_ids", "relations"]:
+                if field in u:
+                    obj[field] = u[field]
+
+            # Status update with transition validation and lifecycle warning (F-004)
+            if "status" in u:
+                new_status = u["status"]
+                old_status = obj.get("status", "ACTIVE")
+                valid_next = VALID_TRANSITIONS.get(old_status, set())
+                if new_status not in valid_next:
+                    print(f"  WARNING: Invalid transition {old_status}->{new_status} for {u['id']}. "
+                          f"Valid: {', '.join(sorted(valid_next)) or 'none'}",
+                          file=sys.stderr)
+                    continue
+                obj["status"] = new_status
+                # Lifecycle warning: check derived guidelines when objective ends
+                if new_status in ("ACHIEVED", "ABANDONED") and old_status == "ACTIVE":
+                    derived = obj.get("derived_guidelines", [])
+                    if derived:
+                        print(f"\n  NOTE: {u['id']} has derived guidelines: {', '.join(derived)}")
+                        if new_status == "ACHIEVED":
+                            print(f"  Review if these guidelines should become permanent standards")
+                            print(f"  or be deprecated now that the objective is achieved.")
+                        else:
+                            print(f"  Review if these guidelines are still relevant")
+                            print(f"  now that the objective is abandoned.")
+
+            # Key result updates (merge by KR id)
+            if "key_results" in u:
+                existing_krs = {kr["id"]: kr for kr in obj.get("key_results", [])}
+                for kr_update in u["key_results"]:
+                    kr_id = kr_update.get("id")
+                    if kr_id and kr_id in existing_krs:
+                        for field in ["current", "metric", "baseline", "target",
+                                      "description", "status"]:
+                            if field in kr_update:
+                                existing_krs[kr_id][field] = kr_update[field]
+                    else:
+                        print(f"  WARNING: KR '{kr_id}' not found in {u['id']}, skipping",
+                              file=sys.stderr)
+
+            obj["updated"] = timestamp
+            updated.append(u["id"])
+
+        self.save(args.project, data)
+
+        print(f"Updated {len(updated)} objectives: {args.project}")
+        for obj_id in updated:
+            obj = next(o for o in data["objectives"] if o["id"] == obj_id)
+            print(f"  {obj_id}: {obj['title']} ({obj['status']})")
+            for kr in obj.get("key_results", []):
+                if kr.get("metric"):
+                    pct = _kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
+                    print(f"    {kr['id']}: {kr['metric']} \u2014 {kr.get('current', '?')}/{kr['target']} ({pct}%)")
+                else:
+                    print(f"    {kr['id']}: {kr.get('description', '(descriptive)')} [{kr.get('status', 'NOT_STARTED')}]")
 
 
-def cmd_read(args):
-    """Read objectives (optionally filtered)."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'objectives'):
-        print(f"No objectives for '{args.project}' yet.")
-        return
+_mod = Objectives()
 
-    data = storage.load_data(args.project, 'objectives')
-    objectives = data.get("objectives", [])
+# Public API used by other modules
+load_or_create = _mod.load
+save_json = _mod.save
+find_objective = _mod.find_by_id
 
-    if args.status:
-        objectives = [o for o in objectives if o.get("status") == args.status]
 
-    print(f"## Objectives: {args.project}")
-    if args.status:
-        print(f"Filter: status={args.status}")
-    print(f"Count: {len(objectives)}")
-    print()
-
-    if not objectives:
-        print("(none)")
-        return
-
-    print("| ID | Status | Appetite | Title | KR Progress |")
-    print("|----|--------|----------|-------|-------------|")
-    for o in objectives:
-        kr_summary = _kr_progress_summary(o.get("key_results", []))
-        title = o.get("title", "")[:35]
-        print(f"| {o['id']} | {o.get('status', '')} | {o.get('appetite', '')} | {title} | {kr_summary} |")
-
+# -- Custom commands --
 
 def cmd_show(args):
     """Show full details for a single objective with coverage analysis."""
-    data = load_or_create(args.project)
-    obj = find_objective(data, args.objective_id)
+    data = _mod.load(args.project)
+    obj = _mod.find_by_id(data, args.objective_id)
+    if not obj:
+        print(f"ERROR: Objective '{args.objective_id}' not found.", file=sys.stderr)
+        sys.exit(1)
 
     print(f"## Objective {obj['id']}: {obj['title']}")
     print()
@@ -371,9 +415,9 @@ def cmd_show(args):
             current = kr.get("current", baseline)
             pct = _kr_percentage(baseline, target, current)
             bar = _progress_bar(pct)
-            direction = "↓" if target < baseline else "↑"
+            direction = "\u2193" if target < baseline else "\u2191"
             print(f"**{kr['id']}**: {kr['metric']}")
-            print(f"  {baseline} {direction} **{current}** → {target}  {bar} {pct}%")
+            print(f"  {baseline} {direction} **{current}** \u2192 {target}  {bar} {pct}%")
         else:
             status = kr.get("status", "NOT_STARTED")
             print(f"**{kr['id']}**: {kr.get('description', '(descriptive)')}")
@@ -449,10 +493,10 @@ def cmd_show(args):
             print(f"### Decisions Affecting This Objective ({len(affecting)}, {open_count} OPEN)")
             print()
             for d in affecting:
-                status_icon = "🔴" if d.get("status") == "OPEN" else "🟢"
+                status_icon = "\U0001f534" if d.get("status") == "OPEN" else "\U0001f7e2"
                 print(f"- {status_icon} **{d['id']}** ({d.get('status', '')}): {d.get('issue', '')}")
                 if d.get("recommendation"):
-                    print(f"  → {d['recommendation']}")
+                    print(f"  \u2192 {d['recommendation']}")
                 if d.get("task_id"):
                     print(f"  Source: {d['task_id']}")
             print()
@@ -461,8 +505,8 @@ def cmd_show(args):
     if obj.get("relations"):
         print("### Relations")
         for rel in obj["relations"]:
-            notes = f" — {rel['notes']}" if rel.get("notes") else ""
-            print(f"- [{rel['type']}] → {rel['target_id']}{notes}")
+            notes = f" \u2014 {rel['notes']}" if rel.get("notes") else ""
+            print(f"- [{rel['type']}] \u2192 {rel['target_id']}{notes}")
         print()
 
     # Overall KR progress
@@ -471,99 +515,6 @@ def cmd_show(args):
                for kr in numeric_krs]
     avg_pct = sum(kr_pcts) // len(kr_pcts) if kr_pcts else 0
     print(f"- **Outcome progress**: {avg_pct}% average across KRs")
-
-
-def cmd_update(args):
-    """Update objective fields and KR progress."""
-    try:
-        updates = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(updates, list):
-        updates = [updates]
-
-    errors = validate_contract(CONTRACTS["update"], updates)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    updated = []
-    for u in updates:
-        obj = None
-        for o in data.get("objectives", []):
-            if o["id"] == u["id"]:
-                obj = o
-                break
-        if obj is None:
-            print(f"  WARNING: Objective {u['id']} not found, skipping", file=sys.stderr)
-            continue
-
-        # Simple field updates
-        for field in ["title", "description", "appetite", "assumptions", "tags",
-                       "scopes", "derived_guidelines", "knowledge_ids",
-                       "guideline_ids", "relations"]:
-            if field in u:
-                obj[field] = u[field]
-
-        # Status update with transition validation and lifecycle warning (F-004)
-        if "status" in u:
-            new_status = u["status"]
-            old_status = obj.get("status", "ACTIVE")
-            valid_next = VALID_TRANSITIONS.get(old_status, set())
-            if new_status not in valid_next:
-                print(f"  WARNING: Invalid transition {old_status}->{new_status} for {u['id']}. "
-                      f"Valid: {', '.join(sorted(valid_next)) or 'none'}",
-                      file=sys.stderr)
-                continue
-            obj["status"] = new_status
-            # Lifecycle warning: check derived guidelines when objective ends
-            if new_status in ("ACHIEVED", "ABANDONED") and old_status == "ACTIVE":
-                derived = obj.get("derived_guidelines", [])
-                if derived:
-                    print(f"\n  NOTE: {u['id']} has derived guidelines: {', '.join(derived)}")
-                    if new_status == "ACHIEVED":
-                        print(f"  Review if these guidelines should become permanent standards")
-                        print(f"  or be deprecated now that the objective is achieved.")
-                    else:
-                        print(f"  Review if these guidelines are still relevant")
-                        print(f"  now that the objective is abandoned.")
-
-        # Key result updates (merge by KR id)
-        if "key_results" in u:
-            existing_krs = {kr["id"]: kr for kr in obj.get("key_results", [])}
-            for kr_update in u["key_results"]:
-                kr_id = kr_update.get("id")
-                if kr_id and kr_id in existing_krs:
-                    for field in ["current", "metric", "baseline", "target",
-                                  "description", "status"]:
-                        if field in kr_update:
-                            existing_krs[kr_id][field] = kr_update[field]
-                else:
-                    print(f"  WARNING: KR '{kr_id}' not found in {u['id']}, skipping",
-                          file=sys.stderr)
-
-        obj["updated"] = timestamp
-        updated.append(u["id"])
-
-    save_json(args.project, data)
-
-    print(f"Updated {len(updated)} objectives: {args.project}")
-    for obj_id in updated:
-        obj = next(o for o in data["objectives"] if o["id"] == obj_id)
-        print(f"  {obj_id}: {obj['title']} ({obj['status']})")
-        for kr in obj.get("key_results", []):
-            if kr.get("metric"):
-                pct = _kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
-                print(f"    {kr['id']}: {kr['metric']} — {kr.get('current', '?')}/{kr['target']} ({pct}%)")
-            else:
-                print(f"    {kr['id']}: {kr.get('description', '(descriptive)')} [{kr.get('status', 'NOT_STARTED')}]")
 
 
 def cmd_status(args):
@@ -619,15 +570,15 @@ def cmd_status(args):
 
         for kr in obj.get("key_results", []):
             full_id = f"{obj['id']}/{kr['id']}"
-            covered = "+" if full_id in covered_krs else "-"
+            covered_mark = "+" if full_id in covered_krs else "-"
             if kr.get("metric"):
                 pct = _kr_percentage(kr.get("baseline", 0), kr["target"], kr.get("current", kr.get("baseline", 0)))
                 bar = _progress_bar(pct)
-                print(f"  [{covered}] {kr['id']}: {kr['metric']} {bar} {pct}%  ({kr.get('current', '?')}/{kr['target']})")
+                print(f"  [{covered_mark}] {kr['id']}: {kr['metric']} {bar} {pct}%  ({kr.get('current', '?')}/{kr['target']})")
             else:
                 status = kr.get("status", "NOT_STARTED")
                 desc = kr.get("description", "(descriptive)")[:40]
-                print(f"  [{covered}] {kr['id']}: {desc} [{status}]")
+                print(f"  [{covered_mark}] {kr['id']}: {desc} [{status}]")
 
         # Task progress
         related_tasks = [t for t in all_tasks if t.get("origin") in idea_ids_for_obj]
@@ -645,15 +596,6 @@ def cmd_status(args):
         avg_pct = sum(kr_pcts) // len(kr_pcts) if kr_pcts else 0
         print(f"  Planning: {covered_count}/{total_krs} KRs covered | Outcome: {avg_pct}% avg")
         print()
-
-
-def cmd_contract(args):
-    """Print contract spec for a command."""
-    if args.name not in CONTRACTS:
-        print(f"ERROR: Unknown contract '{args.name}'", file=sys.stderr)
-        print(f"Available: {', '.join(sorted(CONTRACTS.keys()))}", file=sys.stderr)
-        sys.exit(1)
-    print(render_contract(args.name, CONTRACTS[args.name]))
 
 
 # -- Helpers --
@@ -684,7 +626,7 @@ def _kr_percentage(baseline, target, current) -> int:
 def _kr_progress_summary(key_results: list) -> str:
     """One-line summary of KR progress."""
     if not key_results:
-        return "—"
+        return "\u2014"
     numeric_krs = [kr for kr in key_results if kr.get("metric") and kr.get("target") is not None]
     descriptive_krs = [kr for kr in key_results if not (kr.get("metric") and kr.get("target") is not None)]
     parts = []
@@ -714,45 +656,28 @@ def _pct(done: int, total: int) -> int:
 
 # -- CLI --
 
-def main():
-    parser = argparse.ArgumentParser(description="Forge Objectives — business goals with measurable key results")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("add", help="Add objectives")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
-    p = sub.add_parser("read", help="Read objectives")
-    p.add_argument("project")
-    p.add_argument("--status", help="Filter by status")
+def _setup_extra_parsers(sub):
+    read_parser = sub.choices["read"]
+    read_parser.add_argument("--status", choices=sorted(VALID_STATUSES))
 
     p = sub.add_parser("show", help="Show objective details + coverage")
     p.add_argument("project")
     p.add_argument("objective_id")
 
-    p = sub.add_parser("update", help="Update objectives / KR progress")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
     p = sub.add_parser("status", help="Coverage dashboard")
     p.add_argument("project")
 
-    p = sub.add_parser("contract", help="Print contract spec (no project needed)")
-    p.add_argument("name", choices=sorted(CONTRACTS.keys()))
-    p.add_argument("_extra", nargs="*", help=argparse.SUPPRESS)
 
-    args = parser.parse_args()
-
-    commands = {
-        "add": cmd_add,
-        "read": cmd_read,
-        "show": cmd_show,
-        "update": cmd_update,
-        "status": cmd_status,
-        "contract": cmd_contract,
-    }
-
-    commands[args.command](args)
+def main():
+    make_cli(
+        _mod,
+        extra_commands={
+            "show": cmd_show,
+            "status": cmd_status,
+        },
+        setup_extra_parsers=_setup_extra_parsers,
+        description="Forge Objectives \u2014 business goals with measurable key results",
+    )
 
 
 if __name__ == "__main__":
