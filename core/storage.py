@@ -370,7 +370,9 @@ class JSONFileStorage:
     - _objectives/             — cross-project objectives (future)
     """
 
-    def __init__(self, base_dir: str = "forge_output") -> None:
+    def __init__(self, base_dir: str = None) -> None:
+        if base_dir is None:
+            base_dir = os.environ.get("FORGE_OUTPUT_DIR", "forge_output")
         self.base_dir = Path(base_dir)
 
     def _path(self, project: str, entity: str) -> Path:
