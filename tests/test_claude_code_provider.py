@@ -25,7 +25,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.llm.provider import (
+from _future.llm.provider import (
     CompletionConfig,
     LLMProvider,
     Message,
@@ -33,7 +33,7 @@ from core.llm.provider import (
     TokenUsage,
     ToolDefinition,
 )
-from core.llm.providers.claude_code import (
+from _future.llm.providers.claude_code import (
     ClaudeCodeProvider,
     _classify_error,
     _MAX_SESSION_MAP_SIZE,
