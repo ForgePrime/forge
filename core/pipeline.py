@@ -3191,8 +3191,8 @@ def _validate_ac_reasoning(ac_reasoning: str, ac_list: list) -> list:
         if not found:
             errors.append(f"  AC {i} not addressed: \"{text[:60]}\"")
 
-    # Check for PASS/FAIL keywords
-    if "pass" not in reasoning_lower and "met" not in reasoning_lower and "verified" not in reasoning_lower:
+    # Check for PASS/FAIL keywords (only if there are manual AC to verify)
+    if manual_ac and "pass" not in reasoning_lower and "met" not in reasoning_lower and "verified" not in reasoning_lower:
         errors.append("  No PASS/met/verified verdict found in reasoning")
 
     return errors
