@@ -47,6 +47,74 @@ import gates as _gates_mod
 
 CLAIM_WAIT_SECONDS = 1.5
 
+
+# -- Debug / Trace --
+
+def _is_debug() -> bool:
+    """Check if FORGE_DEBUG is enabled. Reads .env file if present, falls back to env var.
+
+    Default: False. Set FORGE_DEBUG=true in .env or environment to enable tracing.
+    """
+    # Check env var first (already set or from parent process)
+    val = os.environ.get("FORGE_DEBUG", "").strip().lower()
+    if val:
+        return val in ("true", "1", "yes")
+
+    # Try .env file in working directory
+    env_path = Path(".env")
+    if env_path.exists():
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                if key.strip() == "FORGE_DEBUG":
+                    return value.strip().strip('"').strip("'").lower() in ("true", "1", "yes")
+        except OSError:
+            pass
+
+    return False
+
+
+_DEBUG_CHECKED = None
+
+
+def _debug_enabled() -> bool:
+    """Cached version of _is_debug() — checks once per process."""
+    global _DEBUG_CHECKED
+    if _DEBUG_CHECKED is None:
+        _DEBUG_CHECKED = _is_debug()
+    return _DEBUG_CHECKED
+
+
+def _trace(project: str, entry: dict):
+    """Append a trace entry to forge_output/{project}/trace.jsonl.
+
+    Only writes when FORGE_DEBUG=true. Each line is a self-contained JSON object.
+    Fields: ts (auto), event (what happened), plus any additional data.
+
+    Use for EVERY significant operation:
+    - Command entry/exit with args
+    - Each validation (what, result, data)
+    - Each data load (entity, count)
+    - Context output (what LLM sees)
+    - State transitions
+    - Git operations
+    """
+    if not _debug_enabled():
+        return
+    entry["ts"] = now_iso()
+    _s = _get_storage()
+    trace_path = Path(_s.base_dir) / project / "trace.jsonl"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(trace_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+    except OSError:
+        pass  # Tracing failure must never break the pipeline
+
+
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     if hasattr(sys.stdout, "reconfigure"):
@@ -988,6 +1056,17 @@ def cmd_next(args):
             print(f"Worktree: `{candidate['worktree_path']}`")
         print()
         print_task_detail(candidate)
+        _trace(args.project, {"event": "next.claimed", "task": candidate["id"],
+               "name": candidate.get("name"), "type": candidate.get("type"),
+               "agent": agent, "started_at_commit": candidate.get("started_at_commit"),
+               "branch": candidate.get("branch"),
+               "depends_on": candidate.get("depends_on", []),
+               "origin": candidate.get("origin"),
+               "scopes": candidate.get("scopes", []),
+               "ac_count": len(candidate.get("acceptance_criteria", [])),
+               "exclusions_count": len(candidate.get("exclusions", [])),
+               "has_alignment": bool(candidate.get("alignment")),
+               "has_produces": bool(candidate.get("produces"))})
         return candidate
     else:
         # Multi-agent — use two-phase claim protocol
@@ -1018,6 +1097,26 @@ def cmd_begin(args):
     ctx_args.task_id = task["id"]
     ctx_args.lean = getattr(args, "lean", False)
     cmd_context(ctx_args)
+
+    # Trace begin with context summary
+    _s = _get_storage()
+    _ctx_summary = {}
+    if _s.exists(args.project, 'guidelines'):
+        _g = _s.load_data(args.project, 'guidelines')
+        _ctx_summary["guidelines"] = len([g for g in _g.get("guidelines", []) if g.get("status") == "ACTIVE"])
+    if _s.exists(args.project, 'knowledge'):
+        _k = _s.load_data(args.project, 'knowledge')
+        _ctx_summary["knowledge"] = len([k for k in _k.get("knowledge", []) if k.get("status") in ("ACTIVE", "DRAFT")])
+    if _s.exists(args.project, 'decisions'):
+        _d = _s.load_data(args.project, 'decisions')
+        _ctx_summary["decisions_open"] = len([d for d in _d.get("decisions", []) if d.get("status") == "OPEN"])
+    _ctx_summary["ac_count"] = len(task.get("acceptance_criteria", []))
+    _ctx_summary["scopes"] = task.get("scopes", [])
+    _ctx_summary["lean"] = getattr(args, "lean", False)
+    _trace(args.project, {
+        "cmd": "begin", "task": task["id"], "name": task.get("name"),
+        "type": task.get("type"), "context_loaded": _ctx_summary,
+    })
 
 
 def _verify_acceptance_criteria(task):
@@ -1186,9 +1285,18 @@ def cmd_complete(args):
     """Mark task as DONE."""
     tracker = load_tracker(args.project)
     task = find_task(tracker, args.task_id)
+    _t0 = time.time()
     agent = getattr(args, "agent", None)
     force = getattr(args, "force", False)
     reasoning = getattr(args, "reasoning", None) or ""
+
+    _trace(args.project, {"event": "complete.start", "task": args.task_id,
+           "name": task.get("name"), "type": task.get("type"),
+           "agent": agent, "force": force, "reasoning_length": len(reasoning),
+           "ac_reasoning_length": len(getattr(args, "ac_reasoning", None) or ""),
+           "deferred_provided": bool(getattr(args, "deferred", None)),
+           "started_at_commit": task.get("started_at_commit"),
+           "task_status": task.get("status")})
 
     # Determine ceremony level
     base_commit = task.get("started_at_commit", "")
@@ -1199,15 +1307,24 @@ def cmd_complete(args):
     ceremony = _determine_ceremony_level(task, diff_count)
     print(f"  Ceremony level: {ceremony} ({task.get('type', 'feature')}, {diff_count} files changed)")
 
+    _trace(args.project, {"event": "complete.ceremony", "task": args.task_id,
+           "ceremony": ceremony, "task_type": task.get("type"),
+           "diff_count": diff_count, "ac_count": len(task.get("acceptance_criteria", []))})
+
     # Verify agent ownership if task was claimed
     if task.get("agent") and agent and task["agent"] != agent:
         print(f"WARNING: Task {args.task_id} is owned by agent '{task['agent']}', "
               f"not '{agent}'. Completing anyway.", file=sys.stderr)
+        _trace(args.project, {"event": "complete.agent_mismatch", "task": args.task_id,
+               "expected": task["agent"], "actual": agent})
 
     # Check blocked_by_decisions are resolved
     if not force:
         open_decisions = _load_open_decision_ids(args.project)
         blocking = _blocked_by_open_decisions(task, open_decisions)
+        _trace(args.project, {"event": "complete.check_decisions", "task": args.task_id,
+               "open_decisions": list(open_decisions)[:20], "blocking": list(blocking),
+               "result": "PASS" if not blocking else "FAIL"})
         if blocking:
             print(f"WARNING: Task {args.task_id} has OPEN blocking decisions: "
                   f"{', '.join(blocking)}. Close them first or use --force.",
@@ -1215,7 +1332,12 @@ def cmd_complete(args):
             sys.exit(1)
 
     # Check reasoning (required for LIGHT, STANDARD, FULL)
-    if not force and ceremony not in ("MINIMAL",) and not reasoning.strip():
+    _reasoning_required = not force and ceremony not in ("MINIMAL",) and not reasoning.strip()
+    _trace(args.project, {"event": "complete.check_reasoning", "task": args.task_id,
+           "required": ceremony not in ("MINIMAL",), "provided": bool(reasoning.strip()),
+           "length": len(reasoning), "force": force,
+           "result": "FAIL" if _reasoning_required else "PASS"})
+    if _reasoning_required:
         print(f"WARNING: --reasoning is required for {ceremony} ceremony level.",
               file=sys.stderr)
         sys.exit(1)
@@ -1224,6 +1346,8 @@ def cmd_complete(args):
     if base_commit:
         auto_count = _auto_record_changes(args.project, args.task_id, base_commit,
                                            reasoning, cwd=git_cwd)
+        _trace(args.project, {"event": "complete.auto_record_changes", "task": args.task_id,
+               "base_commit": base_commit, "changes_recorded": auto_count})
         if auto_count:
             print(f"  Auto-recorded {auto_count} change(s) from git.")
 
@@ -1233,22 +1357,38 @@ def cmd_complete(args):
         changes_data = storage.load_data(args.project, 'changes')
         task_changes = [c for c in changes_data.get("changes", [])
                         if c.get("task_id") == args.task_id]
+        _trace(args.project, {"event": "complete.check_changes", "task": args.task_id,
+               "changes_found": len(task_changes),
+               "files": [c.get("file") for c in task_changes][:20],
+               "result": "PASS" if task_changes else "FAIL"})
         if not task_changes:
             print(f"WARNING: No changes recorded for {args.task_id}. "
                   f"Use --force to complete anyway.", file=sys.stderr)
             sys.exit(1)
 
     # Check that gates passed (mechanical enforcement)
+    _trace(args.project, {"event": "complete.gates_start", "task": args.task_id,
+           "gates_configured": bool(tracker.get("gates")),
+           "gate_count": len(tracker.get("gates", []))})
     _check_gates_before_complete(args.project, args.task_id, task, tracker, force)
+    _trace(args.project, {"event": "complete.gates_done", "task": args.task_id,
+           "gate_results": task.get("gate_results")})
 
     # --- Mechanical AC verification: ALWAYS runs regardless of ceremony level ---
-    # Mechanical AC (verification: "test"|"command") is not ceremony — it's a gate.
-    # If you defined a command to verify AC, it runs. Period.
     ac = task.get("acceptance_criteria", [])
+    _trace(args.project, {"event": "complete.ac_start", "task": args.task_id,
+           "ac_total": len(ac),
+           "ac_items": [{"text": (c if isinstance(c, str) else c.get("text", "")),
+                         "type": "manual" if isinstance(c, str) else c.get("verification", "manual")}
+                        for c in ac]})
     if ac:
         ac_results, has_mechanical = _verify_acceptance_criteria(task)
         if has_mechanical:
             failed_ac = [r for r in ac_results if not r["passed"]]
+            _trace(args.project, {"event": "complete.ac_mechanical", "task": args.task_id,
+                   "results": [{"text": r["text"], "verification": r["verification"],
+                                "passed": r["passed"], "output": r.get("output", "")[:200]}
+                               for r in ac_results]})
             if ac_results:
                 print(f"  AC Verification ({len(ac_results)} mechanical):")
                 for r in ac_results:
@@ -1259,6 +1399,8 @@ def cmd_complete(args):
                             if line.strip():
                                 print(f"           {line.strip()}")
             if failed_ac:
+                _trace(args.project, {"event": "complete.ac_mechanical_FAIL", "task": args.task_id,
+                       "failed": [r["text"] for r in failed_ac]})
                 print(f"\nERROR: {len(failed_ac)} mechanical AC verification(s) failed. "
                       f"Fix and retry.", file=sys.stderr)
                 sys.exit(1)
@@ -1268,6 +1410,10 @@ def cmd_complete(args):
     if not force and ceremony not in ("MINIMAL", "LIGHT") and ac:
         manual_ac = [c for c in ac if isinstance(c, str) or
                      (isinstance(c, dict) and c.get("verification", "manual") == "manual")]
+        _trace(args.project, {"event": "complete.ac_manual_check", "task": args.task_id,
+               "manual_ac_count": len(manual_ac), "ceremony": ceremony,
+               "ac_reasoning_provided": bool(getattr(args, "ac_reasoning", None)),
+               "ac_reasoning_length": len(getattr(args, "ac_reasoning", None) or "")})
         if manual_ac:
             ac_reasoning = getattr(args, "ac_reasoning", None)
             if not ac_reasoning:
@@ -1288,6 +1434,9 @@ def cmd_complete(args):
             task["ac_reasoning"] = ac_reasoning
             # Validate AC reasoning quality (blocking, not advisory)
             ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
+            _trace(args.project, {"event": "complete.ac_reasoning_validation", "task": args.task_id,
+                   "reasoning_text": ac_reasoning[:500], "issues": ac_warnings,
+                   "result": "PASS" if not ac_warnings else "FAIL"})
             if ac_warnings:
                 print(f"**AC REASONING ISSUES** ({len(ac_warnings)}):", file=sys.stderr)
                 for w in ac_warnings:
@@ -1345,6 +1494,10 @@ def cmd_complete(args):
             _s.save_data(args.project, 'decisions', dec_data)
             task["deferred_decisions"] = created_ids
             print(f"  Deferred: {len(created_ids)} item(s) → OPEN decisions {', '.join(created_ids)}")
+            _trace(args.project, {"event": "complete.deferred_created", "task": args.task_id,
+                   "decision_ids": created_ids,
+                   "items": [{"requirement": i.get("requirement"), "reason": i.get("reason")}
+                             for i in deferred_items if isinstance(i, dict)]})
 
     # Git workflow: push + PR + cleanup
     git_result = _apply_git_workflow_complete(args.project, tracker, task)
@@ -1354,11 +1507,40 @@ def cmd_complete(args):
     task["status"] = "DONE"
     task["completed_at"] = now_iso()
     task["ceremony_level"] = ceremony
+
+    # Build completion_trace on task
+    _duration_ms = int((time.time() - _t0) * 1000)
+    ac_mech_results = task.get("ac_verification_results", [])
+    completion_trace = {
+        "ceremony": ceremony,
+        "duration_ms": _duration_ms,
+        "force": force,
+        "ac_mechanical_count": len(ac_mech_results),
+        "ac_mechanical_passed": sum(1 for r in ac_mech_results if r.get("passed")),
+        "ac_mechanical_failed": sum(1 for r in ac_mech_results if not r.get("passed")),
+        "ac_manual_count": len([c for c in task.get("acceptance_criteria", [])
+                                if isinstance(c, str) or
+                                (isinstance(c, dict) and c.get("verification", "manual") == "manual")]),
+        "ac_reasoning_length": len(task.get("ac_reasoning", "")),
+        "gates_configured": bool(tracker.get("gates")),
+        "changes_count": diff_count,
+    }
+    task["completion_trace"] = completion_trace
+
     save_tracker(args.project, tracker)
 
     done_count = sum(1 for t in tracker["tasks"] if t["status"] in ("DONE", "SKIPPED"))
     total = len(tracker["tasks"])
     print(f"Task {args.task_id} ({task['name']}): -> DONE  [{done_count}/{total}]")
+
+    # Trace to JSONL
+    _trace(args.project, {
+        "cmd": "complete",
+        "task": args.task_id,
+        "name": task.get("name"),
+        "type": task.get("type"),
+        **completion_trace,
+    })
 
     # KR auto-update: trace task → origin → objective, update descriptive KRs
     _auto_update_kr(args.project, task, tracker)
@@ -1449,6 +1631,11 @@ def cmd_fail(args):
     save_tracker(args.project, tracker)
     print(f"Task {args.task_id} ({task['name']}): -> FAILED -- {task['failed_reason']}")
 
+    _trace(args.project, {
+        "cmd": "fail", "task": args.task_id, "name": task.get("name"),
+        "type": task.get("type"), "reason": task["failed_reason"],
+    })
+
 
 def cmd_skip(args):
     """Mark task as SKIPPED. Requires --reason. Feature/bug tasks also require --force."""
@@ -1485,6 +1672,11 @@ def cmd_skip(args):
     total = len(tracker["tasks"])
     print(f"Task {args.task_id} ({task['name']}): -> SKIPPED  [{done_count}/{total}]")
     print(f"  Reason: {reason.strip()}")
+
+    _trace(args.project, {
+        "cmd": "skip", "task": args.task_id, "name": task.get("name"),
+        "type": task.get("type"), "force": force, "reason": reason.strip(),
+    })
 
 
 def cmd_status(args):
@@ -2209,6 +2401,9 @@ def cmd_context(args):
     task = find_task(tracker, args.task_id)
     lean = getattr(args, "lean", False)
 
+    # Accumulate what we load for trace
+    _ctx_trace = {"sections_shown": [], "lean": lean}
+
     print(f"## Context for {args.task_id}: {task['name']}")
     if lean:
         print("*(lean mode — Knowledge, Research, Business Context, Lessons skipped)*")
@@ -2421,6 +2616,10 @@ def cmd_context(args):
                                            global_guidelines=global_guidelines)
         for line in lines:
             print(line)
+        _ctx_trace["sections_shown"].append("guidelines")
+        _ctx_trace["guidelines_project"] = len(project_guidelines)
+        _ctx_trace["guidelines_global"] = len(global_guidelines)
+        _ctx_trace["guidelines_scopes_matched"] = list(task_scopes)
 
     # Knowledge context (from task.knowledge_ids + origin chain + scope matching)
     k_ids = set(task.get("knowledge_ids", []))
@@ -2490,6 +2689,9 @@ def cmd_context(args):
                     content_preview = k.get("content", "")[:200]
                     if content_preview:
                         print(f"  {content_preview}")
+            _ctx_trace["sections_shown"].append("knowledge")
+            _ctx_trace["knowledge_explicit"] = list(k_ids)
+            _ctx_trace["knowledge_scope_matched"] = len(scope_linked) if 'scope_linked' in dir() else 0
             print()
 
     # Research context (from task origin -> idea/objective -> research; skip in lean mode)
@@ -2655,6 +2857,17 @@ def cmd_context(args):
     if ctx_kb > 50:
         print(f"**WARNING**: Large context. Consider summarizing older dependency outputs.")
     print()
+
+    # Comprehensive trace of what context was delivered to LLM
+    _ctx_trace["context_size_kb"] = round(ctx_kb, 1)
+    _ctx_trace["task_id"] = args.task_id
+    _ctx_trace["task_scopes"] = list(task_scopes) if 'task_scopes' in dir() else task.get("scopes", [])
+    _ctx_trace["dependencies"] = deps
+    _ctx_trace["has_alignment"] = bool(task.get("alignment"))
+    _ctx_trace["has_exclusions"] = bool(task.get("exclusions"))
+    _ctx_trace["has_produces"] = bool(task.get("produces"))
+    _ctx_trace["ac_count"] = len(task.get("acceptance_criteria", []))
+    _trace(args.project, {"event": "context.delivered", **_ctx_trace})
 
 
 def cmd_config(args):
@@ -3196,6 +3409,25 @@ def cmd_draft_plan(args):
     print("  - `python -m core.pipeline show-draft {project}` — view again")
     print("  - `python -m core.pipeline draft-plan {project} --data '...'` — replace with new draft")
 
+    _trace(args.project, {
+        "event": "draft_plan.complete",
+        "task_count": len(draft_tasks),
+        "tasks": [{"id": t.get("id"), "name": t.get("name"), "type": t.get("type"),
+                   "scopes": t.get("scopes", []), "origin": t.get("origin", ""),
+                   "ac_count": len(t.get("acceptance_criteria", [])),
+                   "depends_on": t.get("depends_on", []),
+                   "knowledge_ids": t.get("knowledge_ids", [])}
+                  for t in draft_tasks],
+        "assumptions_high": high_count,
+        "assumptions_total": len(assumptions) if assumptions else 0,
+        "coverage_total": len(coverage) if coverage else 0,
+        "ctx_errors": ctx_errors,
+        "ctx_summary": ctx_summary,
+        "ref_warnings": ref_warnings,
+        "source_objective": tracker["draft_plan"].get("source_objective_id"),
+        "source_idea": tracker["draft_plan"].get("source_idea_id"),
+    })
+
 
 def cmd_show_draft(args):
     """Show the current draft plan."""
@@ -3332,6 +3564,15 @@ def cmd_approve_plan(args):
     print()
     print_task_list(tracker)
     print(f"\nRun `next {args.project}` to start execution.")
+
+    _trace(args.project, {
+        "event": "approve_plan.complete", "task_count": len(entries),
+        "id_mapping": mapping,
+        "tasks_materialized": [{"id": e["id"], "name": e["name"], "type": e.get("type"),
+                                "scopes": e.get("scopes", []), "origin": e.get("origin", ""),
+                                "ac_count": len(e.get("acceptance_criteria", []))}
+                               for e in entries],
+    })
 
 
 def _print_draft_tasks(tasks: list):
