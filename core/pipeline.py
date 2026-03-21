@@ -2712,6 +2712,61 @@ def _check_assumptions_readiness(assumptions_raw):
     return assumptions, high_count
 
 
+def _check_coverage(coverage_raw):
+    """Parse and validate coverage data. Blocks if any requirement has status MISSING.
+
+    Each item: {requirement, source, covered_by, status, reason?}
+    status: COVERED | DEFERRED | OUT_OF_SCOPE | MISSING
+    DEFERRED and OUT_OF_SCOPE require reason field.
+
+    Returns (parsed_coverage, missing_count, deferred_items).
+    Exits on invalid JSON or schema.
+    """
+    try:
+        coverage = load_json_data(coverage_raw)
+    except (json.JSONDecodeError, Exception) as e:
+        print(f"ERROR: Invalid coverage JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(coverage, list):
+        print("ERROR: --coverage must be a JSON array", file=sys.stderr)
+        sys.exit(1)
+
+    valid_statuses = {"COVERED", "DEFERRED", "OUT_OF_SCOPE", "MISSING"}
+    missing = []
+    deferred = []
+
+    for i, item in enumerate(coverage):
+        if not isinstance(item, dict):
+            print(f"ERROR: Coverage item {i+1} must be an object", file=sys.stderr)
+            sys.exit(1)
+
+        for field in ("requirement", "status"):
+            if field not in item:
+                print(f"ERROR: Coverage item {i+1} missing required field '{field}'", file=sys.stderr)
+                sys.exit(1)
+
+        st = item["status"].upper()
+        item["status"] = st
+
+        if st not in valid_statuses:
+            print(f"ERROR: Coverage item {i+1} status must be one of {sorted(valid_statuses)} (got '{st}')",
+                  file=sys.stderr)
+            sys.exit(1)
+
+        if st in ("DEFERRED", "OUT_OF_SCOPE") and not item.get("reason"):
+            print(f"ERROR: Coverage item {i+1} '{item['requirement'][:50]}' has status {st} but no reason.",
+                  file=sys.stderr)
+            sys.exit(1)
+
+        if st == "MISSING":
+            missing.append(item)
+        elif st in ("DEFERRED", "OUT_OF_SCOPE"):
+            deferred.append(item)
+
+    return coverage, len(missing), deferred
+
+
 def cmd_draft_plan(args):
     """Store a draft plan for user review before materializing into pipeline."""
     tracker = load_tracker(args.project)
@@ -2748,6 +2803,22 @@ def cmd_draft_plan(args):
                     print(f"  - {a['assumption']} (basis: {a['basis']})", file=sys.stderr)
             sys.exit(1)
 
+    # Coverage gate: check all source requirements are accounted for
+    coverage = None
+    coverage_deferred = []
+    coverage_raw = getattr(args, "coverage", None)
+    if coverage_raw:
+        coverage, missing_count, coverage_deferred = _check_coverage(coverage_raw)
+        if missing_count > 0:
+            print(f"ERROR: Coverage gate FAILED — {missing_count} requirement(s) with status MISSING.",
+                  file=sys.stderr)
+            print("Every source requirement must be COVERED by a task, or explicitly DEFERRED/OUT_OF_SCOPE with a reason:",
+                  file=sys.stderr)
+            for item in coverage:
+                if item["status"] == "MISSING":
+                    print(f"  MISSING: {item['requirement']}", file=sys.stderr)
+            sys.exit(1)
+
     # Store draft (overwrite previous draft)
     tracker["draft_plan"] = {
         "source_idea_id": args.idea if hasattr(args, "idea") and args.idea else None,
@@ -2755,6 +2826,7 @@ def cmd_draft_plan(args):
         "created": now_iso(),
         "tasks": draft_tasks,
         "assumptions": assumptions,
+        "coverage": coverage,
     }
 
     save_tracker(args.project, tracker)
@@ -2780,6 +2852,13 @@ def cmd_draft_plan(args):
                 print(f"  - {a['assumption']}")
         print()
 
+    # Coverage summary
+    if coverage_deferred:
+        print(f"**DEFERRED/OUT_OF_SCOPE** ({len(coverage_deferred)}):")
+        for item in coverage_deferred:
+            print(f"  [{item['status']}] {item['requirement']}: {item.get('reason', '')}")
+        print()
+
     print(f"## Draft Plan: {args.project}")
     if tracker["draft_plan"]["source_idea_id"]:
         print(f"Source idea: {tracker['draft_plan']['source_idea_id']}")
@@ -2791,6 +2870,10 @@ def cmd_draft_plan(args):
         med = sum(1 for a in assumptions if a["severity"] == "MED")
         low = sum(1 for a in assumptions if a["severity"] == "LOW")
         print(f"Assumptions: {len(assumptions)} ({high} HIGH, {med} MED, {low} LOW)")
+    if coverage:
+        covered = sum(1 for c in coverage if c["status"] == "COVERED")
+        deferred = sum(1 for c in coverage if c["status"] in ("DEFERRED", "OUT_OF_SCOPE"))
+        print(f"Coverage: {covered} covered, {deferred} deferred/out-of-scope, {len(coverage)} total requirements")
     print()
 
     _print_draft_tasks(draft_tasks)
@@ -3039,6 +3122,8 @@ def main():
     p.add_argument("--objective", default=None, help="Source objective ID (O-NNN)")
     p.add_argument("--assumptions", default=None,
                    help="JSON array of {assumption, basis, severity} for readiness gate")
+    p.add_argument("--coverage", default=None,
+                   help="JSON array of {requirement, source, covered_by, status, reason?} for coverage gate")
 
     p = sub.add_parser("show-draft", help="Show current draft plan")
     p.add_argument("project")
