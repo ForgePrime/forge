@@ -296,7 +296,8 @@ class TestStateTransitions:
 
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="done",
-                               ac_reasoning="1. Feature X works: verified. 2. Tests pass: pytest green.")
+                               ac_reasoning="1. Feature X works: verified. 2. Tests pass: pytest green.",
+                               deferred="[]")
         cmd_complete(args)
 
         reloaded = load_tracker(project_name)
@@ -379,7 +380,7 @@ class TestStateTransitions:
         ac_text = "Criterion A met: verified in integration test"
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="done",
-                               ac_reasoning=ac_text)
+                               ac_reasoning=ac_text, deferred="[]")
         cmd_complete(args)
 
         reloaded = load_tracker(project_name)

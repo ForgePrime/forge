@@ -443,6 +443,24 @@ def cmd_show(args):
 
     print()
 
+    # Decisions affecting this objective (from deferred items with affects=[O-xxx])
+    if _s.exists(args.project, 'decisions'):
+        dec_data = _s.load_data(args.project, 'decisions')
+        affecting = [d for d in dec_data.get("decisions", [])
+                     if obj["id"] in (d.get("affects") or [])]
+        if affecting:
+            open_count = sum(1 for d in affecting if d.get("status") == "OPEN")
+            print(f"### Decisions Affecting This Objective ({len(affecting)}, {open_count} OPEN)")
+            print()
+            for d in affecting:
+                status_icon = "🔴" if d.get("status") == "OPEN" else "🟢"
+                print(f"- {status_icon} **{d['id']}** ({d.get('status', '')}): {d.get('issue', '')}")
+                if d.get("recommendation"):
+                    print(f"  → {d['recommendation']}")
+                if d.get("task_id"):
+                    print(f"  Source: {d['task_id']}")
+            print()
+
     # Relations
     if obj.get("relations"):
         print("### Relations")

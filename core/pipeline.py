@@ -1292,6 +1292,56 @@ def cmd_complete(args):
                 # No AC at all (shouldn't happen but safety)
                 pass
 
+    # Process deferred items — auto-create OPEN decisions
+    # Required for STANDARD/FULL: agent must explicitly state what's covered vs deferred
+    deferred_raw = getattr(args, "deferred", None)
+    has_ac = bool(task.get("acceptance_criteria"))
+    if not deferred_raw and not force and ceremony in ("STANDARD", "FULL") and has_ac:
+        print(f"WARNING: --deferred required for {ceremony} ceremony with acceptance criteria. "
+              f"Pass --deferred '[]' if all source requirements are covered, "
+              f"or list deferred items.", file=sys.stderr)
+        sys.exit(1)
+    if deferred_raw:
+        try:
+            deferred_items = load_json_data(deferred_raw)
+        except (json.JSONDecodeError, Exception):
+            print("WARNING: Invalid --deferred JSON, skipping.", file=sys.stderr)
+            deferred_items = []
+
+        if isinstance(deferred_items, list) and deferred_items:
+            _s = _get_storage()
+            dec_data = _s.load_data(args.project, 'decisions')
+            decisions = dec_data.get("decisions", [])
+            next_id = max((int(d["id"].split("-")[1]) for d in decisions if d.get("id", "").startswith("D-")), default=0) + 1
+
+            created_ids = []
+            for item in deferred_items:
+                if not isinstance(item, dict) or "requirement" not in item:
+                    continue
+                dec_id = f"D-{next_id:03d}"
+                dec = {
+                    "id": dec_id,
+                    "task_id": args.task_id,
+                    "type": "implementation",
+                    "issue": f"DEFERRED: {item['requirement']}",
+                    "recommendation": item.get("reason", "Deferred — needs clarification or separate task"),
+                    "reasoning": f"Identified during completion of {args.task_id}. Source requirement not implemented in this task.",
+                    "status": "OPEN",
+                    "decided_by": "claude",
+                    "confidence": "HIGH",
+                    "timestamp": now_iso(),
+                }
+                if item.get("affects"):
+                    dec["affects"] = item["affects"]
+                decisions.append(dec)
+                created_ids.append(dec_id)
+                next_id += 1
+
+            dec_data["decisions"] = decisions
+            _s.save_data(args.project, 'decisions', dec_data)
+            task["deferred_decisions"] = created_ids
+            print(f"  Deferred: {len(created_ids)} item(s) → OPEN decisions {', '.join(created_ids)}")
+
     # Git workflow: push + PR + cleanup
     git_result = _apply_git_workflow_complete(args.project, tracker, task)
     if git_result:
@@ -2199,6 +2249,19 @@ def cmd_context(args):
                 print(f"- **{d['id']}** ({d.get('status', '')}): {d.get('issue', '')}")
             print()
 
+        # Show decisions that AFFECT this task (from other tasks' --deferred)
+        affecting = [d for d in dec_data.get("decisions", [])
+                     if args.task_id in (d.get("affects") or [])
+                     and d.get("task_id") != args.task_id]
+        if affecting:
+            print(f"### Decisions Affecting This Task")
+            print()
+            for d in affecting:
+                print(f"- **{d['id']}** ({d.get('status', '')}): {d.get('issue', '')}")
+                if d.get("recommendation"):
+                    print(f"  → {d['recommendation']}")
+            print()
+
     # Show relevant lessons (skip in lean mode)
     if not lean:
         lessons_data = _s.load_data(args.project, 'lessons')
@@ -3076,6 +3139,8 @@ def main():
     p.add_argument("--reasoning", default=None, help="Why these changes were made (used for auto-recorded changes)")
     p.add_argument("--ac-reasoning", default=None, dest="ac_reasoning",
                    help="Justification that acceptance criteria are met (required when task has AC)")
+    p.add_argument("--deferred", default=None,
+                   help="JSON array of {requirement, reason} — items deferred from source doc. Auto-creates OPEN decisions.")
 
     p = sub.add_parser("fail", help="Mark task FAILED")
     p.add_argument("project")

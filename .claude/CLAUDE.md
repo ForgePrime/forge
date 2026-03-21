@@ -89,7 +89,7 @@ When adding tasks, each task supports:
 ### Validation
 
 - **Planning**: feature/bug tasks MUST have `acceptance_criteria`. Temp IDs (`_1`, `_2`) auto-remap to `T-NNN`.
-- **Completion**: gates must pass (mechanical enforcement for feature/bug) + AC verified. Ceremony level auto-detected (MINIMAL/LIGHT/STANDARD/FULL) from task type and diff size.
+- **Completion**: gates must pass (mechanical enforcement for feature/bug) + AC verified. Ceremony level auto-detected (MINIMAL/LIGHT/STANDARD/FULL) from task type and diff size. Use `--deferred '[{requirement, reason}]'` to record source doc requirements not covered — auto-creates OPEN decisions.
 - **Batch format**: `{"new_tasks": [...], "update_tasks": [...]}` for atomic add + update.
 
 ## Workflow
