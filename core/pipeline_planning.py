@@ -443,8 +443,53 @@ def cmd_draft_plan(args):
     trace_cmd(args.project, "pipeline", "understanding_gate",
               verdict=understanding_verdict, **understanding_details)
 
-    # OPEN decisions gate: block on unresolved clarifications and HIGH risks
+    # Extraction completeness check (heuristic)
     _s = _get_storage()
+    if _s.exists(args.project, 'knowledge') and _s.exists(args.project, 'research'):
+        k_all = _s.load_data(args.project, 'knowledge')
+        r_all = _s.load_data(args.project, 'research')
+        source_docs = [k for k in k_all.get("knowledge", [])
+                       if k.get("category") == "source-document"]
+        ingestion_records = [r for r in r_all.get("research", [])
+                             if r.get("category") == "ingestion"]
+        extracted_facts = [k for k in k_all.get("knowledge", [])
+                           if k.get("category") in ("requirement", "domain-rules", "technical-context",
+                                                     "architecture", "api-reference", "integration",
+                                                     "infrastructure", "business-context")
+                           and k.get("source", {}).get("type") == "documentation"]
+
+        if source_docs:
+            unprocessed = []
+            ingested_paths = {r.get("file_path", "") for r in ingestion_records}
+            for doc in source_docs:
+                doc_path = doc.get("source", {}).get("ref", "")
+                if doc_path and doc_path not in ingested_paths:
+                    unprocessed.append(doc)
+
+            if unprocessed:
+                print(f"\n**EXTRACTION WARNING**: {len(unprocessed)} registered document(s) not ingested:",
+                      file=sys.stderr)
+                for d in unprocessed[:5]:
+                    print(f"  {d['id']}: {d.get('source', {}).get('ref', '?')}", file=sys.stderr)
+                print(f"  Run ingestion before planning.\n", file=sys.stderr)
+
+            if source_docs and not extracted_facts:
+                print(f"\n**EXTRACTION WARNING**: {len(source_docs)} source document(s) registered "
+                      f"but 0 facts extracted. Run ingestion.\n", file=sys.stderr)
+            elif source_docs and extracted_facts:
+                ratio = len(extracted_facts) / len(source_docs)
+                if ratio < 2:
+                    print(f"\n**EXTRACTION WARNING**: Low extraction ratio — {len(extracted_facts)} facts "
+                          f"from {len(source_docs)} documents (avg {ratio:.1f}/doc). "
+                          f"Typical: 5-20 facts per document. Review ingestion quality.\n",
+                          file=sys.stderr)
+
+            trace_cmd(args.project, "pipeline", "extraction_completeness",
+                      source_docs=len(source_docs), ingestion_records=len(ingestion_records),
+                      extracted_facts=len(extracted_facts),
+                      unprocessed=len(unprocessed) if source_docs else 0)
+
+    # OPEN decisions gate: block on unresolved clarifications and HIGH risks
     if _s.exists(args.project, 'decisions'):
         dec_data = _s.load_data(args.project, 'decisions')
         open_decisions = [d for d in dec_data.get("decisions", []) if d.get("status") == "OPEN"]
@@ -584,6 +629,33 @@ def cmd_draft_plan(args):
                 coverage = auto_coverage
                 print(f"  Auto-coverage: {len(req_knowledge)} requirements covered by tasks.",
                       file=sys.stderr)
+
+    # KR measurement gate: objectives linked to this plan must have KR with measurement
+    if _s.exists(args.project, 'objectives'):
+        obj_data_kr = _s.load_data(args.project, 'objectives')
+        # Find objectives linked to draft tasks via origin
+        draft_origins = {t.get("origin", "") for t in draft_tasks}
+        plan_objectives = [o for o in obj_data_kr.get("objectives", [])
+                           if o["id"] in draft_origins and o.get("status") == "ACTIVE"]
+        kr_without_measurement = []
+        for obj in plan_objectives:
+            for kr in obj.get("key_results", []):
+                if not kr.get("measurement"):
+                    kr_without_measurement.append(
+                        f"  {obj['id']}/{kr['id']}: "
+                        f"{kr.get('metric') or kr.get('description', '?')[:50]} — no measurement method"
+                    )
+        if kr_without_measurement:
+            details = "\n".join(kr_without_measurement)
+            print(f"\n**KR MEASUREMENT WARNING**: {len(kr_without_measurement)} KR(s) without measurement method:",
+                  file=sys.stderr)
+            print(details, file=sys.stderr)
+            print(f"  Add measurement (command/test/manual) via: objectives update --data '...'",
+                  file=sys.stderr)
+            print(f"  Without measurement, KR progress cannot be verified automatically.\n",
+                  file=sys.stderr)
+            trace_cmd(args.project, "pipeline", "kr_measurement_check",
+                      without_measurement=len(kr_without_measurement))
 
     # Store draft (overwrite previous draft)
     tracker["draft_plan"] = {

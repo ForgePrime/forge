@@ -63,6 +63,7 @@ Use `--help` for full syntax. Use `contract` subcommand for entity JSON format.
 | `/decide` | Review and resolve open decisions |
 | `/ingest` | Register and extract facts from source documentation |
 | `/analyze` | Resolve decisions, group requirements into objectives with measurable KR |
+| `/change-request` | Handle new/changed requirements during execution |
 | `/discover {topic}` | Explore options, assess risks, design architecture |
 | `/objective {title}` | Define business objective with measurable key results |
 | `/review {task_id}` | Deep code review (critical tasks only) |

@@ -301,8 +301,10 @@ Skip for Quick track or when no scopes match any domain module.
 
 Generate a project slug from the goal (lowercase, hyphens, max 40 chars):
 ```bash
-python -m core.pipeline init {slug} --goal "{full goal text}"
+python -m core.pipeline init {slug} --goal "{full goal text}" --project-dir "{absolute_path_to_workspace}"
 ```
+
+`--project-dir` is REQUIRED — it tells Forge where the code lives. All commands (gates, AC tests, KR measurements) run in this directory.
 
 If you make any architectural decisions during planning (e.g., choosing a framework,
 deciding on a pattern), record them:
@@ -348,6 +350,7 @@ For each task, specify:
 - `parallel`: true if this task can run alongside siblings
 - `conflicts_with`: list of task IDs modifying same files (supports temp IDs within the same batch)
 - `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). **Only use scopes that exist in the project** (loaded via R10 in Step 2). Inherit from idea/objective scopes but narrow per task — a backend-only task should NOT get frontend scopes. `general` is always included automatically during execution.
+- `source_requirements`: list of `{knowledge_id: "K-NNN", text: "requirement text", source_ref: "file:section"}`. **REQUIRED for feature/bug tasks when requirements exist.** Links this task to specific extracted requirements. Every requirement K-NNN must be referenced by at least one task. Auto-coverage gate checks this.
 - `knowledge_ids`: list of Knowledge IDs (K-001, etc.) that provide context for this task. **Only assign knowledge relevant to the task** — if K-001 is about API patterns and the task is pure CSS, don't assign K-001. Inherit from source idea/objective but distribute selectively. Loaded by `pipeline context` for LLM assembly.
 - `test_requirements`: dict with boolean keys `unit`, `integration`, `e2e` indicating which test types this task needs.
 - `alignment`: the alignment contract from Step 3 (dict with `goal`, `boundaries`, `success`). All tasks share the same plan-level alignment. Required for feature/bug tasks planned via `/plan`. Narrowing `success` per task is encouraged when tasks cover different aspects of the goal.
