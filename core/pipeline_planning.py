@@ -443,6 +443,68 @@ def cmd_draft_plan(args):
     trace_cmd(args.project, "pipeline", "understanding_gate",
               verdict=understanding_verdict, **understanding_details)
 
+    # OPEN decisions gate: block on unresolved clarifications and HIGH risks
+    _s = _get_storage()
+    if _s.exists(args.project, 'decisions'):
+        dec_data = _s.load_data(args.project, 'decisions')
+        open_decisions = [d for d in dec_data.get("decisions", []) if d.get("status") == "OPEN"]
+        blocking_clarifications = [d for d in open_decisions if d.get("type") == "clarification_needed"]
+        blocking_risks = [d for d in open_decisions
+                          if d.get("type") == "risk" and d.get("severity") == "HIGH"]
+        warn_risks = [d for d in open_decisions
+                      if d.get("type") == "risk" and d.get("severity") in ("MEDIUM", "LOW")]
+
+        if blocking_clarifications:
+            details = "\n".join(f"  {d['id']}: {d.get('issue', '')}" for d in blocking_clarifications)
+            raise PreconditionError(
+                f"Cannot plan — {len(blocking_clarifications)} OPEN clarification(s) need resolution:\n"
+                f"{details}\n\n"
+                f"Resolve by closing these decisions (answer the questions) or convert to assumptions."
+            )
+        if blocking_risks:
+            details = "\n".join(f"  {d['id']} [{d.get('severity')}]: {d.get('issue', '')}" for d in blocking_risks)
+            raise PreconditionError(
+                f"Cannot plan — {len(blocking_risks)} OPEN HIGH-severity risk(s) unresolved:\n"
+                f"{details}\n\n"
+                f"Resolve by: update status to ANALYZING/MITIGATED/ACCEPTED, or add mitigation_plan."
+            )
+        if warn_risks:
+            print(f"\n**RISK WARNING**: {len(warn_risks)} OPEN risk(s) (MEDIUM/LOW):", file=sys.stderr)
+            for d in warn_risks[:5]:
+                print(f"  {d['id']}: {d.get('issue', '')[:80]}", file=sys.stderr)
+            print(f"  Plan saved — review before starting execution.\n", file=sys.stderr)
+
+        trace_cmd(args.project, "pipeline", "open_decisions_gate",
+                  blocking_clarifications=len(blocking_clarifications),
+                  blocking_risks=len(blocking_risks),
+                  warn_risks=len(warn_risks))
+
+    # Requirement → Objective mapping check (warning, not blocking)
+    if _s.exists(args.project, 'knowledge'):
+        k_data = _s.load_data(args.project, 'knowledge')
+        requirements = [k for k in k_data.get("knowledge", [])
+                        if k.get("category") == "requirement" and k.get("status") == "ACTIVE"]
+        if requirements:
+            unmapped = []
+            for req in requirements:
+                has_objective_link = any(
+                    le.get("entity_type") == "objective"
+                    for le in req.get("linked_entities", [])
+                )
+                if not has_objective_link:
+                    unmapped.append(req)
+            if unmapped:
+                print(f"\n**REQUIREMENT WARNING**: {len(unmapped)} requirement(s) not linked to any Objective:",
+                      file=sys.stderr)
+                for r in unmapped[:10]:
+                    print(f"  {r['id']}: {r.get('title', '')[:60]}", file=sys.stderr)
+                print(f"  Link with: knowledge link {{project}} --data "
+                      f"'[{{\"knowledge_id\": \"K-NNN\", \"entity_type\": \"objective\", "
+                      f"\"entity_id\": \"O-NNN\", \"relation\": \"required\"}}]'\n",
+                      file=sys.stderr)
+            trace_cmd(args.project, "pipeline", "requirement_mapping_check",
+                      total_requirements=len(requirements), unmapped=len(unmapped))
+
     # Coverage gate: check all source requirements are accounted for
     coverage = None
     coverage_deferred = []

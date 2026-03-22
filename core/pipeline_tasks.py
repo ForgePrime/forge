@@ -522,19 +522,36 @@ def cmd_add_tasks(args):
     print(f"\nRun `next {args.project}` to start.")
 
 
+def _filter_by_objective(tracker: dict, objective: str) -> dict:
+    """Return a tracker copy with tasks filtered by objective origin."""
+    if not objective:
+        return tracker
+    filtered_tasks = [t for t in tracker["tasks"]
+                      if t.get("origin", "").startswith(objective)]
+    return {**tracker, "tasks": filtered_tasks}
+
+
 def cmd_status(args):
     """Dashboard."""
     tracker = load_tracker(args.project)
-    print_status(args.project, tracker)
+    objective = getattr(args, "objective", None)
+    filtered = _filter_by_objective(tracker, objective)
+    if objective:
+        print(f"*Filtered: {objective}*")
+    print_status(args.project, filtered)
 
 
 def cmd_list(args):
     """All tasks with status."""
     tracker = load_tracker(args.project)
+    objective = getattr(args, "objective", None)
+    filtered = _filter_by_objective(tracker, objective)
     print(f"## Project: {args.project}")
+    if objective:
+        print(f"Objective: {objective}")
     print(f"Goal: {tracker.get('goal', '(none)')}")
     print(f"")
-    print_task_list(tracker)
+    print_task_list(filtered)
 
 
 def cmd_reset(args):

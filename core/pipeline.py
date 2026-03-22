@@ -112,6 +112,7 @@ def main():
     p = sub.add_parser("next", help="Get next task")
     p.add_argument("project")
     p.add_argument("--agent", default=None, help="Agent name for multi-agent claim")
+    p.add_argument("--objective", default=None, help="Filter to tasks with origin matching this objective (O-NNN)")
 
     p = sub.add_parser("begin", help="Claim next task and show full execution context")
     p.add_argument("project")
@@ -144,9 +145,11 @@ def main():
 
     p = sub.add_parser("status", help="Status dashboard")
     p.add_argument("project")
+    p.add_argument("--objective", default=None, help="Filter to objective (O-NNN)")
 
     p = sub.add_parser("list", help="List all tasks")
     p.add_argument("project")
+    p.add_argument("--objective", default=None, help="Filter to objective (O-NNN)")
 
     p = sub.add_parser("reset", help="Reset tasks from ID onward")
     p.add_argument("project")

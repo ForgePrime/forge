@@ -189,11 +189,14 @@ def cmd_next(args):
             return task
 
     # Find next TODO with deps met, no conflicts, and no blocking decisions
+    objective_filter = getattr(args, "objective", None)
     open_decisions = _load_open_decision_ids(args.project)
     candidate = None
     blocked_by_dec_tasks = []
     for task in tracker["tasks"]:
         if task["status"] != "TODO":
+            continue
+        if objective_filter and not task.get("origin", "").startswith(objective_filter):
             continue
         deps_met = all(dep in done_ids for dep in task["depends_on"])
         if not deps_met:
@@ -826,10 +829,11 @@ def cmd_complete(args):
     # KR auto-update: trace task → origin → objective, update descriptive KRs
     _auto_update_kr(args.project, task, tracker)
 
-    # Requirements coverage check (when all tasks done)
+    # End-of-project checks (when all tasks done)
     done_count = sum(1 for t in tracker["tasks"] if t["status"] in ("DONE", "SKIPPED"))
     if done_count == len(tracker["tasks"]):
         _check_requirements_coverage(args.project, tracker)
+        _check_kr_achievement(args.project)
 
 
 # ---------------------------------------------------------------------------
@@ -869,6 +873,49 @@ def _check_requirements_coverage(project: str, tracker: dict):
 
     _trace(project, {"event": "requirements_coverage", "covered": covered, "total": total,
            "details": results})
+
+
+def _check_kr_achievement(project: str):
+    """Check KR achievement across all objectives. Informational only."""
+    _s = _get_storage()
+    if not _s.exists(project, 'objectives'):
+        return
+    obj_data = _s.load_data(project, 'objectives')
+    objectives = [o for o in obj_data.get("objectives", []) if o.get("status") == "ACTIVE"]
+    if not objectives:
+        return
+
+    from pipeline_context import _objective_kr_pct
+
+    print(f"\n## KR Achievement")
+    total_krs = 0
+    achieved_krs = 0
+    for obj in objectives:
+        krs = obj.get("key_results", [])
+        if not krs:
+            continue
+        print(f"\n  **{obj['id']}**: {obj.get('title', '')}")
+        for kr in krs:
+            total_krs += 1
+            kr_id = kr.get("id", "?")
+            if kr.get("target") is not None:
+                current = kr.get("current", kr.get("baseline", 0))
+                target = kr["target"]
+                pct = _objective_kr_pct(kr.get("baseline", 0), target, current)
+                direction = kr.get("direction", "up")
+                met = (current <= target) if direction == "down" else (current >= target)
+                status = "ACHIEVED" if met else f"{pct}%"
+                if met:
+                    achieved_krs += 1
+                print(f"    [{status}] {kr_id}: {current}/{target}")
+            else:
+                kr_status = kr.get("status", "NOT_STARTED")
+                if kr_status == "ACHIEVED":
+                    achieved_krs += 1
+                print(f"    [{kr_status}] {kr_id}: {kr.get('description', '')[:60]}")
+
+    print(f"\n  **Total: {achieved_krs}/{total_krs} KRs achieved**")
+    _trace(project, {"event": "kr_achievement", "achieved": achieved_krs, "total": total_krs})
 
 
 # ---------------------------------------------------------------------------
