@@ -33,6 +33,7 @@ from storage import JSONFileStorage
 
 VALID_CATEGORIES = {
     "architecture", "domain", "feasibility", "risk", "business", "technical",
+    "ingestion",
 }
 
 VALID_STATUSES = {"DRAFT", "ACTIVE", "SUPERSEDED", "ARCHIVED"}

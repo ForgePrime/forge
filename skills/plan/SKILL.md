@@ -28,6 +28,7 @@ description: "Decompose a high-level goal into a tracked, dependency-aware task 
 | R8 | `python -m core.objectives show {project} {objective_id}` | Objective details + KRs | Step 2 — if planning from objective |
 | R9 | `python -m core.knowledge read {project}` | Available knowledge objects | Step 2 — for task knowledge assignment |
 | R10 | `python -m core.guidelines scopes {project}` | Available guideline scopes | Step 2 — for task scope assignment |
+| R11 | `python -m core.knowledge read {project} --category requirement` | Extracted requirements from source docs | Step 1.5 — requirements baseline |
 | R11 | `python -m core.decisions read {project} --type risk` | Active risk decisions | Step 6 — inform task structure and AC |
 | R12 | `python -m core.domain_modules for-scopes --scopes "{s}" --phase planning` | Domain decomposition rules | Step 4.5 — if Standard/Complex |
 
@@ -91,6 +92,34 @@ Read the existing codebase to understand what exists:
 - Directory structure
 - Key configuration files (package.json, requirements.txt, etc.)
 - Existing architecture patterns
+
+---
+
+### Step 1.5 — Load Source Requirements
+
+If source documents have been ingested, load extracted requirements:
+
+```bash
+python -m core.knowledge read {project} --category requirement
+python -m core.knowledge read {project} --category domain-rules
+python -m core.knowledge read {project} --category source-document
+```
+
+If `source-document` objects exist but few `requirement` objects:
+- WARNING: Documents registered but not fully ingested. Run the ingest skill first (`skills/ingest/SKILL.md`).
+
+These requirements are the baseline for coverage checking. Every requirement K-NNN must be:
+- **Referenced** by at least one task's `source_requirements`
+- **Or explicitly** marked DEFERRED/OUT_OF_SCOPE in the coverage check
+
+When decomposing tasks (Step 4+), add `source_requirements` to each task:
+```json
+{
+  "source_requirements": [
+    {"knowledge_id": "K-003", "text": "System must support 500 users", "source_ref": "spec.md:section-3"}
+  ]
+}
+```
 
 ---
 

@@ -77,6 +77,7 @@ class Task:
     scopes: list[str] = field(default_factory=list)
     origin: str = ""
     knowledge_ids: list[str] = field(default_factory=list)
+    source_requirements: list[dict] = field(default_factory=list)
     alignment: Optional[dict] = None
     exclusions: list[str] = field(default_factory=list)
     produces: Optional[dict] = None

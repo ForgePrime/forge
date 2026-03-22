@@ -202,6 +202,18 @@ def cmd_context(args):
             print(f"- **DO NOT**: {ex}")
         print()
 
+    # Source requirements (traceability)
+    if task.source_requirements:
+        print("### Source Requirements")
+        print()
+        for sr in task.source_requirements:
+            k_id = sr.get("knowledge_id", "?")
+            text = sr.get("text", "")
+            ref = sr.get("source_ref", "")
+            ref_str = f" _(from {ref})_" if ref else ""
+            print(f"- **{k_id}**: {text}{ref_str}")
+        print()
+
     # Plan staleness check: were files modified since plan approval?
     staleness_warnings = _check_plan_staleness(task, tracker)
     if staleness_warnings:

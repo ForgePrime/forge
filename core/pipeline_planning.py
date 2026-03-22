@@ -18,6 +18,7 @@ from pipeline_execution import _validate_ac_reasoning, _warn_ac_quality
 from contracts import validate_contract
 from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError
 from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
+from trace import trace_cmd
 
 
 def _validate_plan_references(entries: list, project: str) -> list:
@@ -270,6 +271,113 @@ def _check_coverage(coverage_raw):
     return coverage, len(missing), deferred
 
 
+CRITICAL_CATEGORIES = {
+    "deployment": {
+        "question": "Where will this system run? (cloud provider, Docker, serverless, on-prem)",
+        "knowledge_match": {"categories": {"infrastructure"}, "tags": {"deploy", "docker", "kubernetes", "serverless", "cloud"}, "keywords": {"deploy", "hosting", "container", "server"}},
+    },
+    "stack": {
+        "question": "What programming language, framework, and database are used?",
+        "knowledge_match": {"categories": {"technical-context", "architecture"}, "tags": {"framework", "language", "database", "stack"}, "keywords": {"python", "node", "java", "react", "postgres", "mongo", "redis"}},
+    },
+    "users": {
+        "question": "Who uses this system? What roles/permissions exist?",
+        "knowledge_match": {"categories": {"business-context", "domain-rules"}, "tags": {"user", "role", "persona", "auth"}, "keywords": {"user", "role", "admin", "permission", "persona"}},
+    },
+    "data-in": {
+        "question": "What data enters the system? (APIs, files, events, user input)",
+        "knowledge_match": {"categories": {"api-reference", "integration"}, "tags": {"input", "api", "endpoint", "event"}, "keywords": {"request", "input", "upload", "import", "receive"}},
+    },
+    "data-out": {
+        "question": "What data leaves the system? (responses, reports, exports, notifications)",
+        "knowledge_match": {"categories": {"api-reference", "integration"}, "tags": {"output", "response", "export", "notification"}, "keywords": {"response", "export", "report", "send", "notify"}},
+    },
+    "persistence": {
+        "question": "How is state stored? (database schema, files, cache)",
+        "knowledge_match": {"categories": {"architecture", "technical-context"}, "tags": {"database", "storage", "schema", "cache", "persistence"}, "keywords": {"table", "schema", "store", "persist", "save", "database"}},
+    },
+    "error-handling": {
+        "question": "What happens on failure? (retries, alerts, fallbacks, error responses)",
+        "knowledge_match": {"categories": {"architecture", "technical-context"}, "tags": {"error", "retry", "fallback", "resilience"}, "keywords": {"error", "fail", "retry", "fallback", "exception", "timeout"}},
+    },
+    "scale": {
+        "question": "Expected load and performance requirements?",
+        "knowledge_match": {"categories": {"business-context", "technical-context"}, "tags": {"performance", "scale", "load", "concurrent"}, "keywords": {"concurrent", "throughput", "latency", "scale", "performance", "users per"}},
+    },
+    "definition-of-done": {
+        "question": "How does the user verify the system works? What does 'done' look like?",
+        "knowledge_match": {"categories": {"business-context", "requirement"}, "tags": {"done", "success", "acceptance", "criteria"}, "keywords": {"done", "success", "complete", "acceptance", "verify", "deliver"}},
+    },
+}
+
+
+def _check_understanding_completeness(project: str, assumptions: list = None):
+    """Check that critical knowledge categories are covered (known or assumed).
+
+    Only runs if project has source-document knowledge (indicating docs were registered).
+    Returns (verdict: "PASS"|"WARN"|"FAIL"|"SKIP", details: dict)
+    """
+    _s = _get_storage()
+
+    if not _s.exists(project, 'knowledge'):
+        return "SKIP", {}
+
+    k_data = _s.load_data(project, 'knowledge')
+    all_knowledge = [k for k in k_data.get("knowledge", []) if k.get("status") == "ACTIVE"]
+
+    # Only run if source documents have been registered
+    has_source_docs = any(k.get("category") == "source-document" for k in all_knowledge)
+    if not has_source_docs:
+        return "SKIP", {}
+
+    # Check each critical category
+    covered = {}
+    missing = {}
+
+    for cat_name, cat_def in CRITICAL_CATEGORIES.items():
+        match = cat_def["knowledge_match"]
+        found = False
+
+        for k in all_knowledge:
+            # Match by category
+            if k.get("category") in match["categories"]:
+                found = True
+                break
+            # Match by tags
+            k_tags = {t.lower() for t in k.get("tags", [])}
+            if k_tags & match["tags"]:
+                found = True
+                break
+            # Match by keywords in content
+            content_lower = (k.get("content", "") + " " + k.get("title", "")).lower()
+            if any(kw in content_lower for kw in match["keywords"]):
+                found = True
+                break
+
+        # Also check assumptions
+        if not found and assumptions:
+            for a in assumptions:
+                a_text = (a.get("assumption", "") + " " + a.get("basis", "")).lower()
+                if any(kw in a_text for kw in match["keywords"]):
+                    found = True
+                    break
+
+        if found:
+            covered[cat_name] = True
+        else:
+            missing[cat_name] = cat_def["question"]
+
+    gap_count = len(missing)
+    details = {"covered": list(covered.keys()), "missing": missing, "gap_count": gap_count}
+
+    if gap_count <= 2:
+        return "PASS", details
+    elif gap_count <= 4:
+        return "WARN", details
+    else:
+        return "FAIL", details
+
+
 def cmd_draft_plan(args):
     """Store a draft plan for user review before materializing into pipeline."""
     tracker = load_tracker(args.project)
@@ -311,6 +419,29 @@ def cmd_draft_plan(args):
                 f"A plan built on 5+ unverified assumptions is not a plan. Clarify before planning:\n"
                 f"{high_details}"
             )
+
+    # Understanding completeness gate
+    understanding_verdict, understanding_details = _check_understanding_completeness(
+        args.project, assumptions)
+    if understanding_verdict == "FAIL":
+        missing = understanding_details["missing"]
+        questions = "\n".join(f"  ? {cat}: {q}" for cat, q in missing.items())
+        raise PreconditionError(
+            f"Understanding gate FAILED — {understanding_details['gap_count']} critical knowledge gaps:\n"
+            f"{questions}\n\n"
+            f"Resolve by:\n"
+            f"  1. Ingest source documents: knowledge add + research add (category=ingestion)\n"
+            f"  2. Add knowledge: python -m core.knowledge add {{project}} --data '[...]'\n"
+            f"  3. Add assumptions: --assumptions '[...]'"
+        )
+    if understanding_verdict == "WARN":
+        missing = understanding_details["missing"]
+        print(f"\n**UNDERSTANDING WARNING**: {understanding_details['gap_count']} knowledge gaps:", file=sys.stderr)
+        for cat, q in missing.items():
+            print(f"  ? {cat}: {q}", file=sys.stderr)
+        print(f"  Plan saved but verify these before starting execution.\n", file=sys.stderr)
+    trace_cmd(args.project, "pipeline", "understanding_gate",
+              verdict=understanding_verdict, **understanding_details)
 
     # Coverage gate: check all source requirements are accounted for
     coverage = None

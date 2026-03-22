@@ -109,7 +109,7 @@ CONTRACTS = {
                       "conflicts_with", "skill", "acceptance_criteria",
                       "type", "blocked_by_decisions", "scopes", "origin",
                       "knowledge_ids", "test_requirements", "alignment",
-                      "exclusions", "produces"],
+                      "exclusions", "produces", "source_requirements"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -121,6 +121,7 @@ CONTRACTS = {
             "blocked_by_decisions": list,
             "scopes": list,
             "knowledge_ids": list,
+            "source_requirements": list,
             "test_requirements": dict,
             "alignment": dict,
             "exclusions": list,
@@ -147,6 +148,7 @@ CONTRACTS = {
             "alignment: dict with {goal, boundaries: {must, must_not, not_in_scope}, success} — persisted alignment contract from planning",
             "exclusions: list of task-specific DO NOT rules — things this task must NOT do (e.g., 'DO NOT modify WorkflowList.tsx', 'DO NOT add error handling — that is T-015')",
             "produces: dict describing what this task creates for downstream consumers — semantic output contracts (e.g., {endpoint: 'POST /users → 201 {id, email}', model: 'User(id, email, name)'}). Shown in pipeline context for dependent tasks.",
+            "source_requirements: list of {knowledge_id: K-NNN, text: str, source_ref: str} — traces this task to extracted requirements. knowledge_id references a Knowledge object (category=requirement). text is the requirement. source_ref is file:section.",
             "Batch format: --data '{\"new_tasks\": [...], \"update_tasks\": [...]}' — atomically adds new tasks and updates existing tasks. update_tasks can reference temp IDs from new_tasks in depends_on/conflicts_with.",
         ],
         "example": [
@@ -187,7 +189,7 @@ CONTRACTS = {
                       "conflicts_with", "skill", "acceptance_criteria",
                       "type", "blocked_by_decisions", "scopes", "origin",
                       "knowledge_ids", "test_requirements", "alignment",
-                      "exclusions", "produces"],
+                      "exclusions", "produces", "source_requirements"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -409,6 +411,7 @@ def _build_task_entry(t: dict, source_idea_id: str = None, source_objective_id: 
         scopes=t.get("scopes", []),
         origin=origin,
         knowledge_ids=t.get("knowledge_ids", []),
+        source_requirements=t.get("source_requirements", []),
         alignment=t.get("alignment"),
         exclusions=t.get("exclusions", []),
         produces=t.get("produces"),
@@ -609,7 +612,7 @@ def cmd_update_task(args):
         updatable = ["name", "description", "instruction", "depends_on",
                      "conflicts_with", "skill", "acceptance_criteria",
                      "type", "blocked_by_decisions", "scopes", "origin",
-                     "knowledge_ids", "test_requirements"]
+                     "knowledge_ids", "source_requirements", "test_requirements"]
         changed = []
         for field in updatable:
             if field in updates:

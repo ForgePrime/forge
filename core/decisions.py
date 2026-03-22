@@ -81,7 +81,7 @@ CONTRACTS = {
             "type": {"architecture", "implementation", "dependency", "security",
                      "performance", "testing", "naming", "convention", "constraint",
                      "business", "strategy", "other",
-                     "exploration", "risk"},
+                     "exploration", "risk", "clarification_needed"},
             "confidence": {"HIGH", "MEDIUM", "LOW"},
             "status": {"OPEN", "CLOSED", "DEFERRED", "ANALYZING", "MITIGATED", "ACCEPTED"},
             "decided_by": {"claude", "user", "imported"},

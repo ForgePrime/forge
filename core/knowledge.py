@@ -37,6 +37,7 @@ from trace import trace_cmd
 VALID_CATEGORIES = {
     "domain-rules", "api-reference", "architecture", "business-context",
     "technical-context", "code-patterns", "integration", "infrastructure",
+    "requirement", "source-document",
 }
 
 VALID_STATUSES = {"DRAFT", "ACTIVE", "REVIEW_NEEDED", "DEPRECATED", "ARCHIVED"}

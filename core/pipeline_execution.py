@@ -826,6 +826,50 @@ def cmd_complete(args):
     # KR auto-update: trace task → origin → objective, update descriptive KRs
     _auto_update_kr(args.project, task, tracker)
 
+    # Requirements coverage check (when all tasks done)
+    done_count = sum(1 for t in tracker["tasks"] if t["status"] in ("DONE", "SKIPPED"))
+    if done_count == len(tracker["tasks"]):
+        _check_requirements_coverage(args.project, tracker)
+
+
+# ---------------------------------------------------------------------------
+# Requirements coverage
+# ---------------------------------------------------------------------------
+
+def _check_requirements_coverage(project: str, tracker: dict):
+    """Check if all extracted requirements have DONE tasks with passed AC. Informational only."""
+    _s = _get_storage()
+    if not _s.exists(project, 'knowledge'):
+        return
+    k_data = _s.load_data(project, 'knowledge')
+    requirements = [k for k in k_data.get("knowledge", [])
+                    if k.get("category") == "requirement" and k.get("status") == "ACTIVE"]
+    if not requirements:
+        return
+
+    tasks = tracker.get("tasks", [])
+    results = []
+    for req in requirements:
+        covering = [t for t in tasks
+                    if any(sr.get("knowledge_id") == req["id"]
+                           for sr in t.get("source_requirements", []))]
+        done = [t for t in covering if t["status"] in ("DONE", "SKIPPED")]
+        results.append({
+            "id": req["id"], "text": req.get("title", ""),
+            "covered": bool(done), "tasks": [t["id"] for t in covering],
+        })
+
+    covered = sum(1 for r in results if r["covered"])
+    total = len(results)
+    print(f"\n## Requirements Coverage: {covered}/{total}")
+    for r in results:
+        status = "COVERED" if r["covered"] else "NOT COVERED"
+        tasks_str = f" ({', '.join(r['tasks'])})" if r["tasks"] else ""
+        print(f"  [{status}] {r['id']}: {r['text']}{tasks_str}")
+
+    _trace(project, {"event": "requirements_coverage", "covered": covered, "total": total,
+           "details": results})
+
 
 # ---------------------------------------------------------------------------
 # KR auto-update

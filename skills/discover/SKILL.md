@@ -15,6 +15,31 @@ Provenance: [Deep-Process](https://github.com/Deep-Process/deep-process).
 
 ---
 
+### Step 0 — Document Ingestion
+
+Before analyzing, check if source documents exist but haven't been ingested:
+
+```bash
+python -m core.knowledge read {project} --category source-document
+python -m core.research read {project} --category ingestion
+```
+
+If documentation files exist in the project but no `source-document` knowledge registered:
+1. Check `forge_output/{project}/forge.config.json` for `project_dir`
+2. Scan for docs in `{project_dir}/docs/`, `{project_dir}/requirements/`, etc.
+3. If found, **follow the ingest skill procedure** (`skills/ingest/SKILL.md`)
+
+If source-documents are registered but some lack ingestion research:
+- Ingest unprocessed documents before proceeding.
+
+Load extracted knowledge as context:
+```bash
+python -m core.knowledge read {project} --category requirement
+python -m core.knowledge read {project} --category domain-rules
+```
+
+---
+
 ### Step 1 — Scope & Approach
 
 **If discovering for an idea/objective**, read its existing alignment — do NOT re-align:
