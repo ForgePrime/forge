@@ -693,41 +693,93 @@ def cmd_complete(args):
             _trace(args.project, {"event": "complete.ac_kr_bridge",
                    "task": args.task_id, "kr_updates": kr_updates_from_ac})
 
-    # --- Manual AC reasoning: required for STANDARD/FULL ceremony ---
+    # --- Manual AC evidence: required for STANDARD/FULL ceremony ---
     if not force and ceremony not in ("MINIMAL", "LIGHT") and ac:
         manual_ac = [c for c in ac if isinstance(c, str) or
                      (isinstance(c, dict) and c.get("verification", "manual") == "manual")]
+
+        # Try structured --ac-evidence first, fall back to --ac-reasoning
+        ac_evidence_raw = getattr(args, "ac_evidence", None)
+        ac_reasoning = getattr(args, "ac_reasoning", None)
+
         _trace(args.project, {"event": "complete.ac_manual_check", "task": args.task_id,
                "manual_ac_count": len(manual_ac), "ceremony": ceremony,
-               "ac_reasoning_provided": bool(getattr(args, "ac_reasoning", None)),
-               "ac_reasoning_length": len(getattr(args, "ac_reasoning", None) or "")})
+               "ac_evidence_provided": bool(ac_evidence_raw),
+               "ac_reasoning_provided": bool(ac_reasoning)})
+
         if manual_ac:
-            ac_reasoning = getattr(args, "ac_reasoning", None)
-            if not ac_reasoning:
+            if ac_evidence_raw:
+                # Structured per-AC evidence (preferred)
+                try:
+                    ac_evidence = load_json_data(ac_evidence_raw)
+                except Exception:
+                    raise ValidationError("--ac-evidence must be valid JSON array")
+                if not isinstance(ac_evidence, list):
+                    ac_evidence = [ac_evidence]
+
+                # Validate: every manual AC must have evidence
+                evidence_by_index = {e.get("ac_index", -1): e for e in ac_evidence}
+                missing_evidence = []
+                for i, criterion in enumerate(ac):
+                    is_manual = isinstance(criterion, str) or (
+                        isinstance(criterion, dict) and criterion.get("verification", "manual") == "manual")
+                    if not is_manual:
+                        continue  # mechanical AC verified by _verify_acceptance_criteria
+                    ev = evidence_by_index.get(i)
+                    if not ev:
+                        text = criterion if isinstance(criterion, str) else criterion.get("text", "?")
+                        missing_evidence.append(f"  AC {i}: {text[:60]} — no evidence provided")
+                    elif not ev.get("evidence") or len(str(ev["evidence"]).strip()) < 20:
+                        text = criterion if isinstance(criterion, str) else criterion.get("text", "?")
+                        missing_evidence.append(f"  AC {i}: {text[:60]} — evidence too short (min 20 chars)")
+                    elif ev.get("verdict") not in ("PASS", "FAIL"):
+                        text = criterion if isinstance(criterion, str) else criterion.get("text", "?")
+                        missing_evidence.append(f"  AC {i}: {text[:60]} — verdict must be PASS or FAIL")
+
+                if missing_evidence:
+                    raise ValidationError(
+                        f"AC evidence incomplete:\n" + "\n".join(missing_evidence) +
+                        f"\n\nProvide --ac-evidence with entry for each manual AC: "
+                        f"[{{\"ac_index\": 0, \"verdict\": \"PASS\", \"evidence\": \"concrete proof\"}}]"
+                    )
+
+                failed = [e for e in ac_evidence if e.get("verdict") == "FAIL"]
+                if failed:
+                    details = "\n".join(f"  AC {e['ac_index']}: {e.get('evidence', '')[:80]}" for e in failed)
+                    raise GateFailure(f"{len(failed)} AC marked FAIL:\n{details}")
+
+                task["ac_evidence"] = ac_evidence
+                _trace(args.project, {"event": "complete.ac_evidence", "task": args.task_id,
+                       "evidence_count": len(ac_evidence),
+                       "all_pass": all(e.get("verdict") == "PASS" for e in ac_evidence)})
+
+            elif ac_reasoning:
+                # Legacy: single string reasoning (backward compat)
+                if len(ac_reasoning.strip()) < 50:
+                    raise ValidationError(f"--ac-reasoning too short ({len(ac_reasoning.strip())} chars). "
+                          f"Minimum 50 characters. Use --ac-evidence for structured per-AC proof.")
+                task["ac_reasoning"] = ac_reasoning
+                ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
+                _trace(args.project, {"event": "complete.ac_reasoning_validation", "task": args.task_id,
+                       "reasoning_text": ac_reasoning[:500], "issues": ac_warnings,
+                       "result": "PASS" if not ac_warnings else "FAIL"})
+                if ac_warnings:
+                    issues = "\n".join(ac_warnings)
+                    raise ValidationError(
+                        f"**AC REASONING ISSUES** ({len(ac_warnings)}):\n{issues}\n"
+                        f"Each criterion needs evidence: 'AC N: [criterion] — PASS: [concrete proof]'"
+                    )
+            else:
+                # Neither provided
                 criteria_list = "\n".join(
                     f"    {i}. {criterion if isinstance(criterion, str) else criterion.get('text', str(criterion))}"
                     for i, criterion in enumerate(manual_ac, 1)
                 )
                 raise ValidationError(
-                    f"Task {args.task_id} has {len(manual_ac)} manual acceptance criteria "
-                    f"but no --ac-reasoning provided.\n  Manual criteria:\n{criteria_list}\n"
-                    f"  Provide --ac-reasoning with concrete evidence (min 50 chars) for each criterion."
-                )
-            if len(ac_reasoning.strip()) < 50:
-                raise ValidationError(f"--ac-reasoning too short ({len(ac_reasoning.strip())} chars). "
-                      f"Minimum 50 characters required. Provide concrete evidence, "
-                      f"not just 'done' or 'verified'.")
-            task["ac_reasoning"] = ac_reasoning
-            # Validate AC reasoning quality (blocking, not advisory)
-            ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
-            _trace(args.project, {"event": "complete.ac_reasoning_validation", "task": args.task_id,
-                   "reasoning_text": ac_reasoning[:500], "issues": ac_warnings,
-                   "result": "PASS" if not ac_warnings else "FAIL"})
-            if ac_warnings:
-                issues = "\n".join(ac_warnings)
-                raise ValidationError(
-                    f"**AC REASONING ISSUES** ({len(ac_warnings)}):\n{issues}\n"
-                    f"Each criterion needs evidence: 'AC N: [criterion] — PASS: [concrete proof]'"
+                    f"Task {args.task_id} has {len(manual_ac)} manual AC but no evidence.\n"
+                    f"  Manual criteria:\n{criteria_list}\n"
+                    f"  Provide --ac-evidence '[{{\"ac_index\": 0, \"verdict\": \"PASS\", \"evidence\": \"...\"}}]'\n"
+                    f"  Or legacy: --ac-reasoning 'AC 1: ... — PASS: concrete proof'"
                 )
 
     # Process deferred items — auto-create OPEN decisions
@@ -1268,7 +1320,7 @@ def _warn_ac_quality(tasks: list) -> bool:
         for e in errors:
             print(e)
         print("Add structured acceptance_criteria to feature/bug tasks: "
-              "{text, verification: 'test'|'command'|'manual'}, or set type to 'chore'/'investigation'.")
+              "{text, verification: 'test'|'command'|'manual'}.")
         print()
 
     if warnings:

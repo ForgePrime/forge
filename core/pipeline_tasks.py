@@ -479,6 +479,15 @@ def cmd_add_tasks(args):
         # Build task entries
         entries = [_build_task_entry(t) for t in new_tasks]
 
+        # AC quality gate: feature/bug tasks must have structured AC
+        from pipeline_execution import _warn_ac_quality
+        has_ac_errors = _warn_ac_quality(entries)
+        if has_ac_errors:
+            raise ValidationError(
+                "Cannot add tasks — feature/bug tasks require structured acceptance criteria. "
+                "Fix AC format or change task type to chore/investigation if truly non-functional."
+            )
+
         # Apply updates to existing tasks
         updatable = ["name", "description", "instruction", "depends_on",
                      "conflicts_with", "skill", "acceptance_criteria",
@@ -624,6 +633,23 @@ def cmd_update_task(args):
         if task["status"] in ("IN_PROGRESS", "DONE"):
             raise PreconditionError(f"Cannot update task {updates['id']} — status is {task['status']}. "
                                     f"Reset it first.")
+
+        # Guard: prevent type downgrade from feature/bug to chore/investigation
+        # when task has AC (would bypass AC enforcement)
+        if "type" in updates:
+            old_type = task.get("type", "feature")
+            new_type = updates["type"]
+            has_ac = bool(task.get("acceptance_criteria"))
+            if old_type in ("feature", "bug") and new_type in ("chore", "investigation"):
+                if has_ac:
+                    raise PreconditionError(
+                        f"Cannot change type {old_type} → {new_type} — task has "
+                        f"{len(task['acceptance_criteria'])} acceptance criteria. "
+                        f"Changing type would bypass AC enforcement. "
+                        f"Remove acceptance_criteria first if this is truly a {new_type}."
+                    )
+                trace_cmd(args.project, "pipeline", "type_downgrade",
+                          task_id=updates["id"], old_type=old_type, new_type=new_type)
 
         # Apply updates (only provided fields)
         updatable = ["name", "description", "instruction", "depends_on",

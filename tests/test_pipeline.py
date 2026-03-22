@@ -457,8 +457,12 @@ class TestAddTasksContract:
         save_tracker(project_name, tracker)
 
         tasks_data = [
-            {"id": "T-001", "name": "first"},
-            {"id": "T-002", "name": "second", "depends_on": ["T-001"]},
+            {"id": "T-001", "name": "first", "acceptance_criteria": [
+                {"text": "task completes", "verification": "manual", "check": "verify output"}
+            ]},
+            {"id": "T-002", "name": "second", "depends_on": ["T-001"], "acceptance_criteria": [
+                {"text": "depends on T-001", "verification": "manual", "check": "check dependency"}
+            ]},
         ]
         args = SimpleNamespace(project=project_name, data=json.dumps(tasks_data))
         cmd_add_tasks(args)

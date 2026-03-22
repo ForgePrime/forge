@@ -128,7 +128,9 @@ def main():
     p.add_argument("--force", action="store_true", help="Complete even without changes or with failed gates")
     p.add_argument("--reasoning", default=None, help="Why these changes were made (used for auto-recorded changes)")
     p.add_argument("--ac-reasoning", default=None, dest="ac_reasoning",
-                   help="Justification that acceptance criteria are met (required when task has AC)")
+                   help="Legacy: single string justification (use --ac-evidence instead)")
+    p.add_argument("--ac-evidence", default=None, dest="ac_evidence",
+                   help="JSON array of per-AC evidence: [{ac_index, verdict: PASS|FAIL, evidence: str}]")
     p.add_argument("--deferred", default=None,
                    help="JSON array of {requirement, reason} — items deferred from source doc. Auto-creates OPEN decisions.")
 
