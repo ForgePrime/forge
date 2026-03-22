@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from pipeline_common import (
     _get_storage, _trace, load_tracker, save_tracker, find_task,
-    find_task_model, print_task_detail,
+    find_task_model, print_task_detail, load_project_config, get_project_dir,
 )
 from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError
 from models import Task
@@ -147,7 +147,13 @@ def cmd_context(args):
     # Accumulate what we load for trace
     _ctx_trace = {"sections_shown": [], "lean": lean}
 
+    # Project config
+    project_config = load_project_config(args.project)
+    project_dir = project_config.get("project_dir", "")
+
     print(f"## Context for {args.task_id}: {task.name}")
+    if project_dir:
+        print(f"**Project dir**: `{project_dir}`")
     if lean:
         print("*(lean mode — Knowledge, Research, Business Context, Lessons skipped)*")
     print()

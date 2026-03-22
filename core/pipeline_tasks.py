@@ -134,7 +134,10 @@ CONTRACTS = {
             "depends_on: list of prerequisite task IDs — can use temp IDs (_1, _2) within the same batch",
             "parallel: true if this task can run alongside others",
             "conflicts_with: list of task IDs that modify same files — can use temp IDs within the same batch",
-            "acceptance_criteria: list of conditions for DONE — supports plain strings or structured: {text, from_template, params}",
+            "acceptance_criteria: list of structured AC objects (required for feature/bug tasks). "
+            "Each AC must be: {text: str, verification: 'test'|'command'|'manual', test_path?: str, command?: str, check?: str, kr_link?: str, from_template?: str, params?: dict}. "
+            "verification='test' requires test_path, 'command' requires command field, 'manual' requires check field. "
+            "kr_link: 'O-001/KR-1' links AC result to a KR for automatic measurement update.",
             "type: task category — feature (default), bug, chore, or investigation",
             "blocked_by_decisions: list of decision IDs (D-001, etc.) that must be CLOSED before this task can start",
             "scopes: list of guideline scopes this task relates to (e.g., ['backend', 'database']). 'general' is always included automatically.",
@@ -334,7 +337,9 @@ CONTRACTS = {
 # -- Commands --
 
 def cmd_init(args):
-    """Create a new project tracker."""
+    """Create a new project tracker and forge.config.json."""
+    import os as _os
+
     storage = _get_storage()
     if storage.exists(args.project, 'tracker') and not args.force:
         print(f"Project '{args.project}' already exists.")
@@ -342,6 +347,11 @@ def cmd_init(args):
         print_status(args.project, tracker)
         print(f"\nUse --force to overwrite.")
         return
+
+    # Validate project_dir
+    project_dir = _os.path.abspath(args.project_dir)
+    if not _os.path.isdir(project_dir):
+        raise ValidationError(f"--project-dir '{project_dir}' does not exist or is not a directory.")
 
     tracker = {
         "project": args.project,
@@ -352,12 +362,26 @@ def cmd_init(args):
     }
 
     save_tracker(args.project, tracker)
-    trace_cmd(args.project, "pipeline", "init", goal=args.goal)
+
+    # Create forge.config.json
+    output_dir = str(Path(storage.base_dir) / args.project)
+    config = {
+        "project_dir": project_dir,
+        "output_dir": output_dir,
+        "created_at": now_iso(),
+    }
+    config_path = Path(storage.base_dir) / args.project / "forge.config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    trace_cmd(args.project, "pipeline", "init",
+              goal=args.goal, project_dir=project_dir)
 
     print(f"## Project created: {args.project}")
     print(f"")
     print(f"Goal: {args.goal}")
-    print(f"Saved to: forge_output/{args.project}/tracker.json")
+    print(f"Project dir: {project_dir}")
+    print(f"Output dir: {output_dir}")
     print(f"")
     print(f"Next: Add tasks with `add-tasks` or run `/plan {args.project}` to decompose the goal.")
 

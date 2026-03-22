@@ -348,6 +348,14 @@ class KeyResult:
     current: Optional[float] = None
     description: Optional[str] = None
     status: Optional[str] = None
+    # Measurement fields
+    measurement: Optional[str] = None     # "command" | "test" | "manual"
+    command: Optional[str] = None          # shell command → stdout = single number
+    test_path: Optional[str] = None       # pytest path
+    check: Optional[str] = None           # human-readable verification instructions
+    direction: Optional[str] = None       # "up" (higher=better) | "down" (lower=better)
+    last_measured_at: Optional[str] = None
+    measurement_history: list = field(default_factory=list)
     _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod

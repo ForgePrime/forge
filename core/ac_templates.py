@@ -50,11 +50,12 @@ CONTRACTS = {
     "add": {
         "required": ["title", "template", "category"],
         "optional": ["description", "parameters", "scopes", "tags",
-                      "verification_method", "status", "source_tasks",
-                      "occurrences"],
+                      "verification_method", "verification", "status",
+                      "source_tasks", "occurrences"],
         "enums": {
             "category": VALID_CATEGORIES,
             "status": {"ACTIVE", "PROPOSED"},
+            "verification": {"test", "command", "manual"},
         },
         "types": {
             "parameters": list,
@@ -74,7 +75,9 @@ CONTRACTS = {
             "each {placeholder} in template should have a matching parameter",
             "scopes: project scopes where this template applies (e.g., ['backend', 'api'])",
             "tags: searchable keywords",
-            "verification_method: how to verify/test this criterion",
+            "verification_method: human-readable description of how to verify/test this criterion",
+            "verification: structured type — 'test' | 'command' | 'manual'. "
+            "When set, cmd_instantiate emits this field in the AC output for mechanical enforcement.",
             "status: ACTIVE (default) or PROPOSED (candidate from /compound, not yet approved)",
             "source_tasks: list of task IDs where this pattern was observed (for PROPOSED templates)",
             "occurrences: how many times this pattern was detected (default 1, incremented on dedup match)",
@@ -103,10 +106,11 @@ CONTRACTS = {
         "required": ["id"],
         "optional": ["title", "template", "description", "category",
                       "parameters", "scopes", "tags", "verification_method",
-                      "status", "occurrences", "source_tasks"],
+                      "verification", "status", "occurrences", "source_tasks"],
         "enums": {
             "category": VALID_CATEGORIES,
             "status": {"ACTIVE", "PROPOSED", "DEPRECATED"},
+            "verification": {"test", "command", "manual"},
         },
         "types": {
             "parameters": list,
@@ -442,6 +446,20 @@ def cmd_instantiate(args):
         "from_template": args.template_id,
         "params": resolved,
     }
+
+    # Emit verification type from template
+    if t.get("verification"):
+        result["verification"] = t["verification"]
+    elif t.get("verification_method"):
+        # Heuristic: infer from verification_method text
+        vm = t["verification_method"].lower()
+        if any(w in vm for w in ("pytest", "test suite", "unit test", "test_")):
+            result["verification"] = "test"
+        elif any(w in vm for w in ("run ", "execute", "curl ", "k6 ", "command")):
+            result["verification"] = "command"
+        else:
+            result["verification"] = "manual"
+        result["check"] = t["verification_method"]
 
     print(json.dumps(result, indent=2, ensure_ascii=False))
 

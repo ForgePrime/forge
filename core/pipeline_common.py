@@ -78,6 +78,25 @@ def _max_task_num(tasks: list) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Project config
+# ---------------------------------------------------------------------------
+
+def load_project_config(project: str) -> dict:
+    """Load forge.config.json for a project. Returns {} if not found."""
+    s = _get_storage()
+    config_path = Path(s.base_dir) / project / "forge.config.json"
+    if config_path.exists():
+        return json.loads(config_path.read_text(encoding="utf-8"))
+    return {}
+
+
+def get_project_dir(project: str) -> str:
+    """Get project workspace directory. Falls back to cwd."""
+    config = load_project_config(project)
+    return config.get("project_dir", os.getcwd())
+
+
+# ---------------------------------------------------------------------------
 # Display
 # ---------------------------------------------------------------------------
 

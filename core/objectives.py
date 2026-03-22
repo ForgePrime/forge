@@ -111,6 +111,11 @@ CONTRACTS = {
             "  - target: goal value (number, required for numeric KRs)",
             "  - current: current value (number, default = baseline)",
             "  - description: qualitative outcome description — required for descriptive KRs",
+            "  - measurement: how to measure current value — 'command' | 'test' | 'manual' (optional, default: manual)",
+            "  - command: shell command that outputs a single number to stdout (required if measurement='command')",
+            "  - test_path: pytest path to run (required if measurement='test')",
+            "  - check: human-readable verification instructions (for measurement='manual')",
+            "  - direction: 'up' (higher=better) or 'down' (lower=better) — auto-inferred from baseline vs target if omitted",
             "appetite: effort budget — small (days), medium (weeks), large (months). From Shape Up.",
             "scope: 'project' (single project) or 'cross-project' (spans multiple projects)",
             "assumptions: list of strings — explicit assumptions that must hold for this objective to make sense. "
@@ -220,6 +225,15 @@ class Objectives(EntityModule):
                 kr_data["description"] = kr["description"]
                 if "metric" not in kr_data:
                     kr_data["status"] = kr.get("status", "NOT_STARTED")
+            # Measurement fields
+            if kr.get("measurement"):
+                kr_data["measurement"] = kr["measurement"]
+                for f in ("command", "test_path", "check", "direction"):
+                    if kr.get(f):
+                        kr_data[f] = kr[f]
+                # Auto-infer direction
+                if "direction" not in kr_data and kr_data.get("target") is not None and kr_data.get("baseline") is not None:
+                    kr_data["direction"] = "up" if kr_data["target"] > kr_data["baseline"] else "down"
             key_results.append(kr_data)
 
         return {
@@ -655,6 +669,115 @@ def _pct(done: int, total: int) -> int:
     return int(done / total * 100) if total > 0 else 0
 
 
+# -- Measure --
+
+def cmd_measure(args):
+    """Run measurement commands for KRs in an objective."""
+    import subprocess as _sp
+    from pipeline_common import get_project_dir
+
+    data = _mod.load(args.project)
+    obj = _mod.find_by_id(data, args.objective_id)
+    if not obj:
+        raise EntityNotFound(f"Objective '{args.objective_id}' not found.")
+
+    project_dir = get_project_dir(args.project)
+    kr_filter = getattr(args, 'kr', None)
+    changed = False
+
+    print(f"## Measuring KRs: {obj['id']} — {obj['title']}")
+    print()
+
+    for kr in obj.get("key_results", []):
+        if kr_filter and kr["id"] != kr_filter:
+            continue
+
+        measurement = kr.get("measurement")
+        if not measurement or measurement == "manual":
+            if measurement == "manual" and kr.get("check"):
+                print(f"  {kr['id']}: [manual] {kr.get('check', '')}")
+            elif kr.get("target") is not None:
+                print(f"  {kr['id']}: {kr.get('current', '?')}/{kr['target']} — no measurement command")
+            continue
+
+        if measurement == "command":
+            command = kr.get("command", "")
+            if not command:
+                print(f"  {kr['id']}: measurement=command but no command specified")
+                continue
+            print(f"  {kr['id']}: running `{command}` ...", end=" ")
+            try:
+                result = _sp.run(command, shell=True, capture_output=True,
+                               text=True, encoding="utf-8", timeout=120,
+                               cwd=project_dir)
+                output = (result.stdout or "").strip()
+                try:
+                    value = float(output)
+                except ValueError:
+                    print(f"FAIL — output is not a number: '{output[:60]}'")
+                    continue
+
+                old = kr.get("current", kr.get("baseline", 0))
+                kr["current"] = value
+                kr["last_measured_at"] = now_iso()
+                history = kr.get("measurement_history", [])
+                history.append({"value": value, "timestamp": now_iso(), "source": "cmd_measure"})
+                kr["measurement_history"] = history[-20:]
+
+                # Check if target met
+                target = kr.get("target")
+                direction = kr.get("direction", "up")
+                met = False
+                if target is not None:
+                    met = (value <= target) if direction == "down" else (value >= target)
+
+                pct = _kr_percentage(kr.get("baseline", 0), target, value) if target else 0
+                status_str = "TARGET MET" if met else f"{pct}%"
+                print(f"{old} → {value} (target: {target}, {status_str})")
+
+                if met and kr.get("status") != "ACHIEVED":
+                    kr["status"] = "ACHIEVED"
+                    kr["achieved_at"] = now_iso()
+                    print(f"    → KR ACHIEVED!")
+
+                changed = True
+                trace_cmd(args.project, "objectives", "measure_kr",
+                         objective=obj["id"], kr=kr["id"],
+                         old=old, new=value, target=target, met=met)
+
+            except _sp.TimeoutExpired:
+                print(f"TIMEOUT (120s)")
+
+        elif measurement == "test":
+            test_path = kr.get("test_path", "")
+            if not test_path:
+                print(f"  {kr['id']}: measurement=test but no test_path specified")
+                continue
+            cmd_str = f"pytest {test_path} -x -q"
+            print(f"  {kr['id']}: running `{cmd_str}` ...", end=" ")
+            try:
+                result = _sp.run(cmd_str, shell=True, capture_output=True,
+                               text=True, encoding="utf-8", timeout=120,
+                               cwd=project_dir)
+                passed = result.returncode == 0
+                status = "PASS" if passed else "FAIL"
+                print(status)
+                if passed and kr.get("status") != "ACHIEVED":
+                    kr["status"] = "ACHIEVED"
+                    kr["achieved_at"] = now_iso()
+                    print(f"    → KR ACHIEVED!")
+                    changed = True
+                trace_cmd(args.project, "objectives", "measure_kr",
+                         objective=obj["id"], kr=kr["id"], test=test_path, passed=passed)
+            except _sp.TimeoutExpired:
+                print(f"TIMEOUT (120s)")
+
+    if changed:
+        obj["updated"] = now_iso()
+        _mod.save(args.project, data)
+        print(f"\nProgress saved.")
+
+
 # -- CLI --
 
 def _setup_extra_parsers(sub):
@@ -668,6 +791,11 @@ def _setup_extra_parsers(sub):
     p = sub.add_parser("status", help="Coverage dashboard")
     p.add_argument("project")
 
+    p = sub.add_parser("measure", help="Run KR measurement commands")
+    p.add_argument("project")
+    p.add_argument("objective_id")
+    p.add_argument("--kr", help="Specific KR ID to measure (e.g. KR-1)")
+
 
 def main():
     make_cli(
@@ -675,6 +803,7 @@ def main():
         extra_commands={
             "show": cmd_show,
             "status": cmd_status,
+            "measure": cmd_measure,
         },
         setup_extra_parsers=_setup_extra_parsers,
         description="Forge Objectives \u2014 business goals with measurable key results",

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pipeline_common import (
     _get_storage, _trace, load_tracker, save_tracker, find_task,
     print_status, print_task_detail, STATUS_ICONS,
+    get_project_dir,
 )
 from pipeline_git import (
     _get_current_commit, _auto_record_changes,
@@ -668,6 +669,27 @@ def cmd_complete(args):
                       f"Fix and retry.")
             task["ac_verification_results"] = ac_results
 
+        # AC → KR bridge: extract kr_link results
+        kr_updates_from_ac = {}
+        for ac_item in ac:
+            if not isinstance(ac_item, dict) or not ac_item.get("kr_link"):
+                continue
+            kr_ref = ac_item["kr_link"]  # e.g. "O-001/KR-1"
+            ac_text = ac_item.get("text", "")
+            # Find matching result
+            matched = next((r for r in ac_results if r.get("text") == ac_text), None)
+            if matched and matched.get("passed"):
+                output = matched.get("output", "").strip()
+                try:
+                    value = float(output.split("\n")[0].strip())
+                    kr_updates_from_ac[kr_ref] = value
+                except (ValueError, IndexError):
+                    kr_updates_from_ac[kr_ref] = True  # boolean pass
+        if kr_updates_from_ac:
+            task["kr_updates_from_ac"] = kr_updates_from_ac
+            _trace(args.project, {"event": "complete.ac_kr_bridge",
+                   "task": args.task_id, "kr_updates": kr_updates_from_ac})
+
     # --- Manual AC reasoning: required for STANDARD/FULL ceremony ---
     if not force and ceremony not in ("MINIMAL", "LIGHT") and ac:
         manual_ac = [c for c in ac if isinstance(c, str) or
@@ -854,14 +876,104 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
 
         print(f"\n  Objective {obj['id']}: {obj['title']}  [{len(done_tasks)}/{len(obj_tasks)} tasks]")
 
+        kr_updates_from_ac = task.get("kr_updates_from_ac", {})
+
         for kr in obj.get("key_results", []):
-            # Numeric KRs: show progress, don't auto-update
-            target = kr.get("target")
-            if target is not None:
+            # AC-linked KRs
+            if kr.get("measurement") == "ac_link":
+                full_kr_id = f"{obj['id']}/{kr['id']}"
+                ac_value = kr_updates_from_ac.get(full_kr_id)
+                if ac_value is not None:
+                    if isinstance(ac_value, (int, float)) and kr.get("target") is not None:
+                        old = kr.get("current", kr.get("baseline", 0))
+                        kr["current"] = ac_value
+                        kr["last_measured_at"] = now_iso()
+                        direction = kr.get("direction", "up")
+                        met = (ac_value <= kr["target"]) if direction == "down" else (ac_value >= kr["target"])
+                        pct = _objective_kr_pct(kr.get("baseline", 0), kr["target"], ac_value)
+                        print(f"    {kr['id']}: AC→KR bridge: {old} → {ac_value} (target: {kr['target']}, {pct}%)")
+                        if met and kr.get("status") != "ACHIEVED":
+                            kr["status"] = "ACHIEVED"
+                            kr["achieved_at"] = now_iso()
+                            kr["achieved_by_task"] = task["id"]
+                            print(f"    {kr['id']}: → ACHIEVED via AC")
+                        changed = True
+                        _trace(project, {"event": "kr_update.ac_bridge", "task": task.get("id"),
+                               "objective": obj["id"], "kr": kr["id"], "value": ac_value, "met": met})
+                    elif ac_value is True:
+                        if kr.get("status") != "ACHIEVED":
+                            kr["status"] = "ACHIEVED"
+                            kr["achieved_at"] = now_iso()
+                            kr["achieved_by_task"] = task["id"]
+                            print(f"    {kr['id']}: → ACHIEVED via AC (test passed)")
+                            changed = True
+                continue
+
+            # Numeric KRs
+            if kr.get("target") is not None:
                 baseline = kr.get("baseline", 0)
-                current = kr.get("current", baseline)
-                pct = _objective_kr_pct(baseline, target, current)
-                print(f"    {kr['id']}: {current}/{target} ({pct}%) — update manually if changed")
+
+                # If KR has measurement command, run it
+                if kr.get("measurement") == "command" and kr.get("command"):
+                    import subprocess as _sp
+                    project_dir = get_project_dir(project)
+                    try:
+                        result = _sp.run(kr["command"], shell=True, capture_output=True,
+                                       text=True, encoding="utf-8", timeout=120,
+                                       cwd=project_dir)
+                        output = (result.stdout or "").strip()
+                        try:
+                            value = float(output)
+                            old = kr.get("current", baseline)
+                            kr["current"] = value
+                            kr["last_measured_at"] = now_iso()
+                            history = kr.get("measurement_history", [])
+                            history.append({"value": value, "timestamp": now_iso(),
+                                          "source": f"task:{task.get('id', '?')}"})
+                            kr["measurement_history"] = history[-20:]
+
+                            direction = kr.get("direction", "up")
+                            met = (value <= kr["target"]) if direction == "down" else (value >= kr["target"])
+                            pct = _objective_kr_pct(baseline, kr["target"], value)
+                            print(f"    {kr['id']}: measured {old} → {value} (target: {kr['target']}, {pct}%)")
+
+                            if met and kr.get("status") != "ACHIEVED":
+                                kr["status"] = "ACHIEVED"
+                                kr["achieved_at"] = now_iso()
+                                kr["achieved_by_task"] = task["id"]
+                                print(f"    {kr['id']}: → ACHIEVED (target met)")
+
+                            changed = True
+                            _trace(project, {"event": "kr_measure.auto", "task": task.get("id"),
+                                   "objective": obj["id"], "kr": kr["id"],
+                                   "old": old, "new": value, "met": met})
+                        except ValueError:
+                            print(f"    {kr['id']}: measurement output not a number: '{output[:60]}'")
+                    except _sp.TimeoutExpired:
+                        print(f"    {kr['id']}: measurement timed out (120s)")
+                elif kr.get("measurement") == "test" and kr.get("test_path"):
+                    import subprocess as _sp
+                    project_dir = get_project_dir(project)
+                    cmd_str = f"pytest {kr['test_path']} -x -q"
+                    try:
+                        result = _sp.run(cmd_str, shell=True, capture_output=True,
+                                       text=True, encoding="utf-8", timeout=120,
+                                       cwd=project_dir)
+                        passed = result.returncode == 0
+                        print(f"    {kr['id']}: test {'PASS' if passed else 'FAIL'}")
+                        if passed and kr.get("status") != "ACHIEVED":
+                            kr["status"] = "ACHIEVED"
+                            kr["achieved_at"] = now_iso()
+                            kr["achieved_by_task"] = task["id"]
+                            print(f"    {kr['id']}: → ACHIEVED (test passed)")
+                            changed = True
+                    except _sp.TimeoutExpired:
+                        print(f"    {kr['id']}: test timed out (120s)")
+                else:
+                    # No measurement — show manual update message
+                    current = kr.get("current", baseline)
+                    pct = _objective_kr_pct(baseline, kr["target"], current)
+                    print(f"    {kr['id']}: {current}/{target} ({pct}%) — update manually if changed")
                 continue
 
             # Descriptive KRs: auto-update status
@@ -1010,7 +1122,8 @@ _VAGUE_AC_WORDS = {"handle", "handles", "ensure", "ensures", "properly", "robust
 def _warn_ac_quality(tasks: list) -> bool:
     """Print warnings for missing or vague acceptance criteria.
 
-    Returns True if there are BLOCKING issues (feature/bug without AC).
+    Returns True if there are BLOCKING issues (feature/bug without AC,
+    plain-string AC, or AC dict missing verification field).
     """
     warnings = []
     errors = []
@@ -1028,8 +1141,30 @@ def _warn_ac_quality(tasks: list) -> bool:
             continue
 
         for criterion in ac:
-            text = criterion if isinstance(criterion, str) else criterion.get("text", "")
-            text_lower = text.lower()
+            if isinstance(criterion, str):
+                errors.append(
+                    f"  {tid}: plain-string AC \"{criterion[:60]}\" — must use structured format "
+                    f"{{text, verification: 'test'|'command'|'manual'}}"
+                )
+                continue
+
+            if isinstance(criterion, dict):
+                if not criterion.get("verification"):
+                    errors.append(
+                        f"  {tid}: AC \"{criterion.get('text', '?')[:60]}\" missing 'verification' field — "
+                        f"must be 'test', 'command', or 'manual'"
+                    )
+                elif criterion.get("verification") == "manual" and not criterion.get("check"):
+                    warnings.append(
+                        f"  {tid}: manual AC \"{criterion.get('text', '?')[:60]}\" has no 'check' field — "
+                        f"consider adding a check description"
+                    )
+
+                text = criterion.get("text", "")
+            else:
+                text = str(criterion)
+
+            text_lower = text.lower() if isinstance(criterion, dict) else ""
             found = [w for w in _VAGUE_AC_WORDS if w in text_lower]
             if found:
                 warnings.append(
@@ -1041,7 +1176,8 @@ def _warn_ac_quality(tasks: list) -> bool:
         print(f"**AC ERRORS** ({len(errors)}) — must fix before approving:")
         for e in errors:
             print(e)
-        print("Add acceptance_criteria to feature/bug tasks, or set type to 'chore'/'investigation'.")
+        print("Add structured acceptance_criteria to feature/bug tasks: "
+              "{text, verification: 'test'|'command'|'manual'}, or set type to 'chore'/'investigation'.")
         print()
 
     if warnings:

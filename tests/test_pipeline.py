@@ -664,9 +664,9 @@ class TestDraftPlan:
                 "created": "2025-01-01T00:00:00Z",
                 "tasks": [
                     {"id": "T-001", "name": "first",
-                     "acceptance_criteria": ["first task done"]},
+                     "acceptance_criteria": [{"text": "first task done", "verification": "manual", "check": "verify first task"}]},
                     {"id": "T-002", "name": "second", "depends_on": ["T-001"],
-                     "acceptance_criteria": ["second task done"]},
+                     "acceptance_criteria": [{"text": "second task done", "verification": "manual", "check": "verify second task"}]},
                 ],
             },
         }
@@ -884,16 +884,34 @@ class TestACHardGate:
         tasks = [{"id": "T-001", "name": "x", "type": "investigation"}]
         assert _warn_ac_quality(tasks) is False
 
-    def test_feature_with_ac_ok(self):
-        """_warn_ac_quality returns False for feature with AC."""
+    def test_feature_with_structured_ac_ok(self):
+        """_warn_ac_quality returns False for feature with structured AC."""
+        tasks = [{"id": "T-001", "name": "x", "type": "feature",
+                  "acceptance_criteria": [{"text": "endpoint returns 200", "verification": "test", "test_path": "tests/test_api.py"}]}]
+        assert _warn_ac_quality(tasks) is False
+
+    def test_feature_with_plain_string_ac_errors(self):
+        """_warn_ac_quality returns True for feature with plain-string AC."""
         tasks = [{"id": "T-001", "name": "x", "type": "feature",
                   "acceptance_criteria": ["endpoint returns 200"]}]
+        assert _warn_ac_quality(tasks) is True
+
+    def test_ac_dict_without_verification_errors(self):
+        """_warn_ac_quality returns True for AC dict missing verification field."""
+        tasks = [{"id": "T-001", "name": "x", "type": "feature",
+                  "acceptance_criteria": [{"text": "endpoint returns 200"}]}]
+        assert _warn_ac_quality(tasks) is True
+
+    def test_manual_ac_without_check_warns(self):
+        """_warn_ac_quality returns False (warning only) for manual AC without check."""
+        tasks = [{"id": "T-001", "name": "x", "type": "feature",
+                  "acceptance_criteria": [{"text": "endpoint returns 200", "verification": "manual"}]}]
         assert _warn_ac_quality(tasks) is False
 
     def test_vague_ac_warns_but_no_error(self):
         """Vague AC triggers warning but not error (returns False)."""
         tasks = [{"id": "T-001", "name": "x", "type": "feature",
-                  "acceptance_criteria": ["error handling works correctly"]}]
+                  "acceptance_criteria": [{"text": "error handling works correctly", "verification": "manual"}]}]
         assert _warn_ac_quality(tasks) is False
 
     def test_approve_plan_rejects_feature_without_ac(self, forge_env, project_name):

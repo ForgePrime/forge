@@ -47,6 +47,7 @@ from errors import ForgeError
 from pipeline_common import (  # noqa: F401
     _get_storage, _trace, _debug_enabled,
     load_tracker, save_tracker, find_task, find_task_model, _max_task_num,
+    load_project_config, get_project_dir,
     print_status, print_dag, print_task_list, print_task_detail,
     STATUS_ICONS,
 )
@@ -100,6 +101,8 @@ def main():
     p = sub.add_parser("init", help="Create project tracker")
     p.add_argument("project")
     p.add_argument("--goal", required=True, help="Project goal description")
+    p.add_argument("--project-dir", required=True, dest="project_dir",
+                   help="Absolute path to the project workspace (where code lives)")
     p.add_argument("--force", action="store_true", help="Overwrite existing")
 
     p = sub.add_parser("add-tasks", help="Add tasks to graph")
