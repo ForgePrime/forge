@@ -35,6 +35,7 @@ from entity_base import EntityModule, make_cli
 from errors import EntityNotFound, PreconditionError
 from models import Lesson
 from storage import JSONFileStorage, now_iso
+from trace import trace_cmd
 
 
 # -- Contract --
@@ -282,6 +283,8 @@ def cmd_promote(args):
             l["promoted_to_guideline"] = guideline["id"]
             break
     storage.save_data(lesson_project, 'lessons', lesson_data)
+    trace_cmd(lesson_project, "lessons", "promote",
+              lesson_id=found["id"], guideline_id=guideline["id"])
 
     print(f"Lesson promoted to global guideline:")
     print(f"  {found['id']} → {guideline['id']}")
@@ -405,6 +408,8 @@ def cmd_promote_knowledge(args):
             l["promoted_to_knowledge"] = k_id
             break
     storage.save_data(lesson_project, 'lessons', lesson_data)
+    trace_cmd(lesson_project, "lessons", "promote_knowledge",
+              lesson_id=found["id"], knowledge_id=k_id)
 
     print(f"Lesson promoted to knowledge:")
     print(f"  {found['id']} → {k_id}")

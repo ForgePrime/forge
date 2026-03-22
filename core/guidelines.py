@@ -31,6 +31,7 @@ from entity_base import EntityModule, make_cli
 from errors import EntityNotFound
 from models import Guideline
 from storage import JSONFileStorage, now_iso
+from trace import trace_cmd
 
 
 # -- Contracts --
@@ -398,6 +399,9 @@ def cmd_import(args):
 
     if imported:
         save_json(args.project, target_data)
+
+    trace_cmd(args.project, "guidelines", "import",
+              source=args.source, imported_count=len(imported))
 
     print(f"Guidelines imported: {args.source} → {args.project}")
     print(f"  Imported: {len(imported)} ({', '.join(imported)})")

@@ -47,6 +47,7 @@ from entity_base import EntityModule, make_cli
 from errors import ValidationError, EntityNotFound, PreconditionError
 from models import Idea
 from storage import JSONFileStorage, load_json_data, now_iso
+from trace import trace_cmd
 
 
 # -- Constants --
@@ -384,6 +385,11 @@ class Ideas(EntityModule):
             updated.append(u["id"])
 
         self.save(args.project, data)
+        trace_cmd(args.project, "ideas", "update",
+                  updated=updated,
+                  status_changes={u["id"]: u.get("status")
+                                  for u in updates
+                                  if u["id"] in updated and "status" in u})
 
         status_counts = _status_counts(data)
         print(f"Updated {len(updated)} ideas: {args.project}")
@@ -604,6 +610,7 @@ def cmd_commit(args):
     idea["updated"] = now_iso()
 
     _mod.save(args.project, data)
+    trace_cmd(args.project, "ideas", "commit", idea_id=args.idea_id)
 
     # Present context for /plan
     print(f"## Idea {idea['id']} committed: {idea['title']}")

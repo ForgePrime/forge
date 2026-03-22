@@ -43,6 +43,7 @@ from _compat import configure_encoding
 from entity_base import EntityModule
 from errors import EntityNotFound
 from models import Decision
+from trace import trace_cmd
 
 configure_encoding()
 
@@ -318,6 +319,9 @@ class Decisions(EntityModule):
             next_id += 1
 
         self.save(args.project, data)
+        trace_cmd(args.project, "decisions", "add",
+                  added=added, skipped=len(skipped),
+                  total=len(data['decisions']))
 
         print(f"Decisions saved: {args.project}")
         if added:
@@ -382,6 +386,10 @@ class Decisions(EntityModule):
 
         data["decisions"] = list(decisions_by_id.values())
         self.save(args.project, data)
+        trace_cmd(args.project, "decisions", "update",
+                  updated=updated,
+                  fields_per_id={u["id"]: [k for k in u if k != "id"]
+                                 for u in updates if u["id"] in updated})
 
         print(f"Updated {len(updated)} decisions: {args.project}")
         for d_id in updated:
@@ -474,6 +482,9 @@ class Decisions(EntityModule):
 
         if not decision:
             raise EntityNotFound(f"Decision '{args.decision_id}' not found.")
+
+        trace_cmd(args.project, "decisions", "show",
+                  decision_id=args.decision_id)
 
         dtype = decision.get("type", "other")
 

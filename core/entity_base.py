@@ -19,6 +19,7 @@ from _compat import configure_encoding
 from contracts import render_contract, validate_contract
 from errors import ForgeError, ValidationError, EntityNotFound
 from storage import JSONFileStorage, load_json_data, now_iso
+from trace import trace_cmd
 
 configure_encoding()
 
@@ -131,6 +132,8 @@ class EntityModule:
             next_n += 1
 
         self.save(args.project, data)
+        trace_cmd(args.project, self.entity_type, "add",
+                  added=added, skipped=len(skipped))
         self.print_add_summary(args.project, data, added, skipped)
 
     def build_entity(self, input_item: dict, entity_id: str,
@@ -191,6 +194,8 @@ class EntityModule:
                 updated.append(u["id"])
 
         self.save(args.project, data)
+        trace_cmd(args.project, self.entity_type, "update",
+                  updated=updated)
 
         if updated:
             print(f"Updated: {', '.join(updated)}")

@@ -34,6 +34,7 @@ from models import Change
 from storage import JSONFileStorage, load_json_data, now_iso
 
 from _compat import configure_encoding
+from trace import trace_cmd
 configure_encoding()
 
 
@@ -156,6 +157,9 @@ class Changes(EntityModule):
             next_id += 1
 
         self.save(args.project, data)
+        trace_cmd(args.project, "changes", "record",
+                  recorded=recorded,
+                  files=[c["file"] for c in new_changes])
 
         print(f"Changes recorded: {args.project}")
         print(f"  Added: {len(recorded)} ({', '.join(recorded)})")
@@ -433,6 +437,9 @@ class Changes(EntityModule):
             next_id += 1
 
         self.save(args.project, data)
+        trace_cmd(args.project, "changes", "auto",
+                  task_id=task_id, recorded=len(recorded),
+                  skipped=skipped)
 
         if not recorded and skipped:
             print(f"No new changes to record for {task_id} ({skipped} already recorded).")

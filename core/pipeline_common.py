@@ -21,47 +21,7 @@ configure_encoding()
 # Debug / Trace
 # ---------------------------------------------------------------------------
 
-_DEBUG_CHECKED = None
-
-
-def _is_debug() -> bool:
-    val = os.environ.get("FORGE_DEBUG", "").strip().lower()
-    if val:
-        return val in ("true", "1", "yes")
-    env_path = Path(".env")
-    if env_path.exists():
-        try:
-            for line in env_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line.startswith("#") or "=" not in line:
-                    continue
-                key, _, value = line.partition("=")
-                if key.strip() == "FORGE_DEBUG":
-                    return value.strip().strip('"').strip("'").lower() in ("true", "1", "yes")
-        except OSError:
-            pass
-    return False
-
-
-def _debug_enabled() -> bool:
-    global _DEBUG_CHECKED
-    if _DEBUG_CHECKED is None:
-        _DEBUG_CHECKED = _is_debug()
-    return _DEBUG_CHECKED
-
-
-def _trace(project: str, entry: dict):
-    if not _debug_enabled():
-        return
-    entry["ts"] = now_iso()
-    _s = _get_storage()
-    trace_path = Path(_s.base_dir) / project / "trace.jsonl"
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(trace_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
-    except OSError:
-        pass
+from trace import trace as _trace, debug_enabled as _debug_enabled  # noqa: F401
 
 
 # ---------------------------------------------------------------------------

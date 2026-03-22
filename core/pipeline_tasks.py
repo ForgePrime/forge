@@ -12,6 +12,7 @@ from pipeline_common import (
 )
 from contracts import render_contract, validate_contract
 from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError
+from trace import trace_cmd
 from models import Task
 from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
 
@@ -351,6 +352,7 @@ def cmd_init(args):
     }
 
     save_tracker(args.project, tracker)
+    trace_cmd(args.project, "pipeline", "init", goal=args.goal)
 
     print(f"## Project created: {args.project}")
     print(f"")
@@ -475,6 +477,11 @@ def cmd_add_tasks(args):
         tracker["tasks"].extend(entries)
         save_tracker(args.project, tracker)
 
+    trace_cmd(args.project, "pipeline", "add_tasks",
+              new_count=len(new_tasks), task_ids=[t["id"] for t in new_tasks],
+              update_count=len(update_tasks) if update_tasks else 0,
+              id_mapping=mapping if mapping else {})
+
     # Print ID mapping
     if mapping:
         print("ID mapping:")
@@ -544,6 +551,8 @@ def cmd_reset(args):
             reset_count += 1
 
     save_tracker(args.project, tracker)
+    trace_cmd(args.project, "pipeline", "reset",
+              from_task=args.from_task, reset_count=reset_count)
     print(f"Reset {reset_count} tasks (from {args.from_task} + dependents) to TODO.")
     print_task_list(tracker)
 
@@ -597,6 +606,8 @@ def cmd_update_task(args):
                 raise ValidationError(f"Updated dependencies create invalid graph:\n{detail}")
 
         save_tracker(args.project, tracker)
+    trace_cmd(args.project, "pipeline", "update_task",
+              task_id=updates["id"], fields=list(updates.keys()))
     print(f"Updated task {updates['id']}: {', '.join(changed)}")
     print_task_detail(task)
 
@@ -619,6 +630,7 @@ def cmd_remove_task(args):
 
     tracker["tasks"] = [t for t in tracker["tasks"] if t["id"] != args.task_id]
     save_tracker(args.project, tracker)
+    trace_cmd(args.project, "pipeline", "remove_task", task_id=args.task_id)
     print(f"Removed task {args.task_id} ({task['name']})")
     print_task_list(tracker)
 
@@ -713,6 +725,8 @@ def cmd_register_subtasks(args):
     task["subtasks"] = subtask_entries
 
     save_tracker(args.project, tracker)
+    trace_cmd(args.project, "pipeline", "register_subtasks",
+              parent=args.task_id, subtask_count=len(subtask_entries))
 
     print(f"## Subtasks registered: {args.task_id}")
     print(f"Total: {len(subtask_entries)}")
@@ -754,6 +768,9 @@ def cmd_complete_subtask(args):
     total = task["subtask_total"]
 
     save_tracker(args.project, tracker)
+    trace_cmd(args.project, "pipeline", "complete_subtask",
+              subtask_id=args.subtask_id, parent=parent_id,
+              done=task.get("subtask_done"), total=task.get("subtask_total"))
 
     print(f"Subtask {subtask_id}: DONE [{done_count}/{total}]")
 

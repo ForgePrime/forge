@@ -29,6 +29,7 @@ from entity_base import EntityModule
 from errors import EntityNotFound, ValidationError
 from models import Knowledge as KnowledgeModel
 from storage import JSONFileStorage, now_iso
+from trace import trace_cmd
 
 
 # -- Constants --
@@ -430,6 +431,10 @@ def cmd_link(args):
         k["updated_at"] = now_iso()
 
     _mod.save(args.project, data)
+    for ld in link_data:
+        trace_cmd(args.project, "knowledge", "link",
+                  knowledge_id=ld["knowledge_id"],
+                  entity=f"{ld['entity_type']}:{ld['entity_id']}")
 
 
 def cmd_unlink(args):
@@ -449,6 +454,9 @@ def cmd_unlink(args):
     removed = links.pop(index)
     k["updated_at"] = now_iso()
     _mod.save(args.project, data)
+    trace_cmd(args.project, "knowledge", "unlink",
+              knowledge_id=args.knowledge_id,
+              removed=f"{removed['entity_type']}:{removed['entity_id']}")
     print(f"Removed link: {args.knowledge_id} → {removed['entity_type']}:{removed['entity_id']}")
 
 

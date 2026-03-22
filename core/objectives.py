@@ -43,6 +43,7 @@ from entity_base import EntityModule, make_cli
 from errors import EntityNotFound, ValidationError
 from models import Objective
 from storage import JSONFileStorage, load_json_data, now_iso
+from trace import trace_cmd
 
 
 # -- Constants --
@@ -351,6 +352,7 @@ class Objectives(EntityModule):
             updated.append(u["id"])
 
         self.save(args.project, data)
+        trace_cmd(args.project, "objectives", "update", updated=updated)
 
         print(f"Updated {len(updated)} objectives: {args.project}")
         for obj_id in updated:
