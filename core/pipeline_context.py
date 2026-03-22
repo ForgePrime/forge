@@ -9,9 +9,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from pipeline_common import (
     _get_storage, _trace, load_tracker, save_tracker, find_task,
-    print_task_detail,
+    find_task_model, print_task_detail,
 )
 from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError
+from models import Task
 from storage import JSONFileStorage, now_iso, load_json_data
 
 
@@ -47,11 +48,14 @@ def _check_plan_staleness(task, tracker):
     """
     import subprocess as _sp
 
+    if isinstance(task, dict):
+        task = Task.from_dict(task)
+
     approved_at = tracker.get("plan_approved_at")
     if not approved_at:
         return []
 
-    instruction = (task.get("instruction") or "") + " " + (task.get("description") or "")
+    instruction = (task.instruction or "") + " " + (task.description or "")
     if not instruction.strip():
         return []
 
@@ -97,24 +101,30 @@ def _check_contract_alignment(task, tracker):
 
     Returns list of warning strings (empty if all aligned).
     """
+    if isinstance(task, dict):
+        task = Task.from_dict(task)
+
     warnings = []
-    instruction = ((task.get("instruction") or "") + " " + (task.get("description") or "")).lower()
+    instruction = ((task.instruction or "") + " " + (task.description or "")).lower()
     if not instruction.strip():
         return warnings
 
     stop_words = {"http", "https", "with", "from", "that", "this", "will", "must",
                   "should", "into", "when", "then", "each", "also", "used", "none"}
 
-    for dep_id in task.get("depends_on", []):
-        dep_task = None
+    for dep_id in task.depends_on:
+        dep_raw = None
         for t in tracker["tasks"]:
             if t["id"] == dep_id:
-                dep_task = t
+                dep_raw = t
                 break
-        if not dep_task or not dep_task.get("produces"):
+        if not dep_raw:
+            continue
+        dep = Task.from_dict(dep_raw)
+        if not dep.produces:
             continue
 
-        for key, val in dep_task["produces"].items():
+        for key, val in dep.produces.items():
             val_str = str(val).lower()
             terms = re.split(r'[\s/\->{},():\[\]]+', val_str)
             terms = [t for t in terms if len(t) > 3 and t not in stop_words]
@@ -131,13 +141,13 @@ def _check_contract_alignment(task, tracker):
 def cmd_context(args):
     """Show aggregated context for a task: dependency outputs, decisions, changes."""
     tracker = load_tracker(args.project)
-    task = find_task(tracker, args.task_id)
+    task = find_task_model(tracker, args.task_id)
     lean = getattr(args, "lean", False)
 
     # Accumulate what we load for trace
     _ctx_trace = {"sections_shown": [], "lean": lean}
 
-    print(f"## Context for {args.task_id}: {task['name']}")
+    print(f"## Context for {args.task_id}: {task.name}")
     if lean:
         print("*(lean mode — Knowledge, Research, Business Context, Lessons skipped)*")
     print()
@@ -147,14 +157,14 @@ def cmd_context(args):
     dec_data = _s.load_data(args.project, 'decisions')
 
     # Task details
-    if task.get("description"):
-        print(f"**Description**: {task['description']}")
-    if task.get("instruction"):
-        print(f"**Instruction**: {task['instruction']}")
+    if task.description:
+        print(f"**Description**: {task.description}")
+    if task.instruction:
+        print(f"**Instruction**: {task.instruction}")
     print()
 
     # Alignment contract (persisted from planning)
-    alignment = task.get("alignment")
+    alignment = task.alignment
     if alignment:
         print("### Alignment Contract")
         print()
@@ -178,7 +188,7 @@ def cmd_context(args):
         print()
 
     # Exclusions (task-specific DO NOT rules)
-    excl = task.get("exclusions", [])
+    excl = task.exclusions
     if excl:
         print("### Exclusions")
         print()
@@ -200,19 +210,18 @@ def cmd_context(args):
         print()
 
     # Dependency context
-    deps = task.get("depends_on", [])
+    deps = task.depends_on
     if deps:
         print(f"### Completed Dependencies")
         print()
         for dep_id in deps:
-            dep_task = find_task(tracker, dep_id)
-            print(f"**{dep_id}** — {dep_task['name']} ({dep_task['status']})")
-            if dep_task.get("description"):
-                print(f"  {dep_task['description']}")
-            dep_produces = dep_task.get("produces")
-            if dep_produces:
+            dep = Task.from_dict(find_task(tracker, dep_id))
+            print(f"**{dep_id}** — {dep.name} ({dep.status})")
+            if dep.description:
+                print(f"  {dep.description}")
+            if dep.produces:
                 print(f"  **Produces**:")
-                for key, val in dep_produces.items():
+                for key, val in dep.produces.items():
                     print(f"    {key}: {val}")
             print()
 
@@ -309,8 +318,8 @@ def cmd_context(args):
     g_data = _s.load_data(args.project, 'guidelines')
     project_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
-    task_scopes = set(task.get("scopes", []))
-    origin_for_scopes = task.get("origin", "")
+    task_scopes = set(task.scopes)
+    origin_for_scopes = task.origin
     if origin_for_scopes.startswith("O-") and _s.exists(args.project, 'objectives'):
         obj_data_scopes = _s.load_data(args.project, 'objectives')
         for obj in obj_data_scopes.get("objectives", []):
@@ -362,8 +371,8 @@ def cmd_context(args):
         _ctx_trace["guidelines_scopes_matched"] = list(task_scopes)
 
     # Knowledge context (from task.knowledge_ids + origin chain + scope matching)
-    k_ids = set(task.get("knowledge_ids", []))
-    origin_k = task.get("origin", "")
+    k_ids = set(task.knowledge_ids)
+    origin_k = task.origin
     if origin_k.startswith("I-"):
         if _s.exists(args.project, 'ideas'):
             ideas_data = _s.load_data(args.project, 'ideas')
@@ -440,7 +449,7 @@ def cmd_context(args):
         active_research = [r for r in r_data.get("research", [])
                           if r.get("status") == "ACTIVE"]
         task_research = []
-        origin = task.get("origin", "")
+        origin = task.origin
 
         if origin.startswith("I-"):
             # Research linked to origin idea
@@ -480,7 +489,7 @@ def cmd_context(args):
             _ctx_trace["research_count"] = len(unique)
 
     # Test requirements
-    test_req = task.get("test_requirements")
+    test_req = task.test_requirements
     if test_req:
         print(f"### Test Requirements")
         print()
@@ -498,7 +507,7 @@ def cmd_context(args):
         print()
 
     # Business context: trace task → origin → objective (skip in lean mode)
-    origin = task.get("origin", "")
+    origin = task.origin
     if not lean and origin.startswith("O-"):
         # Direct objective origin (from /plan O-001)
         if _s.exists(args.project, 'objectives'):
@@ -529,7 +538,7 @@ def cmd_context(args):
             # Find origin idea
             origin_idea = None
             for idea in ideas_data.get("ideas", []):
-                if idea["id"] == task["origin"]:
+                if idea["id"] == task.origin:
                     origin_idea = idea
                     break
             if origin_idea and origin_idea.get("advances_key_results"):
@@ -573,16 +582,16 @@ def cmd_context(args):
                       if d.get("linked_entity_type") == "task"
                       and d.get("linked_entity_id") == args.task_id]
         # Also show risks from origin idea
-        if task.get("origin") and task["origin"].startswith("I-"):
+        if task.origin and task.origin.startswith("I-"):
             idea_risks = [d for d in risk_decisions
                           if d.get("linked_entity_type") == "idea"
-                          and d.get("linked_entity_id") == task["origin"]]
+                          and d.get("linked_entity_id") == task.origin]
             task_risks.extend(idea_risks)
         # Also show risks from origin objective
-        if task.get("origin") and task["origin"].startswith("O-"):
+        if task.origin and task.origin.startswith("O-"):
             obj_risks = [d for d in risk_decisions
                          if d.get("linked_entity_type") == "objective"
-                         and d.get("linked_entity_id") == task["origin"]]
+                         and d.get("linked_entity_id") == task.origin]
             task_risks.extend(obj_risks)
         if task_risks:
             print(f"### Active Risks ({len(task_risks)})")
@@ -609,12 +618,12 @@ def cmd_context(args):
     # Comprehensive trace of what context was delivered to LLM
     _ctx_trace["context_size_kb"] = round(ctx_kb, 1)
     _ctx_trace["task_id"] = args.task_id
-    _ctx_trace["task_scopes"] = list(task_scopes) if 'task_scopes' in dir() else task.get("scopes", [])
+    _ctx_trace["task_scopes"] = list(task_scopes) if 'task_scopes' in dir() else task.scopes
     _ctx_trace["dependencies"] = deps
-    _ctx_trace["has_alignment"] = bool(task.get("alignment"))
-    _ctx_trace["has_exclusions"] = bool(task.get("exclusions"))
-    _ctx_trace["has_produces"] = bool(task.get("produces"))
-    _ctx_trace["ac_count"] = len(task.get("acceptance_criteria", []))
+    _ctx_trace["has_alignment"] = bool(task.alignment)
+    _ctx_trace["has_exclusions"] = bool(task.exclusions)
+    _ctx_trace["has_produces"] = bool(task.produces)
+    _ctx_trace["ac_count"] = len(task.acceptance_criteria)
     _trace(args.project, {"event": "context.delivered", **_ctx_trace})
 
 

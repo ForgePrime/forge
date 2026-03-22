@@ -41,6 +41,7 @@ class EntityModule:
     contracts: dict = {}
     display_name: str = ""
     dedup_keys: tuple = ()
+    model_class = None  # Set to dataclass (e.g. Guideline) for typed find_model()
 
     def __init__(self, storage=None):
         self._storage = storage
@@ -69,6 +70,13 @@ class EntityModule:
             if item.get("id") == entity_id:
                 return item
         return None
+
+    def find_model(self, data: dict, entity_id: str):
+        """Find by ID and return as model instance (read-only). Requires model_class."""
+        item = self.find_by_id(data, entity_id)
+        if item is not None and self.model_class is not None:
+            return self.model_class.from_dict(item)
+        return item
 
     # -- ID generation --
 

@@ -12,6 +12,7 @@ from pipeline_common import (
 )
 from contracts import render_contract, validate_contract
 from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError
+from models import Task
 from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
 
 
@@ -360,38 +361,35 @@ def cmd_init(args):
 
 
 def _build_task_entry(t: dict, source_idea_id: str = None, source_objective_id: str = None) -> dict:
-    """Build a task entry dict from raw task data. Single source of truth for task schema."""
-    entry = {
-        "id": t["id"],
-        "name": t["name"],
-        "description": t.get("description", ""),
-        "depends_on": t.get("depends_on", []),
-        "parallel": t.get("parallel", False),
-        "conflicts_with": t.get("conflicts_with", []),
-        "skill": t.get("skill"),
-        "instruction": t.get("instruction", ""),
-        "acceptance_criteria": t.get("acceptance_criteria", []),
-        "type": t.get("type", "feature"),
-        "blocked_by_decisions": t.get("blocked_by_decisions", []),
-        "scopes": t.get("scopes", []),
-        "origin": t.get("origin", source_idea_id or source_objective_id or ""),
-        "knowledge_ids": t.get("knowledge_ids", []),
-        "alignment": t.get("alignment"),
-        "exclusions": t.get("exclusions", []),
-        "produces": t.get("produces"),
-        "status": "TODO",
-        "started_at": None,
-        "completed_at": None,
-        "failed_reason": None,
-    }
-    if t.get("test_requirements"):
-        entry["test_requirements"] = t["test_requirements"]
-    # If origin not set but source_idea_id exists, set it
-    if source_idea_id and not entry["origin"]:
-        entry["origin"] = source_idea_id
-    if source_objective_id and not entry["origin"]:
-        entry["origin"] = source_objective_id
-    return entry
+    """Build a task entry dict from raw task data. Uses Task model as canonical schema."""
+    origin = t.get("origin", source_idea_id or source_objective_id or "")
+    if source_idea_id and not origin:
+        origin = source_idea_id
+    if source_objective_id and not origin:
+        origin = source_objective_id
+
+    task = Task(
+        id=t["id"],
+        name=t["name"],
+        description=t.get("description", ""),
+        depends_on=t.get("depends_on", []),
+        parallel=t.get("parallel", False),
+        conflicts_with=t.get("conflicts_with", []),
+        skill=t.get("skill"),
+        instruction=t.get("instruction", ""),
+        acceptance_criteria=t.get("acceptance_criteria", []),
+        type=t.get("type", "feature"),
+        blocked_by_decisions=t.get("blocked_by_decisions", []),
+        scopes=t.get("scopes", []),
+        origin=origin,
+        knowledge_ids=t.get("knowledge_ids", []),
+        alignment=t.get("alignment"),
+        exclusions=t.get("exclusions", []),
+        produces=t.get("produces"),
+        test_requirements=t.get("test_requirements"),
+        status="TODO",
+    )
+    return task.to_dict()
 
 
 def cmd_add_tasks(args):

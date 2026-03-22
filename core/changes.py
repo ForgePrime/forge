@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from entity_base import EntityModule
 from errors import ForgeError, ValidationError
+from models import Change
 from storage import JSONFileStorage, load_json_data, now_iso
 
 from _compat import configure_encoding
@@ -91,6 +92,7 @@ class Changes(EntityModule):
     display_name = "Changes"
     contracts = CONTRACTS
     dedup_keys = ()
+    model_class = Change
 
     def build_entity(self, input_item: dict, entity_id: str,
                      timestamp: str, args) -> dict:

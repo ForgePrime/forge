@@ -11,6 +11,7 @@ from pathlib import Path
 
 from _compat import configure_encoding
 from errors import EntityNotFound, ForgeError
+from models import Task
 from storage import JSONFileStorage, now_iso
 
 configure_encoding()
@@ -100,6 +101,11 @@ def find_task(tracker: dict, task_id: str) -> dict:
         if task["id"] == task_id:
             return task
     raise EntityNotFound(f"Task '{task_id}' not found.")
+
+
+def find_task_model(tracker: dict, task_id: str) -> Task:
+    """Find task and return as Task model (read-only snapshot)."""
+    return Task.from_dict(find_task(tracker, task_id))
 
 
 def _max_task_num(tasks: list) -> int:

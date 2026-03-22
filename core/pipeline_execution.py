@@ -20,6 +20,7 @@ from pipeline_git import (
 from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
 import gates as _gates_mod
 from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError, GateFailure, ConflictError
+from models import Task
 
 CLAIM_WAIT_SECONDS = 1.5
 
@@ -359,10 +360,12 @@ def _verify_acceptance_criteria(task, project=None):
     """
     import subprocess as _sp
 
-    ac_list = task.get("acceptance_criteria", [])
+    if isinstance(task, dict):
+        task = Task.from_dict(task)
+    ac_list = task.acceptance_criteria
     results = []
     has_mechanical = False
-    task_id = task.get("id", "?")
+    task_id = task.id or "?"
 
     for ac in ac_list:
         if isinstance(ac, str):
@@ -460,46 +463,48 @@ def _check_gates_before_complete(project, task_id, task, tracker, force):
     - If gate_results missing: auto-run gates
     - If required gates failed: exit(1)
     """
-    task_type = task.get("type", "feature")
+    if isinstance(task, dict):
+        task = Task.from_dict(task)
+    task_type = task.type
     force_exempt_types = ("chore", "investigation")
 
     if force and task_type in force_exempt_types:
-        _trace(project, {"event": "gates.skipped_force", "task": task_id, "type": task_type})
+        _trace(project, {"event": "gates.skipped_force", "task": task.id, "type": task_type})
         return  # --force allowed for chore/investigation
 
     gates_config = tracker.get("gates", [])
     if not gates_config:
-        _trace(project, {"event": "gates.none_configured", "task": task_id})
+        _trace(project, {"event": "gates.none_configured", "task": task.id})
         return  # No gates configured
 
     if force and task_type not in force_exempt_types:
-        _trace(project, {"event": "gates.force_rejected", "task": task_id, "type": task_type})
+        _trace(project, {"event": "gates.force_rejected", "task": task.id, "type": task_type})
         raise PreconditionError(f"--force cannot bypass gates for {task_type} tasks. "
               f"Fix gate failures first.")
 
     # Auto-run gates if not yet run
-    gate_results = task.get("gate_results", {})
+    gate_results = task.gate_results or {}
     if not gate_results:
-        _trace(project, {"event": "gates.auto_run", "task": task_id,
+        _trace(project, {"event": "gates.auto_run", "task": task.id,
                "gates": [{"name": g["name"], "command": g["command"],
                           "required": g.get("required", True)} for g in gates_config]})
         print(f"  Running gates before completion...")
-        _ns = type("NS", (), {"project": project, "task": task_id})()
+        _ns = type("NS", (), {"project": project, "task": task.id})()
         all_passed = _gates_mod.cmd_check(_ns)
         # Reload tracker since cmd_check may have saved results
         tracker_reloaded = load_tracker(project)
         for t in tracker_reloaded.get("tasks", []):
-            if t["id"] == task_id:
-                task.update(t)
+            if t["id"] == task.id:
+                task = Task.from_dict(t)
                 break
-        gate_results = task.get("gate_results", {})
+        gate_results = task.gate_results or {}
 
     if not gate_results.get("all_passed", True):
         required_gates = {gc["name"] for gc in gates_config if gc.get("required", True)}
         failed = [g["name"] for g in gate_results.get("results", [])
                   if not g.get("passed")]
         required_failed = [name for name in failed if name in required_gates]
-        _trace(project, {"event": "gates.evaluation", "task": task_id,
+        _trace(project, {"event": "gates.evaluation", "task": task.id,
                "all_passed": False, "failed": failed,
                "required_failed": required_failed,
                "results": gate_results.get("results", [])})
@@ -523,8 +528,10 @@ def _determine_ceremony_level(task, diff_file_count=0):
     - STANDARD: feature with <= 3 AC — reasoning + AC reasoning required
     - FULL: everything else — all checks required
     """
-    task_type = task.get("type", "feature")
-    ac_count = len(task.get("acceptance_criteria", []))
+    if isinstance(task, dict):
+        task = Task.from_dict(task)
+    task_type = task.type
+    ac_count = len(task.acceptance_criteria)
 
     if task_type in ("chore", "investigation"):
         return "MINIMAL"
@@ -1007,16 +1014,17 @@ def _warn_ac_quality(tasks: list) -> bool:
     """
     warnings = []
     errors = []
-    for t in tasks:
-        tid = t.get("id", "?")
-        ttype = t.get("type", "feature")
-        ac = t.get("acceptance_criteria", [])
+    for t_dict in tasks:
+        t = Task.from_dict(t_dict) if isinstance(t_dict, dict) else t_dict
+        tid = t.id or "?"
+        ttype = t.type
+        ac = t.acceptance_criteria
 
         if ttype in ("investigation", "chore"):
             continue
 
         if not ac:
-            errors.append(f"  {tid} ({t.get('name', '?')}): feature/bug task has no acceptance criteria")
+            errors.append(f"  {tid} ({t.name or '?'}): feature/bug task has no acceptance criteria")
             continue
 
         for criterion in ac:

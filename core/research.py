@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
 from errors import EntityNotFound
+from models import Research as ResearchModel
 from storage import JSONFileStorage
 
 
@@ -144,6 +145,7 @@ class Research(EntityModule):
     contracts = CONTRACTS
     display_name = "Research"
     dedup_keys = ("category", "title")
+    model_class = ResearchModel
 
     def build_entity(self, input_item, entity_id, timestamp, args):
         category = input_item["category"].lower().strip()

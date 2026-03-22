@@ -46,7 +46,7 @@ from errors import ForgeError
 
 from pipeline_common import (  # noqa: F401
     _get_storage, _trace, _debug_enabled,
-    load_tracker, save_tracker, find_task, _max_task_num,
+    load_tracker, save_tracker, find_task, find_task_model, _max_task_num,
     print_status, print_dag, print_task_list, print_task_detail,
     STATUS_ICONS,
 )

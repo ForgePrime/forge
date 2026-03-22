@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
 from errors import EntityNotFound, ValidationError
+from models import Objective
 from storage import JSONFileStorage, load_json_data, now_iso
 
 
@@ -200,6 +201,7 @@ class Objectives(EntityModule):
     display_name = "Objectives"
     dedup_keys = ()
     contracts = CONTRACTS
+    model_class = Objective
 
     def build_entity(self, input_item, entity_id, timestamp, args):
         # Build key results with IDs

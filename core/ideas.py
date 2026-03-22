@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
 from errors import ValidationError, EntityNotFound, PreconditionError
+from models import Idea
 from storage import JSONFileStorage, load_json_data, now_iso
 
 
@@ -186,6 +187,7 @@ class Ideas(EntityModule):
     display_name = "Ideas"
     contracts = CONTRACTS
     dedup_keys = ()  # ideas don't dedup
+    model_class = Idea
 
     def load(self, project: str) -> dict:
         """Load with migration: READY → APPROVED, PARKED → DRAFT."""

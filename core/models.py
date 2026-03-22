@@ -3,6 +3,7 @@
 These models provide:
 - Type safety and IDE support (autocomplete, type checking)
 - from_dict() / to_dict() for gradual adoption alongside raw dicts
+- Lossless round-trips: unknown keys survive via _extras overflow
 - Documentation of every field and its default
 
 Models do NOT own validation — that stays in contracts.py.
@@ -10,8 +11,8 @@ Models do NOT change the JSON format — to_dict() produces identical output.
 
 Usage:
     task = Task.from_dict(raw_dict)
-    task.status = "DONE"
-    raw_dict = task.to_dict()
+    task.status  # attribute access instead of .get("status")
+    raw_dict = task.to_dict()  # back to dict for storage
 """
 
 from __future__ import annotations
@@ -21,19 +22,38 @@ from typing import Any, Optional
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers — lossless round-trip with _extras overflow
 # ---------------------------------------------------------------------------
 
 def _from_dict(cls, d: dict):
-    """Construct a dataclass from a raw dict, tolerating extra/missing keys."""
-    known = {f.name for f in fields(cls)}
+    """Construct a dataclass from a raw dict.
+
+    - Known keys → dataclass fields
+    - Unknown keys → _extras dict (preserved in to_dict)
+    """
+    known = {f.name for f in fields(cls)} - {"_extras"}
     filtered = {k: v for k, v in d.items() if k in known}
-    return cls(**filtered)
+    extras = {k: v for k, v in d.items() if k not in known}
+    obj = cls(**filtered)
+    object.__setattr__(obj, "_extras", extras)
+    return obj
 
 
 def _to_dict(obj) -> dict:
-    """Serialize dataclass to dict, dropping None values for clean JSON."""
-    return {k: v for k, v in asdict(obj).items() if v is not None}
+    """Serialize dataclass to dict.
+
+    - Drops None values (optional fields not set)
+    - Preserves falsy values: 0, False, "", []
+    - Merges _extras back in (unknown keys from from_dict)
+    """
+    result = {}
+    for k, v in asdict(obj).items():
+        if k == "_extras":
+            continue
+        if v is not None:
+            result[k] = v
+    result.update(getattr(obj, "_extras", {}))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +90,20 @@ class Task:
     subtask_total: int = 0
     subtask_done: int = 0
     subtasks: list[dict] = field(default_factory=list)
+    # Runtime fields (set during execution, not at creation)
+    started_at_commit: Optional[str] = None
+    branch: Optional[str] = None
+    worktree_path: Optional[str] = None
+    claimed_at: Optional[str] = None
+    gate_results: Optional[dict] = None
+    ceremony_level: Optional[str] = None
+    completion_trace: Optional[dict] = None
+    ac_verification_results: Optional[list] = None
+    ac_reasoning: Optional[str] = None
+    deferred_decisions: Optional[list] = None
+    skip_reason: Optional[str] = None
+    # Overflow for unknown keys
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Task:
@@ -119,6 +153,7 @@ class Decision:
     override_value: Optional[str] = None
     override_reason: Optional[str] = None
     updated: Optional[str] = None
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Decision:
@@ -146,6 +181,7 @@ class Change:
     group_id: str = ""
     guidelines_checked: list[str] = field(default_factory=list)
     timestamp: str = ""
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Change:
@@ -175,6 +211,7 @@ class Guideline:
     updated: str = ""
     promoted_from: Optional[str] = None
     imported_from: Optional[str] = None
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Guideline:
@@ -203,6 +240,7 @@ class Lesson:
     timestamp: str = ""
     promoted_to_guideline: Optional[str] = None
     promoted_to_knowledge: Optional[str] = None
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Lesson:
@@ -223,6 +261,7 @@ class KnowledgeVersion:
     changed_by: str = ""
     changed_at: str = ""
     change_reason: str = ""
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> KnowledgeVersion:
@@ -250,6 +289,7 @@ class Knowledge:
     created_at: str = ""
     updated_at: str = ""
     created_by: str = "user"
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Knowledge:
@@ -285,6 +325,7 @@ class Idea:
     committed_at: Optional[str] = None
     created: str = ""
     updated: str = ""
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Idea:
@@ -301,14 +342,13 @@ class Idea:
 @dataclass
 class KeyResult:
     id: str = ""
-    # Numeric KR fields
     metric: Optional[str] = None
     baseline: float = 0
     target: Optional[float] = None
     current: Optional[float] = None
-    # Descriptive KR fields
     description: Optional[str] = None
-    status: Optional[str] = None  # NOT_STARTED, IN_PROGRESS, ACHIEVED
+    status: Optional[str] = None
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> KeyResult:
@@ -340,6 +380,7 @@ class Objective:
     status: str = "ACTIVE"
     created: str = ""
     updated: str = ""
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Objective:
@@ -373,6 +414,7 @@ class Research:
     created_at: str = ""
     updated_at: str = ""
     created_by: str = "claude"
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> Research:
@@ -403,6 +445,7 @@ class AcTemplate:
     source_tasks: list[str] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    _extras: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> AcTemplate:

@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from entity_base import EntityModule, make_cli
+from models import AcTemplate
 from storage import now_iso
 
 from errors import EntityNotFound, PreconditionError, ValidationError
@@ -168,6 +169,7 @@ class AcTemplates(EntityModule):
     contracts = CONTRACTS
     display_name = "AC Templates"
     dedup_keys = ("category", "title")
+    model_class = AcTemplate
 
     def cmd_add(self, args):
         """Create AC templates with parameter validation."""

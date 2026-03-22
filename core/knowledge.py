@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule
 from errors import EntityNotFound, ValidationError
+from models import Knowledge as KnowledgeModel
 from storage import JSONFileStorage, now_iso
 
 
@@ -161,6 +162,7 @@ class Knowledge(EntityModule):
     display_name = "Knowledge"
     dedup_keys = ("category", "title")
     contracts = CONTRACTS
+    model_class = KnowledgeModel
 
     def build_entity(self, input_item, entity_id, timestamp, args):
         created_by = input_item.get("created_by", "user")

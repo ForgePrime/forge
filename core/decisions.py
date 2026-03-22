@@ -42,6 +42,7 @@ from storage import JSONFileStorage, load_json_data, now_iso
 from _compat import configure_encoding
 from entity_base import EntityModule
 from errors import EntityNotFound
+from models import Decision
 
 configure_encoding()
 
@@ -220,6 +221,7 @@ class Decisions(EntityModule):
     display_name = "Decisions"
     dedup_keys = ()
     contracts = CONTRACTS
+    model_class = Decision
 
     def save(self, project: str, data: dict):
         """Override: recalculate open_count before saving."""

@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
 from errors import EntityNotFound
+from models import Guideline
 from storage import JSONFileStorage, now_iso
 
 
@@ -112,6 +113,7 @@ class Guidelines(EntityModule):
     display_name = "Guidelines"
     contracts = CONTRACTS
     dedup_keys = ("scope", "title")
+    model_class = Guideline
 
     def build_entity(self, input_item, entity_id, timestamp, args):
         return {

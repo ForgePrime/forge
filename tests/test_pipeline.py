@@ -852,9 +852,9 @@ class TestAlignmentField:
         assert entry["alignment"] == alignment
 
     def test_build_task_entry_none_without_alignment(self):
-        """_build_task_entry sets alignment to None when not provided."""
+        """_build_task_entry omits alignment when not provided (None dropped by to_dict)."""
         entry = _build_task_entry({"id": "T-001", "name": "x"})
-        assert entry["alignment"] is None
+        assert "alignment" not in entry or entry.get("alignment") is None
 
 
 # ---------------------------------------------------------------------------

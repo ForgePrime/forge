@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
 from errors import EntityNotFound, PreconditionError
+from models import Lesson
 from storage import JSONFileStorage, now_iso
 
 
@@ -101,6 +102,7 @@ class Lessons(EntityModule):
     id_prefix = "L"
     contracts = CONTRACTS
     display_name = "Lessons"
+    model_class = Lesson
 
     def build_entity(self, input_item, entity_id, timestamp, args):
         return {
