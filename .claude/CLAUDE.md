@@ -61,6 +61,8 @@ Use `--help` for full syntax. Use `contract` subcommand for entity JSON format.
 | `/task {description}` | Quick-add a single task |
 | `/status` | Show current project status |
 | `/decide` | Review and resolve open decisions |
+| `/ingest` | Register and extract facts from source documentation |
+| `/analyze` | Resolve decisions, group requirements into objectives with measurable KR |
 | `/discover {topic}` | Explore options, assess risks, design architecture |
 | `/objective {title}` | Define business objective with measurable key results |
 | `/review {task_id}` | Deep code review (critical tasks only) |
@@ -106,6 +108,11 @@ When adding tasks, each task supports:
 ### For complex work: discover first
 ```
 /objective ──→ /discover ──→ /plan ──→ /run ──→ /compound
+```
+
+### From documentation: full pipeline
+```
+/ingest ──→ /analyze ──→ /plan ──→ /run ──→ verified (requirements coverage + KR achievement)
 ```
 
 ### For brownfield projects

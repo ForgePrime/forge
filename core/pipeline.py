@@ -117,6 +117,7 @@ def main():
     p = sub.add_parser("begin", help="Claim next task and show full execution context")
     p.add_argument("project")
     p.add_argument("--agent", default=None, help="Agent name for multi-agent claim")
+    p.add_argument("--objective", default=None, help="Filter to tasks with origin matching this objective (O-NNN)")
     p.add_argument("--lean", action="store_true", default=False,
                    help="Lean context: skip Knowledge, Research, Business Context, Lessons")
 

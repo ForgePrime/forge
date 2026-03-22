@@ -204,6 +204,10 @@ def cmd_context(args):
 
     # Source requirements (traceability)
     if task.source_requirements:
+        # Load knowledge to resolve linked objectives
+        k_data_sr = _s.load_data(args.project, 'knowledge') if _s.exists(args.project, 'knowledge') else {}
+        k_by_id = {k["id"]: k for k in k_data_sr.get("knowledge", [])}
+
         print("### Source Requirements")
         print()
         for sr in task.source_requirements:
@@ -211,8 +215,65 @@ def cmd_context(args):
             text = sr.get("text", "")
             ref = sr.get("source_ref", "")
             ref_str = f" _(from {ref})_" if ref else ""
-            print(f"- **{k_id}**: {text}{ref_str}")
+            # Show linked objective if exists
+            k_obj = k_by_id.get(k_id)
+            obj_link = ""
+            if k_obj:
+                for le in k_obj.get("linked_entities", []):
+                    if le.get("entity_type") == "objective":
+                        obj_link = f" → {le['entity_id']}"
+                        break
+            print(f"- **{k_id}**{obj_link}: {text}{ref_str}")
         print()
+
+    # Objective context (if task has origin O-NNN)
+    if task.origin and task.origin.startswith("O-") and _s.exists(args.project, 'objectives'):
+        obj_data = _s.load_data(args.project, 'objectives')
+        for obj in obj_data.get("objectives", []):
+            if obj["id"] == task.origin:
+                print(f"### Objective: {obj['id']} — {obj.get('title', '')}")
+                print(f"**Status**: {obj.get('status', '')} | **Description**: {obj.get('description', '')[:150]}")
+                krs = obj.get("key_results", [])
+                if krs:
+                    print(f"**Key Results** ({len(krs)}):")
+                    for kr in krs:
+                        if kr.get("target") is not None:
+                            current = kr.get("current", kr.get("baseline", 0))
+                            pct = _objective_kr_pct(kr.get("baseline", 0), kr["target"], current)
+                            print(f"  - {kr['id']}: {kr.get('metric', '')} — {current}/{kr['target']} ({pct}%)")
+                        else:
+                            print(f"  - {kr['id']}: {kr.get('description', '')} [{kr.get('status', 'NOT_STARTED')}]")
+                print()
+                break
+
+    # Project-level decisions (from INGESTION, PLANNING, etc. — not task-specific)
+    if dec_data:
+        special_task_ids = {"INGESTION", "PLANNING", "ONBOARDING", "DISCOVERY"}
+        project_decisions = [d for d in dec_data.get("decisions", [])
+                             if d.get("task_id") in special_task_ids
+                             and d.get("status") == "CLOSED"]
+        # Also include CLOSED architecture decisions regardless of task_id
+        arch_decisions = [d for d in dec_data.get("decisions", [])
+                          if d.get("type") == "architecture" and d.get("status") == "CLOSED"
+                          and d.get("task_id") not in special_task_ids]
+        all_project_decisions = project_decisions + arch_decisions
+        if all_project_decisions:
+            # Dedup by ID
+            seen_ids = set()
+            unique = [d for d in all_project_decisions if d["id"] not in seen_ids and not seen_ids.add(d["id"])]
+            print(f"### Project Decisions ({len(unique)})")
+            print()
+            for d in unique[:15]:
+                rec = d.get("recommendation", d.get("override_value", ""))
+                if rec:
+                    print(f"- **{d['id']}** [{d.get('type', '')}]: {d.get('issue', '')[:60]} → {rec[:80]}")
+                else:
+                    print(f"- **{d['id']}** [{d.get('type', '')}]: {d.get('issue', '')[:80]}")
+            if len(unique) > 15:
+                print(f"  _...and {len(unique) - 15} more_")
+            print()
+            _ctx_trace["sections_shown"].append("project_decisions")
+            _ctx_trace["project_decisions_count"] = len(unique)
 
     # Plan staleness check: were files modified since plan approval?
     staleness_warnings = _check_plan_staleness(task, tracker)

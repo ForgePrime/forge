@@ -30,6 +30,7 @@ Bridge between ingestion and planning. Transforms flat extracted knowledge into 
 | R4 | `python -m core.decisions read {project} --status OPEN` | Unresolved decisions | Step 2 |
 | R5 | `python -m core.guidelines read {project}` | Existing guidelines | Step 1 |
 | R6 | `python -m core.objectives contract add` | Objective schema | Step 3 |
+| R7 | `python -m core.research read {project} --category ingestion` | Ingestion records (which doc → which facts) | Step 1 |
 
 ## Write Commands
 
@@ -48,6 +49,7 @@ Load everything produced by ingestion:
 python -m core.knowledge read {project} --category requirement
 python -m core.knowledge read {project} --category domain-rules
 python -m core.knowledge read {project} --category source-document
+python -m core.research read {project} --category ingestion
 python -m core.decisions read {project} --status OPEN
 python -m core.guidelines read {project}
 ```

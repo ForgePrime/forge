@@ -451,6 +451,11 @@ def cmd_draft_plan(args):
         blocking_clarifications = [d for d in open_decisions if d.get("type") == "clarification_needed"]
         blocking_risks = [d for d in open_decisions
                           if d.get("type") == "risk" and d.get("severity") == "HIGH"]
+        # Unresolved assumptions: OPEN architecture/other decisions with LOW confidence
+        # These are assumptions created during ingestion that haven't been confirmed
+        open_assumptions = [d for d in open_decisions
+                            if d.get("type") not in ("clarification_needed", "risk", "exploration")
+                            and d.get("confidence") == "LOW"]
         warn_risks = [d for d in open_decisions
                       if d.get("type") == "risk" and d.get("severity") in ("MEDIUM", "LOW")]
 
@@ -468,6 +473,27 @@ def cmd_draft_plan(args):
                 f"{details}\n\n"
                 f"Resolve by: update status to ANALYZING/MITIGATED/ACCEPTED, or add mitigation_plan."
             )
+
+        # Unresolved assumptions: count as HIGH assumptions for the readiness gate
+        if open_assumptions:
+            # Merge with explicit --assumptions for unified counting
+            assumption_count = high_count + len(open_assumptions)
+            if assumption_count >= 5:
+                details = "\n".join(f"  {d['id']}: {d.get('issue', '')[:80]}" for d in open_assumptions[:10])
+                explicit_note = f" + {high_count} from --assumptions" if high_count else ""
+                raise PreconditionError(
+                    f"Readiness gate FAILED — {len(open_assumptions)} unresolved assumptions in decisions"
+                    f"{explicit_note} = {assumption_count} total.\n"
+                    f"OPEN assumptions (LOW confidence decisions):\n{details}\n\n"
+                    f"Resolve by: close decisions (accept/reject) or provide --assumptions with basis."
+                )
+            elif len(open_assumptions) >= 3:
+                print(f"\n**ASSUMPTION WARNING**: {len(open_assumptions)} OPEN low-confidence decisions "
+                      f"(unresolved assumptions):", file=sys.stderr)
+                for d in open_assumptions[:5]:
+                    print(f"  {d['id']}: {d.get('issue', '')[:80]}", file=sys.stderr)
+                print(f"  Confirm or close before starting execution.\n", file=sys.stderr)
+
         if warn_risks:
             print(f"\n**RISK WARNING**: {len(warn_risks)} OPEN risk(s) (MEDIUM/LOW):", file=sys.stderr)
             for d in warn_risks[:5]:
@@ -477,6 +503,7 @@ def cmd_draft_plan(args):
         trace_cmd(args.project, "pipeline", "open_decisions_gate",
                   blocking_clarifications=len(blocking_clarifications),
                   blocking_risks=len(blocking_risks),
+                  open_assumptions=len(open_assumptions),
                   warn_risks=len(warn_risks))
 
     # Requirement → Objective mapping check (warning, not blocking)
@@ -519,6 +546,44 @@ def cmd_draft_plan(args):
                 f"Every source requirement must be COVERED by a task, or explicitly DEFERRED/OUT_OF_SCOPE with a reason:\n"
                 f"{missing_details}"
             )
+    elif _s.exists(args.project, 'knowledge'):
+        # Auto-populate coverage from requirement knowledge objects
+        k_data_cov = _s.load_data(args.project, 'knowledge')
+        req_knowledge = [k for k in k_data_cov.get("knowledge", [])
+                         if k.get("category") == "requirement" and k.get("status") == "ACTIVE"]
+        if req_knowledge:
+            # Check which requirements are covered by draft tasks via source_requirements
+            task_req_ids = set()
+            for t in draft_tasks:
+                for sr in t.get("source_requirements", []):
+                    if sr.get("knowledge_id"):
+                        task_req_ids.add(sr["knowledge_id"])
+
+            auto_coverage = []
+            auto_missing = 0
+            for req in req_knowledge:
+                if req["id"] in task_req_ids:
+                    auto_coverage.append({"requirement": req.get("title", req["id"]),
+                                          "status": "COVERED", "covered_by": "task"})
+                else:
+                    auto_coverage.append({"requirement": req.get("title", req["id"]),
+                                          "status": "MISSING", "knowledge_id": req["id"]})
+                    auto_missing += 1
+
+            if auto_missing > 0:
+                missing_details = "\n".join(
+                    f"  MISSING: {item['requirement']} ({item.get('knowledge_id', '')})"
+                    for item in auto_coverage if item["status"] == "MISSING")
+                raise PreconditionError(
+                    f"Auto-coverage gate FAILED — {auto_missing} requirement(s) not covered by any task.\n"
+                    f"Requirements without matching source_requirements on tasks:\n"
+                    f"{missing_details}\n\n"
+                    f"Fix by adding source_requirements to tasks, or pass --coverage with DEFERRED/OUT_OF_SCOPE."
+                )
+            else:
+                coverage = auto_coverage
+                print(f"  Auto-coverage: {len(req_knowledge)} requirements covered by tasks.",
+                      file=sys.stderr)
 
     # Store draft (overwrite previous draft)
     tracker["draft_plan"] = {
