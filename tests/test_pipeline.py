@@ -211,24 +211,7 @@ class TestStateTransitions:
         assert reloaded["tasks"][0]["status"] == "SKIPPED"
         assert reloaded["tasks"][0]["skip_reason"] is not None
 
-    def test_complete_with_force_bypasses_changes_check(self, forge_env, project_name):
-        """--force allows completing without recorded changes."""
-        task = make_task("T-001", "investigation", status="IN_PROGRESS")
-        tracker = {
-            "project": project_name,
-            "goal": "Test",
-            "created": "2025-01-01T00:00:00Z",
-            "updated": "2025-01-01T00:00:00Z",
-            "tasks": [task],
-        }
-        save_tracker(project_name, tracker)
-
-        args = SimpleNamespace(project=project_name, task_id="T-001",
-                               agent=None, force=True, reasoning="no changes needed")
-        cmd_complete(args)
-
-        reloaded = load_tracker(project_name)
-        assert reloaded["tasks"][0]["status"] == "DONE"
+    # test_complete_with_force_bypasses_changes_check removed: --force no longer exists
 
     def test_complete_without_changes_exits(self, forge_env, project_name):
         """Complete without --force and no changes recorded should exit."""
@@ -339,26 +322,7 @@ class TestStateTransitions:
         reloaded = load_tracker(project_name)
         assert reloaded["tasks"][0]["status"] == "DONE"
 
-    def test_complete_with_ac_force_bypasses(self, forge_env, project_name):
-        """--force bypasses AC reasoning requirement."""
-        task = make_task("T-001", "ac-force-task", status="IN_PROGRESS",
-                         acceptance_criteria=["Feature X works"])
-        tracker = {
-            "project": project_name,
-            "goal": "Test",
-            "created": "2025-01-01T00:00:00Z",
-            "updated": "2025-01-01T00:00:00Z",
-            "tasks": [task],
-        }
-        save_tracker(project_name, tracker)
-
-        args = SimpleNamespace(project=project_name, task_id="T-001",
-                               agent=None, force=True, reasoning="investigation only",
-                               ac_reasoning=None)
-        cmd_complete(args)
-
-        reloaded = load_tracker(project_name)
-        assert reloaded["tasks"][0]["status"] == "DONE"
+    # test_complete_with_ac_force_bypasses removed: --force no longer exists
 
     def test_ac_reasoning_stored_on_task(self, forge_env, project_name):
         """After complete with AC reasoning, task should have ac_reasoning field."""
@@ -878,14 +842,20 @@ class TestACHardGate:
         tasks = [{"id": "T-001", "name": "x", "type": "bug"}]
         assert _warn_ac_quality(tasks) is True
 
-    def test_chore_without_ac_ok(self):
-        """_warn_ac_quality returns False for chore without AC."""
+    def test_chore_without_ac_blocked(self):
+        """_warn_ac_quality returns True for chore without AC (all tasks need AC)."""
         tasks = [{"id": "T-001", "name": "x", "type": "chore"}]
-        assert _warn_ac_quality(tasks) is False
+        assert _warn_ac_quality(tasks) is True
 
-    def test_investigation_without_ac_ok(self):
-        """_warn_ac_quality returns False for investigation without AC."""
+    def test_investigation_without_ac_blocked(self):
+        """_warn_ac_quality returns True for investigation without AC (all tasks need AC)."""
         tasks = [{"id": "T-001", "name": "x", "type": "investigation"}]
+        assert _warn_ac_quality(tasks) is True
+
+    def test_chore_with_ac_ok(self):
+        """_warn_ac_quality returns False for chore WITH AC."""
+        tasks = [{"id": "T-001", "name": "x", "type": "chore",
+                  "acceptance_criteria": [{"text": "cleanup done", "verification": "manual", "check": "verify files removed"}]}]
         assert _warn_ac_quality(tasks) is False
 
     def test_feature_with_structured_ac_ok(self):
@@ -938,8 +908,8 @@ class TestACHardGate:
         with pytest.raises(ForgeError):
             cmd_approve_plan(args)
 
-    def test_approve_plan_accepts_chore_without_ac(self, forge_env, project_name):
-        """approve-plan allows chore task without AC."""
+    def test_approve_plan_rejects_chore_without_ac(self, forge_env, project_name):
+        """approve-plan rejects chore task without AC (all tasks need AC)."""
         tracker = {
             "project": project_name,
             "goal": "Test",
@@ -955,7 +925,8 @@ class TestACHardGate:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name)
-        cmd_approve_plan(args)
+        with pytest.raises(ForgeError):
+            cmd_approve_plan(args)
 
         reloaded = load_tracker(project_name)
         assert len(reloaded["tasks"]) == 1

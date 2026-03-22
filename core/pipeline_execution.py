@@ -458,33 +458,20 @@ def _verify_acceptance_criteria(task, project=None):
 # Gates
 # ---------------------------------------------------------------------------
 
-def _check_gates_before_complete(project, task_id, task, tracker, force):
+def _check_gates_before_complete(project, task_id, task, tracker):
     """Mechanically enforce gate checks before task completion.
 
-    - If --force and task type is chore/investigation: bypass gates entirely
-    - If --force and task type is feature/bug: reject (gates are mandatory)
     - If gates not configured: pass (nothing to check)
     - If gate_results missing: auto-run gates
     - If required gates failed: exit(1)
     """
     if isinstance(task, dict):
         task = Task.from_dict(task)
-    task_type = task.type
-    force_exempt_types = ("chore", "investigation")
-
-    if force and task_type in force_exempt_types:
-        _trace(project, {"event": "gates.skipped_force", "task": task.id, "type": task_type})
-        return  # --force allowed for chore/investigation
 
     gates_config = tracker.get("gates", [])
     if not gates_config:
         _trace(project, {"event": "gates.none_configured", "task": task.id})
         return  # No gates configured
-
-    if force and task_type not in force_exempt_types:
-        _trace(project, {"event": "gates.force_rejected", "task": task.id, "type": task_type})
-        raise PreconditionError(f"--force cannot bypass gates for {task_type} tasks. "
-              f"Fix gate failures first.")
 
     # Auto-run gates if not yet run
     gate_results = task.gate_results or {}
@@ -527,7 +514,7 @@ def _determine_ceremony_level(task, diff_file_count=0):
     """Auto-detect ceremony level based on task type and complexity.
 
     Returns: 'MINIMAL', 'LIGHT', 'STANDARD', or 'FULL'
-    - MINIMAL: chore/investigation — reasoning optional, AC not required, --force allowed
+    - MINIMAL: chore/investigation — reasoning optional, AC not required
     - LIGHT: bug with <= 3 files — reasoning required, AC not required
     - STANDARD: feature with <= 3 AC — reasoning + AC reasoning required
     - FULL: everything else — all checks required
@@ -538,7 +525,7 @@ def _determine_ceremony_level(task, diff_file_count=0):
     ac_count = len(task.acceptance_criteria)
 
     if task_type in ("chore", "investigation"):
-        return "MINIMAL"
+        return "LIGHT"  # chore/investigation: AC required, reasoning required, but lighter ceremony
     if task_type == "bug" and diff_file_count <= 3:
         return "LIGHT"
     if task_type == "feature" and ac_count <= 3:
@@ -559,12 +546,11 @@ def cmd_complete(args):
     task = find_task(tracker, args.task_id)
     _t0 = time.time()
     agent = getattr(args, "agent", None)
-    force = getattr(args, "force", False)
     reasoning = getattr(args, "reasoning", None) or ""
 
     _trace(args.project, {"event": "complete.start", "task": args.task_id,
            "name": task.get("name"), "type": task.get("type"),
-           "agent": agent, "force": force, "reasoning_length": len(reasoning),
+           "agent": agent, "reasoning_length": len(reasoning),
            "ac_reasoning_length": len(getattr(args, "ac_reasoning", None) or ""),
            "deferred_provided": bool(getattr(args, "deferred", None)),
            "started_at_commit": task.get("started_at_commit"),
@@ -591,21 +577,20 @@ def cmd_complete(args):
                "expected": task["agent"], "actual": agent})
 
     # Check blocked_by_decisions are resolved
-    if not force:
-        open_decisions = _load_open_decision_ids(args.project)
-        blocking = _blocked_by_open_decisions(task, open_decisions)
-        _trace(args.project, {"event": "complete.check_decisions", "task": args.task_id,
-               "open_decisions": list(open_decisions)[:20], "blocking": list(blocking),
-               "result": "PASS" if not blocking else "FAIL"})
-        if blocking:
-            raise PreconditionError(f"Task {args.task_id} has OPEN blocking decisions: "
-                  f"{', '.join(blocking)}. Close them first or use --force.")
+    open_decisions = _load_open_decision_ids(args.project)
+    blocking = _blocked_by_open_decisions(task, open_decisions)
+    _trace(args.project, {"event": "complete.check_decisions", "task": args.task_id,
+           "open_decisions": list(open_decisions)[:20], "blocking": list(blocking),
+           "result": "PASS" if not blocking else "FAIL"})
+    if blocking:
+        raise PreconditionError(f"Task {args.task_id} has OPEN blocking decisions: "
+              f"{', '.join(blocking)}. Close them first.")
 
     # Check reasoning (required for LIGHT, STANDARD, FULL)
-    _reasoning_required = not force and ceremony not in ("MINIMAL",) and not reasoning.strip()
+    _reasoning_required = ceremony not in ("MINIMAL",) and not reasoning.strip()
     _trace(args.project, {"event": "complete.check_reasoning", "task": args.task_id,
            "required": ceremony not in ("MINIMAL",), "provided": bool(reasoning.strip()),
-           "length": len(reasoning), "force": force,
+           "length": len(reasoning),
            "result": "FAIL" if _reasoning_required else "PASS"})
     if _reasoning_required:
         raise PreconditionError(f"--reasoning is required for {ceremony} ceremony level.")
@@ -620,7 +605,7 @@ def cmd_complete(args):
             print(f"  Auto-recorded {auto_count} change(s) from git.")
 
     # Check that changes were recorded for this task (skip for MINIMAL/LIGHT)
-    if not force and ceremony not in ("MINIMAL", "LIGHT"):
+    if ceremony not in ("MINIMAL", "LIGHT"):
         storage = _get_storage()
         changes_data = storage.load_data(args.project, 'changes')
         task_changes = [c for c in changes_data.get("changes", [])
@@ -630,14 +615,13 @@ def cmd_complete(args):
                "files": [c.get("file") for c in task_changes][:20],
                "result": "PASS" if task_changes else "FAIL"})
         if not task_changes:
-            raise PreconditionError(f"No changes recorded for {args.task_id}. "
-                  f"Use --force to complete anyway.")
+            raise PreconditionError(f"No changes recorded for {args.task_id}.")
 
     # Check that gates passed (mechanical enforcement)
     _trace(args.project, {"event": "complete.gates_start", "task": args.task_id,
            "gates_configured": bool(tracker.get("gates")),
            "gate_count": len(tracker.get("gates", []))})
-    _check_gates_before_complete(args.project, args.task_id, task, tracker, force)
+    _check_gates_before_complete(args.project, args.task_id, task, tracker)
     _trace(args.project, {"event": "complete.gates_done", "task": args.task_id,
            "gate_results": task.get("gate_results")})
 
@@ -694,7 +678,7 @@ def cmd_complete(args):
                    "task": args.task_id, "kr_updates": kr_updates_from_ac})
 
     # --- Manual AC evidence: required for STANDARD/FULL ceremony ---
-    if not force and ceremony not in ("MINIMAL", "LIGHT") and ac:
+    if ceremony not in ("MINIMAL", "LIGHT") and ac:
         manual_ac = [c for c in ac if isinstance(c, str) or
                      (isinstance(c, dict) and c.get("verification", "manual") == "manual")]
 
@@ -786,7 +770,7 @@ def cmd_complete(args):
     # Required for STANDARD/FULL: agent must explicitly state what's covered vs deferred
     deferred_raw = getattr(args, "deferred", None)
     has_ac = bool(task.get("acceptance_criteria"))
-    if not deferred_raw and not force and ceremony in ("STANDARD", "FULL") and has_ac:
+    if not deferred_raw and ceremony in ("STANDARD", "FULL") and has_ac:
         raise PreconditionError(f"--deferred required for {ceremony} ceremony with acceptance criteria. "
               f"Pass --deferred '[]' if all source requirements are covered, "
               f"or list deferred items.")
@@ -850,7 +834,6 @@ def cmd_complete(args):
     completion_trace = {
         "ceremony": ceremony,
         "duration_ms": _duration_ms,
-        "force": force,
         "ac_mechanical_count": len(ac_mech_results),
         "ac_mechanical_passed": sum(1 for r in ac_mech_results if r.get("passed")),
         "ac_mechanical_failed": sum(1 for r in ac_mech_results if not r.get("passed")),
@@ -1175,11 +1158,10 @@ def cmd_fail(args):
 
 
 def cmd_skip(args):
-    """Mark task as SKIPPED. Requires --reason. Feature/bug tasks also require --force."""
+    """Mark task as SKIPPED. Requires --reason (min 50 chars)."""
     tracker = load_tracker(args.project)
     task = find_task(tracker, args.task_id)
     reason = getattr(args, "reason", None) or ""
-    force = getattr(args, "force", False)
 
     if not reason.strip():
         raise ValidationError(f"--reason is required when skipping a task. "
@@ -1188,12 +1170,6 @@ def cmd_skip(args):
     if len(reason.strip()) < 50:
         raise ValidationError(f"--reason too short ({len(reason.strip())} chars). "
               f"Minimum 50 characters. Provide a real explanation, not a placeholder.")
-
-    task_type = task.get("type", "feature")
-    if task_type in ("feature", "bug") and not force:
-        raise PreconditionError(f"Cannot skip {task_type} task {args.task_id} without --force. "
-              f"Feature and bug tasks represent committed deliverables. "
-              f"Use --force --reason '...' to confirm this is intentional.")
 
     task["status"] = "SKIPPED"
     task["skip_reason"] = reason.strip()
@@ -1207,7 +1183,7 @@ def cmd_skip(args):
 
     _trace(args.project, {
         "cmd": "skip", "task": args.task_id, "name": task.get("name"),
-        "type": task.get("type"), "force": force, "reason": reason.strip(),
+        "type": task.get("type"), "reason": reason.strip(),
     })
 
 
@@ -1265,8 +1241,8 @@ _VAGUE_AC_WORDS = {"handle", "handles", "ensure", "ensures", "properly", "robust
 def _warn_ac_quality(tasks: list) -> bool:
     """Print warnings for missing or vague acceptance criteria.
 
-    Returns True if there are BLOCKING issues (feature/bug without AC,
-    plain-string AC, or AC dict missing verification field).
+    Returns True if there are BLOCKING issues. ALL task types must have AC.
+    No exceptions for chore/investigation.
     """
     warnings = []
     errors = []
@@ -1276,11 +1252,8 @@ def _warn_ac_quality(tasks: list) -> bool:
         ttype = t.type
         ac = t.acceptance_criteria
 
-        if ttype in ("investigation", "chore"):
-            continue
-
         if not ac:
-            errors.append(f"  {tid} ({t.name or '?'}): feature/bug task has no acceptance criteria")
+            errors.append(f"  {tid} ({t.name or '?'}): task has no acceptance criteria")
             continue
 
         for criterion in ac:
@@ -1319,7 +1292,7 @@ def _warn_ac_quality(tasks: list) -> bool:
         print(f"**AC ERRORS** ({len(errors)}) — must fix before approving:")
         for e in errors:
             print(e)
-        print("Add structured acceptance_criteria to feature/bug tasks: "
+        print("Add structured acceptance_criteria to ALL tasks: "
               "{text, verification: 'test'|'command'|'manual'}.")
         print()
 

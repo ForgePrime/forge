@@ -125,7 +125,7 @@ def main():
     p.add_argument("project")
     p.add_argument("task_id")
     p.add_argument("--agent", default=None, help="Agent name (verified against claim)")
-    p.add_argument("--force", action="store_true", help="Complete even without changes or with failed gates")
+    # --force removed: all gates are mandatory. Fix the issue, don't bypass it.
     p.add_argument("--reasoning", default=None, help="Why these changes were made (used for auto-recorded changes)")
     p.add_argument("--ac-reasoning", default=None, dest="ac_reasoning",
                    help="Legacy: single string justification (use --ac-evidence instead)")
@@ -144,7 +144,7 @@ def main():
     p.add_argument("project")
     p.add_argument("task_id")
     p.add_argument("--reason", required=True, help="Why this task is being skipped (min 50 chars)")
-    p.add_argument("--force", action="store_true", help="Required for feature/bug tasks")
+    # --force removed: skip requires --reason, no exceptions
 
     p = sub.add_parser("status", help="Status dashboard")
     p.add_argument("project")
@@ -191,7 +191,7 @@ def main():
 
     p = sub.add_parser("approve-plan", help="Approve draft plan and materialize into pipeline")
     p.add_argument("project")
-    p.add_argument("--force", action="store_true", help="Override context validation errors")
+    # --force removed: context validation errors must be fixed
 
     p = sub.add_parser("contract", help="Print contract spec (no project needed)")
     p.add_argument("name", choices=sorted(CONTRACTS.keys()))

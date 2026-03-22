@@ -830,17 +830,11 @@ def cmd_approve_plan(args):
         # Context validation (blocking: scope/guideline mismatches)
         ctx_errors, _ = _validate_plan_context(entries, args.project)
         if ctx_errors:
-            if not getattr(args, "force", False):
-                detail = "\n".join(ctx_errors)
-                raise ValidationError(
-                    f"Context validation failed ({len(ctx_errors)} issues):\n{detail}\n"
-                    f"Fix scope assignments or use --force to override."
-                )
-            else:
-                print(f"WARNING: Context validation failed ({len(ctx_errors)} issues):", file=sys.stderr)
-                for e in ctx_errors:
-                    print(e, file=sys.stderr)
-                print("Proceeding due to --force.", file=sys.stderr)
+            detail = "\n".join(ctx_errors)
+            raise ValidationError(
+                f"Context validation failed ({len(ctx_errors)} issues):\n{detail}\n"
+                f"Fix scope assignments before approving."
+            )
 
         # Validate DAG
         all_tasks = tracker["tasks"] + entries
