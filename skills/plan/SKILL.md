@@ -368,20 +368,28 @@ For each task, specify:
   4. **Pattern violations**: Exclude anti-patterns for this codebase (e.g., `"DO NOT use inline styles — project uses CSS modules"`)
 
   For chore/investigation tasks, exclusions are optional but recommended.
-- `acceptance_criteria`: list of concrete, verifiable conditions for DONE (2-5 per task). Generate from these sources:
-  1. **Alignment success criteria** — from the alignment contract captured in Step 3. The `success` field defines what the user will test/observe. Derive at least one AC per task from this.
-  2. **User's answer** to "what does done look like?" / "how will you verify?" (Step 3)
-  3. **Task output** — what artifact exists after? (file created, endpoint responding, test passing)
-  4. **Integration point** — how does this connect to the next task? (data format, API contract, import path)
-  5. **Boundary** — "Does NOT {thing}" when the scope edge is ambiguous
+- `acceptance_criteria`: **STRUCTURED format required for feature/bug tasks.** Each AC must be a dict:
+  ```json
+  {"text": "endpoint returns 200 with user object", "verification": "test", "test_path": "tests/test_users.py"}
+  {"text": "response time < 200ms", "verification": "command", "command": "python scripts/measure_latency.py"}
+  {"text": "UI matches wireframe", "verification": "manual", "check": "Compare against docs/wireframes/login.png"}
+  ```
 
-  Anti-patterns (these trigger warnings in `draft-plan`):
-  | Vague (reject) | Specific (good) |
-  |----------------|-----------------|
-  | "Error handling works correctly" | "Returns 400 with `{error: string}` body for invalid input" |
-  | "Component handles edge cases" | "Empty list renders 'No items found' message" |
-  | "API is properly secured" | "Unauthenticated requests return 401, not 500" |
-  | "Tests pass" | "Unit tests cover create, read, update, delete operations" |
+  `verification` field is REQUIRED: `"test"` (pytest path), `"command"` (shell command), or `"manual"` (with `check` description).
+  `kr_link` optional: `"O-001/KR-1"` — links AC result to KR for automatic measurement.
+
+  Generate AC from these sources (2-5 per task):
+  1. **Source requirements** — from `source_requirements` on the task. Each requirement should have at least one AC.
+  2. **Alignment success criteria** — from Step 3. The `success` field defines what the user will test/observe.
+  3. **Task output** — what artifact exists after? (file created, endpoint responding, test passing)
+  4. **Integration point** — how does this connect to the next task? (data format, API contract)
+
+  **Anti-patterns** (these are REJECTED by `approve-plan`):
+  | Rejected | Accepted |
+  |----------|----------|
+  | `"Error handling works"` (plain string) | `{"text": "Returns 400 with {error} for invalid input", "verification": "test", "test_path": "tests/test_errors.py"}` |
+  | `{"text": "API secured"}` (no verification) | `{"text": "401 for missing auth header", "verification": "test", "test_path": "tests/test_auth.py"}` |
+  | `{"text": "Tests pass", "verification": "manual"}` | `{"text": "All auth tests pass", "verification": "test", "test_path": "tests/test_auth.py"}` |
 
   Skip AC for `investigation` and `chore` tasks — use `--force` on completion.
 

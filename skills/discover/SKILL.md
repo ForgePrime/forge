@@ -11,6 +11,9 @@ Discovery answers: "What should we build, is it feasible, what are the risks, an
 
 Deep-* skills (`skills/deep-*/SKILL.md`) provide methodology. This skill coordinates analysis and records findings in Forge.
 
+**In the full document-to-code pipeline**: `/ingest → /analyze → /discover → /plan → /run`
+Discover comes AFTER analyze (objectives exist) but BEFORE plan (tasks don't exist yet). Use when objectives need deeper technical investigation before decomposing into tasks.
+
 Provenance: [Deep-Process](https://github.com/Deep-Process/deep-process).
 
 ---
