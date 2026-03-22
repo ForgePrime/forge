@@ -11,6 +11,7 @@ from pipeline_common import (
     find_task, print_status, print_task_list, print_task_detail,
 )
 from contracts import render_contract, validate_contract
+from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError
 from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
 
 
@@ -405,45 +406,35 @@ def cmd_add_tasks(args):
     try:
         raw_data = load_json_data(args.data)
     except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid JSON: {e}")
 
     # Detect format
     if isinstance(raw_data, dict) and "new_tasks" in raw_data:
         new_tasks = raw_data["new_tasks"]
         update_tasks = raw_data.get("update_tasks", [])
         if not isinstance(new_tasks, list):
-            print("ERROR: new_tasks must be a JSON array", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError("new_tasks must be a JSON array")
         if not isinstance(update_tasks, list):
-            print("ERROR: update_tasks must be a JSON array", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError("update_tasks must be a JSON array")
     elif isinstance(raw_data, list):
         new_tasks = raw_data
         update_tasks = []
     else:
-        print("ERROR: --data must be a JSON array or {new_tasks: [...], update_tasks: [...]}",
-              file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError("--data must be a JSON array or {new_tasks: [...], update_tasks: [...]}")
 
     # Contract validation on new_tasks
     errors = validate_contract(CONTRACTS["add-tasks"], new_tasks)
     if errors:
-        print(f"ERROR: {len(errors)} validation issues in new_tasks:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+        detail = "\n".join(f"  {e}" for e in errors[:10])
+        raise ValidationError(f"{len(errors)} validation issues in new_tasks:\n{detail}")
 
     # Validate update_tasks against update-task contract
     if update_tasks:
         for upd in update_tasks:
             errs = validate_contract(CONTRACTS["update-task"], [upd])
             if errs:
-                print(f"ERROR: Validation issues in update_tasks for '{upd.get('id', '?')}':",
-                      file=sys.stderr)
-                for e in errs[:5]:
-                    print(f"  {e}", file=sys.stderr)
-                sys.exit(1)
+                detail = "\n".join(f"  {e}" for e in errs[:5])
+                raise ValidationError(f"Validation issues in update_tasks for '{upd.get('id', '?')}':\n{detail}")
 
     # Atomic section: lock → load → remap → validate → save
     with tracker_lock(args.project):
@@ -456,8 +447,7 @@ def cmd_add_tasks(args):
         existing_ids = {t["id"] for t in tracker["tasks"]}
         for t in new_tasks:
             if t["id"] in existing_ids:
-                print(f"ERROR: Duplicate task ID '{t['id']}'", file=sys.stderr)
-                sys.exit(1)
+                raise ValidationError(f"Duplicate task ID '{t['id']}'")
 
         # Build task entries
         entries = [_build_task_entry(t) for t in new_tasks]
@@ -471,9 +461,7 @@ def cmd_add_tasks(args):
         for upd in update_tasks:
             task = find_task(tracker, upd["id"])
             if task["status"] in ("IN_PROGRESS", "DONE"):
-                print(f"ERROR: Cannot update task {upd['id']} — status is {task['status']}.",
-                      file=sys.stderr)
-                sys.exit(1)
+                raise PreconditionError(f"Cannot update task {upd['id']} — status is {task['status']}.")
             for field in updatable:
                 if field in upd:
                     task[field] = upd[field]
@@ -483,10 +471,8 @@ def cmd_add_tasks(args):
         all_tasks = tracker["tasks"] + entries
         dag_errors = validate_dag(all_tasks)
         if dag_errors:
-            print(f"ERROR: Task graph validation failed:", file=sys.stderr)
-            for e in dag_errors:
-                print(f"  {e}", file=sys.stderr)
-            sys.exit(1)
+            detail = "\n".join(f"  {e}" for e in dag_errors)
+            raise ValidationError(f"Task graph validation failed:\n{detail}")
 
         tracker["tasks"].extend(entries)
         save_tracker(args.project, tracker)
@@ -530,8 +516,7 @@ def cmd_reset(args):
             break
 
     if start_idx is None:
-        print(f"ERROR: Task '{args.from_task}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Task '{args.from_task}' not found.")
 
     # Collect IDs being reset
     reset_ids = {t["id"] for t in tracker["tasks"][start_idx:]}
@@ -570,19 +555,15 @@ def cmd_update_task(args):
     try:
         updates = load_json_data(args.data)
     except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid JSON: {e}")
 
     if not isinstance(updates, dict):
-        print("ERROR: --data must be a JSON object", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError("--data must be a JSON object")
 
     errors = validate_contract(CONTRACTS["update-task"], [updates])
     if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+        detail = "\n".join(f"  {e}" for e in errors[:10])
+        raise ValidationError(f"{len(errors)} validation issues:\n{detail}")
 
     # Atomic section: lock → load → update → validate → save
     with tracker_lock(args.project):
@@ -590,9 +571,8 @@ def cmd_update_task(args):
         task = find_task(tracker, updates["id"])
 
         if task["status"] in ("IN_PROGRESS", "DONE"):
-            print(f"ERROR: Cannot update task {updates['id']} — status is {task['status']}. "
-                  f"Reset it first.", file=sys.stderr)
-            sys.exit(1)
+            raise PreconditionError(f"Cannot update task {updates['id']} — status is {task['status']}. "
+                                    f"Reset it first.")
 
         # Apply updates (only provided fields)
         updatable = ["name", "description", "instruction", "depends_on",
@@ -615,10 +595,8 @@ def cmd_update_task(args):
         if "depends_on" in updates:
             dag_errors = validate_dag(tracker["tasks"])
             if dag_errors:
-                print(f"ERROR: Updated dependencies create invalid graph:", file=sys.stderr)
-                for e in dag_errors:
-                    print(f"  {e}", file=sys.stderr)
-                sys.exit(1)
+                detail = "\n".join(f"  {e}" for e in dag_errors)
+                raise ValidationError(f"Updated dependencies create invalid graph:\n{detail}")
 
         save_tracker(args.project, tracker)
     print(f"Updated task {updates['id']}: {', '.join(changed)}")
@@ -631,18 +609,15 @@ def cmd_remove_task(args):
     task = find_task(tracker, args.task_id)
 
     if task["status"] != "TODO":
-        print(f"ERROR: Can only remove TODO tasks. {args.task_id} is {task['status']}.",
-              file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError(f"Can only remove TODO tasks. {args.task_id} is {task['status']}.")
 
     # Check if other tasks depend on this one
     dependents = [t["id"] for t in tracker["tasks"]
                   if args.task_id in t.get("depends_on", [])]
     if dependents:
-        print(f"ERROR: Cannot remove {args.task_id} — these tasks depend on it: "
-              f"{', '.join(dependents)}", file=sys.stderr)
-        print(f"Update their depends_on first, or remove them.", file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError(f"Cannot remove {args.task_id} — these tasks depend on it: "
+                                f"{', '.join(dependents)}\n"
+                                f"Update their depends_on first, or remove them.")
 
     tracker["tasks"] = [t for t in tracker["tasks"] if t["id"] != args.task_id]
     save_tracker(args.project, tracker)
@@ -704,8 +679,7 @@ def cmd_register_subtasks(args):
     task = find_task(tracker, args.task_id)
 
     if task["status"] != "IN_PROGRESS":
-        print(f"ERROR: Task {args.task_id} must be IN_PROGRESS to register subtasks (is {task['status']}).", file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError(f"Task {args.task_id} must be IN_PROGRESS to register subtasks (is {task['status']}).")
 
     if task.get("has_subtasks"):
         print(f"WARNING: Task {args.task_id} already has {task.get('subtask_total', 0)} subtasks.")
@@ -714,19 +688,15 @@ def cmd_register_subtasks(args):
     try:
         raw = load_json_data(args.data)
     except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid JSON: {e}")
 
     if not isinstance(raw, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError("--data must be a JSON array")
 
     errors = validate_contract(CONTRACTS["register-subtasks"], raw)
     if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+        detail = "\n".join(f"  {e}" for e in errors[:10])
+        raise ValidationError(f"{len(errors)} validation issues:\n{detail}")
 
     subtask_entries = []
     for item in raw:
@@ -757,15 +727,13 @@ def cmd_complete_subtask(args):
 
     subtask_id = args.subtask_id
     if "/" not in subtask_id:
-        print(f"ERROR: Invalid subtask ID '{subtask_id}'. Expected: TASK_ID/SUB_ID", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid subtask ID '{subtask_id}'. Expected: TASK_ID/SUB_ID")
 
     parent_id = subtask_id.rsplit("/", 1)[0]
     task = find_task(tracker, parent_id)
 
     if not task.get("has_subtasks"):
-        print(f"ERROR: Task {parent_id} has no subtasks.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Task {parent_id} has no subtasks.")
 
     subtask = None
     for st in task.get("subtasks", []):
@@ -774,8 +742,7 @@ def cmd_complete_subtask(args):
             break
 
     if subtask is None:
-        print(f"ERROR: Subtask '{subtask_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Subtask '{subtask_id}' not found.")
 
     if subtask["status"] == "DONE":
         print(f"WARNING: Subtask {subtask_id} already DONE.")

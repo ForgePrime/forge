@@ -41,6 +41,7 @@ from storage import JSONFileStorage, load_json_data, now_iso
 
 from _compat import configure_encoding
 from entity_base import EntityModule
+from errors import EntityNotFound
 
 configure_encoding()
 
@@ -464,15 +465,13 @@ class Decisions(EntityModule):
     def cmd_show(self, args):
         """Show full details for a single decision."""
         if not self.storage.exists(args.project, self.entity_type):
-            print(f"No decisions for '{args.project}' yet.", file=sys.stderr)
-            sys.exit(1)
+            raise EntityNotFound(f"No decisions for '{args.project}' yet.")
 
         data = self.load(args.project)
         decision = self.find_by_id(data, args.decision_id)
 
         if not decision:
-            print(f"ERROR: Decision '{args.decision_id}' not found.", file=sys.stderr)
-            sys.exit(1)
+            raise EntityNotFound(f"Decision '{args.decision_id}' not found.")
 
         dtype = decision.get("type", "other")
 
@@ -708,7 +707,12 @@ def main():
         "contract": _mod.cmd_contract,
     }
 
-    commands[args.command](args)
+    from errors import ForgeError
+    try:
+        commands[args.command](args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

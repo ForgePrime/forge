@@ -19,6 +19,7 @@ from pipeline_git import (
 )
 from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
 import gates as _gates_mod
+from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError, GateFailure, ConflictError
 
 CLAIM_WAIT_SECONDS = 1.5
 
@@ -127,9 +128,7 @@ def _claim_with_retry(args, candidate, agent, max_retries=5):
             print(f"No available tasks after claim conflict.", file=sys.stderr)
             return
 
-    print(f"All tasks contended after {max_retries} attempts. Try again later.",
-          file=sys.stderr)
-    sys.exit(1)
+    raise ConflictError(f"All tasks contended after {max_retries} attempts. Try again later.")
 
 
 # ---------------------------------------------------------------------------
@@ -475,9 +474,8 @@ def _check_gates_before_complete(project, task_id, task, tracker, force):
 
     if force and task_type not in force_exempt_types:
         _trace(project, {"event": "gates.force_rejected", "task": task_id, "type": task_type})
-        print(f"ERROR: --force cannot bypass gates for {task_type} tasks. "
-              f"Fix gate failures first.", file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError(f"--force cannot bypass gates for {task_type} tasks. "
+              f"Fix gate failures first.")
 
     # Auto-run gates if not yet run
     gate_results = task.get("gate_results", {})
@@ -506,9 +504,8 @@ def _check_gates_before_complete(project, task_id, task, tracker, force):
                "required_failed": required_failed,
                "results": gate_results.get("results", [])})
         if required_failed:
-            print(f"ERROR: Required gates failed: {', '.join(required_failed)}. "
-                  f"Fix issues and re-run gates.", file=sys.stderr)
-            sys.exit(1)
+            raise GateFailure(f"Required gates failed: {', '.join(required_failed)}. "
+                  f"Fix issues and re-run gates.")
         else:
             print(f"  Advisory gates failed: {', '.join(failed)} (non-blocking).")
 
@@ -590,10 +587,8 @@ def cmd_complete(args):
                "open_decisions": list(open_decisions)[:20], "blocking": list(blocking),
                "result": "PASS" if not blocking else "FAIL"})
         if blocking:
-            print(f"WARNING: Task {args.task_id} has OPEN blocking decisions: "
-                  f"{', '.join(blocking)}. Close them first or use --force.",
-                  file=sys.stderr)
-            sys.exit(1)
+            raise PreconditionError(f"Task {args.task_id} has OPEN blocking decisions: "
+                  f"{', '.join(blocking)}. Close them first or use --force.")
 
     # Check reasoning (required for LIGHT, STANDARD, FULL)
     _reasoning_required = not force and ceremony not in ("MINIMAL",) and not reasoning.strip()
@@ -602,9 +597,7 @@ def cmd_complete(args):
            "length": len(reasoning), "force": force,
            "result": "FAIL" if _reasoning_required else "PASS"})
     if _reasoning_required:
-        print(f"WARNING: --reasoning is required for {ceremony} ceremony level.",
-              file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError(f"--reasoning is required for {ceremony} ceremony level.")
 
     # Auto-record changes from git before checking
     if base_commit:
@@ -626,9 +619,8 @@ def cmd_complete(args):
                "files": [c.get("file") for c in task_changes][:20],
                "result": "PASS" if task_changes else "FAIL"})
         if not task_changes:
-            print(f"WARNING: No changes recorded for {args.task_id}. "
-                  f"Use --force to complete anyway.", file=sys.stderr)
-            sys.exit(1)
+            raise PreconditionError(f"No changes recorded for {args.task_id}. "
+                  f"Use --force to complete anyway.")
 
     # Check that gates passed (mechanical enforcement)
     _trace(args.project, {"event": "complete.gates_start", "task": args.task_id,
@@ -665,9 +657,8 @@ def cmd_complete(args):
             if failed_ac:
                 _trace(args.project, {"event": "complete.ac_mechanical_FAIL", "task": args.task_id,
                        "failed": [r["text"] for r in failed_ac]})
-                print(f"\nERROR: {len(failed_ac)} mechanical AC verification(s) failed. "
-                      f"Fix and retry.", file=sys.stderr)
-                sys.exit(1)
+                raise GateFailure(f"{len(failed_ac)} mechanical AC verification(s) failed. "
+                      f"Fix and retry.")
             task["ac_verification_results"] = ac_results
 
     # --- Manual AC reasoning: required for STANDARD/FULL ceremony ---
@@ -681,20 +672,19 @@ def cmd_complete(args):
         if manual_ac:
             ac_reasoning = getattr(args, "ac_reasoning", None)
             if not ac_reasoning:
-                print(f"ERROR: Task {args.task_id} has {len(manual_ac)} manual acceptance criteria "
-                      f"but no --ac-reasoning provided.", file=sys.stderr)
-                print(f"  Manual criteria:", file=sys.stderr)
-                for i, criterion in enumerate(manual_ac, 1):
-                    text = criterion if isinstance(criterion, str) else criterion.get("text", str(criterion))
-                    print(f"    {i}. {text}", file=sys.stderr)
-                print(f"  Provide --ac-reasoning with concrete evidence (min 50 chars) for each criterion.",
-                      file=sys.stderr)
-                sys.exit(1)
+                criteria_list = "\n".join(
+                    f"    {i}. {criterion if isinstance(criterion, str) else criterion.get('text', str(criterion))}"
+                    for i, criterion in enumerate(manual_ac, 1)
+                )
+                raise ValidationError(
+                    f"Task {args.task_id} has {len(manual_ac)} manual acceptance criteria "
+                    f"but no --ac-reasoning provided.\n  Manual criteria:\n{criteria_list}\n"
+                    f"  Provide --ac-reasoning with concrete evidence (min 50 chars) for each criterion."
+                )
             if len(ac_reasoning.strip()) < 50:
-                print(f"ERROR: --ac-reasoning too short ({len(ac_reasoning.strip())} chars). "
+                raise ValidationError(f"--ac-reasoning too short ({len(ac_reasoning.strip())} chars). "
                       f"Minimum 50 characters required. Provide concrete evidence, "
-                      f"not just 'done' or 'verified'.", file=sys.stderr)
-                sys.exit(1)
+                      f"not just 'done' or 'verified'.")
             task["ac_reasoning"] = ac_reasoning
             # Validate AC reasoning quality (blocking, not advisory)
             ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
@@ -702,22 +692,20 @@ def cmd_complete(args):
                    "reasoning_text": ac_reasoning[:500], "issues": ac_warnings,
                    "result": "PASS" if not ac_warnings else "FAIL"})
             if ac_warnings:
-                print(f"**AC REASONING ISSUES** ({len(ac_warnings)}):", file=sys.stderr)
-                for w in ac_warnings:
-                    print(w, file=sys.stderr)
-                print("Each criterion needs evidence: 'AC N: [criterion] — PASS: [concrete proof]'",
-                      file=sys.stderr)
-                sys.exit(1)
+                issues = "\n".join(ac_warnings)
+                raise ValidationError(
+                    f"**AC REASONING ISSUES** ({len(ac_warnings)}):\n{issues}\n"
+                    f"Each criterion needs evidence: 'AC N: [criterion] — PASS: [concrete proof]'"
+                )
 
     # Process deferred items — auto-create OPEN decisions
     # Required for STANDARD/FULL: agent must explicitly state what's covered vs deferred
     deferred_raw = getattr(args, "deferred", None)
     has_ac = bool(task.get("acceptance_criteria"))
     if not deferred_raw and not force and ceremony in ("STANDARD", "FULL") and has_ac:
-        print(f"WARNING: --deferred required for {ceremony} ceremony with acceptance criteria. "
+        raise PreconditionError(f"--deferred required for {ceremony} ceremony with acceptance criteria. "
               f"Pass --deferred '[]' if all source requirements are covered, "
-              f"or list deferred items.", file=sys.stderr)
-        sys.exit(1)
+              f"or list deferred items.")
     if deferred_raw:
         try:
             deferred_items = load_json_data(deferred_raw)
@@ -932,23 +920,18 @@ def cmd_skip(args):
     force = getattr(args, "force", False)
 
     if not reason.strip():
-        print(f"ERROR: --reason is required when skipping a task. "
-              f"Explain why this task cannot be completed.", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"--reason is required when skipping a task. "
+              f"Explain why this task cannot be completed.")
 
     if len(reason.strip()) < 50:
-        print(f"ERROR: --reason too short ({len(reason.strip())} chars). "
-              f"Minimum 50 characters. Provide a real explanation, not a placeholder.",
-              file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"--reason too short ({len(reason.strip())} chars). "
+              f"Minimum 50 characters. Provide a real explanation, not a placeholder.")
 
     task_type = task.get("type", "feature")
     if task_type in ("feature", "bug") and not force:
-        print(f"ERROR: Cannot skip {task_type} task {args.task_id} without --force. "
+        raise PreconditionError(f"Cannot skip {task_type} task {args.task_id} without --force. "
               f"Feature and bug tasks represent committed deliverables. "
-              f"Use --force --reason '...' to confirm this is intentional.",
-              file=sys.stderr)
-        sys.exit(1)
+              f"Use --force --reason '...' to confirm this is intentional.")
 
     task["status"] = "SKIPPED"
     task["skip_reason"] = reason.strip()

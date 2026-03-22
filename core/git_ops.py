@@ -487,14 +487,20 @@ def main():
 
     if not args.command:
         parser.print_help()
-        sys.exit(1)
+        from errors import PreconditionError
+        raise PreconditionError("No command specified")
 
     commands = {
         "status": cmd_status,
         "cleanup": cmd_cleanup,
     }
 
-    commands[args.command](args)
+    from errors import ForgeError
+    try:
+        commands[args.command](args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

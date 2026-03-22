@@ -27,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from entity_base import EntityModule, make_cli
 from storage import now_iso
 
+from errors import EntityNotFound, PreconditionError, ValidationError
+
 from _compat import configure_encoding
 configure_encoding()
 
@@ -326,8 +328,7 @@ def cmd_show(args):
     data = _mod.load(args.project)
     t = _mod.find_by_id(data, args.template_id)
     if not t:
-        print(f"ERROR: Template '{args.template_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Template '{args.template_id}' not found.")
 
     print(f"## {t['id']}: {t['title']}")
     status = t.get('status', 'ACTIVE')
@@ -384,13 +385,11 @@ def cmd_instantiate(args):
     data = _mod.load(args.project)
     t = _mod.find_by_id(data, args.template_id)
     if not t:
-        print(f"ERROR: Template '{args.template_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Template '{args.template_id}' not found.")
 
     if t.get("status") == "PROPOSED":
-        print(f"ERROR: Template '{args.template_id}' is PROPOSED — approve it first "
-              f"(update status to ACTIVE).", file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError(f"Template '{args.template_id}' is PROPOSED — approve it first "
+              f"(update status to ACTIVE).")
 
     if t.get("status") == "DEPRECATED":
         print(f"WARNING: Template '{args.template_id}' is DEPRECATED.", file=sys.stderr)
@@ -399,8 +398,7 @@ def cmd_instantiate(args):
     try:
         params = json.loads(args.params) if args.params else {}
     except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON params: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid JSON params: {e}")
 
     # Build complete params: provided values + defaults
     template_params = t.get("parameters", [])
@@ -417,10 +415,7 @@ def cmd_instantiate(args):
             missing.append(name)
 
     if missing:
-        print(f"ERROR: Missing required parameters: {', '.join(missing)}", file=sys.stderr)
-        print(f"Provide via --params '{{\"{'\" : \"...\", \"'.join(missing)}\": \"...\"}}'",
-              file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Missing required parameters: {', '.join(missing)}")
 
     # Render template (SafeDict leaves unresolved {placeholders} as-is)
     template_str = t.get("template", "")
@@ -432,8 +427,7 @@ def cmd_instantiate(args):
     try:
         text = template_str.format_map(_SafeDict({k: str(v) for k, v in resolved.items()}))
     except (ValueError, IndexError) as e:
-        print(f"ERROR: Template rendering failed: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Template rendering failed: {e}")
 
     # Increment usage count
     t["usage_count"] = t.get("usage_count", 0) + 1

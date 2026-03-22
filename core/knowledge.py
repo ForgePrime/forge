@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule
+from errors import EntityNotFound, ValidationError
 from storage import JSONFileStorage, now_iso
 
 
@@ -309,8 +310,7 @@ def cmd_show(args):
     data = _mod.load(args.project)
     k = _mod.find_by_id(data, args.knowledge_id)
     if not k:
-        print(f"ERROR: Knowledge '{args.knowledge_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Knowledge '{args.knowledge_id}' not found.")
 
     print(f"## {k['id']}: {k['title']}")
     print(f"**Category**: {k['category']} | **Status**: {k['status']} | **Version**: v{k.get('version', 1)}")
@@ -389,18 +389,15 @@ def cmd_link(args):
     try:
         link_data = load_json_data(args.data)
     except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid JSON: {e}")
 
     if not isinstance(link_data, list):
         link_data = [link_data]
 
     errors = validate_contract(CONTRACTS["link"], link_data)
     if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+        details = "; ".join(errors[:10])
+        raise ValidationError(f"{len(errors)} validation issues: {details}")
 
     data = _mod.load(args.project)
 
@@ -438,17 +435,14 @@ def cmd_unlink(args):
     data = _mod.load(args.project)
     k = _mod.find_by_id(data, args.knowledge_id)
     if not k:
-        print(f"ERROR: Knowledge '{args.knowledge_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Knowledge '{args.knowledge_id}' not found.")
 
     links = k.get("linked_entities", [])
     if not links:
-        print(f"ERROR: No links on '{args.knowledge_id}' to remove.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"No links on '{args.knowledge_id}' to remove.")
     index = int(args.index)
     if index < 0 or index >= len(links):
-        print(f"ERROR: Link index {index} out of range (0-{len(links) - 1}).", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Link index {index} out of range (0-{len(links) - 1}).")
 
     removed = links.pop(index)
     k["updated_at"] = now_iso()
@@ -462,8 +456,7 @@ def cmd_impact(args):
     data = _mod.load(args.project)
     k = _mod.find_by_id(data, args.knowledge_id)
     if not k:
-        print(f"ERROR: Knowledge '{args.knowledge_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Knowledge '{args.knowledge_id}' not found.")
 
     k_id = args.knowledge_id
     print(f"## Impact Analysis: {k_id} — {k['title']}")
@@ -607,7 +600,12 @@ def main():
         "contract": _mod.cmd_contract,
     }
 
-    commands[args.command](args)
+    from errors import ForgeError
+    try:
+        commands[args.command](args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

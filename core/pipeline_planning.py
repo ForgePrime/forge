@@ -16,6 +16,7 @@ from pipeline_tasks import (
 )
 from pipeline_execution import _validate_ac_reasoning, _warn_ac_quality
 from contracts import validate_contract
+from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError
 from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
 
 
@@ -203,25 +204,20 @@ def _check_assumptions_readiness(assumptions_raw):
     try:
         assumptions = load_json_data(assumptions_raw)
     except (json.JSONDecodeError, Exception) as e:
-        print(f"ERROR: Invalid assumptions JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid assumptions JSON: {e}")
 
     if not isinstance(assumptions, list):
-        print("ERROR: --assumptions must be a JSON array", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError("--assumptions must be a JSON array")
 
     valid_severities = {"HIGH", "MED", "LOW"}
     for i, a in enumerate(assumptions):
         if not isinstance(a, dict):
-            print(f"ERROR: Assumption {i+1} must be an object with assumption, basis, severity", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Assumption {i+1} must be an object with assumption, basis, severity")
         for field in ("assumption", "basis", "severity"):
             if field not in a:
-                print(f"ERROR: Assumption {i+1} missing required field '{field}'", file=sys.stderr)
-                sys.exit(1)
+                raise ValidationError(f"Assumption {i+1} missing required field '{field}'")
         if a["severity"] not in valid_severities:
-            print(f"ERROR: Assumption {i+1} severity must be HIGH, MED, or LOW (got '{a['severity']}')", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Assumption {i+1} severity must be HIGH, MED, or LOW (got '{a['severity']}')")
 
     high_count = sum(1 for a in assumptions if a["severity"] == "HIGH")
     return assumptions, high_count
@@ -240,12 +236,10 @@ def _check_coverage(coverage_raw):
     try:
         coverage = load_json_data(coverage_raw)
     except (json.JSONDecodeError, Exception) as e:
-        print(f"ERROR: Invalid coverage JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid coverage JSON: {e}")
 
     if not isinstance(coverage, list):
-        print("ERROR: --coverage must be a JSON array", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError("--coverage must be a JSON array")
 
     valid_statuses = {"COVERED", "DEFERRED", "OUT_OF_SCOPE", "MISSING"}
     missing = []
@@ -253,26 +247,20 @@ def _check_coverage(coverage_raw):
 
     for i, item in enumerate(coverage):
         if not isinstance(item, dict):
-            print(f"ERROR: Coverage item {i+1} must be an object", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Coverage item {i+1} must be an object")
 
         for field in ("requirement", "status"):
             if field not in item:
-                print(f"ERROR: Coverage item {i+1} missing required field '{field}'", file=sys.stderr)
-                sys.exit(1)
+                raise ValidationError(f"Coverage item {i+1} missing required field '{field}'")
 
         st = item["status"].upper()
         item["status"] = st
 
         if st not in valid_statuses:
-            print(f"ERROR: Coverage item {i+1} status must be one of {sorted(valid_statuses)} (got '{st}')",
-                  file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Coverage item {i+1} status must be one of {sorted(valid_statuses)} (got '{st}')")
 
         if st in ("DEFERRED", "OUT_OF_SCOPE") and not item.get("reason"):
-            print(f"ERROR: Coverage item {i+1} '{item['requirement'][:50]}' has status {st} but no reason.",
-                  file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Coverage item {i+1} '{item['requirement'][:50]}' has status {st} but no reason.")
 
         if st == "MISSING":
             missing.append(item)
@@ -289,12 +277,10 @@ def cmd_draft_plan(args):
     try:
         draft_tasks = load_json_data(args.data)
     except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid JSON: {e}")
 
     if not isinstance(draft_tasks, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError("--data must be a JSON array")
 
     _trace(args.project, {"event": "draft_plan.start",
            "task_count": len(draft_tasks),
@@ -308,10 +294,8 @@ def cmd_draft_plan(args):
     _trace(args.project, {"event": "draft_plan.contract_validation",
            "errors": len(errors), "first_errors": errors[:5]})
     if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+        detail = "\n".join(f"  {e}" for e in errors[:10])
+        raise ValidationError(f"{len(errors)} validation issues:\n{detail}")
 
     # Readiness gate: check assumptions if provided
     assumptions = None
@@ -320,12 +304,13 @@ def cmd_draft_plan(args):
     if assumptions_raw:
         assumptions, high_count = _check_assumptions_readiness(assumptions_raw)
         if high_count >= 5:
-            print(f"ERROR: Readiness gate FAILED — {high_count} HIGH-severity assumptions.", file=sys.stderr)
-            print("A plan built on 5+ unverified assumptions is not a plan. Clarify before planning:", file=sys.stderr)
-            for a in assumptions:
-                if a["severity"] == "HIGH":
-                    print(f"  - {a['assumption']} (basis: {a['basis']})", file=sys.stderr)
-            sys.exit(1)
+            high_details = "\n".join(f"  - {a['assumption']} (basis: {a['basis']})"
+                                     for a in assumptions if a["severity"] == "HIGH")
+            raise PreconditionError(
+                f"Readiness gate FAILED — {high_count} HIGH-severity assumptions.\n"
+                f"A plan built on 5+ unverified assumptions is not a plan. Clarify before planning:\n"
+                f"{high_details}"
+            )
 
     # Coverage gate: check all source requirements are accounted for
     coverage = None
@@ -334,14 +319,13 @@ def cmd_draft_plan(args):
     if coverage_raw:
         coverage, missing_count, coverage_deferred = _check_coverage(coverage_raw)
         if missing_count > 0:
-            print(f"ERROR: Coverage gate FAILED — {missing_count} requirement(s) with status MISSING.",
-                  file=sys.stderr)
-            print("Every source requirement must be COVERED by a task, or explicitly DEFERRED/OUT_OF_SCOPE with a reason:",
-                  file=sys.stderr)
-            for item in coverage:
-                if item["status"] == "MISSING":
-                    print(f"  MISSING: {item['requirement']}", file=sys.stderr)
-            sys.exit(1)
+            missing_details = "\n".join(f"  MISSING: {item['requirement']}"
+                                        for item in coverage if item["status"] == "MISSING")
+            raise PreconditionError(
+                f"Coverage gate FAILED — {missing_count} requirement(s) with status MISSING.\n"
+                f"Every source requirement must be COVERED by a task, or explicitly DEFERRED/OUT_OF_SCOPE with a reason:\n"
+                f"{missing_details}"
+            )
 
     # Store draft (overwrite previous draft)
     tracker["draft_plan"] = {
@@ -479,8 +463,7 @@ def cmd_approve_plan(args):
         draft = tracker.get("draft_plan")
 
         if not draft or not draft.get("tasks"):
-            print(f"ERROR: No draft plan for '{args.project}'.", file=sys.stderr)
-            sys.exit(1)
+            raise PreconditionError(f"No draft plan for '{args.project}'.")
 
         draft_tasks = draft["tasks"]
         source_idea_id = draft.get("source_idea_id")
@@ -493,9 +476,7 @@ def cmd_approve_plan(args):
         existing_ids = {t["id"] for t in tracker["tasks"]}
         for t in draft_tasks:
             if t["id"] in existing_ids:
-                print(f"ERROR: Duplicate task ID '{t['id']}' — already exists in pipeline.",
-                      file=sys.stderr)
-                sys.exit(1)
+                raise ValidationError(f"Duplicate task ID '{t['id']}' — already exists in pipeline.")
 
         # Build task entries (same logic as cmd_add_tasks)
         entries = []
@@ -507,9 +488,7 @@ def cmd_approve_plan(args):
         # AC hard gate: feature/bug tasks must have acceptance criteria
         has_ac_errors = _warn_ac_quality(entries)
         if has_ac_errors:
-            print("ERROR: Cannot approve plan — feature/bug tasks without acceptance criteria.",
-                  file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError("Cannot approve plan — feature/bug tasks without acceptance criteria.")
 
         # Reference validation (non-blocking warnings)
         ref_warnings = _validate_plan_references(entries, args.project)
@@ -521,21 +500,24 @@ def cmd_approve_plan(args):
         # Context validation (blocking: scope/guideline mismatches)
         ctx_errors, _ = _validate_plan_context(entries, args.project)
         if ctx_errors:
-            print(f"ERROR: Context validation failed ({len(ctx_errors)} issues):", file=sys.stderr)
-            for e in ctx_errors:
-                print(e, file=sys.stderr)
-            print("Fix scope assignments or use --force to override.", file=sys.stderr)
             if not getattr(args, "force", False):
-                sys.exit(1)
+                detail = "\n".join(ctx_errors)
+                raise ValidationError(
+                    f"Context validation failed ({len(ctx_errors)} issues):\n{detail}\n"
+                    f"Fix scope assignments or use --force to override."
+                )
+            else:
+                print(f"WARNING: Context validation failed ({len(ctx_errors)} issues):", file=sys.stderr)
+                for e in ctx_errors:
+                    print(e, file=sys.stderr)
+                print("Proceeding due to --force.", file=sys.stderr)
 
         # Validate DAG
         all_tasks = tracker["tasks"] + entries
         dag_errors = validate_dag(all_tasks)
         if dag_errors:
-            print(f"ERROR: Task graph validation failed:", file=sys.stderr)
-            for e in dag_errors:
-                print(f"  {e}", file=sys.stderr)
-            sys.exit(1)
+            detail = "\n".join(f"  {e}" for e in dag_errors)
+            raise ValidationError(f"Task graph validation failed:\n{detail}")
 
         # Materialize
         tracker["tasks"].extend(entries)

@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from _compat import configure_encoding
+from errors import EntityNotFound, ForgeError
 from storage import JSONFileStorage, now_iso
 
 configure_encoding()
@@ -85,8 +86,7 @@ def _get_storage(storage=None):
 def load_tracker(project: str, storage=None) -> dict:
     s = _get_storage(storage)
     if not s.exists(project, 'tracker'):
-        print(f"ERROR: No tracker for project '{project}'. Run: init {project} --goal \"...\"", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"No tracker for project '{project}'. Run: init {project} --goal \"...\"")
     return s.load_data(project, 'tracker')
 
 
@@ -99,8 +99,7 @@ def find_task(tracker: dict, task_id: str) -> dict:
     for task in tracker["tasks"]:
         if task["id"] == task_id:
             return task
-    print(f"ERROR: Task '{task_id}' not found.", file=sys.stderr)
-    sys.exit(1)
+    raise EntityNotFound(f"Task '{task_id}' not found.")
 
 
 def _max_task_num(tasks: list) -> int:

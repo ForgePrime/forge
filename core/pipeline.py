@@ -39,6 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from contracts import render_contract
+from errors import ForgeError
 
 # -- Re-export from submodules for backward compatibility --
 # (other modules import from pipeline directly)
@@ -227,7 +228,11 @@ def main():
 
     cmd_func = commands.get(args.command)
     if cmd_func:
-        cmd_func(args)
+        try:
+            cmd_func(args)
+        except ForgeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(e.exit_code)
     else:
         parser.print_help()
         sys.exit(1)

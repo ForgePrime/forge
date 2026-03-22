@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from entity_base import EntityModule
+from errors import ForgeError, ValidationError
 from storage import JSONFileStorage, load_json_data, now_iso
 
 from _compat import configure_encoding
@@ -113,19 +114,15 @@ class Changes(EntityModule):
         try:
             new_changes = load_json_data(args.data)
         except json.JSONDecodeError as e:
-            print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Invalid JSON: {e}")
 
         if not isinstance(new_changes, list):
-            print("ERROR: --data must be a JSON array", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError("--data must be a JSON array")
 
         errors = self._validate_against_contract(new_changes, "record")
         if errors:
-            print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-            for e in errors[:10]:
-                print(f"  {e}", file=sys.stderr)
-            sys.exit(1)
+            details = "; ".join(errors[:10])
+            raise ValidationError(f"{len(errors)} validation issues: {details}")
 
         # Cross-validate: check task_ids and decision_ids exist
         valid_task_ids = set()
@@ -358,8 +355,7 @@ class Changes(EntityModule):
             )
             numstat = result.stdout.strip()
         except FileNotFoundError:
-            print("ERROR: git not available. Use `changes record` instead.", file=sys.stderr)
-            sys.exit(1)
+            raise ForgeError("git not available. Use `changes record` instead.")
 
         if not numstat:
             # Try staged only
@@ -457,10 +453,8 @@ class Changes(EntityModule):
         from contracts import render_contract
         name = getattr(args, "name", None) or "record"
         if name not in self.contracts:
-            print(f"ERROR: Unknown contract '{name}'. "
-                  f"Available: {', '.join(sorted(self.contracts.keys()))}",
-                  file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Unknown contract '{name}'. "
+                  f"Available: {', '.join(sorted(self.contracts.keys()))}")
         print(render_contract(name, self.contracts[name]))
 
 
@@ -516,7 +510,12 @@ def main():
         "contract": _mod.cmd_contract,
     }
 
-    commands[args.command](args)
+    from errors import ForgeError
+    try:
+        commands[args.command](args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

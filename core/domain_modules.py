@@ -17,6 +17,8 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 # -- Module Registry --
 
 MODULES = {
@@ -74,8 +76,8 @@ def _modules_dir() -> Path:
         d = p / "skills" / "domain-modules" / "modules"
         if d.is_dir():
             return d
-    print("ERROR: Cannot find skills/domain-modules/modules/ directory.", file=sys.stderr)
-    sys.exit(1)
+    from errors import EntityNotFound
+    raise EntityNotFound("Cannot find skills/domain-modules/modules/ directory.")
 
 
 # -- Phase Parsing --
@@ -171,28 +173,24 @@ def cmd_get(args):
     module_name = args.module
     phase = args.phase
 
+    from errors import EntityNotFound, ValidationError
+
     if module_name not in MODULES:
-        print(f"ERROR: Unknown module '{module_name}'. Available: {', '.join(sorted(MODULES))}",
-              file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Unknown module '{module_name}'. Available: {', '.join(sorted(MODULES))}")
 
     if phase not in PHASE_NAMES:
-        print(f"ERROR: Unknown phase '{phase}'. Available: {', '.join(sorted(PHASE_NAMES))}",
-              file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Unknown phase '{phase}'. Available: {', '.join(sorted(PHASE_NAMES))}")
 
     modules_dir = _modules_dir()
     filepath = modules_dir / MODULES[module_name]["file"]
 
     if not filepath.exists():
-        print(f"ERROR: Module file not found: {filepath}", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Module file not found: {filepath}")
 
     phases = _parse_phases(filepath)
 
     if phase not in phases:
-        print(f"ERROR: Phase '{phase}' not found in module '{module_name}'.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Phase '{phase}' not found in module '{module_name}'.")
 
     # Header with storage guidance
     print(f"## Domain Module: {module_name} — Phase: {phase}")
@@ -216,9 +214,8 @@ def cmd_for_scopes(args):
     task_type = getattr(args, "task_type", None)
 
     if phase not in PHASE_NAMES:
-        print(f"ERROR: Unknown phase '{phase}'. Available: {', '.join(sorted(PHASE_NAMES))}",
-              file=sys.stderr)
-        sys.exit(1)
+        from errors import ValidationError
+        raise ValidationError(f"Unknown phase '{phase}'. Available: {', '.join(sorted(PHASE_NAMES))}")
 
     # Complexity gate: skip for bug/chore
     if task_type and task_type in SKIP_TYPES:
@@ -290,9 +287,8 @@ def cmd_deps(args):
     module_names = args.modules
     for name in module_names:
         if name not in MODULES:
-            print(f"ERROR: Unknown module '{name}'. Available: {', '.join(sorted(MODULES))}",
-                  file=sys.stderr)
-            sys.exit(1)
+            from errors import EntityNotFound
+            raise EntityNotFound(f"Unknown module '{name}'. Available: {', '.join(sorted(MODULES))}")
 
     print(f"## Cross-module Dependencies: {', '.join(module_names)}")
     print()
@@ -336,7 +332,8 @@ def main():
 
     if not args.command:
         parser.print_help()
-        sys.exit(1)
+        from errors import PreconditionError
+        raise PreconditionError("No command specified")
 
     commands = {
         "list": cmd_list,
@@ -350,7 +347,8 @@ def main():
         cmd_func(args)
     else:
         parser.print_help()
-        sys.exit(1)
+        from errors import PreconditionError
+        raise PreconditionError(f"Unknown command: {args.command}")
 
 
 if __name__ == "__main__":

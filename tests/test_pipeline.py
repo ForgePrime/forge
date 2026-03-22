@@ -44,6 +44,7 @@ from pipeline import (
     _auto_update_kr,
 )
 from contracts import validate_contract, atomic_write_json
+from errors import ForgeError, ValidationError, PreconditionError
 from conftest import make_task
 
 
@@ -244,7 +245,7 @@ class TestStateTransitions:
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="",
                                ac_reasoning=None)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_complete(args)
 
     def test_complete_with_ac_requires_reasoning(self, forge_env, project_name):
@@ -273,7 +274,7 @@ class TestStateTransitions:
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="done",
                                ac_reasoning=None)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_complete(args)
 
     def test_complete_with_ac_and_reasoning_succeeds(self, forge_env, project_name):
@@ -441,7 +442,7 @@ class TestAddTasksContract:
             project=project_name,
             data=json.dumps([{"id": "T-001", "name": "duplicate"}]),
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_add_tasks(args)
 
     def test_add_tasks_cmd_succeeds(self, forge_env, project_name):
@@ -482,7 +483,7 @@ class TestAddTasksContract:
             {"id": "T-002", "name": "b", "depends_on": ["T-001"]},
         ]
         args = SimpleNamespace(project=project_name, data=json.dumps(tasks_data))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_add_tasks(args)
 
 
@@ -691,7 +692,7 @@ class TestDraftPlan:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name)
-        with pytest.raises(SystemExit):
+        with pytest.raises(PreconditionError):
             cmd_approve_plan(args)
 
     def test_approve_plan_rejects_duplicate_ids(self, forge_env, project_name):
@@ -711,7 +712,7 @@ class TestDraftPlan:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_approve_plan(args)
 
     def test_draft_plan_with_idea_source(self, forge_env, project_name):
@@ -784,7 +785,7 @@ class TestSubtasks:
 
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                data=json.dumps([{"id": "S-001", "name": "x"}]))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_register_subtasks(args)
 
     def test_complete_subtask(self, forge_env, project_name):
@@ -912,7 +913,7 @@ class TestACHardGate:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_approve_plan(args)
 
     def test_approve_plan_accepts_chore_without_ac(self, forge_env, project_name):

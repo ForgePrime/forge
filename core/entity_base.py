@@ -17,6 +17,7 @@ import sys
 
 from _compat import configure_encoding
 from contracts import render_contract, validate_contract
+from errors import ForgeError, ValidationError, EntityNotFound
 from storage import JSONFileStorage, load_json_data, now_iso
 
 configure_encoding()
@@ -200,13 +201,11 @@ class EntityModule:
         """Print contract spec."""
         name = getattr(args, "name", None)
         if name is None:
-            # Single contract module (e.g. lessons) — print "add"
             name = "add"
         if name not in self.contracts:
-            print(f"ERROR: Unknown contract '{name}'. "
-                  f"Available: {', '.join(sorted(self.contracts.keys()))}",
-                  file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(
+                f"Unknown contract '{name}'. "
+                f"Available: {', '.join(sorted(self.contracts.keys()))}")
         print(render_contract(name, self.contracts[name]))
 
     # -- Internal helpers --
@@ -216,8 +215,7 @@ class EntityModule:
         try:
             items = load_json_data(data_str)
         except json.JSONDecodeError as e:
-            print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Invalid JSON: {e}")
 
         if not isinstance(items, list):
             items = [items]
@@ -226,10 +224,8 @@ class EntityModule:
         if contract:
             errors = validate_contract(contract, items)
             if errors:
-                print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-                for e in errors[:10]:
-                    print(f"  {e}", file=sys.stderr)
-                sys.exit(1)
+                detail = "\n  ".join(errors[:10])
+                raise ValidationError(f"{len(errors)} validation issues:\n  {detail}")
 
         return items
 
@@ -291,6 +287,10 @@ def make_cli(module: EntityModule, extra_commands: dict = None,
 
     handler = commands.get(args.command)
     if handler:
-        handler(args)
+        try:
+            handler(args)
+        except ForgeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(e.exit_code)
     else:
         parser.print_help()

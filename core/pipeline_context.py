@@ -11,6 +11,7 @@ from pipeline_common import (
     _get_storage, _trace, load_tracker, save_tracker, find_task,
     print_task_detail,
 )
+from errors import ForgeError, ValidationError, EntityNotFound, PreconditionError
 from storage import JSONFileStorage, now_iso, load_json_data
 
 
@@ -627,12 +628,10 @@ def cmd_config(args):
         try:
             config = load_json_data(args.data)
         except json.JSONDecodeError as e:
-            print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Invalid JSON: {e}")
 
         if not isinstance(config, dict):
-            print("ERROR: --data must be a JSON object", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError("--data must be a JSON object")
 
         known_keys = set(CONTRACTS["config"]["optional"])
         unknown = set(config.keys()) - known_keys

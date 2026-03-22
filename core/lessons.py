@@ -32,6 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
+from errors import EntityNotFound, PreconditionError
 from storage import JSONFileStorage, now_iso
 
 
@@ -213,8 +214,7 @@ def cmd_promote(args):
     storage = JSONFileStorage()
     projects = storage.list_projects()
     if not projects:
-        print("No projects found.", file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError("No projects found.")
 
     found = None
     for project in projects:
@@ -228,8 +228,7 @@ def cmd_promote(args):
             break
 
     if not found:
-        print(f"ERROR: Lesson {args.lesson_id} not found", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Lesson {args.lesson_id} not found")
 
     if found.get("promoted_to_guideline"):
         print(f"WARNING: Lesson {args.lesson_id} already promoted to {found['promoted_to_guideline']}")
@@ -294,8 +293,7 @@ def cmd_promote_knowledge(args):
     storage = JSONFileStorage()
     projects = storage.list_projects()
     if not projects:
-        print("No projects found.", file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError("No projects found.")
 
     found = None
     lesson_project = None
@@ -311,8 +309,7 @@ def cmd_promote_knowledge(args):
             break
 
     if not found:
-        print(f"ERROR: Lesson {args.lesson_id} not found", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Lesson {args.lesson_id} not found")
 
     if found.get("promoted_to_knowledge"):
         print(f"WARNING: Lesson {args.lesson_id} already promoted to {found['promoted_to_knowledge']}")

@@ -24,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
+from errors import EntityNotFound
 from storage import JSONFileStorage
 
 
@@ -275,8 +276,7 @@ def cmd_show(args):
     data = _mod.load(args.project)
     r = _mod.find_by_id(data, args.research_id)
     if not r:
-        print(f"ERROR: Research '{args.research_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Research '{args.research_id}' not found.")
 
     print(f"## {r['id']}: {r['title']}")
     print(f"**Category**: {r['category']} | **Status**: {r['status']}")

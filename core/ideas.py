@@ -44,6 +44,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
+from errors import ValidationError, EntityNotFound, PreconditionError
 from storage import JSONFileStorage, load_json_data, now_iso
 
 
@@ -306,8 +307,7 @@ class Ideas(EntityModule):
         try:
             updates = load_json_data(args.data)
         except json.JSONDecodeError as e:
-            print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Invalid JSON: {e}")
 
         if not isinstance(updates, list):
             updates = [updates]
@@ -315,10 +315,8 @@ class Ideas(EntityModule):
         from contracts import validate_contract
         errors = validate_contract(CONTRACTS["update"], updates)
         if errors:
-            print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-            for e in errors[:10]:
-                print(f"  {e}", file=sys.stderr)
-            sys.exit(1)
+            details = "; ".join(errors[:10])
+            raise ValidationError(f"{len(errors)} validation issues: {details}")
 
         data = self.load(args.project)
         timestamp = now_iso()
@@ -417,14 +415,12 @@ def cmd_show(args):
     """Show full details for a single idea."""
     storage = JSONFileStorage()
     if not storage.exists(args.project, 'ideas'):
-        print(f"No ideas for '{args.project}' yet.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"No ideas for '{args.project}' yet.")
 
     data = storage.load_data(args.project, 'ideas')
     idea_obj = _mod.find_by_id(data, args.idea_id)
     if idea_obj is None:
-        print(f"ERROR: Idea '{args.idea_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Idea '{args.idea_id}' not found.")
     idea = idea_obj
     dec_data = None  # loaded on demand below
 
@@ -572,18 +568,17 @@ def cmd_commit(args):
     data = _mod.load(args.project)
     idea_obj = _mod.find_by_id(data, args.idea_id)
     if idea_obj is None:
-        print(f"ERROR: Idea '{args.idea_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Idea '{args.idea_id}' not found.")
     idea = idea_obj
 
     if idea["status"] != "APPROVED":
-        print(f"ERROR: Idea {args.idea_id} must be APPROVED before commit (is {idea['status']}).",
-              file=sys.stderr)
+        hint = ""
         if idea["status"] == "DRAFT":
-            print("  Explore it first: /discover {id} or update to EXPLORING", file=sys.stderr)
+            hint = " Explore it first: /discover {id} or update to EXPLORING"
         elif idea["status"] == "EXPLORING":
-            print("  Analysis still in progress. Update to APPROVED when done.", file=sys.stderr)
-        sys.exit(1)
+            hint = " Analysis still in progress. Update to APPROVED when done."
+        raise PreconditionError(
+            f"Idea {args.idea_id} must be APPROVED before commit (is {idea['status']}).{hint}")
 
     # Validate depends_on relations — all targets must be APPROVED or COMMITTED
     all_ideas = {i["id"]: i for i in data.get("ideas", [])}
@@ -597,11 +592,10 @@ def cmd_commit(args):
         elif target["status"] not in ("APPROVED", "COMMITTED"):
             unmet.append(f"{target_id} (status: {target['status']})")
     if unmet:
-        print(f"ERROR: Idea {args.idea_id} has unmet depends_on relations:", file=sys.stderr)
-        for u in unmet:
-            print(f"  - {u}", file=sys.stderr)
-        print("  All dependencies must be APPROVED or COMMITTED first.", file=sys.stderr)
-        sys.exit(1)
+        details = "; ".join(f"- {u}" for u in unmet)
+        raise PreconditionError(
+            f"Idea {args.idea_id} has unmet depends_on relations: {details}. "
+            f"All dependencies must be APPROVED or COMMITTED first.")
 
     idea["status"] = "COMMITTED"
     idea["committed_at"] = now_iso()

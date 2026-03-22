@@ -40,6 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
+from errors import EntityNotFound, ValidationError
 from storage import JSONFileStorage, load_json_data, now_iso
 
 
@@ -279,8 +280,7 @@ class Objectives(EntityModule):
         try:
             updates = load_json_data(args.data)
         except json.JSONDecodeError as e:
-            print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise ValidationError(f"Invalid JSON: {e}")
 
         if not isinstance(updates, list):
             updates = [updates]
@@ -288,10 +288,8 @@ class Objectives(EntityModule):
         from contracts import validate_contract
         errors = validate_contract(CONTRACTS["update"], updates)
         if errors:
-            print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-            for e in errors[:10]:
-                print(f"  {e}", file=sys.stderr)
-            sys.exit(1)
+            detail = "; ".join(errors[:10])
+            raise ValidationError(f"{len(errors)} validation issues: {detail}")
 
         data = self.load(args.project)
         timestamp = now_iso()
@@ -379,8 +377,7 @@ def cmd_show(args):
     data = _mod.load(args.project)
     obj = _mod.find_by_id(data, args.objective_id)
     if not obj:
-        print(f"ERROR: Objective '{args.objective_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Objective '{args.objective_id}' not found.")
 
     print(f"## Objective {obj['id']}: {obj['title']}")
     print()

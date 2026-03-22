@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from errors import PreconditionError
 from storage import JSONFileStorage, now_iso
 
 from _compat import configure_encoding
@@ -256,10 +257,10 @@ def cmd_check(args):
         for c in compliant:
             print(f"- {c['decision_id']}: {c['issue'][:80]}")
 
-    # Exit code: 1 if MAJOR drift, 0 otherwise
+    # Raise if MAJOR drift detected
     major = any(d["status"] == "DRIFT_MAJOR" for d in report["drifts"])
     if major:
-        sys.exit(1)
+        raise PreconditionError("MAJOR decision drift detected")
 
 
 def cmd_report(args):
@@ -298,8 +299,13 @@ def main():
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
-        sys.exit(1)
-    args.func(args)
+        raise PreconditionError("No command specified")
+    from errors import ForgeError
+    try:
+        args.func(args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

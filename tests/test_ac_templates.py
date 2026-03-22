@@ -21,6 +21,7 @@ from ac_templates import (
     find_template,
 )
 from contracts import validate_contract
+from errors import PreconditionError
 
 
 # ---------------------------------------------------------------------------
@@ -220,9 +221,8 @@ class TestInstantiateGuard:
             template_id=ac_id,
             params='{"path": "/api/test", "rps": 100}',
         )
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(PreconditionError):
             cmd_instantiate(args)
-        assert exc_info.value.code == 1
 
     def test_instantiate_active_succeeds(self, tmp_project, capsys):
         add_template(tmp_project, [{

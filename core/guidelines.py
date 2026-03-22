@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from entity_base import EntityModule, make_cli
+from errors import EntityNotFound
 from storage import JSONFileStorage, now_iso
 
 
@@ -339,8 +340,7 @@ def cmd_import(args):
     """Import guidelines from another project into this one."""
     storage = JSONFileStorage()
     if not storage.exists(args.source, 'guidelines'):
-        print(f"ERROR: No guidelines found in project '{args.source}'", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"No guidelines found in project '{args.source}'")
 
     source_data = storage.load_data(args.source, 'guidelines')
     source_guidelines = [g for g in source_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
