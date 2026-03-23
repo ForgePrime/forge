@@ -28,6 +28,53 @@ def _objective_kr_pct(baseline, target, current) -> int:
     return max(0, min(100, int((current - baseline) / total_delta * 100)))
 
 
+# ---------------------------------------------------------------------------
+# Fidelity Chain — shared utilities for semantic comparison
+# ---------------------------------------------------------------------------
+
+FIDELITY_STOP_WORDS = {
+    # English function words
+    "http", "https", "with", "from", "that", "this", "will", "must",
+    "should", "into", "when", "then", "each", "also", "used", "none",
+    "have", "been", "able", "make", "does", "were", "they", "them",
+    "their", "what", "which", "would", "could", "shall", "being",
+    "only", "after", "before", "other", "some", "every", "about",
+    "based", "using", "such", "like", "more", "than", "need",
+    # Common planning/instruction filler
+    "task", "implement", "create", "build", "true", "false", "null",
+    "undefined", "string", "number", "boolean", "file", "line",
+    "step", "follow", "pattern", "existing", "required", "ensure",
+    "verify", "check", "update", "return", "call", "pass", "test",
+    # Polish stop words
+    "jest", "oraz", "jako", "przez", "ktory", "tego", "jako", "przy",
+    "tylko", "jest", "wszystkie", "moze", "musi", "jako", "lista",
+}
+
+_SPLIT_RE = re.compile(r'[\s/\->{},():\[\]"\'_;.!?#=+|@`~\\]+')
+
+
+def _extract_key_terms(text: str, min_length: int = 4) -> set:
+    """Extract significant terms from text for semantic comparison.
+
+    Split on whitespace/punctuation, lowercase, filter stop words and short terms.
+    """
+    if not text:
+        return set()
+    tokens = _SPLIT_RE.split(text.lower())
+    return {t for t in tokens if len(t) >= min_length and t not in FIDELITY_STOP_WORDS}
+
+
+def _term_overlap(source_terms: set, target_terms: set) -> tuple:
+    """Compare term sets.
+
+    Returns (matched: set, missing: set, overlap_ratio: float).
+    """
+    matched = source_terms & target_terms
+    missing = source_terms - target_terms
+    ratio = len(matched) / max(len(source_terms), 1)
+    return matched, missing, ratio
+
+
 def _estimate_context_size(project: str, task_ids: set) -> int:
     """Estimate context size in characters for the given dependency tasks."""
     total = 0
@@ -151,6 +198,53 @@ def _check_contract_alignment(task, tracker):
     return warnings
 
 
+def _check_source_fidelity(task, project: str) -> list:
+    """Fidelity Chain: check task instruction aligns with source requirement content.
+
+    Compares key terms from knowledge_ids (category=requirement) against task instruction.
+    Returns list of DRIFT warning strings.
+    """
+    if isinstance(task, dict):
+        task = Task.from_dict(task)
+
+    _s = _get_storage()
+    if not _s.exists(project, 'knowledge'):
+        return []
+
+    k_data = _s.load_data(project, 'knowledge')
+    k_by_id = {k["id"]: k for k in k_data.get("knowledge", [])}
+
+    task_text = " ".join(filter(None, [task.instruction or "", task.description or "", task.name or ""]))
+    task_terms = _extract_key_terms(task_text)
+
+    # Collect requirement IDs from both linkage styles
+    req_ids = set()
+    for sr in (task.source_requirements or []):
+        if sr.get("knowledge_id"):
+            req_ids.add(sr["knowledge_id"])
+    for kid in (task.knowledge_ids or []):
+        req_ids.add(kid)
+
+    warnings = []
+    for k_id in req_ids:
+        k_obj = k_by_id.get(k_id)
+        if not k_obj or k_obj.get("category") != "requirement":
+            continue
+
+        req_terms = _extract_key_terms(k_obj.get("content", ""))
+        matched, missing, ratio = _term_overlap(req_terms, task_terms)
+
+        if ratio < 0.4 and len(missing) >= 2:
+            warnings.append(
+                f"DRIFT: {k_id} ({k_obj.get('title', '')[:40]}): "
+                f"{len(matched)}/{len(req_terms)} terms in instruction. "
+                f"Missing: {', '.join(sorted(missing)[:5])}. "
+                f"Re-read requirement before implementing."
+            )
+
+    return warnings
+
+
 def cmd_context(args):
     """Show aggregated context for a task: dependency outputs, decisions, changes."""
     tracker = load_tracker(args.project)
@@ -238,6 +332,16 @@ def cmd_context(args):
                         break
             print(f"- **{k_id}**{obj_link}: {text}{ref_str}")
         print()
+
+    # Fidelity Chain: source drift check
+    fidelity_warnings = _check_source_fidelity(task, args.project)
+    if fidelity_warnings:
+        print("### Source Fidelity Warnings")
+        print()
+        for w in fidelity_warnings:
+            print(f"- **{w}**")
+        print()
+        _ctx_trace["fidelity_warnings"] = [w for w in fidelity_warnings]
 
     # Objective context (if task has origin O-NNN)
     if task.origin and task.origin.startswith("O-") and _s.exists(args.project, 'objectives'):

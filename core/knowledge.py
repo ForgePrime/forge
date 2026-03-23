@@ -209,6 +209,10 @@ class Knowledge(EntityModule):
             "created_by": created_by,
         }
 
+        # Fidelity Chain: warn on compound requirements
+        if knowledge["category"] == "requirement":
+            self._warn_compound_requirement(knowledge["content"], entity_id)
+
         # Validate linked_entities if provided
         for le in knowledge["linked_entities"]:
             if le.get("entity_type") not in VALID_LINK_ENTITY_TYPES:
@@ -219,6 +223,23 @@ class Knowledge(EntityModule):
                       file=sys.stderr)
 
         return knowledge
+
+    @staticmethod
+    def _warn_compound_requirement(content: str, entity_id: str):
+        """Warn if a requirement appears compound (multiple independent clauses)."""
+        compound_markers = [" and ", " oraz ", " + ", "; ", " & "]
+        content_lower = content.lower()
+        triggers = [m.strip() for m in compound_markers if m in content_lower]
+        if triggers and len(content) > 100:
+            print(f"  FIDELITY_WARNING: {entity_id} may be compound "
+                  f"(markers: {triggers}, {len(content)} chars). "
+                  f"Consider splitting into atomic requirements.",
+                  file=sys.stderr)
+        elif len(content) > 200:
+            print(f"  FIDELITY_WARNING: {entity_id} content is {len(content)} chars. "
+                  f"Long requirements risk losing fidelity during decomposition. "
+                  f"Consider splitting.",
+                  file=sys.stderr)
 
     def apply_filters(self, items, args):
         if args.status:

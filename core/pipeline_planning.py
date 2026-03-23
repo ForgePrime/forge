@@ -278,6 +278,63 @@ def _check_coverage(coverage_raw):
     return coverage, len(missing), deferred
 
 
+def _check_semantic_coverage(draft_tasks: list, project: str) -> list:
+    """Fidelity Chain: check that requirement key terms appear in covering task instructions.
+
+    Returns list of SEMANTIC_GAP warning strings.
+    """
+    from pipeline_context import _extract_key_terms, _term_overlap
+
+    _s = _get_storage()
+    if not _s.exists(project, 'knowledge'):
+        return []
+
+    k_data = _s.load_data(project, 'knowledge')
+    k_by_id = {k["id"]: k for k in k_data.get("knowledge", [])
+               if k.get("category") == "requirement"
+               and k.get("status") in ("ACTIVE", "DRAFT")}
+
+    if not k_by_id:
+        return []
+
+    warnings = []
+    for task in draft_tasks:
+        task_text = " ".join(filter(None, [
+            task.get("instruction", ""),
+            task.get("description", ""),
+            task.get("name", ""),
+        ]))
+        task_terms = _extract_key_terms(task_text)
+
+        # Collect requirement IDs from both linkage styles
+        req_ids = set()
+        for sr in task.get("source_requirements", []):
+            if sr.get("knowledge_id"):
+                req_ids.add(sr["knowledge_id"])
+        for kid in task.get("knowledge_ids", []):
+            if kid in k_by_id:
+                req_ids.add(kid)
+
+        for k_id in req_ids:
+            k_obj = k_by_id.get(k_id)
+            if not k_obj:
+                continue
+
+            req_terms = _extract_key_terms(k_obj["content"])
+            matched, missing, ratio = _term_overlap(req_terms, task_terms)
+
+            if ratio < 0.3 and len(missing) >= 3:
+                warnings.append(
+                    f"SEMANTIC_GAP: {k_id} ({k_obj.get('title', '')[:40]}) -> "
+                    f"task '{task.get('name', task.get('id', '?'))}': "
+                    f"only {len(matched)}/{len(req_terms)} key terms matched. "
+                    f"Missing: {', '.join(sorted(missing)[:5])}. "
+                    f"Verify task instruction faithfully implements this requirement."
+                )
+
+    return warnings
+
+
 CRITICAL_CATEGORIES = {
     "deployment": {
         "question": "Where will this system run? (cloud provider, Docker, serverless, on-prem)",
@@ -917,6 +974,16 @@ def cmd_draft_plan(args):
             print(e)
         print()
 
+    # Fidelity Chain: semantic coverage check
+    semantic_warnings = _check_semantic_coverage(draft_tasks, args.project)
+    if semantic_warnings:
+        print()
+        print(f"**FIDELITY WARNINGS** ({len(semantic_warnings)}) — task instructions may not match source requirements:")
+        for w in semantic_warnings:
+            print(f"  {w}")
+        print("  Tip: review task instructions against source K-NNN content. Rephrase or split tasks.")
+        print()
+
     # Assumptions warnings
     if assumptions and 3 <= high_count <= 4:
         print(f"**ASSUMPTION WARNING**: {high_count} HIGH-severity assumptions — verify before Phase 1.")
@@ -1003,6 +1070,52 @@ def cmd_show_draft(args):
     print("Run `approve-plan` to materialize, or `draft-plan` to replace.")
 
 
+def _check_plan_source_coverage(entries: list, project: str) -> list:
+    """Fidelity Chain: check all requirement terms are covered somewhere in the plan.
+
+    Returns list of UNCOVERED_TERMS warning strings.
+    """
+    from pipeline_context import _extract_key_terms
+
+    _s = _get_storage()
+    if not _s.exists(project, 'knowledge'):
+        return []
+
+    k_data = _s.load_data(project, 'knowledge')
+    requirements = [k for k in k_data.get("knowledge", [])
+                    if k.get("category") == "requirement"
+                    and k.get("status") in ("ACTIVE", "DRAFT")]
+
+    if not requirements:
+        return []
+
+    # Collect all terms from all task instructions
+    all_task_terms = set()
+    for entry in entries:
+        task_text = " ".join(filter(None, [
+            entry.get("instruction", ""),
+            entry.get("description", ""),
+            entry.get("name", ""),
+        ]))
+        all_task_terms |= _extract_key_terms(task_text)
+
+    warnings = []
+    for req in requirements:
+        req_terms = _extract_key_terms(req.get("content", ""))
+        if not req_terms:
+            continue
+        uncovered = req_terms - all_task_terms
+
+        if len(uncovered) >= 3 and len(uncovered) / len(req_terms) > 0.5:
+            warnings.append(
+                f"UNCOVERED_TERMS: {req['id']} ({req.get('title', '')[:40]}): "
+                f"{len(uncovered)}/{len(req_terms)} terms not found in any task. "
+                f"Terms: {', '.join(sorted(uncovered)[:6])}"
+            )
+
+    return warnings
+
+
 def cmd_approve_plan(args):
     """Approve draft plan: materialize tasks into pipeline and mark idea COMMITTED."""
     mapping = {}
@@ -1082,6 +1195,16 @@ def cmd_approve_plan(args):
                 f"Context validation failed ({len(ctx_errors)} issues):\n{detail}\n"
                 f"Fix scope assignments before approving."
             )
+
+        # Fidelity Chain: plan-vs-source term coverage
+        fidelity_warnings = _check_plan_source_coverage(entries, args.project)
+        if fidelity_warnings:
+            print(f"\n**FIDELITY WARNINGS** ({len(fidelity_warnings)}) — "
+                  f"requirement terms not found in plan:", file=sys.stderr)
+            for w in fidelity_warnings:
+                print(f"  {w}", file=sys.stderr)
+            print(f"  Review requirements and adjust task instructions if needed.\n",
+                  file=sys.stderr)
 
         # Validate DAG
         all_tasks = tracker["tasks"] + entries

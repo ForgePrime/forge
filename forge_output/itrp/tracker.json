@@ -2,7 +2,7 @@
   "project": "itrp",
   "goal": "Implement ITRP Application — Invoice Trading & Receivables Program for Randstad FTC. FastAPI backend + Next.js frontend + GCP (Firestore, BigQuery, Cloud Run). Replace legacy CREST system. Go-live: 30 June 2026.",
   "created": "2026-03-21T11:18:10Z",
-  "updated": "2026-03-23T21:37:25Z",
+  "updated": "2026-03-23T22:56:31Z",
   "tasks": [
     {
       "id": "T-001",
@@ -2625,7 +2625,525 @@
       "subtask_total": 0,
       "subtask_done": 0,
       "subtasks": []
+    },
+    {
+      "id": "T-071",
+      "name": "refactor-schedule-api-to-spec-v1",
+      "description": "Refactor existing 3 schedule endpoints to match SPEC v1 API with 7 endpoints. Current: GET /api/schedule/config, GET /api/schedule/{country}, PUT /api/schedule/{country}. Target: 7 endpoints per SPEC Section 4. This task IS: backend schedule API + repository + schemas + audit trail. This task is NOT: frontend page (_2).",
+      "instruction": "Working directory: C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/my_customers/backend/app/\n\n1. Read existing schedule module:\n   - modules/schedule/router.py (136 lines, 3 endpoints)\n   - modules/schedule/repository.py (67 lines, 4 functions)\n   - schemas/autobuy.py (BQInvoiceRow etc.)\n   - auth/dependencies.py (permission model)\n\n2. Create new schemas in schemas/schedule.py:\n   - ScheduleConfigEntry: country_code, country_name, currency_code, currency_name, weekday, auto_buy_enabled, start_date, is_active, auto_buy_running, updated_by, updated_at\n   - ScheduleConfigResponse: last_saved_at, last_saved_by, schedule[]\n   - ScheduleUpdateRequest: schedule[] with country_code, weekday, auto_buy_enabled, start_date\n   - ScheduleUpdateResponse: saved_at, saved_by, updated_countries[], skipped_countries[]\n   - SchedulePatchRequest: weekday?, auto_buy_enabled?, start_date?\n   - SchedulePatchResponse: country_code, updated_fields[], updated_at, updated_by\n   - CountryOut: country_code, country_name, currency_code, currency_name, is_active\n   - CountryCreateRequest: country_code, country_name, currency_code, currency_name, weekday?, auto_buy_enabled=false, start_date?\n   - StartDateEntry: country_code, country_name, start_date, updated_by, updated_at\n   - ErrorResponse: error, message, details[]\n\n3. Refactor modules/schedule/repository.py â€” add functions:\n   - list_schedules_for_user(db, user) â€” filtered by user country access\n   - bulk_update_schedules(db, entries, user) â€” atomic batch write with audit\n   - patch_schedule(db, country_code, patch_data, user) â€” partial update with audit\n   - create_country(db, country_data, user) â€” insert to countries + country_schedules\n   - list_countries_for_user(db, user, include_inactive=True)\n   - list_start_dates_for_user(db, user)\n   - update_start_date(db, country_code, start_date, user)\n   - Keep existing: get_schedule, list_enabled_by_weekday (used by scheduler)\n\n4. Rewrite modules/schedule/router.py with 7 v1 endpoints:\n   - GET /api/v1/schedule/config â€” require_permission(maintenance, read), filter by user countries\n   - PUT /api/v1/schedule/config â€” require_permission(maintenance, write), validate country assignment, skip buy_locked countries, audit trail\n   - PATCH /api/v1/schedule/config/{countryCode} â€” require_permission(maintenance, write), check_country_access, partial update, audit trail\n   - GET /api/v1/schedule/countries â€” require_permission(maintenance, read)\n   - POST /api/v1/schedule/countries â€” GFI only (check role explicitly), validate ISO 3166-1, reject duplicate, force auto_buy_enabled=false, audit trail\n   - GET /api/v1/schedule/start-dates â€” require_permission(maintenance, read)\n   - PATCH /api/v1/schedule/start-dates/{countryCode} â€” require_permission(maintenance, write), check_country_access, audit trail\n\n5. Business rules: BR-SCH-01 (weekday mandatory when enabled), BR-SCH-03 (country assignment check), BR-SCH-04 (running job = skip), BR-SCH-05 (no hardcoded data), BR-SCH-06 (updated_by/at), BR-SCH-07 (audit trail), soft delete only.\n\n6. Register router in main.py with /api/v1/schedule prefix.\n\nPattern: Follow existing router.py style (Depends(require_permission), check_country_access, batch.commit).\nDo NOT modify: modules/buying/, modules/scheduler/, frontend/",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "GET /api/v1/schedule/config returns entries filtered by user country assignment",
+          "verification": "manual",
+          "check": "Call as ITRP Manager assigned to PL,NL â€” verify only 2 returned. Call as GFI â€” verify all returned."
+        },
+        {
+          "text": "PUT /api/v1/schedule/config returns 403 for unassigned country",
+          "verification": "manual",
+          "check": "Call as ITRP Manager for DE (not assigned) â€” verify 403"
+        },
+        {
+          "text": "POST /api/v1/schedule/countries returns 403 for non-GFI and forces auto_buy_enabled=false",
+          "verification": "manual",
+          "check": "Call as ITRP Manager â€” verify 403. Call as GFI with enabled=true â€” verify saved as false."
+        },
+        {
+          "text": "Countries with active buy_lock are skipped in bulk PUT (in skipped_countries)",
+          "verification": "manual",
+          "check": "Acquire lock for PL, PUT for PL+NL, verify PL in skipped, NL in updated"
+        },
+        {
+          "text": "Every schedule write produces audit_trail entry with old/new values",
+          "verification": "manual",
+          "check": "Update schedule, check audit_trail collection for entry"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-014",
+      "knowledge_ids": [
+        "K-024",
+        "K-025",
+        "K-026",
+        "K-027",
+        "K-028",
+        "K-029",
+        "K-030",
+        "K-031",
+        "K-032",
+        "K-033",
+        "K-034",
+        "K-055",
+        "K-059",
+        "K-062"
+      ],
+      "source_requirements": [],
+      "alignment": {
+        "goal": "Complete schedule maintenance API",
+        "boundaries": {
+          "must": [
+            "7 SPEC endpoints",
+            "RBAC",
+            "Audit"
+          ],
+          "must_not": [
+            "file_day_basis logic",
+            "hard delete"
+          ],
+          "not_in_scope": [
+            "frontend"
+          ]
+        },
+        "success": "All 7 endpoints respond correctly with RBAC and audit"
+      },
+      "exclusions": [
+        "DO NOT modify buying or scheduler modules",
+        "DO NOT create frontend components",
+        "DO NOT implement file_day_basis logic (G-014)",
+        "DO NOT hard-delete records (G-013)"
+      ],
+      "produces": {
+        "api": "7 endpoints at /api/v1/schedule/* per SPEC Section 4"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-072",
+      "name": "schedule-maintenance-frontend-page",
+      "description": "Build schedule maintenance frontend page per SPEC Section 3. Grid with countries, purchase day dropdown, auto-buy toggle, start date picker. RBAC guard. Add Country modal (GFI only). Unsaved changes warning. Select All / Deselect All. No optimistic UI. This task IS: frontend page + components. This task is NOT: backend API (_1).",
+      "instruction": "Working directory: C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/my_customers/frontend/src/\n\n1. Read existing:\n   - app/itrp/settings/page.tsx (existing settings page)\n   - components/settings/DayPillSelector.tsx (day selector)\n   - components/auth/PermissionGate.tsx (permission guard)\n   - lib/api.ts (API client)\n   - lib/types.ts (interfaces)\n   - stores/useAuthStore.ts (auth state)\n   - components/layout/AppLayout.tsx (navigation)\n\n2. Add types to lib/types.ts: ScheduleConfigEntry, ScheduleConfigResponse, ScheduleUpdateRequest, CountryCreateRequest\n\n3. Add API calls to lib/api.ts: getScheduleConfig(), saveScheduleConfig(data), getScheduleCountries(), addCountry(data)\n\n4. Create page: app/maintenance/autobuy-schedule/page.tsx\n   - Route guard: check role, redirect to /403 if not itrp_manager/global_finance_it\n   - On mount: call GET /api/v1/schedule/config\n\n5. Create component: components/schedule/ScheduleGrid.tsx (Ant Design Table)\n   - Columns: Country (text), Currency (text), Purchase Day (Select Mon-Fri), Auto-Buy Enabled (Switch), Start Date (DatePicker)\n   - DO NOT add file_day_basis column\n   - Active countries first, then inactive with visual separator\n   - Rows with auto_buy_running=true: disable fields, tooltip\n   - Dirty state tracking: highlight changed rows, page banner, browser beforeunload\n\n6. Create component: components/schedule/AddCountryModal.tsx\n   - Visible to GFI only (check from useAuthStore)\n   - Fields: Country Name, Country Code (ISO), Currency Code, Currency Name, Purchase Day, Start Date\n   - Auto-buy OFF by default (disabled toggle)\n   - POST /api/v1/schedule/countries on submit\n\n7. Save flow: FV-01 (day required if ON), FV-02 (valid date), FV-03 (date <10yr future). PUT on save. Handle 200/400/403/409/5xx per SPEC. No optimistic UI.\n\n8. Select All / Deselect All buttons above table.\n\n9. Register in AppLayout navigation under Maintenance section.\n\nPattern: Follow existing settings/page.tsx layout and lib/api.ts patterns. Ant Design: Table, Switch, Select, DatePicker, Button, Modal, message.\nDo NOT modify: backend code, other pages.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-071"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "Page at /maintenance/autobuy-schedule shows grid with countries from API",
+          "verification": "manual",
+          "check": "Navigate as ITRP Manager â€” verify grid with correct columns"
+        },
+        {
+          "text": "ITRP Manager sees assigned countries only; GFI sees all; other roles get 403",
+          "verification": "manual",
+          "check": "Login as each role, verify access"
+        },
+        {
+          "text": "Add Country button visible to GFI only, modal submits POST, new row appears",
+          "verification": "manual",
+          "check": "Login as GFI, add country, verify grid updated"
+        },
+        {
+          "text": "Unsaved changes: banner + browser warning; Cancel reverts; Save via PUT",
+          "verification": "manual",
+          "check": "Toggle switch, verify banner, navigate away, verify prompt"
+        },
+        {
+          "text": "Select All / Deselect All toggles Auto-Buy for all visible rows",
+          "verification": "manual",
+          "check": "Click buttons, verify all toggles change"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-014",
+      "knowledge_ids": [
+        "K-035",
+        "K-036",
+        "K-037",
+        "K-038",
+        "K-039",
+        "K-040",
+        "K-041",
+        "K-042",
+        "K-043",
+        "K-044"
+      ],
+      "source_requirements": [],
+      "alignment": {
+        "goal": "Schedule maintenance UI per SPEC",
+        "boundaries": {
+          "must": [
+            "SPEC wireframe",
+            "RBAC guard",
+            "No optimistic UI"
+          ],
+          "must_not": [
+            "file_day_basis column"
+          ],
+          "not_in_scope": [
+            "mobile"
+          ]
+        },
+        "success": "Page matches SPEC Section 3 wireframe"
+      },
+      "exclusions": [
+        "DO NOT add file_day_basis column (G-014)",
+        "DO NOT modify backend",
+        "DO NOT use optimistic UI",
+        "DO NOT hardcode country lists"
+      ],
+      "produces": {
+        "page": "/maintenance/autobuy-schedule with CRUD, RBAC, unsaved changes"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-073",
+      "name": "credit-limit-breach-ftc-confirmation-flow",
+      "description": "Change credit limit breach handling from auto-exclude to pause-and-confirm per spec. Currently Step 4 auto-excludes breached invoices. Spec requires: pause auto-buy, notify FTC, await confirmation (confirm=include, decline=exclude). This task IS: credit limit breach confirmation flow (backend). This task is NOT: notifications (_5), schedule API (_1).",
+      "instruction": "Working directory: C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/my_customers/backend/app/\n\n1. Read current implementation:\n   - modules/buying/service.py lines 617-777 (step_4_credit_limit_check)\n   - modules/buying/router.py (existing endpoints)\n   - collections.py (credit_limit_breaches collection)\n   - modules/notifications/service.py (send_credit_limit_breach)\n\n2. Current behavior (to change): Step 4 calculates breach, writes to credit_limit_breaches collection, sends notification, but then auto-excludes breached invoices and continues.\n\n3. New behavior per AUTO-BUY-analysis.md Step 4:\n   a. When breach detected: create breach record in credit_limit_breaches with status=PENDING\n   b. Send notification to FTC (existing send_credit_limit_breach)\n   c. PAUSE the auto-buy job for this country (set job status to AWAITING_CONFIRMATION)\n   d. Store paused job state (eligible invoices, breached invoices, job_id) in Firestore collection autobuy_paused_jobs\n   e. FTC Manager reviews and confirms/declines via new API endpoint\n\n4. Add new collection constant in collections.py: AUTOBUY_PAUSED_JOBS = 'autobuy_paused_jobs'\n\n5. Add schemas in schemas/autobuy.py:\n   - BreachConfirmationRequest: job_id, breach_id, action (confirm/decline)\n   - BreachConfirmationResponse: job_id, status, message\n   - PausedJobInfo: job_id, country, breached_invoices, eligible_invoices, paused_at, status\n\n6. Add endpoints in modules/buying/router.py:\n   - GET /api/buying/paused-jobs â€” list paused jobs for user's countries, require_permission(purchase, read)\n   - POST /api/buying/breach-confirmation â€” confirm/decline breach, require_permission(purchase, execute), resume job on last confirmation\n\n7. Modify step_4_credit_limit_check:\n   - If ANY breach detected: return special status PAUSED_FOR_CONFIRMATION with breach details\n   - In run_buying_process: if Step 4 returns paused status, save state to autobuy_paused_jobs and stop (don't proceed to Step 5)\n\n8. Add resume_buying_process(job_id, confirmed_invoices, db) function:\n   - Called after all breaches confirmed/declined\n   - Loads paused job state from autobuy_paused_jobs\n   - Merges confirmed invoices into eligible list\n   - Continues from Step 5 onward\n   - Updates autobuy_paused_jobs status to COMPLETED\n\n9. Audit trail: log each confirmation/decline action\n\nPattern: Follow existing router.py + service.py patterns.\nDo NOT modify: schedule module, scheduler module, frontend, notifications service (just call existing functions).",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "When credit limit breach detected, auto-buy pauses and creates PENDING breach record",
+          "verification": "manual",
+          "check": "Trigger auto-buy with breach scenario, verify job paused, breach record status=PENDING"
+        },
+        {
+          "text": "POST /api/buying/breach-confirmation with action=confirm includes breached invoice and resumes job",
+          "verification": "manual",
+          "check": "Confirm breach, verify invoice included in purchase batch, job resumes from Step 5"
+        },
+        {
+          "text": "POST /api/buying/breach-confirmation with action=decline excludes invoice and resumes job",
+          "verification": "manual",
+          "check": "Decline breach, verify invoice excluded, job continues with remaining"
+        },
+        {
+          "text": "Each confirmation/decline action logged in audit trail",
+          "verification": "manual",
+          "check": "Confirm breach, check audit_trail for credit_limit_confirmation entry"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-015",
+      "knowledge_ids": [
+        "K-049",
+        "K-056"
+      ],
+      "source_requirements": [],
+      "alignment": {
+        "goal": "Fix credit limit breach to pause instead of auto-exclude",
+        "boundaries": {
+          "must": [
+            "Pause on breach",
+            "FTC confirmation",
+            "Audit trail"
+          ],
+          "must_not": [
+            "Auto-exclude breached invoices"
+          ],
+          "not_in_scope": [
+            "Frontend UI for confirmation"
+          ]
+        },
+        "success": "Auto-buy pauses on breach, FTC can confirm/decline via API"
+      },
+      "exclusions": [
+        "DO NOT modify schedule module",
+        "DO NOT modify notifications service internals",
+        "DO NOT modify frontend"
+      ],
+      "produces": {
+        "api": "GET /api/buying/paused-jobs, POST /api/buying/breach-confirmation",
+        "behavior": "Step 4 pauses on breach instead of auto-excluding"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-074",
+      "name": "pipeline-step-8-completion-notifications",
+      "description": "Implement Step 8 of auto-buy pipeline: send completion notifications. Success: 2 separate emails (Economic, Legal). Failure: 1 consolidated email. Wire to existing notification service. This task IS: Step 8 implementation in buying/service.py. This task is NOT: notification service internals (_5), Step 9 (_6).",
+      "instruction": "Working directory: C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/my_customers/backend/app/\n\n1. Read:\n   - modules/buying/service.py line 1314 (Step 8 placeholder)\n   - modules/buying/service.py lines 1260-1317 (run_buying_process orchestrator)\n   - modules/notifications/service.py (existing stubs: send_purchase_complete, send_purchase_error)\n\n2. Implement step_8_send_notifications(country, job_result, purchased_records, db) in buying/service.py:\n   a. On success (Step 5 status=success):\n      - Split purchased records by sales_type (Economic vs Legal)\n      - Call send_purchase_complete(country, economic_records) for Economic\n      - Call send_purchase_complete(country, legal_records) for Legal\n   b. On failure (Step 5 status=error):\n      - Call send_purchase_error(country, job_result) with consolidated failure summary\n      - Include: date/time, country, invoices attempted/succeeded/failed, failed invoice list with reasons\n   c. Step 8 runs REGARDLESS of Step 5 outcome (success or failure both trigger notification)\n\n3. Wire Step 8 into run_buying_process orchestrator (after Step 7, before Step 9):\n   - Call step_8 with results from Steps 5-7\n   - Step 8 failure should NOT fail the overall job (log warning, continue to Step 9)\n\n4. Return StepResult with notification details (who was notified, which templates)\n\nPattern: Follow step_6/step_7 patterns in service.py.\nDo NOT modify: notification service internals (just call existing functions), schedule module, frontend.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "Successful auto-buy sends 2 emails: Economic summary and Legal summary (via send_purchase_complete)",
+          "verification": "manual",
+          "check": "Run auto-buy, check logs for 2 send_purchase_complete calls with correct sales_type split"
+        },
+        {
+          "text": "Failed auto-buy sends 1 consolidated email (via send_purchase_error)",
+          "verification": "manual",
+          "check": "Simulate failure, check logs for send_purchase_error with failure summary"
+        },
+        {
+          "text": "Step 8 failure does not fail overall job (logs warning, continues to Step 9)",
+          "verification": "manual",
+          "check": "Make notification fail, verify job continues"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-015",
+      "knowledge_ids": [
+        "K-053",
+        "K-063"
+      ],
+      "source_requirements": [],
+      "alignment": {
+        "goal": "Complete Step 8 notifications",
+        "boundaries": {
+          "must": [
+            "Economic/Legal split",
+            "Consolidated failure email"
+          ],
+          "must_not": [
+            "Fail job on notification error"
+          ],
+          "not_in_scope": [
+            "SMTP configuration"
+          ]
+        },
+        "success": "Step 8 calls notification service correctly on success and failure"
+      },
+      "exclusions": [
+        "DO NOT modify notification service internals",
+        "DO NOT modify schedule/scheduler modules",
+        "DO NOT let Step 8 failure fail the overall job"
+      ],
+      "produces": {
+        "step": "Step 8 in buying pipeline sends Economic/Legal success emails and failure email"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-075",
+      "name": "extend-notification-service-6-events",
+      "description": "Extend existing notification service to support all 6 event types per spec. Currently has 4 stubs. Add: auto-disable (OpCo re-join) and missing data/pipeline issue notifications. Clean interface for future swap. This task IS: notification service module. This task is NOT: buying pipeline Steps (_4), schedule API (_1).",
+      "instruction": "Working directory: C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/my_customers/backend/app/\n\n1. Read existing: modules/notifications/service.py (129 lines, 4 functions + _send_email stub)\n\n2. Current handlers (keep and improve):\n   - send_purchase_complete(country, records) â€” already exists\n   - send_purchase_error(country, job_result) â€” already exists\n   - send_backup_restore(country, restore_details) â€” already exists\n   - send_credit_limit_breach(customer, breach_details) â€” already exists\n\n3. Add new handlers:\n   - send_autobuy_disabled(country, reason, disabled_by) â€” for OpCo re-join and backup restore auto-disable events\n   - send_pipeline_issue(country, issue_type, details) â€” for missing data / file loading issues\n\n4. Create clean interface class NotificationService:\n   - __init__(self, config: NotificationConfig) â€” accepts SMTP config or stub mode\n   - send_email(self, template: str, recipients: list[str], data: dict) â€” core method\n   - Each handler calls send_email with appropriate template + data\n   - Stub mode: log to structlog instead of sending\n   - Real mode: send via SMTP (for future implementation)\n\n5. Create schemas/notifications.py:\n   - NotificationConfig: smtp_host, smtp_port, from_email, stub_mode=True\n   - NotificationEvent: event_type, country, timestamp, data\n\n6. Wire into app startup (main.py): create NotificationService instance, make available via FastAPI dependency.\n\nPattern: Follow existing service.py patterns. Use structlog for stub logging.\nDo NOT modify: buying/service.py (it calls the existing functions), schedule module.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "NotificationService has 6 event handlers matching all notification types from spec",
+          "verification": "manual",
+          "check": "Verify 6 public methods exist: purchase_complete, purchase_error, backup_restore, credit_limit_breach, autobuy_disabled, pipeline_issue"
+        },
+        {
+          "text": "Clean interface: send_email(template, recipients, data) is the core method called by all handlers",
+          "verification": "manual",
+          "check": "Read code â€” verify all handlers delegate to send_email"
+        },
+        {
+          "text": "Stub mode logs to structlog instead of sending email",
+          "verification": "manual",
+          "check": "Call any handler in stub mode, verify structlog output with template + recipients + data"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-017",
+      "knowledge_ids": [
+        "K-063"
+      ],
+      "source_requirements": [],
+      "alignment": {
+        "goal": "Complete notification service",
+        "boundaries": {
+          "must": [
+            "6 event types",
+            "Clean interface"
+          ],
+          "must_not": [
+            "Real SMTP"
+          ],
+          "not_in_scope": [
+            "Email templates HTML"
+          ]
+        },
+        "success": "All 6 notification types handled with swappable backend"
+      },
+      "exclusions": [
+        "DO NOT implement real SMTP sending (stub only)",
+        "DO NOT modify buying service call sites",
+        "DO NOT modify schedule module"
+      ],
+      "produces": {
+        "service": "NotificationService with 6 event handlers and clean send_email interface"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-076",
+      "name": "pipeline-step-9-release-lock-with-ttl",
+      "description": "Implement Step 9: release country lock after auto-buy completes. Add TTL-based cleanup for crash recovery. This task IS: Step 9 + lock TTL cleanup. This task is NOT: Step 8 (_4), trigger service gate (_7).",
+      "instruction": "Working directory: C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/my_customers/backend/app/\n\n1. Read:\n   - modules/buying/service.py line 1315 (Step 9 placeholder)\n   - modules/buying/service.py lines 1260-1317 (run_buying_process)\n   - modules/scheduler/service.py lines 18-47 (acquire_buy_lock, release_buy_lock)\n   - The lock has expires_at field with 30-min TTL\n\n2. Implement step_9_release_lock(country, db) in buying/service.py:\n   - Call release_buy_lock(db, country_code) from scheduler/service.py\n   - MUST run regardless of job outcome (success or failure)\n   - If release fails: log error but don't fail job\n\n3. Wire Step 9 into run_buying_process: call after Step 8, in a finally block to ensure execution.\n\n4. Add lock cleanup mechanism in scheduler/service.py:\n   - cleanup_expired_locks(db) â€” query buy_locks where expires_at < now, delete them\n   - This handles crash recovery: if job crashes without releasing, lock expires after 30 min\n\n5. Add endpoint: POST /api/scheduler/cleanup-locks â€” for manual or cron-triggered lock cleanup\n   - Auth: X-Scheduler-Key header (same as trigger)\n\n6. Ensure run_buying_process uses try/finally to always reach Step 9 even if Steps 5-8 throw.\n\nPattern: Follow existing scheduler/service.py patterns.\nDo NOT modify: schedule module, frontend, notification service.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-074"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "Step 9 releases country lock after auto-buy completes (success or failure)",
+          "verification": "manual",
+          "check": "Run auto-buy, verify buy_lock removed after completion. Simulate failure, verify lock still released."
+        },
+        {
+          "text": "Lock release in finally block â€” executes even if Steps 5-8 throw",
+          "verification": "manual",
+          "check": "Make Step 7 throw, verify lock released via finally block"
+        },
+        {
+          "text": "cleanup_expired_locks removes locks where expires_at < now",
+          "verification": "manual",
+          "check": "Create expired lock, call cleanup, verify removed"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-015",
+      "knowledge_ids": [
+        "K-054",
+        "K-064"
+      ],
+      "source_requirements": [],
+      "alignment": {
+        "goal": "Complete Step 9 with crash recovery",
+        "boundaries": {
+          "must": [
+            "Always release lock",
+            "TTL cleanup"
+          ],
+          "must_not": [
+            "Leave orphaned locks"
+          ],
+          "not_in_scope": [
+            "Automated cron for cleanup"
+          ]
+        },
+        "success": "Locks always released, expired locks cleaned up"
+      },
+      "exclusions": [
+        "DO NOT modify schedule module",
+        "DO NOT modify frontend"
+      ],
+      "produces": {
+        "step": "Step 9 releases lock, cleanup endpoint for expired locks"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-077",
+      "name": "trigger-service-file-completion-gate",
+      "description": "Add file-completion gate to Trigger Service. Before initiating auto-buy for a country, verify that data loading is complete. Use DB flag approach (file_load_status collection). This task IS: file gate in trigger service + file_load_status collection. This task is NOT: buying pipeline steps, schedule API.",
+      "instruction": "Working directory: C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/my_customers/backend/app/\n\n1. Read:\n   - modules/scheduler/service.py lines 50-106 (handle_trigger â€” has TODO for file gate at line 71)\n   - collections.py (add new collection)\n\n2. Add collection constant in collections.py: FILE_LOAD_STATUS = 'file_load_status'\n\n3. Create Firestore collection schema for file_load_status:\n   - Doc ID: country_code\n   - Fields: country_code, status (loaded/loading/failed), loaded_at, file_date (which week's data), record_count\n\n4. Add function in scheduler/service.py:\n   - check_file_loaded(db, country_code) -> bool\n   - Queries file_load_status for country\n   - Returns True if status=loaded AND loaded_at is within current week (Mon-Sun UTC)\n   - Returns False otherwise\n\n5. Wire into handle_trigger (line 71): before calling run_buying_process, call check_file_loaded. If False:\n   - Skip country with status=skipped_no_file\n   - Send notification (send_pipeline_issue from notification service) to FTC\n   - Continue to next country\n\n6. Add endpoint for data pipeline to set file status:\n   - POST /api/scheduler/file-status â€” set file_load_status for a country\n   - Auth: X-Scheduler-Key header\n   - Body: {country_code, status, record_count}\n\n7. Add endpoint to check file status:\n   - GET /api/scheduler/file-status/{country_code} â€” check current status\n   - Auth: require_permission(maintenance, read)\n\nPattern: Follow existing scheduler patterns.\nDo NOT modify: buying service, schedule module, frontend.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-075"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "Trigger Service checks file_load_status before initiating auto-buy for each country",
+          "verification": "manual",
+          "check": "Set file_load_status to 'loading' for PL, trigger Wednesday, verify PL skipped with skipped_no_file"
+        },
+        {
+          "text": "Country with loaded status within current week proceeds to auto-buy",
+          "verification": "manual",
+          "check": "Set file_load_status to 'loaded' with current week date, trigger, verify auto-buy initiated"
+        },
+        {
+          "text": "POST /api/scheduler/file-status allows data pipeline to set load status",
+          "verification": "manual",
+          "check": "Call endpoint with country=PL status=loaded, verify Firestore doc updated"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-016",
+      "knowledge_ids": [
+        "K-061",
+        "K-064"
+      ],
+      "source_requirements": [],
+      "alignment": {
+        "goal": "File-completion gate for trigger service",
+        "boundaries": {
+          "must": [
+            "Check before auto-buy",
+            "DB flag approach"
+          ],
+          "must_not": [
+            "Run auto-buy without data"
+          ],
+          "not_in_scope": [
+            "Data pipeline itself"
+          ]
+        },
+        "success": "Auto-buy only runs when data is confirmed loaded"
+      },
+      "exclusions": [
+        "DO NOT modify buying service",
+        "DO NOT modify schedule module",
+        "DO NOT modify frontend"
+      ],
+      "produces": {
+        "gate": "File-completion gate in trigger service, file_load_status collection"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
     }
   ],
-  "plan_approved_at": "2026-03-23T20:31:13Z"
+  "plan_approved_at": "2026-03-23T22:56:31Z"
 }

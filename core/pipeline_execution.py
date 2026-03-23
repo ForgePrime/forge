@@ -548,6 +548,81 @@ def _determine_ceremony_level(task, diff_file_count=0):
     return "FULL"
 
 
+def _check_implementation_fidelity(task: dict, project: str, base_commit: str, cwd: str = None):
+    """Fidelity Chain: check if changed files contain key terms from source requirements.
+
+    Prints traceability matrix. WARNING-level only.
+    """
+    import subprocess as _sp
+    from pipeline_context import _extract_key_terms, _term_overlap
+
+    _s = _get_storage()
+    if not _s.exists(project, 'knowledge'):
+        return
+
+    # Collect requirement IDs
+    req_ids = set()
+    for sr in task.get("source_requirements", []):
+        if sr.get("knowledge_id"):
+            req_ids.add(sr["knowledge_id"])
+    for kid in task.get("knowledge_ids", []):
+        req_ids.add(kid)
+
+    if not req_ids:
+        return
+
+    k_data = _s.load_data(project, 'knowledge')
+    k_by_id = {k["id"]: k for k in k_data.get("knowledge", [])}
+
+    requirements = [(k_id, k_by_id[k_id]) for k_id in req_ids
+                    if k_id in k_by_id and k_by_id[k_id].get("category") == "requirement"]
+
+    if not requirements:
+        return
+
+    # Get diff content
+    diff_text = ""
+    if base_commit:
+        try:
+            result = _sp.run(
+                ["git", "diff", base_commit, "HEAD"],
+                capture_output=True, text=True, timeout=10,
+                cwd=cwd
+            )
+            diff_text = result.stdout
+        except Exception:
+            return
+
+    if not diff_text:
+        return
+
+    diff_terms = _extract_key_terms(diff_text, min_length=4)
+
+    print(f"\n  Fidelity Matrix ({len(requirements)} requirements):")
+    has_gaps = False
+    for k_id, k_obj in requirements:
+        req_terms = _extract_key_terms(k_obj.get("content", ""))
+        matched, missing, ratio = _term_overlap(req_terms, diff_terms)
+
+        if ratio >= 0.3 or len(missing) < 2:
+            status_label = "OK"
+        else:
+            status_label = "GAP"
+            has_gaps = True
+
+        print(f"    [{status_label}] {k_id}: {k_obj.get('title', '')[:40]} "
+              f"({len(matched)}/{len(req_terms)} terms)")
+        if status_label == "GAP":
+            print(f"           Missing: {', '.join(sorted(missing)[:5])}")
+
+    if has_gaps:
+        print(f"  FIDELITY_WARNING: Some requirements have low term overlap with changes. "
+              f"Verify implementation matches source requirements.", file=sys.stderr)
+
+    _trace(project, {"event": "complete.fidelity_matrix", "task": task.get("id"),
+           "requirements_checked": len(requirements), "has_gaps": has_gaps})
+
+
 # ---------------------------------------------------------------------------
 # cmd_complete
 # ---------------------------------------------------------------------------
@@ -792,6 +867,11 @@ def cmd_complete(args):
                     f"  Provide --ac-evidence '[{{\"ac_index\": 0, \"verdict\": \"PASS\", \"evidence\": \"...\"}}]'\n"
                     f"  Or legacy: --ac-reasoning 'AC 1: ... — PASS: concrete proof'"
                 )
+
+    # Fidelity Chain: implementation traceability
+    base_commit = task.get("started_at_commit", "")
+    git_cwd = get_project_dir(args.project)
+    _check_implementation_fidelity(task, args.project, base_commit, cwd=git_cwd)
 
     # Process deferred items — auto-create OPEN decisions
     # Required for STANDARD/FULL: agent must explicitly state what's covered vs deferred

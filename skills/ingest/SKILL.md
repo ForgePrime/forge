@@ -122,6 +122,13 @@ For each fact, determine what it is:
 - Preserve **original wording** in content. Add your interpretation separately.
 - Include **source reference**: `source.ref: "spec.md:Section 3.2"`
 
+**Atomization rules (Fidelity Chain):**
+- One requirement = one testable behavior. If a requirement sentence contains "and" / "oraz" / "+" / ";" connecting independent behaviors, split into separate K-NNN objects.
+- Example BAD: "System shows eligible invoices list with up/down priority controls and batch approval" — this is 3 requirements.
+- Example GOOD: K-040 "System shows scrollable list of eligible invoices for upcoming Auto-Buy run", K-041 "User can reorder invoice priorities with up/down controls", K-042 "User can batch-approve selected invoices"
+- The `knowledge add` command will warn on compound patterns. Fix them before proceeding.
+- Target: under 200 characters per requirement. Longer usually means compound.
+
 ### 2c. Hunt for implicit assumptions
 
 After reading each document, ask:

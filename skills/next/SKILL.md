@@ -89,6 +89,16 @@ python -m core.decisions add {project} --data '[{"task_id": "{task_id}", "type":
 
 State both versions explicitly. Let the user decide. The failure mode this prevents: agent silently picks one interpretation, builds the wrong thing, discovers the conflict at integration time when it's expensive to fix.
 
+#### Step 1b — Source Fidelity Check
+
+After `begin` prints the context, look for **Source Fidelity Warnings**. If any `DRIFT` warnings appear:
+
+1. The task instruction uses different vocabulary than the source requirement
+2. **Read the full requirement** content (shown in Source Requirements section or via `python -m core.knowledge read {project} --category requirement`)
+3. Compare what the requirement says vs. what the task instruction says
+4. If they mean the same thing — proceed, the warning is a false positive
+5. If they diverge — **STOP and create a decision** about which interpretation to follow
+
 For complex feature tasks, optionally load domain execution guidance:
 
 ```bash

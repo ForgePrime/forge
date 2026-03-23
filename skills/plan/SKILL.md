@@ -674,6 +674,16 @@ Every requirement must be one of:
 
 **There is no MISSING.** If a requirement isn't covered and you can't justify deferring it, add it to a task.
 
+#### Semantic Fidelity Check
+
+After syntactic coverage, `draft-plan` also runs a **semantic check**: it extracts key terms from each requirement K-NNN and checks if the covering task's instruction contains those terms. If fewer than 30% of key terms match, a `SEMANTIC_GAP` warning is printed.
+
+**When you see SEMANTIC_GAP warnings:**
+1. Re-read the source requirement (K-NNN content)
+2. Compare with the task instruction — did you rephrase in a way that changes meaning?
+3. If the instruction is semantically correct but uses different vocabulary, update the instruction to include key terms from the requirement
+4. If the requirement was decomposed across multiple tasks, verify each piece is covered somewhere
+
 **Mechanical enforcement**: Pass coverage to `draft-plan` with `--coverage`:
 ```bash
 python -m core.pipeline draft-plan {project} --data '[...]' --coverage '[
