@@ -1,0 +1,93 @@
+[
+  {
+    "id": "_1",
+    "name": "add-autobuy-enabled-to-opcos",
+    "type": "feature",
+    "description": "Add autobuy_enabled boolean field to opcos collection. Update seed data. Check in buying service before processing OpCo invoices.",
+    "instruction": "1. In my_customers/backend/app/seed.py: add 'autobuy_enabled': True to every OpCo in OPCOS list (except NL02 which is Off - set False)\n2. In my_customers/backend/app/modules/buying/service.py step_2_eligibility_filters: after Rule 4 (OpCo Off), add check for opco.autobuy_enabled == False -> exclude with reason 'OpCo autobuy disabled'\n3. In my_customers/backend/app/modules/opco/repository.py: ensure read/write includes autobuy_enabled field\n4. Verify seed data by reading opcos collection after restart",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "Every OpCo in seed has autobuy_enabled field",
+      "Buying service step 2 checks autobuy_enabled before processing invoices",
+      "OpCo with autobuy_enabled=False excluded with clear reason"
+    ],
+    "origin": "O-001"
+  },
+  {
+    "id": "_2",
+    "name": "add-execution-id-to-purchase-records",
+    "type": "feature",
+    "description": "Add execution_id (job_id) to purchase_records in both Firestore and BigQuery writes. Links individual purchases to their auto-buy batch.",
+    "instruction": "1. In buying/service.py step_5_execute_purchase_batch: job_id is already generated. Add 'execution_id': job_id to each Firestore purchase record dict and each BQ row dict\n2. Verify in step_6_persist_job_record that job_id matches\n3. Update reporting queries if they reference purchase_records to include execution_id",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "Every purchase record in Firestore has execution_id field",
+      "Every purchase record in BQ has execution_id field",
+      "execution_id matches the job_id from step_6 job execution record"
+    ],
+    "origin": "O-001"
+  },
+  {
+    "id": "_3",
+    "name": "expand-opco-seed-to-75",
+    "type": "chore",
+    "description": "Expand OpCo seed data from 12 to ~75 records covering all 11 countries with realistic names and Tagetik codes.",
+    "instruction": "1. In seed.py OPCOS list: add OpCos for missing countries (FR, PT, CA, IT, AU) and more for existing countries\n2. Target distribution: PL: 8, DE: 7, NL: 6, FR: 6, IT: 6, SE: 5, AU: 5, CA: 5, US: 5, BE: 4, PT: 3 = ~60 total (realistic)\n3. Use realistic names like 'Randstad France SAS', 'Randstad Italia SpA' etc\n4. Mix of statuses: most On, a few Off (test Rule 4), one New per country (test Rule 5)\n5. All with autobuy_enabled: True except Off ones\n6. start_date: '2025-01-01' for most, '2026-03-18' for a few (test Rule 3)\n7. Also create opco_schedules entries for any new countries not yet seeded",
+    "depends_on": ["_1"],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "OPCOS list has 60+ entries across all 11 countries",
+      "Each country has at least 3 OpCos",
+      "Mix of On/Off/New statuses for rule testing",
+      "opco_schedules covers all 11 countries"
+    ],
+    "origin": "O-001"
+  },
+  {
+    "id": "_4",
+    "name": "add-country-code-to-audit-trail",
+    "type": "feature",
+    "description": "Add optional country_code field to audit trail entries for geographic filtering. Update log_audit function.",
+    "instruction": "1. In audit/service.py log_audit: add optional parameter country_code: str | None = None\n2. Add 'country_code': country_code to the data dict\n3. In customers/service.py: pass country to log_audit calls\n4. In schedule/repository.py: pass country_code to log_audit calls\n5. In buying/service.py: pass country to audit calls where applicable",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "log_audit accepts optional country_code parameter",
+      "Audit entries from customer/schedule/buying modules include country_code",
+      "Audit trail can be filtered by country"
+    ],
+    "origin": "O-001"
+  },
+  {
+    "id": "_5",
+    "name": "create-bq-schema-definitions",
+    "type": "chore",
+    "description": "Create BigQuery table schema definitions as Python dicts or SQL files. Document what tables exist and their columns. Create seed script for BQ test data.",
+    "instruction": "1. Create my_customers/backend/bq_schemas/ directory\n2. Create bq_schemas/tables.py with schema dicts for all 8 BQ tables referenced in buying/service.py: temp_invoice, purchase_records, autobuy_job_executions, autobuy_invoice_results, rpt_purchased_invoices, rpt_settlement_report_economic, rpt_settlement_report_legal\n3. Each schema: list of {name, type, mode, description} matching BigQuery SchemaField format\n4. If seed_bq_test_data.py already exists, verify it matches schemas\n5. Ensure temp_invoice schema matches the SELECT columns in buying/service.py step_1",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "bq_schemas/tables.py defines schemas for all 8 BQ tables",
+      "Schemas match the fields used in buying/service.py queries",
+      "temp_invoice schema has all columns from step_1 SELECT"
+    ],
+    "origin": "O-001"
+  },
+  {
+    "id": "_6",
+    "name": "verify-and-deep-verify-o001",
+    "type": "investigation",
+    "description": "Deep-verify O-001 completion: check all collections have correct fields, seed data is complete, BQ schemas defined, no field mismatches remain.",
+    "instruction": "1. Run ruff check on all modified files\n2. Start docker containers and verify seed loads without errors\n3. Check Firestore emulator for all expected collections and documents\n4. Cross-reference: every field used in buying/service.py exists in seed data\n5. Cross-reference: every BQ table in code has schema definition\n6. Update O-001 KR progress in Forge",
+    "depends_on": ["_1", "_2", "_3", "_4", "_5"],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "ruff check passes on all modified files",
+      "Docker containers start without import or seed errors",
+      "All field mismatches from audit resolved or documented as decisions"
+    ],
+    "origin": "O-001"
+  }
+]

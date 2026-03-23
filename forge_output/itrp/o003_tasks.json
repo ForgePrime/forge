@@ -1,0 +1,72 @@
+[
+  {
+    "id": "_1",
+    "name": "settings-file-day-basis-ui",
+    "type": "feature",
+    "description": "Add file_day_basis control to Settings auto-buy section. Allows selecting which day's file to use for purchase (e.g. Sunday file for Monday purchase).",
+    "instruction": "In my_customers/frontend/src/app/itrp/settings/page.tsx AutoSchedulesSection:\n1. After the DayPillSelector for auto-buy, add a Select dropdown for file_day_basis\n2. Options: None (use current day), Monday, Tuesday, ..., Sunday\n3. Track dirty state like other fields\n4. Include in PUT /api/schedule/{country} payload (already in backend schema)\n5. Show current value from schedule?.file_day_basis",
+    "depends_on": [],
+    "scopes": ["frontend"],
+    "acceptance_criteria": [
+      "file_day_basis dropdown visible in auto-buy schedule section",
+      "Changing value marks form as dirty",
+      "Save sends file_day_basis to backend PUT endpoint"
+    ],
+    "origin": "O-003"
+  },
+  {
+    "id": "_2",
+    "name": "settings-auto-load-placeholder-with-info",
+    "type": "chore",
+    "description": "Replace disabled auto-load section with clear info message explaining it's not available until data pipeline is implemented.",
+    "instruction": "In settings/page.tsx AutoSchedulesSection:\n1. Replace the disabled toggle+pills for auto-load with an Alert component (Ant Design)\n2. Message: 'Auto-load scheduling will be available once the Warsaw data pipeline integration is complete. File loading is currently manual via the Maintenance page.'\n3. Type: info\n4. This is better than a disabled toggle which looks like a bug",
+    "depends_on": [],
+    "scopes": ["frontend"],
+    "acceptance_criteria": [
+      "Auto-load section shows info Alert instead of disabled controls",
+      "Message explains why it's not available"
+    ],
+    "origin": "O-003"
+  },
+  {
+    "id": "_3",
+    "name": "settings-country-rbac-filtering",
+    "type": "feature",
+    "description": "Filter country dropdown in Settings page based on user permissions. OpCo-scoped user should only see their country.",
+    "instruction": "In settings/page.tsx:\n1. Use useAuthStore to get allowedCountries()\n2. If allowedCountries() returns a set, filter COUNTRY_OPTIONS to only those\n3. If returns null (global access), show all countries\n4. Same pattern as customers page",
+    "depends_on": [],
+    "scopes": ["frontend"],
+    "acceptance_criteria": [
+      "OpCo user with scope_country=PL only sees PL in country dropdown",
+      "Global user sees all countries"
+    ],
+    "origin": "O-003"
+  },
+  {
+    "id": "_4",
+    "name": "decision-multi-currency-schedule",
+    "type": "investigation",
+    "description": "Document decision: single schedule per country (current) vs per-currency schedule (documentation). Current code is simpler, doc spec may be over-engineered for 11 countries where 1 country = 1 currency.",
+    "instruction": "Record decision in Forge: keep single schedule per country. Reasoning: 1. Each ITRP country has one primary currency, 2. Current opco_schedules stores one record per country which is sufficient, 3. Multi-currency UI adds complexity without clear business value, 4. If needed later, can extend opco_schedules with currency field.",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "Decision recorded in Forge with reasoning"
+    ],
+    "origin": "O-003"
+  },
+  {
+    "id": "_5",
+    "name": "verify-o003",
+    "type": "investigation",
+    "description": "Deep-verify O-003: Settings page has all functional controls, file_day_basis works, auto-load has clear placeholder, RBAC filtering works.",
+    "instruction": "1. ruff check frontend files\n2. Verify file_day_basis dropdown renders\n3. Verify auto-load shows info message\n4. Verify country dropdown respects user scope\n5. Update O-003 KR progress",
+    "depends_on": ["_1", "_2", "_3", "_4"],
+    "scopes": ["frontend"],
+    "acceptance_criteria": [
+      "All Settings controls functional or clearly marked as placeholder",
+      "ruff/lint passes"
+    ],
+    "origin": "O-003"
+  }
+]

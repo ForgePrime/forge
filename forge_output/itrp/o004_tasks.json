@@ -1,0 +1,42 @@
+[
+  {
+    "id": "_1",
+    "name": "add-country-scoping-to-all-endpoints",
+    "type": "bug",
+    "description": "Add check_country_access to every endpoint that accepts country parameter: itrp/router.py, buying/router.py (countries list filter), opco/router.py, schedule/router.py, reporting/router.py.",
+    "instruction": "For each router that has a country param:\n1. Import check_country_access from auth.dependencies\n2. After require_permission dependency returns user, call check_country_access(user, country)\n3. For GET /api/buying/countries: filter response to user.allowed_countries() — if scoped, only return their countries\n4. For GET /api/opcos?country: add check_country_access\n5. For GET/PUT /api/schedule/{country_code}: add check_country_access\n6. For reporting endpoints: add allowed_countries filter when data is country-specific\n\nFiles: modules/itrp/router.py, modules/buying/router.py, modules/opco/router.py, modules/schedule/router.py, modules/reporting/router.py",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "OpCo user with scope_country=PL gets 403 when querying country=DE on any endpoint",
+      "GET /api/buying/countries returns only allowed countries for scoped users",
+      "Global users can access all countries without restriction"
+    ]
+  },
+  {
+    "id": "_2",
+    "name": "seed-mid-office-test-user",
+    "type": "chore",
+    "description": "Add mid_office test user to seed data with scope_country=NL for testing country-scoped read access.",
+    "instruction": "In seed.py DEMO_USERS: add {email: 'midoffice.nl@randstad.com', password: 'mid12345', full_name: 'Mid Office NL', role: 'mid_office', scope_country: 'NL'}. Add to seed function.",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "midoffice.nl@randstad.com user exists in seed with mid_office role scoped to NL",
+      "Can login and see only NL data"
+    ]
+  },
+  {
+    "id": "_3",
+    "name": "verify-o004",
+    "type": "investigation",
+    "description": "Verify all endpoints have country scoping. Test with OpCo user.",
+    "instruction": "1. ruff check on all modified routers\n2. Grep for check_country_access usage — should appear in every router with country param\n3. Grep for endpoints WITHOUT any auth dependency — should be zero\n4. Update O-004 KR",
+    "depends_on": ["_1", "_2"],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "Every endpoint with country parameter has check_country_access",
+      "ruff passes"
+    ]
+  }
+]

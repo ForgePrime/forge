@@ -1,0 +1,66 @@
+[
+  {
+    "id": "_1",
+    "name": "dashboard-status-api",
+    "type": "feature",
+    "description": "Create GET /api/dashboard/status endpoint returning aggregated country status: last purchase date, purchase status, is_active flag, file sync status (mock for now).",
+    "instruction": "1. Create backend/app/modules/dashboard/__init__.py and router.py\n2. GET /api/dashboard/status returns for each country:\n   - country_code, country_name\n   - is_active: from opco_schedules auto_buy_enabled\n   - next_purchase: calculated from schedule weekdays\n   - last_purchase_date: latest purchased_at from purchase_records per country (Firestore query)\n   - purchase_status: derived from last_purchase_date (e.g., 'Last purchased X days ago' or 'Never purchased')\n   - file_last_loaded: mock for now (today - 1 day, status='loaded')\n   - file_status: 'loaded' (mock)\n3. Register in main.py\n4. Permission: require_permission('purchase', 'read')\n5. Filter by allowed_countries for scoped users\n6. Add unit test in tests/unit/test_dashboard.py",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "GET /api/dashboard/status returns status for all countries",
+      "last_purchase_date comes from Firestore purchase_records",
+      "is_active comes from opco_schedules auto_buy_enabled",
+      "Response filtered by allowed_countries for scoped users",
+      "Unit test exists"
+    ],
+    "origin": "O-005"
+  },
+  {
+    "id": "_2",
+    "name": "dashboard-country-toggle-api",
+    "type": "feature",
+    "description": "Create PUT /api/dashboard/toggle endpoint to enable/disable country auto-buy. Updates opco_schedules auto_buy_enabled. Logs to audit trail.",
+    "instruction": "In backend/app/modules/dashboard/router.py:\n1. PUT /api/dashboard/toggle body: {country_code: str, is_active: bool}\n2. Update opco_schedules doc for country_code: set auto_buy_enabled = is_active\n3. Log to audit trail with action='OPCO_TOGGLE'\n4. Permission: require_permission('maintenance', 'write')\n5. check_country_access\n6. Return updated status\n7. Add unit test",
+    "depends_on": ["_1"],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "PUT /api/dashboard/toggle updates auto_buy_enabled in Firestore",
+      "Audit trail entry created with action OPCO_TOGGLE",
+      "Permission and country scoping enforced"
+    ],
+    "origin": "O-005"
+  },
+  {
+    "id": "_3",
+    "name": "dashboard-frontend-rebuild",
+    "type": "feature",
+    "description": "Rebuild Dashboard page to use /api/dashboard/status endpoint. Add ON/OFF toggle column, refresh button, country click navigation, RBAC country filtering.",
+    "instruction": "Rewrite frontend/src/app/dashboard/page.tsx:\n1. Replace mock data with useQuery to GET /api/dashboard/status\n2. Add Switch component (Ant Design) in last column for ON/OFF toggle\n   - Blue (#2175D9) when ON, gray (#B3B3B3) when OFF\n   - onClick: PUT /api/dashboard/toggle with useMutation\n   - Show only if user has maintenance:write permission (use PermissionGate or canToggle flag)\n3. Add Refresh button (ReloadOutlined, blue primary) above table\n   - onClick: invalidateQueries(['dashboard-status'])\n4. Country code click: router.push('/itrp?country={code}')\n5. Filter countries by allowedCountries() for OpCo users\n6. Keep existing: flags, color coding, sorting, legend",
+    "depends_on": ["_1", "_2"],
+    "scopes": ["frontend"],
+    "acceptance_criteria": [
+      "Dashboard shows real data from /api/dashboard/status",
+      "ON/OFF toggle switch in last column",
+      "Refresh button above table",
+      "Country code links to /itrp?country={code}",
+      "OpCo user sees only their country"
+    ],
+    "origin": "O-005"
+  },
+  {
+    "id": "_4",
+    "name": "verify-o005",
+    "type": "investigation",
+    "description": "Deep-verify O-005: dashboard matches spec, toggle works, refresh works, RBAC works. Run tests, docker build, lint.",
+    "instruction": "1. ruff check backend + frontend lint\n2. python -m pytest tests/unit/ — all pass\n3. docker compose up --build — containers start\n4. Login as admin — see all 11 countries with toggle\n5. Login as opco.pl — see only PL\n6. Toggle OFF for a country — verify audit trail entry\n7. Click refresh — data reloads\n8. Update O-005 KR progress",
+    "depends_on": ["_3"],
+    "scopes": ["backend", "frontend"],
+    "acceptance_criteria": [
+      "All tests pass",
+      "Docker containers start",
+      "Dashboard functional per spec"
+    ],
+    "origin": "O-005"
+  }
+]

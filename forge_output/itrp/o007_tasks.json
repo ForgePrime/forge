@@ -1,0 +1,81 @@
+[
+  {
+    "id": "_1",
+    "name": "implement-step0-data-quality",
+    "type": "feature",
+    "description": "Implement Step 0 data quality validation: non-null invoice_id, positive open_amount, valid country, known legal entity. Return list of invalid invoices.",
+    "instruction": "In buying/service.py step_0_data_quality_validation:\n1. Change from placeholder to real checks\n2. Validate each invoice: invoice_id not null/empty, open_amount > 0, country matches expected, legal_entity_code not empty\n3. Return step result with list of invalid invoices and reasons\n4. If any invalid: status='warning' (continue with valid ones, not fail entire batch)\n5. Add unit tests in test_buying_process.py",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "Step 0 validates invoice_id, open_amount, country, legal_entity_code",
+      "Invalid invoices listed in result data",
+      "Valid invoices continue to Step 1",
+      "Unit tests cover valid and invalid cases"
+    ],
+    "origin": "O-007"
+  },
+  {
+    "id": "_2",
+    "name": "add-lock-release-to-buying-service",
+    "type": "bug",
+    "description": "Buying service must explicitly release country lock after completion. Currently lock is only released by scheduler's finally block — if called directly (manual buy), lock stays until 30min TTL.",
+    "instruction": "In buying/service.py run_buying_process: wrap steps in try/finally, call release_buy_lock in finally. Also in buying/router.py for auto-buy and run-process endpoints: ensure lock released on any exit path. Import release_buy_lock from scheduler.service.",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "Lock released after run_buying_process regardless of success/failure",
+      "Manual buy (/auto-buy endpoint) releases lock",
+      "Run-process endpoint releases lock",
+      "Unit test verifies lock release call"
+    ],
+    "origin": "O-007"
+  },
+  {
+    "id": "_3",
+    "name": "credit-limit-from-customers-master",
+    "type": "feature",
+    "description": "Replace hardcoded 50K credit limit with per-customer values from customers_master Firestore collection.",
+    "instruction": "In buying/service.py step_4_credit_limit_check:\n1. Load customers_master collection at start of step\n2. Build lookup: {customer_id_str: credit_limit_float}\n3. For each invoice: get credit_limit from lookup, fallback to DEFAULT_CREDIT_LIMIT if not found\n4. Keep DEFAULT_CREDIT_LIMIT as fallback but log warning when used\n5. Add unit test with mock customers_master data",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "Credit limit read from customers_master collection",
+      "Different customers have different limits",
+      "Fallback to DEFAULT_CREDIT_LIMIT with warning if customer not in master",
+      "Unit test with mock data"
+    ],
+    "origin": "O-007"
+  },
+  {
+    "id": "_4",
+    "name": "buying-comprehensive-tests",
+    "type": "chore",
+    "description": "Add comprehensive tests for buying process: step 0 validation, lock release, credit limit from master data, full pipeline edge cases.",
+    "instruction": "In tests/unit/:\n1. test_buying_process.py: add tests for step_0 with valid/invalid invoices\n2. test_buying_credit.py: add test with mock customers_master providing per-customer limits\n3. test_scheduler_lock.py: verify lock release is called\n4. Ensure all 8 eligibility rules have both positive and negative tests\n5. Run full suite, verify 100% of buying logic has test coverage",
+    "depends_on": ["_1", "_2", "_3"],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "Step 0 tests cover valid and invalid invoice data",
+      "Credit limit tests use per-customer values",
+      "All tests pass",
+      "ruff check passes"
+    ],
+    "origin": "O-007"
+  },
+  {
+    "id": "_5",
+    "name": "verify-o007",
+    "type": "investigation",
+    "description": "Deep-verify O-007: buying service improvements tested, docker build works, manual buy succeeds.",
+    "instruction": "1. python backend/tests/run_tests.py — all pass\n2. docker compose up --build — containers start\n3. Run manual buy from UI — verify Step 0 runs, Step 4 uses per-customer limits, lock released\n4. Commit and push",
+    "depends_on": ["_4"],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "All tests pass",
+      "Docker build succeeds",
+      "Manual buy completes successfully"
+    ],
+    "origin": "O-007"
+  }
+]

@@ -1,0 +1,158 @@
+[
+  {
+    "title": "Firestore Schema & Complete Seed Data",
+    "description": "Complete Firestore collection schema with indexes and comprehensive seed data for all 11 countries and ~75 OpCos. Covers TASK-004, TASK-005, TASK-104. Currently: 18 collections in collections.py, seed.py creates partial data (15 OpCos instead of 75, missing legal_entities/customers collections). Audit needed: missing collections vs ARC-FINAL data model, missing indexes, incomplete seed.",
+    "scope": "project",
+    "appetite": "small",
+    "scopes": ["backend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"metric": "Firestore collections matching data model", "baseline": 18, "target": 25, "current": 18, "unit": "collections"},
+      {"metric": "OpCo seed records", "baseline": 15, "target": 75, "current": 15, "unit": "records"}
+    ],
+    "assumptions": ["ARC-FINAL data model is authoritative for collection schema", "75 OpCo records needed per project.md 1.2"]
+  },
+  {
+    "title": "Master Data Structures (without Warsaw)",
+    "description": "Create Firestore collections and seed scripts for legal_entities, customers, sales_types master data. No Warsaw access - build structures with realistic mock data. Covers TASK-101, TASK-102, TASK-103. Audit: what master data fields buying service eligibility rules need, what BQ temp_invoice fields reference master data.",
+    "scope": "project",
+    "appetite": "small",
+    "scopes": ["backend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"metric": "Master data collections with seed data", "baseline": 0, "target": 3, "current": 0, "unit": "collections"},
+      {"description": "Seed scripts create realistic test data for PL, NL, DE countries"}
+    ],
+    "assumptions": ["Warsaw BigQuery access not available", "Master data fields must match buying service expectations"]
+  },
+  {
+    "title": "Config & Settings (API + Frontend)",
+    "description": "Complete Settings page: start date config per legal entity, auto-load schedules, auto-buy schedules with day pill selectors. Backend CRUD APIs. Covers TASK-302, TASK-306. Audit: existing schedule module, pages/04-settings.md requirements, missing endpoints.",
+    "scope": "project",
+    "appetite": "medium",
+    "scopes": ["backend", "frontend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"metric": "Settings API endpoints", "baseline": 2, "target": 6, "current": 2, "unit": "endpoints"},
+      {"description": "Settings page matches pages/04-settings.md with all 3 sections"}
+    ],
+    "assumptions": ["Schedule module partially exists", "Start date management is new"]
+  },
+  {
+    "title": "RBAC & Auth Completeness",
+    "description": "Complete RBAC: country-scoped permission enforcement across ALL endpoints, full permission matrix per REQ-018, Mid Office role. Covers TASK-301 gaps. Audit: permission checks in all modules, RBAC-roles-analysis.md, country scoping coverage.",
+    "scope": "project",
+    "appetite": "small",
+    "scopes": ["backend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"metric": "Endpoints with country-scoped RBAC", "baseline": 5, "target": 25, "current": 5, "unit": "endpoints"},
+      {"description": "All 5 roles from REQ-018 fully implemented with correct permissions"}
+    ],
+    "assumptions": ["Mid Office role permissions still undefined - needs clarification flag", "check_country_access pattern reusable"]
+  },
+  {
+    "title": "Dashboard Page (Frontend + Status API)",
+    "description": "Build Dashboard per pages/01-dashboard.md: country status table with color-coded badges, ON/OFF toggles, file load status, next purchase date. Backend status endpoint. Covers TASK-305. Audit: existing dashboard code vs spec, gap analysis.",
+    "scope": "project",
+    "appetite": "medium",
+    "scopes": ["backend", "frontend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"description": "Dashboard shows 11 countries with status badges and ON/OFF toggle"},
+      {"description": "GET /api/dashboard/status returns aggregated country status"}
+    ],
+    "assumptions": ["Current dashboard is orchestration runner - needs redesign to match spec", "File load status placeholder until data pipeline exists"]
+  },
+  {
+    "title": "ITRP Main Page (Summary + Manual Buy)",
+    "description": "Build ITRP main page per pages/02-itrp-main.md: summary table, cashflow estimation, country info panel, data grid, queue panel. OpCo management APIs. Covers TASK-303, TASK-403. Audit: existing itrp page, OpCo endpoints, spec requirements.",
+    "scope": "project",
+    "appetite": "large",
+    "scopes": ["backend", "frontend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"description": "ITRP page matches pages/02-itrp-main.md specification"},
+      {"metric": "ITRP homepage API endpoints", "baseline": 2, "target": 8, "current": 2, "unit": "endpoints"}
+    ],
+    "assumptions": ["Current itrp page needs significant redesign", "Cashflow estimation uses mock data initially"]
+  },
+  {
+    "title": "Buying Service Core (Eligibility + Auto-Buy)",
+    "description": "Complete buying service: 7 eligibility rules with correct fields, credit limit check, auto-buy scheduler, concurrency locks. Covers TASK-401, TASK-402. Audit: buying/service.py steps 0-7, TODO.md gaps, AUTO-BUY-analysis.md vs implementation.",
+    "scope": "project",
+    "appetite": "large",
+    "scopes": ["backend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"metric": "Eligibility rules correctly implemented", "baseline": 5, "target": 7, "current": 5, "unit": "rules"},
+      {"description": "Auto-buy runs via Cloud Scheduler with concurrency locks"}
+    ],
+    "assumptions": ["Steps 1-7 exist with gaps per TODO.md", "sales_type/intercompany fields need mock until Warsaw confirms"]
+  },
+  {
+    "title": "Maintenance Page (Load Data + Backup/Restore)",
+    "description": "Build Maintenance per pages/05-maintenance.md: Load Data section, Backup Restore timeline with atomic rollback. Covers TASK-307, TASK-601. Audit: existing stubs, restore logic complexity, auto-disable requirements.",
+    "scope": "project",
+    "appetite": "large",
+    "scopes": ["backend", "frontend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"description": "Load Data UI with entity selector and trigger button"},
+      {"description": "Backup Restore with timeline and atomic rollback"}
+    ],
+    "assumptions": ["Load Data depends on data pipeline - UI only with placeholder", "Backup Restore is complex - may need phased implementation"]
+  },
+  {
+    "title": "Reporting (APIs + Frontend)",
+    "description": "All reporting: Settlement, Previously Purchased, ITRP Report, Daily Estimation. Backend APIs from BigQuery. Frontend with sub-tabs, filters, download. Covers TASK-502, 503, 504, 505. Audit: reporting stub, pages/03-reporting.md, BQ tables, REPORTING-TABLES-analysis.md.",
+    "scope": "project",
+    "appetite": "large",
+    "scopes": ["backend", "frontend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"metric": "Report API endpoints", "baseline": 1, "target": 5, "current": 1, "unit": "endpoints"},
+      {"description": "Reporting page with 3 sub-tabs, filters, download per spec"}
+    ],
+    "assumptions": ["BQ reporting tables written by buying service - may need mock data", "Report column definitions may change (BIZ-013)"]
+  },
+  {
+    "title": "Notification Service (Emails)",
+    "description": "Email notifications: purchase complete (Economic/Legal separate), errors, backup restore, credit limit breach. Covers TASK-501. Audit: REQ-016 requirements, email templates, delivery mechanism.",
+    "scope": "project",
+    "appetite": "medium",
+    "scopes": ["backend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"metric": "Email notification types", "baseline": 0, "target": 4, "current": 0, "unit": "types"}
+    ],
+    "assumptions": ["Email via SMTP as default - mechanism TBD", "Simple text/HTML templates for now"]
+  },
+  {
+    "title": "Advanced Features (Queue, Credit Limits, Priority)",
+    "description": "Queue panel, full credit limit enforcement with FTC confirmation, purchase prioritisation UI. Covers TASK-602, 603, 604. Audit: existing collections (invoice_priorities, credit_limit_breaches), CREDIT-LIMIT-CHECK-analysis.md.",
+    "scope": "project",
+    "appetite": "large",
+    "scopes": ["backend", "frontend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"description": "Queue panel with background jobs"},
+      {"description": "Credit limit breach pauses auto-buy with FTC confirmation"},
+      {"description": "Purchase priority UI for invoice/customer ordering"}
+    ],
+    "assumptions": ["Credit limit confirmation is most complex - needs FTC Manager UI", "Queue panel simpler without real background jobs"]
+  },
+  {
+    "title": "Audit Trail Completeness",
+    "description": "Every state change logged to audit trail. Complete audit API. Covers TASK-404. Audit: log_audit usage across all modules, missing actions, ALLOWED_ACTIONS expansion.",
+    "scope": "project",
+    "appetite": "small",
+    "scopes": ["backend"],
+    "status": "ACTIVE",
+    "key_results": [
+      {"metric": "Action types in audit trail", "baseline": 8, "target": 15, "current": 8, "unit": "types"},
+      {"description": "Every mutation endpoint calls log_audit"}
+    ],
+    "assumptions": ["Audit service exists and works", "ALLOWED_ACTIONS needs expansion"]
+  }
+]

@@ -1,0 +1,95 @@
+[
+  {
+    "id": "_1",
+    "name": "customers-backend-schemas",
+    "type": "feature",
+    "description": "Create Pydantic schemas for customers module: CustomerSummary, CustomerDetail, CustomerExclusion, CustomerListResponse.",
+    "instruction": "Create ITRP/backend/app/schemas/customers.py following the pattern in schemas/autobuy.py.\n\nSchemas needed:\n1. CustomerSummary: customer_id (str), customer_name (str), open_amount (Decimal), currency (str), invoice_count (int), country (str)\n2. CustomerDetail: extends CustomerSummary with: legal_entity_code (str), credit_limit (Decimal|None), current_exposure (Decimal), is_excluded (bool), exclusion_reason (str|None), sales_type_override (str|None)\n3. CustomerExclusionRequest: customer_id (str), reason (str)\n4. CustomerExclusionResponse: customer_id (str), customer_name (str), excluded_by (str), excluded_at (datetime), reason (str)\n5. CustomerListResponse: items (list[CustomerSummary]), total (int), tab (str: 'active'|'all'|'previously_purchased')\n\nFollow existing patterns: use Field() for validation, Decimal for amounts.",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "schemas/customers.py exists with all 5 schema classes",
+      "Schemas use Pydantic BaseModel with proper types",
+      "Decimal used for monetary amounts"
+    ],
+    "produces": {
+      "schemas": "CustomerSummary, CustomerDetail, CustomerExclusionRequest, CustomerExclusionResponse, CustomerListResponse in schemas/customers.py"
+    }
+  },
+  {
+    "id": "_2",
+    "name": "customers-firestore-collection",
+    "type": "feature",
+    "description": "Add CUSTOMER_EXCLUSIONS collection to collections.py. Create customers service with Firestore operations for exclusions.",
+    "instruction": "1. Add to ITRP/backend/app/collections.py:\n   CUSTOMER_EXCLUSIONS = 'customer_exclusions'\n\n2. Create ITRP/backend/app/modules/customers/__init__.py (empty)\n\n3. Create ITRP/backend/app/modules/customers/service.py with functions:\n   - async def get_customer_exclusions(db, country: str) -> dict[str, dict]:\n     Read all docs from CUSTOMER_EXCLUSIONS where country == country. Return {customer_id: {reason, excluded_by, excluded_at}}\n   - async def exclude_customer(db, customer_id: str, country: str, reason: str, user_email: str) -> dict:\n     Write to CUSTOMER_EXCLUSIONS collection. Doc ID: f'{country}_{customer_id}'. Include audit trail entry.\n   - async def include_customer(db, customer_id: str, country: str, user_email: str) -> None:\n     Delete from CUSTOMER_EXCLUSIONS. Include audit trail entry.\n\nFollow patterns from modules/schedule/repository.py for Firestore operations.\nFollow patterns from modules/audit/service.py or audit/router.py for audit trail recording.\nUse app.firestore.get_db() for database client.",
+    "depends_on": [],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "CUSTOMER_EXCLUSIONS constant in collections.py",
+      "customers/service.py has get_customer_exclusions, exclude_customer, include_customer",
+      "All mutations write audit trail entries"
+    ],
+    "produces": {
+      "collection": "customer_exclusions in Firestore with docs: {customer_id, country, reason, excluded_by, excluded_at}",
+      "functions": "get_customer_exclusions(), exclude_customer(), include_customer() in customers/service.py"
+    }
+  },
+  {
+    "id": "_3",
+    "name": "customers-backend-router",
+    "type": "feature",
+    "description": "Create customers router with endpoints: list customers (from BQ), get customer detail, exclude/include customer. Register in main.py.",
+    "instruction": "1. Create ITRP/backend/app/modules/customers/router.py with:\n\n   router = APIRouter(prefix='/api/customers', tags=['customers'])\n\n   GET /api/customers?country={code}&tab={active|all}&search={text}&page={n}&page_size={n}&sort_by={field}&sort_order={asc|desc}\n   - tab=active: customers with open_amount > 0 in current week's invoices\n   - tab=all: all distinct customers from temp_invoice\n   - Query BigQuery temp_invoice: SELECT DISTINCT customer_id, customer_invoice_name, customer_billing_country_code, SUM(open_invoice_amount) as open_amount, COUNT(*) as invoice_count FROM temp_invoice WHERE customer_billing_country_code = @country GROUP BY customer_id, customer_invoice_name, customer_billing_country_code\n   - For 'active': add WHERE open_invoice_amount > 0\n   - Merge with exclusions from Firestore (is_excluded flag)\n   - Return CustomerListResponse\n   - Requires permission: purchase:read or reporting:read\n\n   GET /api/customers/{customer_id}?country={code}\n   - Detail view: invoices for this customer from BQ + credit limit info + exclusion status\n   - Return CustomerDetail\n\n   POST /api/customers/{customer_id}/exclude\n   - Body: CustomerExclusionRequest\n   - Requires permission: purchase:execute\n   - Calls exclude_customer() from service\n   - Return CustomerExclusionResponse\n\n   DELETE /api/customers/{customer_id}/exclude?country={code}\n   - Requires permission: purchase:execute\n   - Calls include_customer() from service\n   - Return 204\n\n   GET /api/customers/excluded?country={code}\n   - List all excluded customers for a country\n   - Reads from Firestore CUSTOMER_EXCLUSIONS\n\n2. Register in main.py:\n   from app.modules.customers.router import router as customers_router\n   app.include_router(customers_router)\n\nFollow patterns from modules/buying/router.py for BigQuery queries.\nFollow patterns from modules/rbac/router.py for permission checks (require_permission).\nUse from app.auth.dependencies import get_current_user, require_permission.",
+    "depends_on": ["_1", "_2"],
+    "scopes": ["backend"],
+    "acceptance_criteria": [
+      "GET /api/customers returns customer list from BigQuery with exclusion status",
+      "GET /api/customers/{id} returns customer detail with invoices",
+      "POST /api/customers/{id}/exclude creates exclusion in Firestore with audit trail",
+      "DELETE /api/customers/{id}/exclude removes exclusion with audit trail",
+      "Router registered in main.py",
+      "All endpoints check RBAC permissions"
+    ],
+    "exclusions": [
+      "DO NOT modify buying service",
+      "DO NOT modify existing routers"
+    ],
+    "produces": {
+      "endpoints": "GET /api/customers, GET /api/customers/{id}, POST /api/customers/{id}/exclude, DELETE /api/customers/{id}/exclude, GET /api/customers/excluded"
+    }
+  },
+  {
+    "id": "_4",
+    "name": "customers-frontend-page",
+    "type": "feature",
+    "description": "Create My Customers page with 3 sub-tabs (Active, All, Previously Purchased), customer table with search/sort, and exclude action.",
+    "instruction": "Create ITRP/frontend/src/app/customers/page.tsx\n\nFollow patterns from admin/page.tsx (tab structure, table, modals).\nUse Ant Design components: Tabs, Table, Input.Search, Button, Tag, Modal.\nUse TanStack Query for data fetching (pattern from dashboard/page.tsx).\n\nPage structure:\n1. Three Tabs: 'Active customers ({count})' | 'All customers ({count})' | 'Previously Purchased'\n2. Search bar above table\n3. Table columns:\n   - Customer/Group ID (blue link, clickable → opens detail modal)\n   - Customer name (link)\n   - Open amount (formatted with currency)\n   - Actions: Eye icon (detail preview), Exclude button (if has permission)\n4. Detail modal (Ant Design Drawer or Modal):\n   - Customer info header\n   - Invoice list for this customer\n   - Credit limit info (if available)\n   - Exclude/Include button\n\nAPI calls:\n- GET /api/backend/api/customers?country={selected}&tab={tab}&search={text}\n- POST /api/backend/api/customers/{id}/exclude (body: {customer_id, reason})\n- DELETE /api/backend/api/customers/{id}/exclude?country={code}\n\nPermission checks:\n- Use PermissionGate from components/auth/PermissionGate.tsx\n- Exclude button: only show if hasPermission('purchase', 'execute')\n- Page access: require hasPermission('purchase', 'read') or hasPermission('reporting', 'read')\n\nCountry selector:\n- Reuse the country fetching pattern from itrp/page.tsx (GET /api/buying/countries)\n- Default to first country or user's scoped country\n\nUpdate navigation in components/layout/AppLayout.tsx:\n- 'My Customers' nav item should link to /customers (it already exists in nav but goes nowhere)",
+    "depends_on": ["_3"],
+    "scopes": ["frontend"],
+    "acceptance_criteria": [
+      "/customers page renders with 3 tabs",
+      "Customer table shows data from backend API",
+      "Search filters table by customer name or ID",
+      "Eye icon opens detail view with customer invoices",
+      "Exclude button creates exclusion (with reason input)",
+      "Include button removes exclusion",
+      "Permission gates hide exclude button for read-only roles",
+      "Navigation links to /customers correctly"
+    ],
+    "exclusions": [
+      "DO NOT modify backend code",
+      "DO NOT modify other pages except AppLayout nav link"
+    ]
+  },
+  {
+    "id": "_5",
+    "name": "customers-integration-test",
+    "type": "chore",
+    "description": "Verify full customer flow end-to-end: list → detail → exclude → verify exclusion shows in list → include → verify removed.",
+    "instruction": "Manual verification checklist:\n1. Start containers: docker compose -f docker-compose.local.yml up\n2. Login as admin@randstad.com\n3. Navigate to /customers\n4. Verify Active customers tab shows customers from BQ\n5. Verify All customers tab shows more customers\n6. Search for a customer name — verify filter works\n7. Click eye icon — verify detail modal opens with invoice list\n8. Click Exclude on a customer — enter reason — verify exclusion saved\n9. Refresh page — verify excluded customer shows is_excluded tag\n10. Click Include to remove exclusion — verify tag removed\n11. Login as opco.pl@randstad.com — verify only PL customers visible\n12. Login as opco.pl — verify Exclude button not visible (no purchase:execute permission)\n\nIf any step fails: create a bug task in Forge pipeline.",
+    "depends_on": ["_4"],
+    "acceptance_criteria": [
+      "All 12 verification steps pass"
+    ]
+  }
+]

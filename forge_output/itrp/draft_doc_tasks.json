@@ -1,0 +1,54 @@
+[
+  {
+    "id": "_1",
+    "name": "verify-postgresql-firestore-replacement",
+    "type": "chore",
+    "description": "Verify that all PostgreSQL/Cloud SQL references in documentation were correctly replaced with Firestore. Check each of 14 files. Fix any missed or incorrect replacements.",
+    "instruction": "1. Grep for remaining PostgreSQL/Postgres/Cloud SQL references in track_changes/.documentation/\n2. For each remaining hit: read context, replace with Firestore\n3. Check ARC-FINAL-ITRP-application.md most carefully — it's the architecture doc\n4. Verify the architecture diagram text shows Firestore, not Cloud SQL\n5. Check imp_plan.md tasks — any that reference PostgreSQL migrations, SQL schemas, Cloud SQL setup must be updated\n6. Check DECISIONS.md — ADR entries about Cloud SQL should be updated to reflect Firestore decision\n7. Check NFR-001 — performance requirements referencing PostgreSQL response times\n8. Verify no broken references (e.g. 'Firestore row-level lock' which doesn't exist)",
+    "depends_on": [],
+    "acceptance_criteria": [
+      "Zero grep hits for PostgreSQL, Postgres, Cloud SQL in .documentation/",
+      "ARC-FINAL architecture diagram shows Firestore",
+      "No references to SQL-specific features (row-level locks, SQL migrations) without Firestore equivalent noted"
+    ]
+  },
+  {
+    "id": "_2",
+    "name": "create-discrepancies-document",
+    "type": "investigation",
+    "description": "Create DISCREPANCIES.md documenting all contradictions, unclear items, and things that need client clarification. Sources: documentation vs code, documentation vs documentation, open items from analysis files.",
+    "instruction": "Create track_changes/.documentation/DISCREPANCIES.md with sections:\n\n1. ARCHITECTURE DISCREPANCIES\n- Original ARC-FINAL said PostgreSQL, code uses Firestore (RESOLVED: Firestore stays)\n- Original ARC-FINAL said direct BigQuery cross-project reads from Warsaw, actual: own temp_invoice table (RESOLVED)\n- Original ARC-FINAL said PG->BQ nightly sync, actual: dual-write at purchase time (RESOLVED)\n- ARC-FINAL mentions Redis elimination but code never had Redis\n- ARC-FINAL mentions Next.js SSR but current code uses client-side rendering with useSearchParams\n\n2. BUSINESS RULES UNCLEAR\n- Credit limit: source (Warsaw or manual?), threshold enforcement (pause vs reject?)\n- Mid Office role: exact permissions undefined ('limited' not specified)\n- Week boundary: UTC or country-local time? (TODO.md item 1.1)\n- File completion gate: mechanism undefined (TODO.md item S.1)\n- Step 0 data quality: validation rules TBD\n- sales_type field vs sell_invoice boolean (TODO.md item 2.1)\n- intercompany field confirmation needed (TODO.md item 2.2)\n- Priority expiry after run: clear or persist? (TODO.md item 3.3)\n\n3. DOCUMENTATION vs CODE GAPS\n- Dashboard: doc describes status overview per country, code has 7-step orchestration runner\n- ITRP main: doc describes full financial picture with cashflow, code has simple preview+execute\n- Settings: doc describes start dates + auto-load + auto-buy schedules, code has only auto-buy schedule\n- Maintenance: doc describes Load Data + Backup Restore, code has placeholder tabs\n- Reporting: doc describes 4 report types, code has stub endpoint\n- My Customers: doc describes customer management, code has nothing\n\n4. OPEN ITEMS FROM ANALYSIS FILES\n- Read each analysis file (AUTO-BUY, CREDIT-LIMIT, SCHEDULER, etc) and extract unresolved items\n\n5. DEPENDENCIES ON EXTERNAL TEAMS\n- Warsaw BigQuery schema contract (DEP-005)\n- Apigee setup\n- GCP access (reported 50%)\n- Business rules finalization (20% incomplete, deadline passed)\n- Mockup approval status unknown",
+    "depends_on": ["_1"],
+    "acceptance_criteria": [
+      "DISCREPANCIES.md exists with all 5 sections",
+      "Each discrepancy has status: RESOLVED, OPEN, or NEEDS_CLARIFICATION",
+      "Open items from all analysis files included"
+    ]
+  },
+  {
+    "id": "_3",
+    "name": "reorganize-documentation-structure",
+    "type": "chore",
+    "description": "Reorganize .documentation/ into clear categories. Create an INDEX.md that maps every document to its purpose and status.",
+    "instruction": "Create track_changes/.documentation/INDEX.md with:\n\n## Documentation Index\n\n### Architecture & Design\n- ARC-FINAL-ITRP-application.md — Final architecture (Firestore + BigQuery, modular monolith)\n- VIS-001-ITRP-application.md — Visual design specifications\n- DECISIONS.md — Architecture Decision Records\n\n### Requirements\n- REQ-001-ITRP-application.md — Functional requirements\n- NFR-001-ITRP-application.md — Non-functional requirements\n- DEP-001-ITRP-application.md — Dependencies and external teams\n\n### Implementation\n- project.md — Full technical specification (MASTER REFERENCE)\n- imp_plan.md — Implementation plan with phases and tasks\n- ITRP_Knowledge_Base.md — Domain knowledge base\n\n### Page Specifications (UI)\n- pages/01-dashboard.md through pages/08-user-flow.md\n\n### Analysis Documents\n- AUTO-BUY-analysis.md, CREDIT-LIMIT-CHECK-analysis.md, etc.\n- SPEC-auto-buy-schedule-maintenance.md\n\n### Project Management\n- Meeting-notes/ — Meeting records\n- DISCREPANCIES.md — Open issues and contradictions\n\nFor each document: one line with title, what it covers, and whether it's CURRENT/OUTDATED/NEEDS-UPDATE.\n\nAlso review project.md (the master spec) for any remaining PostgreSQL references and fix them.",
+    "depends_on": ["_2"],
+    "acceptance_criteria": [
+      "INDEX.md exists with categorized list of all documents",
+      "Each document has status: CURRENT, NEEDS-UPDATE, or OUTDATED",
+      "project.md has zero PostgreSQL references"
+    ]
+  },
+  {
+    "id": "_4",
+    "name": "align-imp-plan-with-reality",
+    "type": "feature",
+    "description": "Update imp_plan.md to reflect actual code state. Mark completed tasks, adjust task descriptions to match Firestore reality, add missing tasks discovered from code analysis.",
+    "instruction": "Read imp_plan.md fully. For each TASK-XXX:\n1. Check if the task's deliverable already exists in code (use code analysis from K-001)\n2. If DONE in code: mark as DONE with note what implements it\n3. If PARTIAL: note what's done and what remains\n4. If task references PostgreSQL: update to Firestore equivalent\n5. If task is blocked by external dependency: note the blocker\n\nSpecific updates needed:\n- TASK-001 (GCP Setup): PARTIAL — Firestore and BQ exist, Cloud Run TBD\n- TASK-003 (Auth): DONE — Mock SSO implemented\n- TASK-005 (Firestore Setup): DONE — seed data creates 13 collections\n- TASK-301 (RBAC): DONE — full CRUD with transactions\n- TASK-302 (Audit): DONE — immutable logging\n- TASK-401 (Buying Service): PARTIAL — steps 1-7 exist but with gaps (see TODO.md)\n- Tasks referencing 'PostgreSQL schema' or 'SQL migrations': rewrite for Firestore\n\nAlso add any tasks that are in the code but NOT in the plan (e.g. scheduler trigger endpoint).",
+    "depends_on": ["_1"],
+    "acceptance_criteria": [
+      "Every TASK in imp_plan.md has status: DONE, PARTIAL, TODO, or BLOCKED",
+      "Zero PostgreSQL references in imp_plan.md",
+      "Missing tasks from code identified"
+    ]
+  }
+]

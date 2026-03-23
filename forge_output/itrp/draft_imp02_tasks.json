@@ -1,0 +1,129 @@
+{
+  "new_tasks": [
+    {
+      "id": "_1",
+      "name": "priority-reorder-api-and-ui",
+      "type": "feature",
+      "description": "Add PUT endpoint for updating priority order, add reorder endpoints (move up/down), and implement up/down buttons in frontend priorities page.",
+      "instruction": "BACKEND:\n1. Add PUT /api/priorities/{priority_id} endpoint to update priority_order of existing priority. Require purchase:execute. Log audit UPDATE.\n2. Add POST /api/priorities/reorder endpoint accepting {country, items: [{id, priority_order}]} for batch reorder. Atomic Firestore batch write. Require purchase:execute.\n\nFRONTEND (priorities/page.tsx):\n3. Add Up/Down arrow buttons in table actions column.\n4. On click Up: swap priority_order with item above, call reorder API.\n5. On click Down: swap with item below.\n6. Disable Up on first row, Down on last row.\n7. Add success/error feedback on reorder.\n\nTESTS:\n8. Unit test for PUT endpoint.\n9. Unit test for reorder endpoint.\n10. Test edge cases: reorder single item, reorder non-existent ID.",
+      "acceptance_criteria": [
+        {"text": "PUT /api/priorities/{id} updates priority_order and logs audit UPDATE", "verification": "test"},
+        {"text": "POST /api/priorities/reorder atomically reorders multiple priorities", "verification": "test"},
+        {"text": "Frontend shows Up/Down buttons that swap priority_order values", "verification": "manual"},
+        {"text": "Up disabled on first row, Down disabled on last row", "verification": "manual"}
+      ],
+      "scopes": ["backend", "frontend"],
+      "depends_on": [],
+      "produces": {"endpoint": "PUT /api/priorities/{id}, POST /api/priorities/reorder"}
+    },
+    {
+      "id": "_2",
+      "name": "priority-lock-during-autobuy",
+      "type": "feature",
+      "description": "Lock priority UI and API during active auto-buy. Check buy_locks collection before allowing priority changes.",
+      "instruction": "BACKEND (priorities/router.py):\n1. In POST and DELETE endpoints, before writing: query buy_locks collection for active lock on requested country.\n2. If lock exists and not expired: return HTTP 409 Conflict with message 'Auto-buy in progress for {country}. Priority changes locked.'\n3. Add GET /api/priorities/lock-status?country=XX endpoint returning {locked: bool, locked_since: timestamp|null}.\n\nFRONTEND (priorities/page.tsx):\n4. Query lock-status on page load and on interval (every 10s).\n5. When locked: disable Add Priority button, disable Delete buttons, disable Up/Down buttons, show Alert banner 'Priorities locked - auto-buy in progress for {country}'.\n6. When unlocked: normal behavior.\n\nTESTS:\n7. Test POST returns 409 when lock active.\n8. Test DELETE returns 409 when lock active.\n9. Test lock-status endpoint.",
+      "acceptance_criteria": [
+        {"text": "POST /api/priorities returns 409 when buy_lock active for country", "verification": "test"},
+        {"text": "DELETE /api/priorities/{id} returns 409 when buy_lock active", "verification": "test"},
+        {"text": "GET /api/priorities/lock-status returns correct lock state", "verification": "test"},
+        {"text": "Frontend disables all edit controls and shows lock banner during auto-buy", "verification": "manual"}
+      ],
+      "scopes": ["backend", "frontend"],
+      "depends_on": ["_1"]
+    },
+    {
+      "id": "_3",
+      "name": "frontend-route-guards-all-pages",
+      "type": "feature",
+      "description": "Add route-level 403 guards to all pages per IMP_02 section 8.3 navigation matrix. Currently only Admin has 403 guard.",
+      "instruction": "1. In each page component, wrap content with PermissionGate (or create a PageGuard wrapper).\n2. Permission requirements per page:\n   - Dashboard: purchase:read (all roles except none)\n   - ITRP: purchase:read\n   - ITRP/Settings: maintenance:read\n   - ITRP/Maintenance: maintenance:read\n   - ITRP/Priorities: purchase:read\n   - Reporting/*: reporting:read\n   - My Customers: purchase:read OR reporting:read\n   - Manual Buy: purchase:execute\n3. Fallback: Ant Design Result component with 403 status (same pattern as Admin page).\n4. Test by logging in as opco user - should see 403 on Settings, Maintenance, Priorities, Manual Buy.",
+      "acceptance_criteria": [
+        {"text": "Settings page shows 403 for Mid Office, OpCo roles", "verification": "manual"},
+        {"text": "Maintenance page shows 403 for Mid Office, OpCo roles", "verification": "manual"},
+        {"text": "Manual Buy page shows 403 for Mid Office, OpCo, GFI roles", "verification": "manual"},
+        {"text": "All pages use consistent 403 fallback pattern", "verification": "manual"}
+      ],
+      "scopes": ["frontend"],
+      "depends_on": []
+    },
+    {
+      "id": "_4",
+      "name": "menu-visibility-per-role",
+      "type": "feature",
+      "description": "Filter navigation menu items based on user role/permissions per IMP_02 section 8.3.",
+      "instruction": "In AppLayout.tsx:\n1. Each menu item gets a requiredPermission field.\n2. Use hasPermission() or hasAnyPermission() to filter menu items before rendering.\n3. Menu visibility rules:\n   - Dashboard: always visible\n   - ITRP (+ sub-items): purchase:read\n   - Settings: maintenance:read\n   - Maintenance: maintenance:read\n   - Priorities: purchase:read\n   - Reporting: reporting:read\n   - My Customers: purchase:read OR reporting:read\n   - Manual Buy: purchase:execute\n   - Admin: users:read OR audit:read (already done)\n4. Remove XTRP menu item (dead link, page does not exist).\n5. Test: OpCo user should only see Dashboard, Reporting, My Customers.",
+      "acceptance_criteria": [
+        {"text": "OpCo user sees only Dashboard, Reporting, My Customers in menu", "verification": "manual"},
+        {"text": "Mid Office user does not see Settings, Maintenance, Manual Buy, Admin", "verification": "manual"},
+        {"text": "XTRP menu item removed", "verification": "manual"}
+      ],
+      "scopes": ["frontend"],
+      "depends_on": []
+    },
+    {
+      "id": "_5",
+      "name": "fix-my-customers-country-list",
+      "type": "bug",
+      "description": "My Customers page uses hardcoded country list instead of allowedCountries() from auth store.",
+      "instruction": "In frontend/src/app/customers/page.tsx:\n1. Replace hardcoded COUNTRIES array with allowedCountries() from useAuthStore.\n2. If allowedCountries() returns null (global user), fetch country list from /api/buying/countries or /api/schedule/config.\n3. Fallback: if no countries available, show empty state.\n4. Ensure country dropdown only shows countries user has access to.",
+      "acceptance_criteria": [
+        {"text": "Country dropdown in My Customers uses allowedCountries() not hardcoded list", "verification": "manual"},
+        {"text": "OpCo user scoped to PL sees only PL in dropdown", "verification": "manual"}
+      ],
+      "scopes": ["frontend"],
+      "depends_on": []
+    },
+    {
+      "id": "_6",
+      "name": "back-office-country-scoping-seed",
+      "type": "feature",
+      "description": "Update seed data to give Back Office user country scoping per D-017 decision.",
+      "instruction": "In backend/app/seed.py:\n1. Change backoffice@randstad.com role assignment from scope_country=None to scope_country specific countries (e.g. PL, NL, DE - covering main test countries).\n2. Or create multiple assignments: back_office+PL, back_office+NL.\n3. Verify that after re-seed, backoffice user only sees assigned countries.\n4. Update any integration tests that assume backoffice has global access.",
+      "acceptance_criteria": [
+        {"text": "backoffice@randstad.com has country-scoped role assignments after seed", "verification": "test"},
+        {"text": "Back Office user only sees assigned countries in country dropdowns", "verification": "manual"}
+      ],
+      "scopes": ["backend"],
+      "depends_on": []
+    },
+    {
+      "id": "_7",
+      "name": "log-unauthorized-access-attempts",
+      "type": "feature",
+      "description": "Log denied access attempts to audit trail per REQ-018.",
+      "instruction": "In backend/app/auth/dependencies.py:\n1. In require_permission(): when permission check fails (before raising 403), call log_audit with action=ACCESS_DENIED.\n2. Add ACCESS_DENIED to ALLOWED_ACTIONS in audit/router.py.\n3. Log: user_email, attempted resource:action, country (if applicable), timestamp.\n4. In check_country_access(): when country access denied, also log_audit with ACCESS_DENIED.\n5. Be careful: log_audit is async and needs db - may need to pass db through or use a simpler logging mechanism.\n\nTEST:\n6. Test that 403 response also creates audit entry.",
+      "acceptance_criteria": [
+        {"text": "ACCESS_DENIED action type exists in ALLOWED_ACTIONS", "verification": "test"},
+        {"text": "Permission denial creates audit trail entry with user and attempted action", "verification": "test"},
+        {"text": "Country access denial creates audit trail entry", "verification": "test"}
+      ],
+      "scopes": ["backend"],
+      "depends_on": []
+    },
+    {
+      "id": "_8",
+      "name": "manual-buy-lock-check",
+      "type": "feature",
+      "description": "Disable Manual Buy button when auto-buy is running for selected country.",
+      "instruction": "BACKEND:\n1. Add GET /api/buying/lock-status?country=XX endpoint. Returns {locked: bool, locked_by: str, locked_at: timestamp}.\n\nFRONTEND:\n2. In manual-buy/page.tsx: before showing Run Auto-Buy button, check lock status. If locked, disable button and show warning.\n3. In itrp/page.tsx: if queue button exists, check lock status for selected country.\n\nTEST:\n4. Test lock-status endpoint returns correct state.",
+      "acceptance_criteria": [
+        {"text": "GET /api/buying/lock-status returns buy_lock state for country", "verification": "test"},
+        {"text": "Manual Buy button disabled with message when auto-buy lock active", "verification": "manual"}
+      ],
+      "scopes": ["backend", "frontend"],
+      "depends_on": []
+    },
+    {
+      "id": "_9",
+      "name": "firestore-schema-set-at-fix",
+      "type": "chore",
+      "description": "Add missing set_at field to invoice_priorities schema in firestore_schema.py.",
+      "instruction": "In backend/app/firestore_schema.py, in INVOICE_PRIORITIES schema definition:\n1. Add {name: set_at, type: timestamp, required: true, description: When priority was set} to fields array.\n2. This is a docs-only fix - the field is already written by the router.",
+      "acceptance_criteria": [
+        "set_at field present in INVOICE_PRIORITIES schema definition"
+      ],
+      "scopes": ["backend"],
+      "depends_on": []
+    }
+  ]
+}

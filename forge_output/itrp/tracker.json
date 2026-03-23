@@ -1,0 +1,2631 @@
+{
+  "project": "itrp",
+  "goal": "Implement ITRP Application — Invoice Trading & Receivables Program for Randstad FTC. FastAPI backend + Next.js frontend + GCP (Firestore, BigQuery, Cloud Run). Replace legacy CREST system. Go-live: 30 June 2026.",
+  "created": "2026-03-21T11:18:10Z",
+  "updated": "2026-03-23T21:37:25Z",
+  "tasks": [
+    {
+      "id": "T-001",
+      "name": "verify-postgresql-firestore-replacement",
+      "description": "Verify that all PostgreSQL/Cloud SQL references in documentation were correctly replaced with Firestore. Check each of 14 files. Fix any missed or incorrect replacements.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Grep for remaining PostgreSQL/Postgres/Cloud SQL references in track_changes/.documentation/\n2. For each remaining hit: read context, replace with Firestore\n3. Check ARC-FINAL-ITRP-application.md most carefully — it's the architecture doc\n4. Verify the architecture diagram text shows Firestore, not Cloud SQL\n5. Check imp_plan.md tasks — any that reference PostgreSQL migrations, SQL schemas, Cloud SQL setup must be updated\n6. Check DECISIONS.md — ADR entries about Cloud SQL should be updated to reflect Firestore decision\n7. Check NFR-001 — performance requirements referencing PostgreSQL response times\n8. Verify no broken references (e.g. 'Firestore row-level lock' which doesn't exist)",
+      "acceptance_criteria": [
+        "Zero grep hits for PostgreSQL, Postgres, Cloud SQL in .documentation/",
+        "ARC-FINAL architecture diagram shows Firestore",
+        "No references to SQL-specific features (row-level locks, SQL migrations) without Firestore equivalent noted"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T11:40:48Z",
+      "completed_at": "2026-03-21T11:44:33Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "754f26b4096a24edabaeb14129a58e1b31fae427",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-002",
+      "name": "create-discrepancies-document",
+      "description": "Create DISCREPANCIES.md documenting all contradictions, unclear items, and things that need client clarification. Sources: documentation vs code, documentation vs documentation, open items from analysis files.",
+      "depends_on": [
+        "T-001"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Create track_changes/.documentation/DISCREPANCIES.md with sections:\n\n1. ARCHITECTURE DISCREPANCIES\n- Original ARC-FINAL said PostgreSQL, code uses Firestore (RESOLVED: Firestore stays)\n- Original ARC-FINAL said direct BigQuery cross-project reads from Warsaw, actual: own temp_invoice table (RESOLVED)\n- Original ARC-FINAL said PG->BQ nightly sync, actual: dual-write at purchase time (RESOLVED)\n- ARC-FINAL mentions Redis elimination but code never had Redis\n- ARC-FINAL mentions Next.js SSR but current code uses client-side rendering with useSearchParams\n\n2. BUSINESS RULES UNCLEAR\n- Credit limit: source (Warsaw or manual?), threshold enforcement (pause vs reject?)\n- Mid Office role: exact permissions undefined ('limited' not specified)\n- Week boundary: UTC or country-local time? (TODO.md item 1.1)\n- File completion gate: mechanism undefined (TODO.md item S.1)\n- Step 0 data quality: validation rules TBD\n- sales_type field vs sell_invoice boolean (TODO.md item 2.1)\n- intercompany field confirmation needed (TODO.md item 2.2)\n- Priority expiry after run: clear or persist? (TODO.md item 3.3)\n\n3. DOCUMENTATION vs CODE GAPS\n- Dashboard: doc describes status overview per country, code has 7-step orchestration runner\n- ITRP main: doc describes full financial picture with cashflow, code has simple preview+execute\n- Settings: doc describes start dates + auto-load + auto-buy schedules, code has only auto-buy schedule\n- Maintenance: doc describes Load Data + Backup Restore, code has placeholder tabs\n- Reporting: doc describes 4 report types, code has stub endpoint\n- My Customers: doc describes customer management, code has nothing\n\n4. OPEN ITEMS FROM ANALYSIS FILES\n- Read each analysis file (AUTO-BUY, CREDIT-LIMIT, SCHEDULER, etc) and extract unresolved items\n\n5. DEPENDENCIES ON EXTERNAL TEAMS\n- Warsaw BigQuery schema contract (DEP-005)\n- Apigee setup\n- GCP access (reported 50%)\n- Business rules finalization (20% incomplete, deadline passed)\n- Mockup approval status unknown",
+      "acceptance_criteria": [
+        "DISCREPANCIES.md exists with all 5 sections",
+        "Each discrepancy has status: RESOLVED, OPEN, or NEEDS_CLARIFICATION",
+        "Open items from all analysis files included"
+      ],
+      "type": "investigation",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T11:44:43Z",
+      "completed_at": "2026-03-21T11:44:58Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "754f26b4096a24edabaeb14129a58e1b31fae427",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-003",
+      "name": "reorganize-documentation-structure",
+      "description": "Reorganize .documentation/ into clear categories. Create an INDEX.md that maps every document to its purpose and status.",
+      "depends_on": [
+        "T-002"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Create track_changes/.documentation/INDEX.md with:\n\n## Documentation Index\n\n### Architecture & Design\n- ARC-FINAL-ITRP-application.md — Final architecture (Firestore + BigQuery, modular monolith)\n- VIS-001-ITRP-application.md — Visual design specifications\n- DECISIONS.md — Architecture Decision Records\n\n### Requirements\n- REQ-001-ITRP-application.md — Functional requirements\n- NFR-001-ITRP-application.md — Non-functional requirements\n- DEP-001-ITRP-application.md — Dependencies and external teams\n\n### Implementation\n- project.md — Full technical specification (MASTER REFERENCE)\n- imp_plan.md — Implementation plan with phases and tasks\n- ITRP_Knowledge_Base.md — Domain knowledge base\n\n### Page Specifications (UI)\n- pages/01-dashboard.md through pages/08-user-flow.md\n\n### Analysis Documents\n- AUTO-BUY-analysis.md, CREDIT-LIMIT-CHECK-analysis.md, etc.\n- SPEC-auto-buy-schedule-maintenance.md\n\n### Project Management\n- Meeting-notes/ — Meeting records\n- DISCREPANCIES.md — Open issues and contradictions\n\nFor each document: one line with title, what it covers, and whether it's CURRENT/OUTDATED/NEEDS-UPDATE.\n\nAlso review project.md (the master spec) for any remaining PostgreSQL references and fix them.",
+      "acceptance_criteria": [
+        "INDEX.md exists with categorized list of all documents",
+        "Each document has status: CURRENT, NEEDS-UPDATE, or OUTDATED",
+        "project.md has zero PostgreSQL references"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T11:45:09Z",
+      "completed_at": "2026-03-21T11:45:12Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "754f26b4096a24edabaeb14129a58e1b31fae427",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-004",
+      "name": "align-imp-plan-with-reality",
+      "description": "Update imp_plan.md to reflect actual code state. Mark completed tasks, adjust task descriptions to match Firestore reality, add missing tasks discovered from code analysis.",
+      "depends_on": [
+        "T-001"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Read imp_plan.md fully. For each TASK-XXX:\n1. Check if the task's deliverable already exists in code (use code analysis from K-001)\n2. If DONE in code: mark as DONE with note what implements it\n3. If PARTIAL: note what's done and what remains\n4. If task references PostgreSQL: update to Firestore equivalent\n5. If task is blocked by external dependency: note the blocker\n\nSpecific updates needed:\n- TASK-001 (GCP Setup): PARTIAL — Firestore and BQ exist, Cloud Run TBD\n- TASK-003 (Auth): DONE — Mock SSO implemented\n- TASK-005 (Firestore Setup): DONE — seed data creates 13 collections\n- TASK-301 (RBAC): DONE — full CRUD with transactions\n- TASK-302 (Audit): DONE — immutable logging\n- TASK-401 (Buying Service): PARTIAL — steps 1-7 exist but with gaps (see TODO.md)\n- Tasks referencing 'PostgreSQL schema' or 'SQL migrations': rewrite for Firestore\n\nAlso add any tasks that are in the code but NOT in the plan (e.g. scheduler trigger endpoint).",
+      "acceptance_criteria": [
+        "Every TASK in imp_plan.md has status: DONE, PARTIAL, TODO, or BLOCKED",
+        "Zero PostgreSQL references in imp_plan.md",
+        "Missing tasks from code identified"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T11:46:34Z",
+      "completed_at": "2026-03-21T11:46:35Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "754f26b4096a24edabaeb14129a58e1b31fae427",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-005",
+      "name": "customers-backend-schemas",
+      "description": "Create Pydantic schemas for customers module: CustomerSummary, CustomerDetail, CustomerExclusion, CustomerListResponse.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Create ITRP/backend/app/schemas/customers.py following the pattern in schemas/autobuy.py.\n\nSchemas needed:\n1. CustomerSummary: customer_id (str), customer_name (str), open_amount (Decimal), currency (str), invoice_count (int), country (str)\n2. CustomerDetail: extends CustomerSummary with: legal_entity_code (str), credit_limit (Decimal|None), current_exposure (Decimal), is_excluded (bool), exclusion_reason (str|None), sales_type_override (str|None)\n3. CustomerExclusionRequest: customer_id (str), reason (str)\n4. CustomerExclusionResponse: customer_id (str), customer_name (str), excluded_by (str), excluded_at (datetime), reason (str)\n5. CustomerListResponse: items (list[CustomerSummary]), total (int), tab (str: 'active'|'all'|'previously_purchased')\n\nFollow existing patterns: use Field() for validation, Decimal for amounts.",
+      "acceptance_criteria": [
+        "schemas/customers.py exists with all 5 schema classes",
+        "Schemas use Pydantic BaseModel with proper types",
+        "Decimal used for monetary amounts"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": {
+        "schemas": "CustomerSummary, CustomerDetail, CustomerExclusionRequest, CustomerExclusionResponse, CustomerListResponse in schemas/customers.py"
+      },
+      "status": "DONE",
+      "started_at": "2026-03-21T13:26:06Z",
+      "completed_at": "2026-03-21T13:27:05Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "754f26b4096a24edabaeb14129a58e1b31fae427",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-006",
+      "name": "customers-firestore-collection",
+      "description": "Add CUSTOMER_EXCLUSIONS collection to collections.py. Create customers service with Firestore operations for exclusions.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Add to ITRP/backend/app/collections.py:\n   CUSTOMER_EXCLUSIONS = 'customer_exclusions'\n\n2. Create ITRP/backend/app/modules/customers/__init__.py (empty)\n\n3. Create ITRP/backend/app/modules/customers/service.py with functions:\n   - async def get_customer_exclusions(db, country: str) -> dict[str, dict]:\n     Read all docs from CUSTOMER_EXCLUSIONS where country == country. Return {customer_id: {reason, excluded_by, excluded_at}}\n   - async def exclude_customer(db, customer_id: str, country: str, reason: str, user_email: str) -> dict:\n     Write to CUSTOMER_EXCLUSIONS collection. Doc ID: f'{country}_{customer_id}'. Include audit trail entry.\n   - async def include_customer(db, customer_id: str, country: str, user_email: str) -> None:\n     Delete from CUSTOMER_EXCLUSIONS. Include audit trail entry.\n\nFollow patterns from modules/schedule/repository.py for Firestore operations.\nFollow patterns from modules/audit/service.py or audit/router.py for audit trail recording.\nUse app.firestore.get_db() for database client.",
+      "acceptance_criteria": [
+        "CUSTOMER_EXCLUSIONS constant in collections.py",
+        "customers/service.py has get_customer_exclusions, exclude_customer, include_customer",
+        "All mutations write audit trail entries"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": {
+        "collection": "customer_exclusions in Firestore with docs: {customer_id, country, reason, excluded_by, excluded_at}",
+        "functions": "get_customer_exclusions(), exclude_customer(), include_customer() in customers/service.py"
+      },
+      "status": "DONE",
+      "started_at": "2026-03-21T13:27:06Z",
+      "completed_at": "2026-03-21T13:27:08Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "754f26b4096a24edabaeb14129a58e1b31fae427",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-007",
+      "name": "customers-backend-router",
+      "description": "Create customers router with endpoints: list customers (from BQ), get customer detail, exclude/include customer. Register in main.py.",
+      "depends_on": [
+        "T-005",
+        "T-006"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create ITRP/backend/app/modules/customers/router.py with:\n\n   router = APIRouter(prefix='/api/customers', tags=['customers'])\n\n   GET /api/customers?country={code}&tab={active|all}&search={text}&page={n}&page_size={n}&sort_by={field}&sort_order={asc|desc}\n   - tab=active: customers with open_amount > 0 in current week's invoices\n   - tab=all: all distinct customers from temp_invoice\n   - Query BigQuery temp_invoice: SELECT DISTINCT customer_id, customer_invoice_name, customer_billing_country_code, SUM(open_invoice_amount) as open_amount, COUNT(*) as invoice_count FROM temp_invoice WHERE customer_billing_country_code = @country GROUP BY customer_id, customer_invoice_name, customer_billing_country_code\n   - For 'active': add WHERE open_invoice_amount > 0\n   - Merge with exclusions from Firestore (is_excluded flag)\n   - Return CustomerListResponse\n   - Requires permission: purchase:read or reporting:read\n\n   GET /api/customers/{customer_id}?country={code}\n   - Detail view: invoices for this customer from BQ + credit limit info + exclusion status\n   - Return CustomerDetail\n\n   POST /api/customers/{customer_id}/exclude\n   - Body: CustomerExclusionRequest\n   - Requires permission: purchase:execute\n   - Calls exclude_customer() from service\n   - Return CustomerExclusionResponse\n\n   DELETE /api/customers/{customer_id}/exclude?country={code}\n   - Requires permission: purchase:execute\n   - Calls include_customer() from service\n   - Return 204\n\n   GET /api/customers/excluded?country={code}\n   - List all excluded customers for a country\n   - Reads from Firestore CUSTOMER_EXCLUSIONS\n\n2. Register in main.py:\n   from app.modules.customers.router import router as customers_router\n   app.include_router(customers_router)\n\nFollow patterns from modules/buying/router.py for BigQuery queries.\nFollow patterns from modules/rbac/router.py for permission checks (require_permission).\nUse from app.auth.dependencies import get_current_user, require_permission.",
+      "acceptance_criteria": [
+        "GET /api/customers returns customer list from BigQuery with exclusion status",
+        "GET /api/customers/{id} returns customer detail with invoices",
+        "POST /api/customers/{id}/exclude creates exclusion in Firestore with audit trail",
+        "DELETE /api/customers/{id}/exclude removes exclusion with audit trail",
+        "Router registered in main.py",
+        "All endpoints check RBAC permissions"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [
+        "DO NOT modify buying service",
+        "DO NOT modify existing routers"
+      ],
+      "produces": {
+        "endpoints": "GET /api/customers, GET /api/customers/{id}, POST /api/customers/{id}/exclude, DELETE /api/customers/{id}/exclude, GET /api/customers/excluded"
+      },
+      "status": "DONE",
+      "started_at": "2026-03-21T13:27:16Z",
+      "completed_at": "2026-03-21T13:29:06Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "754f26b4096a24edabaeb14129a58e1b31fae427",
+      "ceremony_level": "FULL"
+    },
+    {
+      "id": "T-008",
+      "name": "customers-frontend-page",
+      "description": "Create My Customers page with 3 sub-tabs (Active, All, Previously Purchased), customer table with search/sort, and exclude action.",
+      "depends_on": [
+        "T-007"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Create ITRP/frontend/src/app/customers/page.tsx\n\nFollow patterns from admin/page.tsx (tab structure, table, modals).\nUse Ant Design components: Tabs, Table, Input.Search, Button, Tag, Modal.\nUse TanStack Query for data fetching (pattern from dashboard/page.tsx).\n\nPage structure:\n1. Three Tabs: 'Active customers ({count})' | 'All customers ({count})' | 'Previously Purchased'\n2. Search bar above table\n3. Table columns:\n   - Customer/Group ID (blue link, clickable → opens detail modal)\n   - Customer name (link)\n   - Open amount (formatted with currency)\n   - Actions: Eye icon (detail preview), Exclude button (if has permission)\n4. Detail modal (Ant Design Drawer or Modal):\n   - Customer info header\n   - Invoice list for this customer\n   - Credit limit info (if available)\n   - Exclude/Include button\n\nAPI calls:\n- GET /api/backend/api/customers?country={selected}&tab={tab}&search={text}\n- POST /api/backend/api/customers/{id}/exclude (body: {customer_id, reason})\n- DELETE /api/backend/api/customers/{id}/exclude?country={code}\n\nPermission checks:\n- Use PermissionGate from components/auth/PermissionGate.tsx\n- Exclude button: only show if hasPermission('purchase', 'execute')\n- Page access: require hasPermission('purchase', 'read') or hasPermission('reporting', 'read')\n\nCountry selector:\n- Reuse the country fetching pattern from itrp/page.tsx (GET /api/buying/countries)\n- Default to first country or user's scoped country\n\nUpdate navigation in components/layout/AppLayout.tsx:\n- 'My Customers' nav item should link to /customers (it already exists in nav but goes nowhere)",
+      "acceptance_criteria": [
+        "/customers page renders with 3 tabs",
+        "Customer table shows data from backend API",
+        "Search filters table by customer name or ID",
+        "Eye icon opens detail view with customer invoices",
+        "Exclude button creates exclusion (with reason input)",
+        "Include button removes exclusion",
+        "Permission gates hide exclude button for read-only roles",
+        "Navigation links to /customers correctly"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [
+        "DO NOT modify backend code",
+        "DO NOT modify other pages except AppLayout nav link"
+      ],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T13:31:10Z",
+      "completed_at": "2026-03-21T13:31:18Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "754f26b4096a24edabaeb14129a58e1b31fae427",
+      "ceremony_level": "FULL"
+    },
+    {
+      "id": "T-009",
+      "name": "customers-integration-test",
+      "description": "Verify full customer flow end-to-end: list → detail → exclude → verify exclusion shows in list → include → verify removed.",
+      "depends_on": [
+        "T-008"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Manual verification checklist:\n1. Start containers: docker compose -f docker-compose.local.yml up\n2. Login as admin@randstad.com\n3. Navigate to /customers\n4. Verify Active customers tab shows customers from BQ\n5. Verify All customers tab shows more customers\n6. Search for a customer name — verify filter works\n7. Click eye icon — verify detail modal opens with invoice list\n8. Click Exclude on a customer — enter reason — verify exclusion saved\n9. Refresh page — verify excluded customer shows is_excluded tag\n10. Click Include to remove exclusion — verify tag removed\n11. Login as opco.pl@randstad.com — verify only PL customers visible\n12. Login as opco.pl — verify Exclude button not visible (no purchase:execute permission)\n\nIf any step fails: create a bug task in Forge pipeline.",
+      "acceptance_criteria": [
+        "Login as admin succeeds and returns valid JWT",
+        "GET /api/customers?country=PL returns items list with total",
+        "GET /api/customers/{id}?country=PL returns customer detail",
+        "POST exclude -> verify is_excluded=true -> DELETE include -> verify is_excluded removed",
+        "OpCo PL user sees PL customers, NL returns 403 Forbidden",
+        "Audit trail contains EXCLUDE_CUSTOMER entries after exclusion"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T14:14:19Z",
+      "completed_at": "2026-03-21T14:14:28Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "0c32d4db992c16512c651cb2397d2157661db77d"
+    },
+    {
+      "id": "T-010",
+      "name": "customers-country-scoping",
+      "description": "OpCo user with scope_country=PL can currently query /api/customers?country=DE and see data they should not access. Fix: pass country to RBAC permission check.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "In backend/app/modules/customers/router.py, after getting the user from require_any_permission, check if user has country-scoped permissions and if so, verify the requested country matches. Either modify require_any_permission to accept country param, or add manual check after the dependency returns the user. Read auth/dependencies.py _has_permission — it already supports country param, but require_any_permission does not pass it through.",
+      "acceptance_criteria": [
+        "User with scope_country=PL requesting country=DE gets 403 Forbidden",
+        "User with global scope (no scope_country) can query any country"
+      ],
+      "type": "bug",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T14:14:29Z",
+      "completed_at": "2026-03-21T14:16:15Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "0c32d4db992c16512c651cb2397d2157661db77d",
+      "ceremony_level": "LIGHT"
+    },
+    {
+      "id": "T-011",
+      "name": "customers-previously-purchased-tab",
+      "description": "Add Previously Purchased sub-tab to My Customers page. Shows purchase history per customer from BigQuery purchase_records table.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Backend: add GET /api/customers/purchased?country={code} endpoint that queries BigQuery purchase_records table grouped by customer. Frontend: add third tab to customers/page.tsx. Mock data fallback needed.",
+      "acceptance_criteria": [
+        "Third tab Previously Purchased shows purchase history grouped by customer",
+        "Data comes from BQ purchase_records (or mock fallback)"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T14:16:27Z",
+      "completed_at": "2026-03-21T14:32:24Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "0c32d4db992c16512c651cb2397d2157661db77d",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-012",
+      "name": "customers-sales-type-override",
+      "description": "Allow FTC to override sales type at customer level. Override is ITRP-local, does not propagate to Warsaw.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Backend: add Firestore collection customer_sales_type_overrides. Add PUT /api/customers/{id}/sales-type endpoint. Frontend: add override control in customer detail drawer. Per docs: Economic->Legal or vice versa.",
+      "acceptance_criteria": [
+        "PUT /api/customers/{id}/sales-type saves override to Firestore with audit trail",
+        "Customer detail drawer shows current sales type with edit option",
+        "Override does NOT modify BQ source data"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T14:32:26Z",
+      "completed_at": "2026-03-21T14:35:20Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "0c32d4db992c16512c651cb2397d2157661db77d",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-013",
+      "name": "integrate-exclusions-into-buying-eligibility",
+      "description": "Add eligibility rule to buying service: check customer_exclusions Firestore collection and exclude invoices from excluded customers.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "In buying/service.py step_2_eligibility_filters: after existing 7 rules, add Rule 8 — read customer_exclusions for the country, exclude all invoices where customer_id is in exclusions dict. Log excluded invoices with rule_name=customer_excluded.",
+      "acceptance_criteria": [
+        "Invoices from excluded customers are filtered out in step 2",
+        "Exclusion appears in step 2 results with rule_name customer_excluded"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [
+        "D-005"
+      ],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T21:01:18Z",
+      "completed_at": "2026-03-21T21:01:19Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-014",
+      "name": "credit-limit-per-customer",
+      "description": "Replace hardcoded 50K credit limit with per-customer values. Source TBD (Warsaw sync or manual config).",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Depends on BIZ-001 clarification. Either: sync credit limits from Warsaw BQ to Firestore collection, or build manual CRUD for credit limits in maintenance UI.",
+      "acceptance_criteria": [
+        "Step 4 credit limit check uses per-customer values",
+        "Customer detail shows actual credit limit"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [
+        "D-004"
+      ],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:54:07Z",
+      "completed_at": "2026-03-21T20:54:08Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-015",
+      "name": "add-autobuy-enabled-to-opcos",
+      "description": "Add autobuy_enabled boolean field to opcos collection. Update seed data. Check in buying service before processing OpCo invoices.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In my_customers/backend/app/seed.py: add 'autobuy_enabled': True to every OpCo in OPCOS list (except NL02 which is Off - set False)\n2. In my_customers/backend/app/modules/buying/service.py step_2_eligibility_filters: after Rule 4 (OpCo Off), add check for opco.autobuy_enabled == False -> exclude with reason 'OpCo autobuy disabled'\n3. In my_customers/backend/app/modules/opco/repository.py: ensure read/write includes autobuy_enabled field\n4. Verify seed data by reading opcos collection after restart",
+      "acceptance_criteria": [
+        "Every OpCo in seed has autobuy_enabled field",
+        "Buying service step 2 checks autobuy_enabled before processing invoices",
+        "OpCo with autobuy_enabled=False excluded with clear reason"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:11:16Z",
+      "completed_at": "2026-03-21T20:13:09Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-016",
+      "name": "add-execution-id-to-purchase-records",
+      "description": "Add execution_id (job_id) to purchase_records in both Firestore and BigQuery writes. Links individual purchases to their auto-buy batch.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In buying/service.py step_5_execute_purchase_batch: job_id is already generated. Add 'execution_id': job_id to each Firestore purchase record dict and each BQ row dict\n2. Verify in step_6_persist_job_record that job_id matches\n3. Update reporting queries if they reference purchase_records to include execution_id",
+      "acceptance_criteria": [
+        "Every purchase record in Firestore has execution_id field",
+        "Every purchase record in BQ has execution_id field",
+        "execution_id matches the job_id from step_6 job execution record"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:16:19Z",
+      "completed_at": "2026-03-21T20:16:20Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-017",
+      "name": "expand-opco-seed-to-75",
+      "description": "Expand OpCo seed data from 12 to ~75 records covering all 11 countries with realistic names and Tagetik codes.",
+      "depends_on": [
+        "T-015"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In seed.py OPCOS list: add OpCos for missing countries (FR, PT, CA, IT, AU) and more for existing countries\n2. Target distribution: PL: 8, DE: 7, NL: 6, FR: 6, IT: 6, SE: 5, AU: 5, CA: 5, US: 5, BE: 4, PT: 3 = ~60 total (realistic)\n3. Use realistic names like 'Randstad France SAS', 'Randstad Italia SpA' etc\n4. Mix of statuses: most On, a few Off (test Rule 4), one New per country (test Rule 5)\n5. All with autobuy_enabled: True except Off ones\n6. start_date: '2025-01-01' for most, '2026-03-18' for a few (test Rule 3)\n7. Also create opco_schedules entries for any new countries not yet seeded",
+      "acceptance_criteria": [
+        "OPCOS list has 60+ entries across all 11 countries",
+        "Each country has at least 3 OpCos",
+        "Mix of On/Off/New statuses for rule testing",
+        "opco_schedules covers all 11 countries"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:16:21Z",
+      "completed_at": "2026-03-21T20:23:32Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-018",
+      "name": "add-country-code-to-audit-trail",
+      "description": "Add optional country_code field to audit trail entries for geographic filtering. Update log_audit function.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. In audit/service.py log_audit: add optional parameter country_code: str | None = None\n2. Add 'country_code': country_code to the data dict\n3. In customers/service.py: pass country to log_audit calls\n4. In schedule/repository.py: pass country_code to log_audit calls\n5. In buying/service.py: pass country to audit calls where applicable",
+      "acceptance_criteria": [
+        "log_audit accepts optional country_code parameter",
+        "Audit entries from customer/schedule/buying modules include country_code",
+        "Audit trail can be filtered by country"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": null,
+      "completed_at": "2026-03-21T20:16:22Z",
+      "failed_reason": null,
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-019",
+      "name": "create-bq-schema-definitions",
+      "description": "Create BigQuery table schema definitions as Python dicts or SQL files. Document what tables exist and their columns. Create seed script for BQ test data.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Create my_customers/backend/bq_schemas/ directory\n2. Create bq_schemas/tables.py with schema dicts for all 8 BQ tables referenced in buying/service.py: temp_invoice, purchase_records, autobuy_job_executions, autobuy_invoice_results, rpt_purchased_invoices, rpt_settlement_report_economic, rpt_settlement_report_legal\n3. Each schema: list of {name, type, mode, description} matching BigQuery SchemaField format\n4. If seed_bq_test_data.py already exists, verify it matches schemas\n5. Ensure temp_invoice schema matches the SELECT columns in buying/service.py step_1",
+      "acceptance_criteria": [
+        "bq_schemas/tables.py defines schemas for all 8 BQ tables",
+        "Schemas match the fields used in buying/service.py queries",
+        "temp_invoice schema has all columns from step_1 SELECT"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:23:33Z",
+      "completed_at": "2026-03-21T20:23:35Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-020",
+      "name": "verify-and-deep-verify-o001",
+      "description": "Deep-verify O-001 completion: check all collections have correct fields, seed data is complete, BQ schemas defined, no field mismatches remain.",
+      "depends_on": [
+        "T-015",
+        "T-016",
+        "T-017",
+        "T-018",
+        "T-019"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Run ruff check on all modified files\n2. Start docker containers and verify seed loads without errors\n3. Check Firestore emulator for all expected collections and documents\n4. Cross-reference: every field used in buying/service.py exists in seed data\n5. Cross-reference: every BQ table in code has schema definition\n6. Update O-001 KR progress in Forge",
+      "acceptance_criteria": [
+        "ruff check passes on all modified files",
+        "Docker containers start without import or seed errors",
+        "All field mismatches from audit resolved or documented as decisions"
+      ],
+      "type": "investigation",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-001",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:24:12Z",
+      "completed_at": "2026-03-21T20:24:13Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-021",
+      "name": "create-customers-master-data-collection",
+      "description": "Create Firestore customers collection with master data fields needed by buying service (credit_limit, default_sales_type). Add to collections.py. Create seed with realistic customer data matching BQ temp_invoice customer_ids.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Add CUSTOMERS_MASTER = 'customers_master' to my_customers/backend/app/collections.py (not 'customers' to avoid confusion with customer_exclusions concept)\n2. Create seed function seed_customers_master() in seed.py with ~30 customers for PL, NL, DE matching customer_ids from BQ mock data (bigquery_stub.py) and mock_data.py\n3. Each customer: customer_id (str), customer_name (str), country (str), credit_limit (float, in local currency), default_sales_type (str: Economic|Legal), legal_entity_code (str, FK to OpCo), status (str: active|inactive)\n4. Include realistic credit limits: range 10K-500K per customer\n5. Call seed_customers_master() in seed.py main seed_all() function",
+      "acceptance_criteria": [
+        "CUSTOMERS_MASTER constant in collections.py",
+        "seed_customers_master creates 30+ customer records",
+        "Customer records include credit_limit and default_sales_type fields",
+        "customer_ids match those in mock_data.py and bigquery_stub.py"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:26:46Z",
+      "completed_at": "2026-03-21T20:29:45Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "FULL"
+    },
+    {
+      "id": "T-022",
+      "name": "create-sales-types-collection",
+      "description": "Create Firestore sales_types collection with dynamic sales type definitions. Seed with Economic, Legal, Insurance, No.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. Add SALES_TYPES = 'sales_types' to collections.py\n2. Create seed function seed_sales_types() with: Economic (eligible for auto-buy), Legal (eligible for auto-buy), Insurance (eligible for manual buy only), No (not eligible, collection pass-through)\n3. Each sales_type: code (str), name (str), eligible_auto_buy (bool), eligible_manual_buy (bool), description (str)\n4. Call in seed_all()",
+      "acceptance_criteria": [
+        "SALES_TYPES constant in collections.py",
+        "4 sales types seeded: Economic, Legal, Insurance, No",
+        "Each type has eligibility flags for auto-buy and manual-buy"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:29:45Z",
+      "completed_at": "2026-03-21T20:29:47Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-023",
+      "name": "decision-legal-entities-vs-opcos",
+      "description": "Document decision: legal_entities as separate collection or keep using opcos. Current code uses opco_map keyed by legal_entity_code — creating separate collection would break buying service.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Record decision in Forge: legal_entities data is stored on opcos collection (code, name, start_date, country). A separate legal_entities collection is NOT needed because:\n1. buying/service.py step_2 queries opco_map by legal_entity_code\n2. OpCo code IS the legal entity code in current data model\n3. project.md says 'One OpCo can have many Legal Entities' but current BQ data treats them as 1:1\n4. Creating separate collection requires refactoring buying service without business value\nRecord as CLOSED decision.",
+      "acceptance_criteria": [
+        "Decision recorded in Forge decisions.json",
+        "Reasoning documents why separate collection is not needed"
+      ],
+      "type": "investigation",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:29:47Z",
+      "completed_at": "2026-03-21T20:30:17Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-024",
+      "name": "verify-o002",
+      "description": "Deep-verify O-002: check customers_master seed matches BQ mock data, sales_types seeded, ruff passes.",
+      "depends_on": [
+        "T-021",
+        "T-022",
+        "T-023"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. ruff check on modified files\n2. Verify customer_ids in seed match those in bigquery_stub.py and mock_data.py\n3. Verify sales_types match what buying service expects\n4. Update O-002 KR progress",
+      "acceptance_criteria": [
+        "ruff check passes",
+        "Customer IDs are consistent across seed, mock data, and BQ stub"
+      ],
+      "type": "investigation",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-002",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:30:17Z",
+      "completed_at": "2026-03-21T20:30:18Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-025",
+      "name": "settings-file-day-basis-ui",
+      "description": "Add file_day_basis control to Settings auto-buy section. Allows selecting which day's file to use for purchase (e.g. Sunday file for Monday purchase).",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "In my_customers/frontend/src/app/itrp/settings/page.tsx AutoSchedulesSection:\n1. After the DayPillSelector for auto-buy, add a Select dropdown for file_day_basis\n2. Options: None (use current day), Monday, Tuesday, ..., Sunday\n3. Track dirty state like other fields\n4. Include in PUT /api/schedule/{country} payload (already in backend schema)\n5. Show current value from schedule?.file_day_basis",
+      "acceptance_criteria": [
+        "file_day_basis dropdown visible in auto-buy schedule section",
+        "Changing value marks form as dirty",
+        "Save sends file_day_basis to backend PUT endpoint"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:35:48Z",
+      "completed_at": "2026-03-21T20:38:05Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-026",
+      "name": "settings-auto-load-placeholder-with-info",
+      "description": "Replace disabled auto-load section with clear info message explaining it's not available until data pipeline is implemented.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "In settings/page.tsx AutoSchedulesSection:\n1. Replace the disabled toggle+pills for auto-load with an Alert component (Ant Design)\n2. Message: 'Auto-load scheduling will be available once the Warsaw data pipeline integration is complete. File loading is currently manual via the Maintenance page.'\n3. Type: info\n4. This is better than a disabled toggle which looks like a bug",
+      "acceptance_criteria": [
+        "Auto-load section shows info Alert instead of disabled controls",
+        "Message explains why it's not available"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:38:06Z",
+      "completed_at": "2026-03-21T20:38:07Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-027",
+      "name": "settings-country-rbac-filtering",
+      "description": "Filter country dropdown in Settings page based on user permissions. OpCo-scoped user should only see their country.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "In settings/page.tsx:\n1. Use useAuthStore to get allowedCountries()\n2. If allowedCountries() returns a set, filter COUNTRY_OPTIONS to only those\n3. If returns null (global access), show all countries\n4. Same pattern as customers page",
+      "acceptance_criteria": [
+        "OpCo user with scope_country=PL only sees PL in country dropdown",
+        "Global user sees all countries"
+      ],
+      "type": "feature",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:38:08Z",
+      "completed_at": "2026-03-21T20:38:09Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "STANDARD"
+    },
+    {
+      "id": "T-028",
+      "name": "decision-multi-currency-schedule",
+      "description": "Document decision: single schedule per country (current) vs per-currency schedule (documentation). Current code is simpler, doc spec may be over-engineered for 11 countries where 1 country = 1 currency.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Record decision in Forge: keep single schedule per country. Reasoning: 1. Each ITRP country has one primary currency, 2. Current opco_schedules stores one record per country which is sufficient, 3. Multi-currency UI adds complexity without clear business value, 4. If needed later, can extend opco_schedules with currency field.",
+      "acceptance_criteria": [
+        "Decision recorded in Forge with reasoning"
+      ],
+      "type": "investigation",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:38:33Z",
+      "completed_at": "2026-03-21T20:38:36Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-029",
+      "name": "verify-o003",
+      "description": "Deep-verify O-003: Settings page has all functional controls, file_day_basis works, auto-load has clear placeholder, RBAC filtering works.",
+      "depends_on": [
+        "T-025",
+        "T-026",
+        "T-027",
+        "T-028"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. ruff check frontend files\n2. Verify file_day_basis dropdown renders\n3. Verify auto-load shows info message\n4. Verify country dropdown respects user scope\n5. Update O-003 KR progress",
+      "acceptance_criteria": [
+        "All Settings controls functional or clearly marked as placeholder",
+        "ruff/lint passes"
+      ],
+      "type": "investigation",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-003",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T20:38:37Z",
+      "completed_at": "2026-03-21T20:38:38Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-030",
+      "name": "add-country-scoping-to-all-endpoints",
+      "description": "Add check_country_access to every endpoint that accepts country parameter: itrp/router.py, buying/router.py (countries list filter), opco/router.py, schedule/router.py, reporting/router.py.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "For each router that has a country param:\n1. Import check_country_access from auth.dependencies\n2. After require_permission dependency returns user, call check_country_access(user, country)\n3. For GET /api/buying/countries: filter response to user.allowed_countries() — if scoped, only return their countries\n4. For GET /api/opcos?country: add check_country_access\n5. For GET/PUT /api/schedule/{country_code}: add check_country_access\n6. For reporting endpoints: add allowed_countries filter when data is country-specific\n\nFiles: modules/itrp/router.py, modules/buying/router.py, modules/opco/router.py, modules/schedule/router.py, modules/reporting/router.py",
+      "acceptance_criteria": [
+        "OpCo user with scope_country=PL gets 403 when querying country=DE on any endpoint",
+        "GET /api/buying/countries returns only allowed countries for scoped users",
+        "Global users can access all countries without restriction"
+      ],
+      "type": "bug",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-004",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T21:04:02Z",
+      "completed_at": "2026-03-21T21:07:04Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "LIGHT"
+    },
+    {
+      "id": "T-031",
+      "name": "seed-mid-office-test-user",
+      "description": "Add mid_office test user to seed data with scope_country=NL for testing country-scoped read access.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "In seed.py DEMO_USERS: add {email: 'midoffice.nl@randstad.com', password: 'mid12345', full_name: 'Mid Office NL', role: 'mid_office', scope_country: 'NL'}. Add to seed function.",
+      "acceptance_criteria": [
+        "midoffice.nl@randstad.com user exists in seed with mid_office role scoped to NL",
+        "Can login and see only NL data"
+      ],
+      "type": "chore",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-004",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T21:08:01Z",
+      "completed_at": "2026-03-21T21:08:52Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-032",
+      "name": "verify-o004",
+      "description": "Verify all endpoints have country scoping. Test with OpCo user.",
+      "depends_on": [
+        "T-030",
+        "T-031"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "1. ruff check on all modified routers\n2. Grep for check_country_access usage — should appear in every router with country param\n3. Grep for endpoints WITHOUT any auth dependency — should be zero\n4. Update O-004 KR",
+      "acceptance_criteria": [
+        "Every endpoint with country parameter has check_country_access",
+        "ruff passes"
+      ],
+      "type": "investigation",
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-004",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T21:09:21Z",
+      "completed_at": "2026-03-21T21:09:58Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "701b7bd1b9829e8a6a9af8f2279e199060e89834",
+      "ceremony_level": "MINIMAL"
+    },
+    {
+      "id": "T-033",
+      "name": "add-country-scoping-itrp-reporting",
+      "description": "itrp/router.py (3 endpoints) and reporting/router.py (2 endpoints) missing check_country_access. Found in deep-verify.",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "skill": null,
+      "instruction": "Add check_country_access to: GET /api/itrp/weekly-invoices, GET /api/itrp/cashflow-estimation, GET /api/itrp/reports (all accept country param). Add allowed_countries filter to GET /api/reporting/temp-invoices. Import check_country_access in both routers.",
+      "acceptance_criteria": [
+        "itrp router has check_country_access on all 3 endpoints",
+        "reporting router filters by allowed_countries",
+        "Unit test verifies scoped user blocked"
+      ],
+      "type": "bug",
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "alignment": null,
+      "exclusions": [],
+      "produces": null,
+      "status": "DONE",
+      "started_at": "2026-03-21T22:45:21Z",
+      "completed_at": "2026-03-21T22:49:42Z",
+      "failed_reason": null,
+      "agent": "default",
+      "started_at_commit": "5e9014650236a6b5854e934bc8f477c9f946f3de",
+      "ceremony_level": "LIGHT",
+      "completion_trace": {
+        "ceremony": "LIGHT",
+        "duration_ms": 366,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 3,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 2
+      }
+    },
+    {
+      "id": "T-034",
+      "name": "dashboard-status-api",
+      "description": "Create GET /api/dashboard/status endpoint returning aggregated country status: last purchase date, purchase status, is_active flag, file sync status (mock for now).",
+      "instruction": "1. Create backend/app/modules/dashboard/__init__.py and router.py\n2. GET /api/dashboard/status returns for each country:\n   - country_code, country_name\n   - is_active: from opco_schedules auto_buy_enabled\n   - next_purchase: calculated from schedule weekdays\n   - last_purchase_date: latest purchased_at from purchase_records per country (Firestore query)\n   - purchase_status: derived from last_purchase_date (e.g., 'Last purchased X days ago' or 'Never purchased')\n   - file_last_loaded: mock for now (today - 1 day, status='loaded')\n   - file_status: 'loaded' (mock)\n3. Register in main.py\n4. Permission: require_permission('purchase', 'read')\n5. Filter by allowed_countries for scoped users\n6. Add unit test in tests/unit/test_dashboard.py",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "GET /api/dashboard/status returns status for all countries",
+        "last_purchase_date comes from Firestore purchase_records",
+        "is_active comes from opco_schedules auto_buy_enabled",
+        "Response filtered by allowed_countries for scoped users",
+        "Unit test exists"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-005",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:11:12Z",
+      "started_at_commit": "28573e137cb0275ed0fade2911bf6d21d61a9a6c",
+      "completed_at": "2026-03-22T07:15:54Z",
+      "ceremony_level": "FULL",
+      "completion_trace": {
+        "ceremony": "FULL",
+        "duration_ms": 584,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 5,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-035",
+      "name": "dashboard-country-toggle-api",
+      "description": "Create PUT /api/dashboard/toggle endpoint to enable/disable country auto-buy. Updates opco_schedules auto_buy_enabled. Logs to audit trail.",
+      "instruction": "In backend/app/modules/dashboard/router.py:\n1. PUT /api/dashboard/toggle body: {country_code: str, is_active: bool}\n2. Update opco_schedules doc for country_code: set auto_buy_enabled = is_active\n3. Log to audit trail with action='OPCO_TOGGLE'\n4. Permission: require_permission('maintenance', 'write')\n5. check_country_access\n6. Return updated status\n7. Add unit test",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [
+        "T-034"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "PUT /api/dashboard/toggle updates auto_buy_enabled in Firestore",
+        "Audit trail entry created with action OPCO_TOGGLE",
+        "Permission and country scoping enforced"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-005",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:16:08Z",
+      "started_at_commit": "28573e137cb0275ed0fade2911bf6d21d61a9a6c",
+      "completed_at": "2026-03-22T07:18:48Z",
+      "ceremony_level": "STANDARD",
+      "completion_trace": {
+        "ceremony": "STANDARD",
+        "duration_ms": 1010,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 3,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 5
+      }
+    },
+    {
+      "id": "T-036",
+      "name": "dashboard-frontend-rebuild",
+      "description": "Rebuild Dashboard page to use /api/dashboard/status endpoint. Add ON/OFF toggle column, refresh button, country click navigation, RBAC country filtering.",
+      "instruction": "Rewrite frontend/src/app/dashboard/page.tsx:\n1. Replace mock data with useQuery to GET /api/dashboard/status\n2. Add Switch component (Ant Design) in last column for ON/OFF toggle\n   - Blue (#2175D9) when ON, gray (#B3B3B3) when OFF\n   - onClick: PUT /api/dashboard/toggle with useMutation\n   - Show only if user has maintenance:write permission (use PermissionGate or canToggle flag)\n3. Add Refresh button (ReloadOutlined, blue primary) above table\n   - onClick: invalidateQueries(['dashboard-status'])\n4. Country code click: router.push('/itrp?country={code}')\n5. Filter countries by allowedCountries() for OpCo users\n6. Keep existing: flags, color coding, sorting, legend",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [
+        "T-034",
+        "T-035"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Dashboard shows real data from /api/dashboard/status",
+        "ON/OFF toggle switch in last column",
+        "Refresh button above table",
+        "Country code links to /itrp?country={code}",
+        "OpCo user sees only their country"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-005",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:19:04Z",
+      "started_at_commit": "28573e137cb0275ed0fade2911bf6d21d61a9a6c",
+      "completed_at": "2026-03-22T07:21:34Z",
+      "ceremony_level": "FULL",
+      "completion_trace": {
+        "ceremony": "FULL",
+        "duration_ms": 1176,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 5,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 10
+      }
+    },
+    {
+      "id": "T-037",
+      "name": "verify-o005",
+      "description": "Deep-verify O-005: dashboard matches spec, toggle works, refresh works, RBAC works. Run tests, docker build, lint.",
+      "instruction": "1. ruff check backend + frontend lint\n2. python -m pytest tests/unit/ — all pass\n3. docker compose up --build — containers start\n4. Login as admin — see all 11 countries with toggle\n5. Login as opco.pl — see only PL\n6. Toggle OFF for a country — verify audit trail entry\n7. Click refresh — data reloads\n8. Update O-005 KR progress",
+      "status": "DONE",
+      "type": "investigation",
+      "depends_on": [
+        "T-036"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All tests pass",
+        "Docker containers start",
+        "Dashboard functional per spec"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "origin": "O-005",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:21:46Z",
+      "started_at_commit": "28573e137cb0275ed0fade2911bf6d21d61a9a6c",
+      "deferred_decisions": [
+        "D-013"
+      ],
+      "completed_at": "2026-03-22T07:22:30Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 943,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 3,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 10
+      }
+    },
+    {
+      "id": "T-038",
+      "name": "itrp-subtabs-in-applayout",
+      "description": "Ensure ITRP section has sub-tabs: Summary, Settings, Maintenance. Should already be in AppLayout — verify and fix if needed.",
+      "instruction": "Check frontend/src/components/layout/AppLayout.tsx for ITRP sub-tabs. Per 07-navigation.md: ITRP route should show sub-tabs for Summary (/itrp), Settings (/itrp/settings), Maintenance (/itrp/maintenance). If already present, verify routing works. If not, add sub-tab rendering for /itrp paths.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "ITRP section shows 3 sub-tabs: Summary, Settings, Maintenance",
+        "Clicking each navigates to correct route"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:41:29Z",
+      "started_at_commit": "a41c4dbe98a38185ffc43d90c4319f279295e125",
+      "completed_at": "2026-03-22T07:42:06Z",
+      "ceremony_level": "STANDARD",
+      "completion_trace": {
+        "ceremony": "STANDARD",
+        "duration_ms": 388,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 2,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 2
+      }
+    },
+    {
+      "id": "T-039",
+      "name": "itrp-country-info-panel",
+      "description": "Add Country Info panel to ITRP page showing per-sale-type status: Legal, Economic, Insurance with next purchase date and status chips.",
+      "instruction": "In frontend/src/app/itrp/page.tsx: Add right-side panel after cashflow cards showing:\n- Section title 'Country Info'\n- 3 rows: Legal, Economic, Insurance\n- Each row: sale type name, next purchase date (from schedule), status chip (completed/in_progress/not_started)\n- Status derived from last purchase record for that sale type in the country\n- Use mock data initially — real data needs BQ query by sales_type",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Country Info panel visible on ITRP page",
+        "Shows Legal, Economic, Insurance rows with status chips"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:42:31Z",
+      "started_at_commit": "a41c4dbe98a38185ffc43d90c4319f279295e125",
+      "completed_at": "2026-03-22T07:46:05Z",
+      "ceremony_level": "STANDARD",
+      "completion_trace": {
+        "ceremony": "STANDARD",
+        "duration_ms": 484,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 2,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 5
+      }
+    },
+    {
+      "id": "T-040",
+      "name": "itrp-expandable-eligibles",
+      "description": "Make Eligibles row in summary table expandable with sub-rows: Economic, Legal, Insurance. Show amounts per type.",
+      "instruction": "In frontend/src/app/itrp/page.tsx cashflow summary table: The 'Eligibles' row should be expandable (click to toggle). When expanded, show 3 sub-rows: Economic, Legal, Insurance with their amounts. Mock amounts (proportional split of total eligibles). Use Ant Design Collapse or simple toggle with arrow icon.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Eligibles row has expand/collapse arrow",
+        "Expanded shows Economic, Legal, Insurance sub-rows with amounts"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:46:27Z",
+      "started_at_commit": "a41c4dbe98a38185ffc43d90c4319f279295e125",
+      "completed_at": "2026-03-22T07:49:16Z",
+      "ceremony_level": "STANDARD",
+      "completion_trace": {
+        "ceremony": "STANDARD",
+        "duration_ms": 478,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 2,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 8
+      }
+    },
+    {
+      "id": "T-041",
+      "name": "itrp-visual-polish",
+      "description": "Add alternating row colors to data grid. Add queue button placeholder. Polish per Figma spec.",
+      "instruction": "In page.tsx:\n1. Data grid rows: alternate between white and #FAFAFA background\n2. Add Queue button (CloudSyncOutlined, blue outlined) in header area — onClick shows message.info('Queue panel coming soon')\n3. Verify font sizes match spec (12px body, Inter for headers)",
+      "status": "DONE",
+      "type": "chore",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Data grid has alternating row colors",
+        "Queue button visible with placeholder action"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:49:28Z",
+      "started_at_commit": "a41c4dbe98a38185ffc43d90c4319f279295e125",
+      "completed_at": "2026-03-22T07:52:22Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 946,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 2,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 9
+      }
+    },
+    {
+      "id": "T-042",
+      "name": "itrp-left-report-panel",
+      "description": "Add collapsible left panel with 3 report sections: ITRP Report, Settlement Report, Previously Purchased. Uses /api/itrp/reports endpoint.",
+      "instruction": "In page.tsx: Add left panel (collapsible sidebar or card stack) showing 3 report sections:\n1. ITRP Report — from /api/itrp/reports filtered by category\n2. Settlement Report — filtered\n3. Previously Purchased — filtered\nEach section: collapsible with arrow, table with Category, Date, Week, Actions (download icon placeholder). Use existing mock /api/itrp/reports endpoint.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "3 collapsible report sections visible",
+        "Each shows report rows with date and week",
+        "Download icon present (placeholder action)"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:52:35Z",
+      "started_at_commit": "a41c4dbe98a38185ffc43d90c4319f279295e125",
+      "completed_at": "2026-03-22T07:54:43Z",
+      "ceremony_level": "STANDARD",
+      "completion_trace": {
+        "ceremony": "STANDARD",
+        "duration_ms": 525,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 3,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 10
+      }
+    },
+    {
+      "id": "T-043",
+      "name": "verify-o006",
+      "description": "Deep-verify O-006: ITRP page matches spec, all sections present, tests pass, docker build works.",
+      "instruction": "1. ruff check + frontend lint\n2. python -m pytest tests/unit/ — all pass\n3. docker compose up --build — verify ITRP page renders\n4. Check each section: sub-tabs, country dropdown, cashflow cards, summary table, country info, data grid, report panel, queue button\n5. Update O-006 KR progress",
+      "status": "DONE",
+      "type": "investigation",
+      "depends_on": [
+        "T-038",
+        "T-039",
+        "T-040",
+        "T-041",
+        "T-042"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All ITRP page sections present",
+        "Tests pass",
+        "Docker build succeeds"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend",
+        "backend"
+      ],
+      "origin": "O-006",
+      "knowledge_ids": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T07:55:00Z",
+      "started_at_commit": "a41c4dbe98a38185ffc43d90c4319f279295e125",
+      "deferred_decisions": [
+        "D-014",
+        "D-015"
+      ],
+      "completed_at": "2026-03-22T07:55:36Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 408,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 3,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 10
+      }
+    },
+    {
+      "id": "T-044",
+      "name": "implement-step0-data-quality",
+      "description": "Implement Step 0 data quality validation in buying/service.py. Add unit tests.",
+      "instruction": "Replace placeholder with real checks: invoice_id not null, open_amount > 0, country matches, legal_entity_code not empty.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "step_0_data_quality_validation validates invoice_id, open_amount, legal_entity_code",
+        "Invalid invoices listed in result.data with rejection reasons",
+        "Valid invoices continue to step 1",
+        "Unit tests cover valid, invalid, and mixed cases (5 tests)"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-007",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T10:50:55Z",
+      "started_at_commit": "e77027388a16d6fc74c422ae40d9781be69c0098",
+      "completed_at": "2026-03-22T11:01:46Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 424,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 7
+      }
+    },
+    {
+      "id": "T-045",
+      "name": "add-lock-release-to-buying",
+      "description": "Add lock release to buying service and router endpoints. Critical bug — lock stays forever on manual buy.",
+      "instruction": "In run_buying_process: try/finally with release_buy_lock. In router.py auto-buy and run-process: ensure lock released.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "release_buy_lock called in finally block of run_buying_process",
+        "auto-buy endpoint (/auto-buy) releases lock after execution",
+        "run-process endpoint releases lock after execution",
+        "Unit tests for lock TTL, structure, expiry, and blocking (4 tests)"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-007",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T11:02:10Z",
+      "started_at_commit": "cc9dbcb0706e4eb2b12eebb597c883d7bcbcb6e0",
+      "completed_at": "2026-03-22T11:02:11Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 268,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-046",
+      "name": "credit-limit-from-customers-master",
+      "description": "Replace hardcoded 50K credit limit with per-customer values from customers_master Firestore.",
+      "instruction": "In step_4: load customers_master, build lookup, use per-customer limit with fallback. Add unit test.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Credit limits loaded from customers_master Firestore collection",
+        "Different customers get different limits based on credit_limit field",
+        "Unknown customers fall back to DEFAULT_CREDIT_LIMIT (50000)",
+        "Unit tests: within-limit, breach, independent customers (10 tests)"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-007",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T11:02:11Z",
+      "started_at_commit": "cc9dbcb0706e4eb2b12eebb597c883d7bcbcb6e0",
+      "completed_at": "2026-03-22T11:02:12Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 381,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-047",
+      "name": "buying-tests-and-verify",
+      "description": "Comprehensive tests for step 0, lock release, credit limits. Docker build. Deep-verify.",
+      "instruction": "Add tests, run suite, docker compose up --build, commit and push.",
+      "status": "DONE",
+      "type": "chore",
+      "depends_on": [
+        "T-044",
+        "T-045",
+        "T-046"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All buying unit tests pass (process, credit, filters, priority, helpers)",
+        "ruff check passes on buying module",
+        "Docker build succeeds"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-007",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T11:02:13Z",
+      "started_at_commit": "cc9dbcb0706e4eb2b12eebb597c883d7bcbcb6e0",
+      "completed_at": "2026-03-22T11:02:14Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 270,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-048",
+      "name": "maintenance-backend-module",
+      "description": "Create backend/app/modules/maintenance/ with router.py. Endpoints: GET /api/maintenance/restore-points (list purchase batches), POST /api/maintenance/restore (atomic rollback), GET /api/maintenance/load-status (mock file load info).",
+      "instruction": "Create maintenance module. restore-points: query autobuy_job_executions from BQ or purchase_records from Firestore grouped by execution_id. restore: delete purchase records by execution_id from both Firestore and BQ, disable auto_buy_enabled in opco_schedules, log audit. load-status: mock endpoint returning file load info. Register in main.py. Add unit tests.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "GET /api/maintenance/restore-points returns restore point list",
+        "POST /api/maintenance/restore performs restore with audit logging",
+        "GET /api/maintenance/load-status returns load status",
+        "check_country_access enforced on all endpoints"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T11:40:00Z",
+      "started_at_commit": "5c00697df12719beadacd522775bbe07c5262fb1",
+      "completed_at": "2026-03-22T11:47:31Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 422,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-049",
+      "name": "maintenance-frontend-rebuild",
+      "description": "Replace placeholder tabs with functional Load Data and Backup Restore sections.",
+      "instruction": "Rewrite maintenance/page.tsx. Load Data: country dropdown, mock file list, load button (placeholder). Backup Restore: fetch /api/maintenance/restore-points, show timeline cards, restore button with confirmation modal, show LAST PURCHASE baseline. Use existing patterns from dashboard/itrp pages.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [
+        "T-048"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Maintenance page at /itrp/maintenance with Load Data and Backup Restore sections",
+        "Restore timeline with confirmation modal before restore",
+        "Maintenance sub-tab visible in ITRP navigation"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T11:48:05Z",
+      "started_at_commit": "5c00697df12719beadacd522775bbe07c5262fb1",
+      "completed_at": "2026-03-22T11:50:30Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 241,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-050",
+      "name": "maintenance-tests-and-verify",
+      "description": "Tests for restore endpoint, docker build, deep-verify.",
+      "instruction": "Add unit tests for restore logic. Run full test suite. Docker build. Commit and push.",
+      "status": "DONE",
+      "type": "chore",
+      "depends_on": [
+        "T-049"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "RestorePoint and RestoreRequest schema tests pass (4 tests)",
+        "Docker build succeeds",
+        "Maintenance page renders without errors"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-008",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T11:50:31Z",
+      "started_at_commit": "5c00697df12719beadacd522775bbe07c5262fb1",
+      "completed_at": "2026-03-22T11:50:32Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 242,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-051",
+      "name": "reporting-settlement-api",
+      "description": "Add GET /api/reporting/settlement endpoint. Query BQ rpt_settlement_report_economic + rpt_settlement_report_legal. Filter by country, year, week. Return combined list.",
+      "instruction": "In reporting/router.py: add settlement endpoint querying both BQ tables. Mock fallback if BQ unavailable. Country RBAC.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "GET /api/reporting/settlement returns settlement data with BQ query + mock fallback",
+        "Supports country, date_from, date_to, sales_type filters",
+        "Returns paginated results"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T13:18:40Z",
+      "started_at_commit": "5c00697df12719beadacd522775bbe07c5262fb1",
+      "completed_at": "2026-03-22T13:25:39Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 467,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-052",
+      "name": "reporting-previously-purchased-api",
+      "description": "Add GET /api/reporting/previously-purchased endpoint. Query BQ rpt_purchased_invoices. Filter by country, year, week.",
+      "instruction": "In reporting/router.py: add endpoint querying rpt_purchased_invoices. Mock fallback. Country RBAC.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "GET /api/reporting/previously-purchased returns data with BQ query + mock fallback",
+        "Supports country and date filters",
+        "Returns paginated results"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T13:25:40Z",
+      "started_at_commit": "5c00697df12719beadacd522775bbe07c5262fb1",
+      "completed_at": "2026-03-22T13:25:42Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 613,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-053",
+      "name": "reporting-settlement-frontend",
+      "description": "Replace Settlement Report stub with real page. Filters (Category, Year, Week), table, download button placeholder.",
+      "instruction": "Rewrite reporting/settlement/page.tsx using same pattern as ITRP Report page. Fetch from /api/reporting/settlement.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [
+        "T-051"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Settlement Report page at /reporting/settlement with filters and table",
+        "Country, date range, and sales type filters functional",
+        "Sub-tab visible in Reporting navigation"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T13:25:43Z",
+      "started_at_commit": "5c00697df12719beadacd522775bbe07c5262fb1",
+      "completed_at": "2026-03-22T13:25:45Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 441,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-054",
+      "name": "reporting-previously-purchased-frontend",
+      "description": "Replace Previously Purchased stub with real page. Filters (Year, Week), table, download button placeholder.",
+      "instruction": "Rewrite reporting/previously-purchased/page.tsx. Fetch from /api/reporting/previously-purchased.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [
+        "T-052"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Previously Purchased page at /reporting/previously-purchased with filters and table",
+        "Country and date filters functional",
+        "Sub-tab visible in Reporting navigation"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T13:25:46Z",
+      "started_at_commit": "5c00697df12719beadacd522775bbe07c5262fb1",
+      "completed_at": "2026-03-22T13:25:47Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 461,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-055",
+      "name": "reporting-tests-and-verify",
+      "description": "Tests for reporting endpoints. Docker build. Deep-verify.",
+      "instruction": "Add unit tests for schemas. Run full suite. Docker build. Commit.",
+      "status": "DONE",
+      "type": "chore",
+      "depends_on": [
+        "T-053",
+        "T-054"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "All reporting endpoints return valid responses",
+        "Frontend pages render without TypeScript errors",
+        "Docker build succeeds"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-009",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-22T13:25:48Z",
+      "started_at_commit": "5c00697df12719beadacd522775bbe07c5262fb1",
+      "completed_at": "2026-03-22T13:25:50Z",
+      "ceremony_level": "MINIMAL",
+      "completion_trace": {
+        "ceremony": "MINIMAL",
+        "duration_ms": 562,
+        "force": true,
+        "ac_mechanical_count": 0,
+        "ac_mechanical_passed": 0,
+        "ac_mechanical_failed": 0,
+        "ac_manual_count": 0,
+        "ac_reasoning_length": 0,
+        "gates_configured": false,
+        "changes_count": 1
+      }
+    },
+    {
+      "id": "T-056",
+      "name": "priority-management-api",
+      "description": "Add CRUD endpoints for invoice priorities: GET/POST/DELETE /api/priorities. FTC can set/clear priorities per invoice or customer.",
+      "instruction": "Create backend/app/modules/priorities/router.py with GET (list by country), POST (set priority), DELETE (clear priority). Use invoice_priorities Firestore collection. Audit trail. Register in main.py.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "GET /api/priorities?country=XX returns priority list",
+        "POST /api/priorities creates priority with audit trail",
+        "DELETE /api/priorities/{id} removes priority with audit trail",
+        "check_country_access enforced on all endpoints",
+        "Registered in main.py as priorities_router"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-011",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-057",
+      "name": "priority-management-frontend",
+      "description": "Add priority management UI — accessible from ITRP page or as modal. Allow setting invoice/customer priority order.",
+      "instruction": "Add PriorityModal component. Show current priorities. Allow add/remove. Call /api/priorities endpoints.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [
+        "T-056"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Priorities page at /itrp/priorities with table of priorities",
+        "Add Priority modal with scope (invoice/customer), key, and order fields",
+        "Delete button removes priority from table",
+        "Country selector filters by allowed countries",
+        "Priorities sub-tab visible in ITRP navigation"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-011",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-058",
+      "name": "credit-breach-notification-integration",
+      "description": "Wire notification service into buying service step 4 credit limit breach.",
+      "instruction": "In buying/service.py step_4: when breach detected, call send_credit_limit_breach from notifications service. Log notification in audit.",
+      "status": "DONE",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "send_credit_limit_breach called in step_4 when breach detected",
+        "Notification includes country, customer_id, customer_name, credit_limit, exposure_after, breach_amount",
+        "Falls back to logging when SMTP not configured"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-011",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-059",
+      "name": "advanced-features-tests-verify",
+      "description": "Tests for priorities API, breach notification, docker build, deep-verify.",
+      "instruction": "Add unit tests. Run full suite. Commit.",
+      "status": "DONE",
+      "type": "chore",
+      "depends_on": [
+        "T-057",
+        "T-058"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "Priority schema tests pass (10 tests in test_priorities.py)",
+        "Notification tests pass (5 tests in test_notifications.py)",
+        "Docker build succeeds",
+        "All 189+ unit tests pass"
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "O-011",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-060",
+      "name": "notification-service-implementation",
+      "description": "Email notification service with 4 notification types",
+      "instruction": "Implement send_purchase_complete, send_purchase_error, send_backup_restore, send_credit_limit_breach in notifications/service.py. SMTP fallback to logging.",
+      "type": "feature",
+      "status": "DONE",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "send_purchase_complete sends email with country, sales_type, invoice_count, total_amount",
+        "send_purchase_error sends email with error details and failed invoice list (max 20)",
+        "send_backup_restore sends email with execution_id, records_deleted, restored_by",
+        "send_credit_limit_breach sends email with customer, credit_limit, exposure, breach_amount",
+        "All functions fall back to structured logging when SMTP_CONFIGURED is False",
+        "Unit tests for all 4 notification types (5 tests in test_notifications.py)"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-010",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "blocked_by_decisions": [],
+      "skill": null,
+      "alignment": null,
+      "produces": null,
+      "test_requirements": null
+    },
+    {
+      "id": "T-061",
+      "name": "audit-trail-gap-analysis-and-fix",
+      "description": "Identify and fix missing audit logging across all state-changing endpoints",
+      "instruction": "Add log_audit to OpCo start-date bulk update. Standardize schedule audit actions to uppercase. Add new ALLOWED_ACTIONS. Add action colors in frontend.",
+      "type": "feature",
+      "status": "DONE",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        "OpCo PATCH /start-dates writes audit trail entry with action UPDATE",
+        "Schedule audit actions use uppercase (UPDATE/CREATE, not update/create)",
+        "ALLOWED_ACTIONS includes SCHEDULE_UPDATE, PRIORITY_SET, PRIORITY_CLEAR, PURCHASE_EXECUTE",
+        "Frontend AuditTrailTable has colors for all new action types",
+        "Unit tests for audit service (6 tests in test_audit.py)",
+        "No state-changing endpoint (POST/PUT/DELETE/PATCH) without audit logging"
+      ],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "origin": "O-012",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "blocked_by_decisions": [],
+      "skill": null,
+      "alignment": null,
+      "produces": null,
+      "test_requirements": null
+    },
+    {
+      "id": "T-062",
+      "name": "priority-reorder-api-and-ui",
+      "description": "Add PUT endpoint for updating priority order, add reorder endpoints (move up/down), and implement up/down buttons in frontend priorities page.",
+      "instruction": "BACKEND:\n1. Add PUT /api/priorities/{priority_id} endpoint to update priority_order of existing priority. Require purchase:execute. Log audit UPDATE.\n2. Add POST /api/priorities/reorder endpoint accepting {country, items: [{id, priority_order}]} for batch reorder. Atomic Firestore batch write. Require purchase:execute.\n\nFRONTEND (priorities/page.tsx):\n3. Add Up/Down arrow buttons in table actions column.\n4. On click Up: swap priority_order with item above, call reorder API.\n5. On click Down: swap with item below.\n6. Disable Up on first row, Down on last row.\n7. Add success/error feedback on reorder.\n\nTESTS:\n8. Unit test for PUT endpoint.\n9. Unit test for reorder endpoint.\n10. Test edge cases: reorder single item, reorder non-existent ID.",
+      "status": "IN_PROGRESS",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "PUT /api/priorities/{id} updates priority_order and logs audit UPDATE",
+          "verification": "test"
+        },
+        {
+          "text": "POST /api/priorities/reorder atomically reorders multiple priorities",
+          "verification": "test"
+        },
+        {
+          "text": "Frontend shows Up/Down buttons that swap priority_order values",
+          "verification": "manual"
+        },
+        {
+          "text": "Up disabled on first row, Down disabled on last row",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "endpoint": "PUT /api/priorities/{id}, POST /api/priorities/reorder"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-03-23T21:37:25Z",
+      "started_at_commit": "0c2480ceee5aef25a38ed02955203370fe803035"
+    },
+    {
+      "id": "T-063",
+      "name": "priority-lock-during-autobuy",
+      "description": "Lock priority UI and API during active auto-buy. Check buy_locks collection before allowing priority changes.",
+      "instruction": "BACKEND (priorities/router.py):\n1. In POST and DELETE endpoints, before writing: query buy_locks collection for active lock on requested country.\n2. If lock exists and not expired: return HTTP 409 Conflict with message 'Auto-buy in progress for {country}. Priority changes locked.'\n3. Add GET /api/priorities/lock-status?country=XX endpoint returning {locked: bool, locked_since: timestamp|null}.\n\nFRONTEND (priorities/page.tsx):\n4. Query lock-status on page load and on interval (every 10s).\n5. When locked: disable Add Priority button, disable Delete buttons, disable Up/Down buttons, show Alert banner 'Priorities locked - auto-buy in progress for {country}'.\n6. When unlocked: normal behavior.\n\nTESTS:\n7. Test POST returns 409 when lock active.\n8. Test DELETE returns 409 when lock active.\n9. Test lock-status endpoint.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-062"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "POST /api/priorities returns 409 when buy_lock active for country",
+          "verification": "test"
+        },
+        {
+          "text": "DELETE /api/priorities/{id} returns 409 when buy_lock active",
+          "verification": "test"
+        },
+        {
+          "text": "GET /api/priorities/lock-status returns correct lock state",
+          "verification": "test"
+        },
+        {
+          "text": "Frontend disables all edit controls and shows lock banner during auto-buy",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-064",
+      "name": "frontend-route-guards-all-pages",
+      "description": "Add route-level 403 guards to all pages per IMP_02 section 8.3 navigation matrix. Currently only Admin has 403 guard.",
+      "instruction": "1. In each page component, wrap content with PermissionGate (or create a PageGuard wrapper).\n2. Permission requirements per page:\n   - Dashboard: purchase:read (all roles except none)\n   - ITRP: purchase:read\n   - ITRP/Settings: maintenance:read\n   - ITRP/Maintenance: maintenance:read\n   - ITRP/Priorities: purchase:read\n   - Reporting/*: reporting:read\n   - My Customers: purchase:read OR reporting:read\n   - Manual Buy: purchase:execute\n3. Fallback: Ant Design Result component with 403 status (same pattern as Admin page).\n4. Test by logging in as opco user - should see 403 on Settings, Maintenance, Priorities, Manual Buy.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "Settings page shows 403 for Mid Office, OpCo roles",
+          "verification": "manual"
+        },
+        {
+          "text": "Maintenance page shows 403 for Mid Office, OpCo roles",
+          "verification": "manual"
+        },
+        {
+          "text": "Manual Buy page shows 403 for Mid Office, OpCo, GFI roles",
+          "verification": "manual"
+        },
+        {
+          "text": "All pages use consistent 403 fallback pattern",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-065",
+      "name": "menu-visibility-per-role",
+      "description": "Filter navigation menu items based on user role/permissions per IMP_02 section 8.3.",
+      "instruction": "In AppLayout.tsx:\n1. Each menu item gets a requiredPermission field.\n2. Use hasPermission() or hasAnyPermission() to filter menu items before rendering.\n3. Menu visibility rules:\n   - Dashboard: always visible\n   - ITRP (+ sub-items): purchase:read\n   - Settings: maintenance:read\n   - Maintenance: maintenance:read\n   - Priorities: purchase:read\n   - Reporting: reporting:read\n   - My Customers: purchase:read OR reporting:read\n   - Manual Buy: purchase:execute\n   - Admin: users:read OR audit:read (already done)\n4. Remove XTRP menu item (dead link, page does not exist).\n5. Test: OpCo user should only see Dashboard, Reporting, My Customers.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "OpCo user sees only Dashboard, Reporting, My Customers in menu",
+          "verification": "manual"
+        },
+        {
+          "text": "Mid Office user does not see Settings, Maintenance, Manual Buy, Admin",
+          "verification": "manual"
+        },
+        {
+          "text": "XTRP menu item removed",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-066",
+      "name": "fix-my-customers-country-list",
+      "description": "My Customers page uses hardcoded country list instead of allowedCountries() from auth store.",
+      "instruction": "In frontend/src/app/customers/page.tsx:\n1. Replace hardcoded COUNTRIES array with allowedCountries() from useAuthStore.\n2. If allowedCountries() returns null (global user), fetch country list from /api/buying/countries or /api/schedule/config.\n3. Fallback: if no countries available, show empty state.\n4. Ensure country dropdown only shows countries user has access to.",
+      "status": "TODO",
+      "type": "bug",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "Country dropdown in My Customers uses allowedCountries() not hardcoded list",
+          "verification": "manual"
+        },
+        {
+          "text": "OpCo user scoped to PL sees only PL in dropdown",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "frontend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-067",
+      "name": "back-office-country-scoping-seed",
+      "description": "Update seed data to give Back Office user country scoping per D-017 decision.",
+      "instruction": "In backend/app/seed.py:\n1. Change backoffice@randstad.com role assignment from scope_country=None to scope_country specific countries (e.g. PL, NL, DE - covering main test countries).\n2. Or create multiple assignments: back_office+PL, back_office+NL.\n3. Verify that after re-seed, backoffice user only sees assigned countries.\n4. Update any integration tests that assume backoffice has global access.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "backoffice@randstad.com has country-scoped role assignments after seed",
+          "verification": "test"
+        },
+        {
+          "text": "Back Office user only sees assigned countries in country dropdowns",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-068",
+      "name": "log-unauthorized-access-attempts",
+      "description": "Log denied access attempts to audit trail per REQ-018.",
+      "instruction": "In backend/app/auth/dependencies.py:\n1. In require_permission(): when permission check fails (before raising 403), call log_audit with action=ACCESS_DENIED.\n2. Add ACCESS_DENIED to ALLOWED_ACTIONS in audit/router.py.\n3. Log: user_email, attempted resource:action, country (if applicable), timestamp.\n4. In check_country_access(): when country access denied, also log_audit with ACCESS_DENIED.\n5. Be careful: log_audit is async and needs db - may need to pass db through or use a simpler logging mechanism.\n\nTEST:\n6. Test that 403 response also creates audit entry.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "ACCESS_DENIED action type exists in ALLOWED_ACTIONS",
+          "verification": "test"
+        },
+        {
+          "text": "Permission denial creates audit trail entry with user and attempted action",
+          "verification": "test"
+        },
+        {
+          "text": "Country access denial creates audit trail entry",
+          "verification": "test"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-069",
+      "name": "manual-buy-lock-check",
+      "description": "Disable Manual Buy button when auto-buy is running for selected country.",
+      "instruction": "BACKEND:\n1. Add GET /api/buying/lock-status?country=XX endpoint. Returns {locked: bool, locked_by: str, locked_at: timestamp}.\n\nFRONTEND:\n2. In manual-buy/page.tsx: before showing Run Auto-Buy button, check lock status. If locked, disable button and show warning.\n3. In itrp/page.tsx: if queue button exists, check lock status for selected country.\n\nTEST:\n4. Test lock-status endpoint returns correct state.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "GET /api/buying/lock-status returns buy_lock state for country",
+          "verification": "test"
+        },
+        {
+          "text": "Manual Buy button disabled with message when auto-buy lock active",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-070",
+      "name": "firestore-schema-set-at-fix",
+      "description": "Add missing set_at field to invoice_priorities schema in firestore_schema.py.",
+      "instruction": "In backend/app/firestore_schema.py, in INVOICE_PRIORITIES schema definition:\n1. Add {name: set_at, type: timestamp, required: true, description: When priority was set} to fields array.\n2. This is a docs-only fix - the field is already written by the router.",
+      "status": "TODO",
+      "type": "chore",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "set_at field present in INVOICE_PRIORITIES schema definition",
+          "verification": "command",
+          "command": "grep set_at backend/app/firestore_schema.py"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "O-013",
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    }
+  ],
+  "plan_approved_at": "2026-03-23T20:31:13Z"
+}
