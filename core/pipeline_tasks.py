@@ -109,7 +109,7 @@ CONTRACTS = {
                       "conflicts_with", "skill", "acceptance_criteria",
                       "type", "blocked_by_decisions", "scopes", "origin",
                       "knowledge_ids", "test_requirements", "alignment",
-                      "exclusions", "produces", "source_requirements"],
+                      "exclusions", "produces", "uses_from_dependencies", "source_requirements"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -126,6 +126,7 @@ CONTRACTS = {
             "alignment": dict,
             "exclusions": list,
             "produces": dict,
+            "uses_from_dependencies": dict,
         },
         "invariant_texts": [
             "id: task identifier — use temporary IDs (_1, _2, ...) for auto-assignment, or explicit T-NNN. Temp IDs are remapped to T-NNN at materialize time.",
@@ -148,6 +149,7 @@ CONTRACTS = {
             "alignment: dict with {goal, boundaries: {must, must_not, not_in_scope}, success} — persisted alignment contract from planning",
             "exclusions: list of task-specific DO NOT rules — things this task must NOT do (e.g., 'DO NOT modify WorkflowList.tsx', 'DO NOT add error handling — that is T-015')",
             "produces: dict describing what this task creates for downstream consumers — semantic output contracts (e.g., {endpoint: 'POST /users → 201 {id, email}', model: 'User(id, email, name)'}). Shown in pipeline context for dependent tasks.",
+            "uses_from_dependencies: dict mapping dependency IDs to what this task consumes from them (e.g., {_1: 'OrderModel from src/models/Order.ts — OrderModel.create(data)'}). Mandatory when depends_on is non-empty — prevents decorative dependencies. Referenced artifact must appear by name in instruction.",
             "source_requirements: list of {knowledge_id: K-NNN, text: str, source_ref: str} — traces this task to extracted requirements. knowledge_id references a Knowledge object (category=requirement). text is the requirement. source_ref is file:section.",
             "Batch format: --data '{\"new_tasks\": [...], \"update_tasks\": [...]}' — atomically adds new tasks and updates existing tasks. update_tasks can reference temp IDs from new_tasks in depends_on/conflicts_with.",
         ],
@@ -415,6 +417,7 @@ def _build_task_entry(t: dict, source_idea_id: str = None, source_objective_id: 
         alignment=t.get("alignment"),
         exclusions=t.get("exclusions", []),
         produces=t.get("produces"),
+        uses_from_dependencies=t.get("uses_from_dependencies"),
         test_requirements=t.get("test_requirements"),
         status="TODO",
     )
@@ -492,7 +495,7 @@ def cmd_add_tasks(args):
         updatable = ["name", "description", "instruction", "depends_on",
                      "conflicts_with", "skill", "acceptance_criteria",
                      "type", "blocked_by_decisions", "scopes", "origin",
-                     "knowledge_ids", "test_requirements"]
+                     "knowledge_ids", "test_requirements", "uses_from_dependencies"]
         updated_ids = []
         for upd in update_tasks:
             task = find_task(tracker, upd["id"])
@@ -655,7 +658,8 @@ def cmd_update_task(args):
         updatable = ["name", "description", "instruction", "depends_on",
                      "conflicts_with", "skill", "acceptance_criteria",
                      "type", "blocked_by_decisions", "scopes", "origin",
-                     "knowledge_ids", "source_requirements", "test_requirements"]
+                     "knowledge_ids", "source_requirements", "test_requirements",
+                     "uses_from_dependencies"]
         changed = []
         for field in updatable:
             if field in updates:
