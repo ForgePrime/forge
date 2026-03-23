@@ -81,6 +81,7 @@ class Task:
     alignment: Optional[dict] = None
     exclusions: list[str] = field(default_factory=list)
     produces: Optional[dict] = None
+    uses_from_dependencies: Optional[dict] = None
     test_requirements: Optional[dict] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None

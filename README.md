@@ -105,6 +105,38 @@ This generates a task plan *from the idea*, with all the context from discovery 
 
 **`/compound`** looks at the completed project — what patterns emerged, what mistakes were made, what decisions proved right — and records **lessons**. These lessons are available to future projects, so the agent doesn't repeat mistakes.
 
+### From documentation — requirements-driven
+
+When you have specs, PRDs, or any source documentation:
+
+```
+/ingest docs/requirements.md
+```
+
+**Ingest** reads each document and extracts every fact that matters for implementation — requirements, business rules, tech decisions, guidelines. It assigns trust levels (HIGH/MEDIUM/LOW), detects conflicts between documents, and surfaces implicit assumptions as OPEN decisions.
+
+```
+/analyze
+```
+
+**Analyze** bridges ingestion and planning. It resolves OPEN decisions, groups requirements into **objectives** with measurable key results, and links every requirement to an objective. After analysis, `/plan` has everything it needs.
+
+```
+/plan --objective O-001
+```
+
+Now planning has full traceability: every task traces back to a requirement, which traces back to a source document.
+
+### Mid-flight changes
+
+Requirements changed after you started? No problem:
+
+```
+/change-request Client added CSV export requirement
+```
+
+Forge assesses the impact (Minor/Moderate/Major/Breaking), updates affected tasks and objectives, and keeps the pipeline consistent.
+
 ## The Building Blocks
 
 ### Objectives — "Why are we doing this?"
@@ -218,6 +250,9 @@ Built-in skills power the slash commands:
 | `/plan` | `plan` | Decompose goal into dependency DAG |
 | `/next` | `next` | Execute task with context, guidelines, verification |
 | `/discover` | `discover` | Explore options and assess risks |
+| `/ingest` | `ingest` | Register docs, extract structured facts, detect conflicts |
+| `/analyze` | `analyze` | Resolve decisions, group requirements into objectives |
+| `/change-request` | `change-request` | Handle mid-flight requirement changes |
 | `/review` | `review` | 6-perspective code review |
 | `/onboard` | `onboard` | Import existing project knowledge |
 
@@ -278,6 +313,9 @@ Two-phase claiming prevents race conditions. `conflicts_with` on tasks prevents 
 | `/task {desc}` | Quick-add a single task |
 | `/next` | Execute next ready task |
 | `/run` | Execute all tasks continuously |
+| `/ingest [path]` | Register and extract facts from documentation |
+| `/analyze` | Resolve decisions, create objectives with KR |
+| `/change-request {desc}` | Handle new/changed requirements mid-execution |
 | `/decide` | Resolve open decisions |
 | `/review {id}` | Deep code review |
 | `/status` | Dashboard + progress |

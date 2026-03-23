@@ -69,13 +69,58 @@ description: "Decompose a high-level goal into a tracked, dependency-aware task 
 
 ## Overview
 
-Decompose a user's high-level goal into a tracked task graph. The plan skill
-follows a complexity-first approach: assess the scope before decomposing.
+Decompose a user's high-level goal into a tracked task graph.
+
+**The only test**: take task `_1`. Paste its `instruction` into a blank context
+with no other information. Does the agent know which file to open first?
+If not — the plan is not done.
+
+Every step below serves this test. If an instruction can't pass cold start,
+no amount of dependency graphs or acceptance criteria will save the plan.
 
 ## Prerequisites
 
 - User has stated a goal
 - Working directory is a codebase (or will become one)
+
+---
+
+### Step 0 — Read and tag the input
+
+**Do this before any decomposition. Do not skip.**
+
+Read every piece of input (goal description, requirements, codebase context,
+constraints). Tag every statement:
+
+| Tag | Meaning | Goes to |
+|-----|---------|---------|
+| `[REQ]` | Something the system must do | task instruction + AC |
+| `[CONSTRAINT]` | Hard limit — tech, compliance, must-guideline | task instruction |
+| `[DECISION]` | Architecture/tech choice already made | task instruction (follow, don't revisit) |
+| `[SCOPE-OUT]` | Explicitly excluded | Out of scope only — never into tasks |
+| `[IMPLICIT]` | Assumed but not stated | write explicitly before planning |
+| `[CONFLICT]` | Two statements contradict each other | **hard stop** — ask before planning |
+| `[VAGUE]` | Too ambiguous to act on as written | **hard stop** — clarify or make explicit assumption |
+
+**Output of Step 0** (write this before proceeding):
+
+```
+Tagged input:
+[REQ] user can create an order with products and delivery address
+[REQ] confirmation email sent after order saved
+[CONSTRAINT] follow existing Express + TypeScript patterns in src/api/
+[DECISION] use BullMQ for async jobs (established in codebase)
+[IMPLICIT] order status = 'pending' on creation — if wrong: model changes
+[VAGUE] "products" → resolved: [{product_id: UUID, quantity: int}], no price in scope
+```
+
+**Rules:**
+- Every `[VAGUE]` must become an explicit assumption before continuing. Write:
+  "I assume X because Y. If wrong, Z changes."
+- Every `[CONFLICT]` is a hard stop. Do not plan until resolved.
+- Every `[IMPLICIT]` must be written down with consequence if wrong.
+- Items tagged `[SCOPE-OUT]` go ONLY into the Out of Scope block. If any task
+  implements a `[SCOPE-OUT]` item, the plan has a scope leak — fix it.
 
 ---
 
@@ -341,12 +386,26 @@ For each task, specify:
 - `id`: Use temporary IDs: `_1`, `_2`, `_3`, etc. These are auto-remapped to real `T-NNN` IDs when the plan is approved (`approve-plan`) or tasks are added (`add-tasks`). This prevents ID collisions between concurrent planning processes. Use temp IDs in `depends_on` and `conflicts_with` too — they will be remapped together.
 - `name`: kebab-case, descriptive (e.g., "setup-database-schema")
 - `description`: WHAT needs to be done (concrete, not vague). Include boundary when scope edge is ambiguous: "This task IS {X}. This task is NOT {Y}."
-- `instruction`: HOW to do it. Must include:
-  1. **Reference existing patterns**: Name the file/component to use as a model (e.g., "Follow the pattern in `src/components/EntityForm.tsx`")
-  2. **Name files to create/modify**: List exact file paths (e.g., "Create `src/api/routes/tasks.ts`")
-  3. **Name files NOT to modify**: Reinforce boundaries (e.g., "Do NOT modify `src/api/routes/auth.ts`")
-  4. **Step-by-step actions**: Concrete steps, not vague directives
+- `instruction`: HOW to do it. Must pass the cold start test (paste into blank context — agent knows which file to open first). Every instruction must contain all five:
+  1. **Exact files to create** — full paths (e.g., "Create `src/api/routes/orders.ts`")
+  2. **Exact files to modify** — full paths (e.g., "Register route in `src/api/routes/index.ts`")
+  3. **Exact files NOT to touch** — name what a sibling task owns (e.g., "Do NOT modify `src/api/routes/auth.ts` — owned by _3")
+  4. **Pattern to follow** — name the existing file to use as a model, or write "no existing pattern — create from scratch" (e.g., "Follow pattern in `src/api/routes/invoices.ts`")
+  5. **Reference to dependency output** — if `depends_on` is non-empty, name what you're using from the dependency (e.g., "using OrderModel from `src/models/Order.ts` (_1)")
+
+  | Bad | Good |
+  |-----|------|
+  | "Implement order creation" | "1. Create `src/api/routes/orders.ts` following `src/api/routes/invoices.ts`. 2. Add POST handler: validate with `OrderCreateSchema`, call `OrderModel.create()` from _1, return 201. 3. Register in `src/api/routes/index.ts`. Do NOT modify `src/api/routes/auth.ts`." |
+  | "Add email job" | "1. Create `src/jobs/order-confirmation.ts` using BullMQ pattern from `src/jobs/invoice-reminder.ts`. 2. Job receives `{order_id, email}`. 3. In `src/api/routes/orders.ts` (_2): after create, enqueue job." |
 - `depends_on`: list of prerequisite task IDs (use temp IDs `_1`, `_2` for tasks in the same batch, or real `T-NNN` IDs for existing tasks)
+- `uses_from_dependencies`: dict mapping each dependency ID to exactly what this task takes from it. **Mandatory when `depends_on` is non-empty.** Format:
+  ```json
+  "uses_from_dependencies": {
+    "_1": "OrderModel from src/models/Order.ts — call OrderModel.create(data) returning Promise<Order>",
+    "_3": "confirmationQueue from src/jobs/order-confirmation.ts — call .add({order_id, email})"
+  }
+  ```
+  **Rule**: `depends_on` non-empty + `uses_from_dependencies` empty = the dependency is decorative. Either fill it (name what this task consumes from the dependency's `produces`) or remove the dependency. The referenced artifact must also appear by name in `instruction`.
 - `parallel`: true if this task can run alongside siblings
 - `conflicts_with`: list of task IDs modifying same files (supports temp IDs within the same batch)
 - `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). **Only use scopes that exist in the project** (loaded via R10 in Step 2). Inherit from idea/objective scopes but narrow per task — a backend-only task should NOT get frontend scopes. `general` is always included automatically during execution.
@@ -555,30 +614,38 @@ create an OPEN decision asking the user.
 
 ### Step 7.5 — Plan Quality Test (mandatory)
 
-Before showing the draft to the user, test it yourself.
+Before showing the draft to the user, run these checks. Each is an action
+with a binary result — not a question to answer "yes" to. Write the output
+of each check inline.
 
-**Test 1: Can you start coding?**
+**Check 1 — Cold start, first task:**
+Take `_1`'s instruction. Write: "First file to open: [path]."
+If you cannot name an exact path — instruction is invalid. Fix before continuing.
 
-Take the **first task** from the draft. Read its `instruction` field.
-Ask yourself: *Can I open an editor right now and know exactly what to build — without asking anything?*
+Common failures: "Implement the auth system" (which files?), "Set up the database"
+(which tables?), "Add error handling" (which errors? where?).
 
-If NO: the instruction is too vague. Common problems:
-- "Implement the auth system" — implement WHAT? Which files? What pattern to follow?
-- "Set up the database" — which tables? Which columns? Which migration tool?
-- "Add error handling" — which errors? What response format? Where?
+**Check 2 — Cold start, last task:**
+Same for the last task. Planning fatigue makes last tasks the vaguest. Fix it.
 
-Fix the instruction until the answer is YES.
+**Check 3 — Dependency contracts:**
+For every task with `depends_on`, write:
+```
+_N depends_on _M
+  _M.produces key: [key name]
+  _N.uses_from_dependencies._M: [value] — matches key? [YES/NO]
+  _N.instruction references this item? [YES: quote / NO]
+```
+Any NO = contract broken. Fix: either add the reference to instruction, fill
+`uses_from_dependencies`, or remove the dependency.
 
-**Test 2: Can you finish?**
+**Check 4 — Scope leak:**
+List every item tagged `[SCOPE-OUT]` in Step 0. For each, write:
+"Is there a task that implements this? [task id / NONE]"
+Any answer other than NONE = scope leak. Remove that work from the task.
 
-Take the **last task** from the draft. Same question.
-The last task often has the worst instructions because planning fatigue sets in.
-
-**Test 3: Do tasks connect?**
-
-Pick any task with `depends_on`. Read its instruction. Does it reference what the dependency `produces`? If a task depends on T-001 but its instruction never mentions T-001's output, the connection is imaginary.
-
-If any test fails: fix the task before drafting. Do NOT show a plan you couldn't execute yourself.
+All 4 checks must produce written output. Unwritten = not done.
+If any check fails: fix the task, then restart from Check 1.
 
 ---
 

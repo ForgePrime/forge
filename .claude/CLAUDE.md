@@ -116,6 +116,11 @@ When adding tasks, each task supports:
 /ingest ──→ /analyze ──→ /plan ──→ /run ──→ verified (requirements coverage + KR achievement)
 ```
 
+### Mid-flight changes
+```
+/change-request {description}  ──→  impact assessed  ──→  plan updated
+```
+
 ### For brownfield projects
 Run `/onboard` first — discover project, import decisions/conventions, configure gates.
 
