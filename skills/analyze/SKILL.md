@@ -229,15 +229,25 @@ Requirements mapping:
   Mapped to objectives: {mapped}/{total_req}
   Unmapped: {unmapped_count} (resolve before planning)
 
-Next: /plan {project} (from objective: --objective O-NNN or --idea I-NNN)
+Next: /plan {project} --objective O-NNN
 ```
+
+### MANDATORY: Verify before exiting
+
+Run the verification command to confirm Contract C2 is satisfied:
+```bash
+python -m core.objectives verify {project}
+```
+This checks: ≥1 ACTIVE objective, all KRs have measurement, no orphaned requirements.
+If verdict is FAIL — fix before proceeding. `/plan` will BLOCK if this fails.
 
 ---
 
 ## Success Criteria
 
+- `python -m core.objectives verify {project}` returns PASS or WARN (not FAIL)
 - All `clarification_needed` decisions: CLOSED or confirmed as blocking
 - All `HIGH severity risk` decisions: resolved or mitigated
 - Every requirement K-NNN linked to an Objective
-- Every Objective has 2-5 KR with measurement method defined
+- Every Objective has 2-5 KR with `measurement` field defined (command|test|manual)
 - Understanding gate would PASS (9 categories covered)

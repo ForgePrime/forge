@@ -215,6 +215,10 @@ git add -A && git commit -m "descriptive message"
 
 ### Step 6 — Complete
 
+**Before completing, verify** (Contract C6):
+- If task has `origin: O-NNN` — KR auto-update will run. Check that objective's KRs have `measurement` defined.
+- If AC has `kr_link` — verify the referenced KR exists (the pipeline will warn if not).
+
 ```bash
 python -m core.pipeline complete {project} {task_id} --reasoning "What was done and why" --ac-reasoning "AC 1: [criterion] — PASS: [evidence]. AC 2: [criterion] — PASS: [evidence]. ..."
 ```
@@ -223,6 +227,7 @@ If the task has acceptance criteria, `--ac-reasoning` is required (from Step 4c)
 Use the structured format `AC N: [criterion] — PASS|FAIL: [evidence]` — the pipeline validates that each criterion is addressed.
 
 This auto-records any unrecorded git changes (committed + uncommitted since task start).
+**KR auto-update runs after completion** — watch for warnings about measurement failures.
 
 Then immediately proceed to Step 6.5 before starting the next task.
 

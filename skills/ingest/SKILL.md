@@ -270,7 +270,8 @@ Knowledge coverage:
   ASSUMED: {categories with assumptions only}
   UNKNOWN: {categories with clarification_needed}
 
-Next: resolve OPEN clarifications, then /analyze or /plan
+Next: resolve OPEN clarifications, then /analyze (creates objectives with KRs) → /plan (decomposes into tasks linked to objectives)
+NOTE: /plan requires objectives. Always run /analyze before /plan when source documents are ingested.
 ```
 
 ---

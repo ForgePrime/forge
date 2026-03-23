@@ -9,204 +9,151 @@ description: "Discovery phase — explore options, assess feasibility, analyze r
 
 Discovery answers: "What should we build, is it feasible, what are the risks, and how should we architect it?"
 
-Deep-* skills (`skills/deep-*/SKILL.md`) provide methodology. This skill coordinates analysis and records findings in Forge.
+Deep-* skills (`skills/deep-*/SKILL.md`) provide methodology. This skill coordinates analyses and records findings.
 
-**In the full document-to-code pipeline**: `/ingest → /analyze → /discover → /plan → /run`
-Discover comes AFTER analyze (objectives exist) but BEFORE plan (tasks don't exist yet). Use when objectives need deeper technical investigation before decomposing into tasks.
+> **Note:** `deep-feasibility` lives in `skills/optional/deep-feasibility/SKILL.md`, not `skills/deep-*/`.
 
-Provenance: [Deep-Process](https://github.com/Deep-Process/deep-process).
+**Pipeline position**: `/ingest -> /analyze -> /discover -> /plan -> /run`
+
+## When NOT to Discover
+
+Go straight to `/plan` when:
+- Scope is well-defined and small (< 5 tasks)
+- Technology and patterns already established in codebase
+- No architectural decisions — just implementation
+- Low risk, obvious feasibility (CRUD, bugfix, config)
 
 ---
 
-### Step 0 — Document Ingestion
-
-Before analyzing, check if source documents exist but haven't been ingested:
+### Step 0 — Verify Source Documents
 
 ```bash
 python -m core.knowledge read {project} --category source-document
-python -m core.research read {project} --category ingestion
 ```
 
-If documentation files exist in the project but no `source-document` knowledge registered:
-1. Check `forge_output/{project}/forge.config.json` for `project_dir`
-2. Scan for docs in `{project_dir}/docs/`, `{project_dir}/requirements/`, etc.
-3. If found, **follow the ingest skill procedure** (`skills/ingest/SKILL.md`)
-
-If source-documents are registered but some lack ingestion research:
-- Ingest unprocessed documents before proceeding.
-
-Load extracted knowledge as context:
-```bash
-python -m core.knowledge read {project} --category requirement
-python -m core.knowledge read {project} --category domain-rules
-```
+If documents should exist but none registered: tell user to run `/ingest` and **STOP**.
 
 ---
 
-### Step 1 — Scope & Approach
+### Step 1 — Scope & Ceremony Level
 
-**If discovering for an idea/objective**, read its existing alignment — do NOT re-align:
+If discovering for an entity, read its context (do not re-align):
 ```bash
 python -m core.ideas show {project} {idea_id}       # or objectives show
 ```
 
-The source entity already has description, scopes, and context. Use that. Only ask if discovery scope differs from the entity's scope (1-2 questions max).
-
-**If discovering a general topic** (no entity), briefly confirm scope.
+If general topic — confirm scope (1-2 questions max).
 
 Load domain-specific questions:
 ```bash
 python -m core.domain_modules for-scopes --scopes "{scopes}" --phase vision
 ```
 
-Then determine which analyses are needed:
+**Ceremony level:**
 
-| User intent / flag | Analyses | Read methodology from |
-|--------------------|----------|----------------------|
-| "What should we do?" (open) | Explore | `deep-explore/SKILL.md` |
-| "Should we do X?" (evaluate) | Explore + Feasibility | + `optional/deep-feasibility/SKILL.md` |
-| "How should we build X?" (design) | Explore + Architecture | + `deep-architect/SKILL.md` |
-| "Is X risky?" / `--risk-only` | Risk | `deep-risk/SKILL.md` |
-| "Full analysis" / `--full` | All four | All deep-* skills |
+| Level | When | Effect |
+|-------|------|--------|
+| **LIGHT** (default) | Single concern, known domain | 1 analysis, short record, compact brief |
+| **FULL** | `--full`, or auto: cross-cutting, multi-domain, high stakes | Multiple analyses, full record, cross-analysis synthesis |
 
-Read each needed skill's SKILL.md and `references/` directory for methodology.
+Auto-detect FULL when 2+ of: multiple scopes, high-severity risks, architectural decisions needed, uncertain feasibility.
+
+**Which analyses:**
+
+| Intent | Analyses |
+|--------|----------|
+| "What should we do?" | Explore |
+| "Should we do X?" | Explore + Feasibility |
+| "How to build X?" | Explore + Architecture |
+| "Is X risky?" | Risk |
+| `--full` | All available |
 
 ---
 
 ### Step 2 — Gather Context
 
-**If a project exists:**
 ```bash
 python -m core.pipeline status {project}
 python -m core.decisions read {project} --status OPEN
-python -m core.lessons read-all
 python -m core.guidelines context {project} --scopes "{scopes}"
-```
-
-**If no project yet:**
-```bash
 python -m core.lessons read-all
 ```
 
-For brownfield projects, also read: directory structure, key config files, existing architecture.
-
-**Guidelines as constraints**: `must` weight = hard constraints (analyses MUST NOT violate). `should` weight = soft constraints (note deviations).
+`must` guidelines = hard constraints. `should` = note deviations.
 
 ---
 
 ### Step 3 — Analyze
 
-Run analyses in dependency order:
-1. **Explore first** (provides option map for all others)
-2. **Then in parallel**: Feasibility, Risk, Architecture (each builds on explore output)
+Order: Explore first, then Feasibility/Risk/Architecture in parallel.
 
-For each analysis, follow the methodology from the deep-* SKILL.md you read in Step 1. Key outputs per analysis:
+For each analysis, follow the corresponding `deep-*/SKILL.md`. Do not replicate their methodology here.
 
-| Analysis | Key Output |
-|----------|-----------|
-| deep-explore | Option map, knowledge audit, consequence trace, recommendation |
-| deep-feasibility | GO / CONDITIONAL / NO-GO verdict with evidence |
-| deep-risk | Risk register (5D scoring), interactions, mitigations with Cobra Effect check |
-| deep-architect | Components, C4 diagrams, ADRs, adversarial findings |
-
-**If feasibility = NO-GO**: STOP. Present to user. Do NOT auto-proceed.
-**If risk = CRITICAL**: Flag prominently but continue. User decides.
-
-After all analyses, synthesize: identify cross-analysis contradictions, agreements, and gaps. This replaces the separate aggregate step — you already have all findings in context.
+**Stop conditions:**
+- **Feasibility = NO-GO**: STOP. Present to user.
+- **Risk = CRITICAL**: Flag prominently. User decides.
 
 ---
 
-### Step 4 — Record Findings
+### Step 4 — Cross-Analysis Synthesis (FULL only)
 
-If no project exists, create one:
-```bash
-python -m core.pipeline init {slug} --goal "Discovery: {topic}"
-```
+Follow `skills/deep-aggregate/SKILL.md` for methodology. Key focus areas:
 
-**Determine task_id for decisions:**
-- Discovering for **idea** (e.g., `/discover I-001`): use idea ID. Update status to EXPLORING:
-  ```bash
-  python -m core.ideas update {project} --data '[{"id": "{idea_id}", "status": "EXPLORING"}]'
-  ```
-- Discovering for **objective** (e.g., `/discover O-001`): use `"DISCOVERY"`. Set `linked_entity_type: "objective"`, `linked_entity_id: "O-001"` on risk decisions.
-- **General topic**: use `"DISCOVERY"`.
+**4a. Contradictions** — Compare conclusions across analyses.
+Example: Feasibility=GO but Risk=CRITICAL. What risk did feasibility miss?
 
-**Record in this order:**
+**4b. Blind spots** — What did no analysis cover?
+Common: operational complexity, migration path, team capability.
 
-**a. Research objects** — persist full analysis output per completed analysis:
-```bash
-python -m core.research add {project} --data '[{
-  "title": "...", "topic": "...", "category": "...",
-  "summary": "...", "skill": "deep-explore",
-  "linked_entity_type": "idea", "linked_entity_id": "I-001",
-  "content": "{full analysis markdown}",
-  "key_findings": ["..."], "scopes": ["..."], "tags": ["..."]
-}]'
-```
-The `content` field auto-generates `file_path` and writes the research file.
-
-**b. Exploration decisions** (type=exploration) — one per analysis phase:
-Use `exploration_type`, `findings`, `options`, `open_questions`, `evidence_refs` (research file path).
-Set `status: "OPEN"`, `decided_by: "claude"`.
-
-**c. Risk decisions** (type=risk) — from risk analysis:
-Use `severity`, `likelihood`, `mitigation_plan`, `linked_entity_type/id`.
-
-**d. Standard decisions** — significant findings (architecture, implementation, etc.):
-Use appropriate `type` with `alternatives`, `evidence_refs`.
-
-**e. Lessons** (optional) — if significant cross-project insights emerged.
-
-**f. Update research with decision IDs:**
-```bash
-python -m core.research update {project} --data '[{"id": "R-001", "decision_ids": ["D-001", "D-002"], "status": "ACTIVE"}]'
-```
-
-**g. Promote to Knowledge** (optional) — only for durable findings that should persist as living docs:
-- Architecture design → `category: "architecture"`
-- Domain rules → `category: "domain-rules"`
-- Integration patterns → `category: "integration"`
-
-Do NOT promote one-time assessments (feasibility, risk register, option comparison) — those stay as Research/Decisions.
+**4c. Emergent insights** — 1-3 findings that no single analysis would surface.
+Example: "Recommended caching architecture eliminates top performance risk but introduces a consistency risk neither analysis flagged."
 
 ---
 
-### Step 5 — Present Discovery Brief
+### Step 5 — Record Findings
 
+If no project exists: `python -m core.pipeline init {slug} --goal "Discovery: {topic}"`
+
+Use `contract` subcommands for field formats (`python -m core.research contract add`, `python -m core.decisions contract add`).
+
+**Update source entity status** (if discovering for an idea/objective):
+```bash
+python -m core.ideas update {project} --data '[{"id": "{idea_id}", "status": "EXPLORING"}]'
 ```
-## Discovery Brief: {topic}
 
-### Summary
-| Analysis | Key Finding |
-|----------|-------------|
-| Explore | {1-line: recommended option + rationale} |
-| Feasibility | {GO/CONDITIONAL/NO-GO} |
-| Risk | {top risk + composite score} |
-| Architecture | {key ADR or design decision} |
+**LIGHT**: 1 research object + 1-2 OPEN decisions.
+**FULL**: 1 research per analysis + decisions (explorations, risks, architectural).
 
-### Recommended Direction
-{1-2 paragraphs: what to build and why, informed by all analyses}
-
-### Cross-Analysis Conflicts
-{Any contradictions between analyses and how they were resolved}
-
-### Open Decisions ({N} recorded)
-{List OPEN decisions requiring user input before /plan}
-
-### Top Risks
-{Top 3 risks with proposed mitigations}
-
-### Next Steps
-- [ ] Review and close OPEN decisions with `/decide`
-- [ ] When ready: `/plan {recommended goal}`
-- [ ] Or: `/discover {sub-topic}` for deeper analysis
+Example:
+```bash
+python -m core.research add {project} --data '[{"title": "Explore: {topic}", "topic": "{question}", "category": "domain", "summary": "{key finding}", "skill": "deep-explore", "content": "{full markdown}", "key_findings": ["..."], "scopes": ["..."]}]'
 ```
+
+Link decisions back: `python -m core.research update {project} --data '[{"id": "R-001", "decision_ids": ["D-001"], "status": "ACTIVE"}]'`
+
+---
+
+### Step 6 — Discovery Brief
+
+Adapt to what was done. Only include relevant sections.
+
+**Always:**
+- **Summary** — what was analyzed, key conclusion (2-4 sentences)
+- **Recommended Direction** — what to build and why
+- **Open Decisions** — list requiring user input before `/plan`
+- **Next Steps** — `/decide`, then `/plan {goal}` or `/discover {sub-topic}`
+
+**When relevant:**
+- **Cross-Analysis Conflicts** — contradictory conclusions
+- **Cross-Cutting Insights** — synthesis from Step 4 (FULL)
+- **Top Risks** — if risk analysis performed
+- **Feasibility Verdict** — if feasibility analysis performed
 
 ---
 
 ## Success Criteria
 
-- At least explore + one other analysis (risk, feasibility, or architect) completed
-- Findings recorded as OPEN decisions with clear recommendations
-- User has enough information to make a GO / NO-GO decision
-- If GO: output is ready to feed into `/plan`
+- Findings recorded as research + OPEN decisions with recommendations
+- User can make GO / NO-GO decision
+- If GO: output ready for `/plan`
+- FULL: cross-analysis synthesis covers contradictions, blind spots, emergent insights

@@ -315,6 +315,20 @@ def cmd_begin(args):
     if not task or task.get("has_subtasks"):
         return
 
+    # Contract C5: verify objective still ACTIVE if task has origin
+    origin = task.get("origin", "")
+    if origin and origin.startswith("O-"):
+        _s_begin = _get_storage()
+        if _s_begin.exists(args.project, 'objectives'):
+            obj_data = _s_begin.load_data(args.project, 'objectives')
+            for obj in obj_data.get("objectives", []):
+                if obj["id"] == origin:
+                    if obj.get("status") == "ACHIEVED":
+                        print(f"\n**WARNING**: Task {task['id']} targets objective {origin} "
+                              f"which is already ACHIEVED. Verify this task is still needed.\n",
+                              file=sys.stderr)
+                    break
+
     print()
     print("---")
     print()
@@ -657,12 +671,24 @@ def cmd_complete(args):
                       f"Fix and retry.")
             task["ac_verification_results"] = ac_results
 
-        # AC → KR bridge: extract kr_link results
+        # AC → KR bridge: extract kr_link results (Contract C6 — validate references)
         kr_updates_from_ac = {}
+        # Pre-load valid KR refs for validation
+        _valid_kr_refs = set()
+        _s_kr = _get_storage()
+        if _s_kr.exists(args.project, 'objectives'):
+            _obj_kr_data = _s_kr.load_data(args.project, 'objectives')
+            for _obj in _obj_kr_data.get("objectives", []):
+                for _kr in _obj.get("key_results", []):
+                    _valid_kr_refs.add(f"{_obj['id']}/{_kr['id']}")
+
         for ac_item in ac:
             if not isinstance(ac_item, dict) or not ac_item.get("kr_link"):
                 continue
             kr_ref = ac_item["kr_link"]  # e.g. "O-001/KR-1"
+            if _valid_kr_refs and kr_ref not in _valid_kr_refs:
+                print(f"  **WARNING**: AC kr_link '{kr_ref}' does not reference a valid KR. "
+                      f"Valid refs: {', '.join(sorted(_valid_kr_refs)[:5])}...", file=sys.stderr)
             ac_text = ac_item.get("text", "")
             # Find matching result
             matched = next((r for r in ac_results if r.get("text") == ac_text), None)
@@ -983,8 +1009,19 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
                     obj_ids = {kr.split("/")[0] for kr in idea.get("advances_key_results", []) if "/" in kr}
                     break
 
-    if not obj_ids or not _s.exists(project, 'objectives'):
+    if not obj_ids:
+        if origin:
+            print(f"\n  **KR WARNING**: Task {task.get('id')} has origin '{origin}' "
+                  f"but it doesn't resolve to any objective. KR auto-update skipped.",
+                  file=sys.stderr)
         _trace(project, {"event": "kr_update.no_objectives", "task": task.get("id"),
+               "origin": origin, "obj_ids": list(obj_ids)})
+        return
+    if not _s.exists(project, 'objectives'):
+        print(f"\n  **KR WARNING**: Task {task.get('id')} targets {list(obj_ids)} "
+              f"but no objectives.json exists. KR auto-update skipped.",
+              file=sys.stderr)
+        _trace(project, {"event": "kr_update.no_objectives_file", "task": task.get("id"),
                "origin": origin, "obj_ids": list(obj_ids)})
         return
 
@@ -1075,9 +1112,17 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
                                    "objective": obj["id"], "kr": kr["id"],
                                    "old": old, "new": value, "met": met})
                         except ValueError:
-                            print(f"    {kr['id']}: measurement output not a number: '{output[:60]}'")
+                            print(f"    {kr['id']}: **KR MEASUREMENT FAILED** — output not a number: '{output[:60]}'",
+                                  file=sys.stderr)
+                            print(f"    Fix: ensure command outputs a single number. Command: {kr['command'][:80]}",
+                                  file=sys.stderr)
+                            _trace(project, {"event": "kr_measure.parse_error", "task": task.get("id"),
+                                   "objective": obj["id"], "kr": kr["id"], "output": output[:100]})
                     except _sp.TimeoutExpired:
-                        print(f"    {kr['id']}: measurement timed out (120s)")
+                        print(f"    {kr['id']}: **KR MEASUREMENT FAILED** — command timed out (120s)",
+                              file=sys.stderr)
+                        _trace(project, {"event": "kr_measure.timeout", "task": task.get("id"),
+                               "objective": obj["id"], "kr": kr["id"]})
                 elif kr.get("measurement") == "test" and kr.get("test_path"):
                     import subprocess as _sp
                     project_dir = get_project_dir(project)
@@ -1095,7 +1140,10 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
                             print(f"    {kr['id']}: → ACHIEVED (test passed)")
                             changed = True
                     except _sp.TimeoutExpired:
-                        print(f"    {kr['id']}: test timed out (120s)")
+                        print(f"    {kr['id']}: **KR MEASUREMENT FAILED** — test timed out (120s)",
+                              file=sys.stderr)
+                        _trace(project, {"event": "kr_measure.test_timeout", "task": task.get("id"),
+                               "objective": obj["id"], "kr": kr["id"], "test_path": kr.get("test_path")})
                 else:
                     # No measurement — show manual update message
                     current = kr.get("current", baseline)
@@ -1135,6 +1183,61 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
         print(f"  KR progress saved.")
         _trace(project, {"event": "kr_update.saved", "task": task.get("id"),
                "objectives_updated": list(obj_ids)})
+
+    # Contract C7: Objective completion check
+    # When all tasks for an objective are done, check if all KRs are met
+    for obj in obj_data.get("objectives", []):
+        if obj["id"] not in obj_ids or obj.get("status") != "ACTIVE":
+            continue
+
+        obj_tasks = [t for t in all_tasks if t.get("origin") == obj["id"]]
+        done_tasks = [t for t in obj_tasks if t["status"] in ("DONE", "SKIPPED")]
+        all_tasks_done = len(obj_tasks) > 0 and len(done_tasks) == len(obj_tasks)
+
+        if not all_tasks_done:
+            continue
+
+        # All tasks done — check KRs
+        all_krs_met = True
+        unmet_krs = []
+        for kr in obj.get("key_results", []):
+            kr_met = False
+            if kr.get("status") == "ACHIEVED":
+                kr_met = True
+            elif kr.get("target") is not None:
+                current = kr.get("current", kr.get("baseline", 0))
+                direction = kr.get("direction", "up")
+                if direction == "down":
+                    kr_met = current <= kr["target"]
+                else:
+                    kr_met = current >= kr["target"]
+                if kr_met and kr.get("status") != "ACHIEVED":
+                    kr["status"] = "ACHIEVED"
+                    kr["achieved_at"] = now_iso()
+                    kr["achieved_by_task"] = task["id"]
+                    changed = True
+
+            if not kr_met:
+                all_krs_met = False
+                unmet_krs.append(f"{kr['id']}: {kr.get('metric') or kr.get('description', '?')[:50]}")
+
+        if all_krs_met:
+            obj["status"] = "ACHIEVED"
+            obj["updated"] = now_iso()
+            obj_data["updated"] = now_iso()
+            _s.save_data(project, 'objectives', obj_data)
+            print(f"\n  ** OBJECTIVE {obj['id']} ACHIEVED ** — all {len(obj_tasks)} tasks done, "
+                  f"all {len(obj.get('key_results', []))} KRs met.")
+            _trace(project, {"event": "objective.achieved", "objective": obj["id"],
+                   "task": task.get("id"), "total_tasks": len(obj_tasks)})
+        else:
+            print(f"\n  **OBJECTIVE WARNING**: All {len(obj_tasks)} tasks for {obj['id']} are done "
+                  f"but {len(unmet_krs)} KR(s) NOT met:", file=sys.stderr)
+            for ukr in unmet_krs:
+                print(f"    [-] {ukr}", file=sys.stderr)
+            print(f"  Update KRs manually or add tasks to address gaps.", file=sys.stderr)
+            _trace(project, {"event": "objective.tasks_done_krs_unmet", "objective": obj["id"],
+                   "task": task.get("id"), "unmet_krs": unmet_krs})
 
 
 # ---------------------------------------------------------------------------

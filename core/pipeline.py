@@ -84,6 +84,7 @@ from pipeline_context import (  # noqa: F401
 
 from pipeline_planning import (  # noqa: F401
     cmd_draft_plan, cmd_show_draft, cmd_approve_plan,
+    cmd_validate_ingestion, validate_ingestion_completeness,
     _validate_plan_references, _validate_plan_context,
     _check_assumptions_readiness, _check_coverage,
     _print_draft_tasks,
@@ -176,6 +177,9 @@ def main():
     p.add_argument("project")
     p.add_argument("--data", default=None, help="JSON object with config keys")
 
+    p = sub.add_parser("validate-ingestion", help="Validate ingestion completeness (Contract C1)")
+    p.add_argument("project")
+
     p = sub.add_parser("draft-plan", help="Store draft plan for review")
     p.add_argument("project")
     p.add_argument("--data", required=True, help="JSON array of tasks (same format as add-tasks)")
@@ -227,6 +231,7 @@ def main():
         "remove-task": cmd_remove_task,
         "context": cmd_context,
         "config": cmd_config,
+        "validate-ingestion": cmd_validate_ingestion,
         "draft-plan": cmd_draft_plan,
         "show-draft": cmd_show_draft,
         "approve-plan": cmd_approve_plan,

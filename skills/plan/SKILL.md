@@ -82,6 +82,11 @@ no amount of dependency graphs or acceptance criteria will save the plan.
 
 - User has stated a goal
 - Working directory is a codebase (or will become one)
+- **If source documents were ingested** (K-NNN with category=source-document exist):
+  - Objectives MUST exist (run `/analyze` first if they don't)
+  - `draft-plan` will BLOCK without `--objective O-NNN` when objectives exist
+  - Pipeline: `/ingest` → `/analyze` (creates objectives) → `/plan` (links to objective)
+- **If no source documents**: standalone plan is allowed without objectives (warning only)
 
 ---
 

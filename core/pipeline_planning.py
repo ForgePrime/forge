@@ -21,8 +21,14 @@ from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
 from trace import trace_cmd
 
 
-def _validate_plan_references(entries: list, project: str) -> list:
-    """Validate origin, scopes, knowledge_ids references. Returns list of warning strings."""
+def _validate_plan_references(entries: list, project: str) -> tuple:
+    """Validate origin, scopes, knowledge_ids references (Contract C3).
+
+    Returns (errors: list[str], warnings: list[str]).
+    Errors = hard gate (invalid origin/knowledge refs).
+    Warnings = soft (scope mismatches).
+    """
+    errors = []
     warnings = []
     _s = _get_storage()
 
@@ -40,7 +46,8 @@ def _validate_plan_references(entries: list, project: str) -> list:
         valid_obj_ids = {o["id"] for o in objs}
     if _s.exists(project, 'knowledge'):
         k_data = _s.load_data(project, 'knowledge').get("knowledge", [])
-        valid_k_ids = {k["id"] for k in k_data if k.get("status") == "ACTIVE"}
+        valid_k_ids = {k["id"] for k in k_data
+                       if k.get("status", "ACTIVE") in ("ACTIVE", "DRAFT")}
     if _s.exists(project, 'guidelines'):
         g_data = _s.load_data(project, 'guidelines').get("guidelines", [])
         valid_scopes = {g["scope"] for g in g_data if g.get("scope") and g.get("status") == "ACTIVE"}
@@ -49,25 +56,25 @@ def _validate_plan_references(entries: list, project: str) -> list:
     for t in entries:
         tid = t.get("id", "?")
 
-        # Origin validation
+        # Origin validation — HARD GATE (Contract C3)
         origin = t.get("origin", "")
         if origin:
             if origin.startswith("I-") and origin not in valid_idea_ids:
-                warnings.append(f"  {tid}: origin '{origin}' — idea not found")
+                errors.append(f"  {tid}: origin '{origin}' — idea not found")
             elif origin.startswith("O-") and origin not in valid_obj_ids:
-                warnings.append(f"  {tid}: origin '{origin}' — objective not found")
+                errors.append(f"  {tid}: origin '{origin}' — objective not found")
 
-        # Scope validation (only warn if guidelines exist for the project)
+        # Scope validation — soft warning
         for scope in t.get("scopes", []):
             if valid_scopes and scope != "general" and scope not in valid_scopes:
                 warnings.append(f"  {tid}: scope '{scope}' — no guidelines with this scope")
 
-        # Knowledge validation
+        # Knowledge validation — HARD GATE (Contract C3)
         for kid in t.get("knowledge_ids", []):
             if kid not in valid_k_ids:
-                warnings.append(f"  {tid}: knowledge '{kid}' — not found or not ACTIVE")
+                errors.append(f"  {tid}: knowledge '{kid}' — not found or not ACTIVE/DRAFT")
 
-    return warnings
+    return errors, warnings
 
 
 def _validate_plan_context(entries: list, project: str) -> tuple[list, list]:
@@ -311,6 +318,173 @@ CRITICAL_CATEGORIES = {
 }
 
 
+def validate_ingestion_completeness(project: str) -> tuple:
+    """Validate that ingestion produced all required artifacts (Contract C1).
+
+    Returns (verdict: "PASS"|"WARN"|"FAIL"|"SKIP", details: dict).
+    SKIP = no source documents registered (standalone project — ingestion not needed).
+    FAIL = ingestion incomplete — hard gate should block.
+    WARN = ingestion has minor gaps.
+    PASS = ingestion contract satisfied.
+    """
+    _s = _get_storage()
+
+    if not _s.exists(project, 'knowledge'):
+        return "SKIP", {"reason": "no knowledge store"}
+
+    k_data = _s.load_data(project, 'knowledge')
+    # Include ACTIVE and DRAFT (DRAFT is valid after ingestion, before review)
+    valid_statuses = {"ACTIVE", "DRAFT"}
+    all_knowledge = [k for k in k_data.get("knowledge", [])
+                     if k.get("status", "ACTIVE") in valid_statuses]
+
+    source_docs = [k for k in all_knowledge if k.get("category") == "source-document"]
+    if not source_docs:
+        return "SKIP", {"reason": "no source documents registered"}
+
+    errors = []
+    warnings = []
+
+    # 1. Check extraction ratio (≥2 facts per source document)
+    fact_categories = {"requirement", "domain-rules", "technical-context", "architecture",
+                       "api-reference", "business-context", "integration", "infrastructure"}
+    extracted_facts = [k for k in all_knowledge if k.get("category") in fact_categories]
+    ratio = len(extracted_facts) / len(source_docs) if source_docs else 0
+
+    if len(extracted_facts) == 0:
+        errors.append(f"Zero facts extracted from {len(source_docs)} source document(s). "
+                      f"Run /ingest to extract requirements, rules, and context.")
+    elif ratio < 2:
+        warnings.append(f"Low extraction ratio: {len(extracted_facts)} facts from "
+                        f"{len(source_docs)} documents (avg {ratio:.1f}/doc, expected ≥2).")
+
+    # 2. Check ingestion records exist
+    has_research = _s.exists(project, 'research')
+    ingestion_records = []
+    if has_research:
+        r_data = _s.load_data(project, 'research')
+        ingestion_records = [r for r in r_data.get("research", [])
+                             if r.get("category") == "ingestion"]
+
+    if not ingestion_records:
+        warnings.append(f"No ingestion records (R-NNN category=ingestion). "
+                        f"Ingestion may not have been tracked properly.")
+
+    # 3. Check 9 critical categories coverage
+    category_coverage = {}
+    for cat_name, cat_def in CRITICAL_CATEGORIES.items():
+        match = cat_def["knowledge_match"]
+        found = False
+        for k in all_knowledge:
+            if k.get("category") in match["categories"]:
+                found = True
+                break
+            k_tags = {t.lower() for t in k.get("tags", [])}
+            if k_tags & match["tags"]:
+                found = True
+                break
+            content_lower = (k.get("content", "") + " " + k.get("title", "")).lower()
+            if any(kw in content_lower for kw in match["keywords"]):
+                found = True
+                break
+
+        # Also check if decisions cover this category
+        has_decision = False
+        if _s.exists(project, 'decisions'):
+            d_data = _s.load_data(project, 'decisions')
+            for d in d_data.get("decisions", []):
+                d_text = (d.get("issue", "") + " " + d.get("recommendation", "")).lower()
+                if any(kw in d_text for kw in match["keywords"]):
+                    has_decision = True
+                    break
+
+        if found:
+            category_coverage[cat_name] = "KNOWN"
+        elif has_decision:
+            category_coverage[cat_name] = "ASSUMED"
+        else:
+            category_coverage[cat_name] = "MISSING"
+
+    missing_categories = {k: v for k, v in category_coverage.items() if v == "MISSING"}
+    if len(missing_categories) > 4:
+        errors.append(f"{len(missing_categories)}/9 critical categories not covered: "
+                      f"{', '.join(missing_categories.keys())}. "
+                      f"Run /ingest to extract knowledge for these areas.")
+    elif len(missing_categories) > 2:
+        warnings.append(f"{len(missing_categories)}/9 critical categories not covered: "
+                        f"{', '.join(missing_categories.keys())}.")
+
+    # Determine verdict
+    if errors:
+        verdict = "FAIL"
+    elif warnings:
+        verdict = "WARN"
+    else:
+        verdict = "PASS"
+
+    details = {
+        "source_docs": len(source_docs),
+        "extracted_facts": len(extracted_facts),
+        "extraction_ratio": round(ratio, 1),
+        "ingestion_records": len(ingestion_records),
+        "category_coverage": category_coverage,
+        "missing_categories": list(missing_categories.keys()),
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+    return verdict, details
+
+
+def cmd_validate_ingestion(args):
+    """CLI command: validate ingestion completeness (Contract C1)."""
+    project = args.project
+    verdict, details = validate_ingestion_completeness(project)
+
+    print(f"## Ingestion Validation: {project}")
+    print(f"Verdict: {verdict}")
+    print()
+
+    if verdict == "SKIP":
+        print(f"  No source documents registered — ingestion validation not applicable.")
+        print(f"  (This is fine for standalone projects without source documentation.)")
+        return
+
+    print(f"  Source documents: {details['source_docs']}")
+    print(f"  Extracted facts: {details['extracted_facts']} (ratio: {details['extraction_ratio']}/doc)")
+    print(f"  Ingestion records: {details['ingestion_records']}")
+    print()
+
+    # Category coverage table
+    print("  Category coverage (9 critical):")
+    for cat, status in details['category_coverage'].items():
+        icon = {"KNOWN": "[+]", "ASSUMED": "[~]", "MISSING": "[-]"}[status]
+        print(f"    {icon} {cat}: {status}")
+    print()
+
+    if details['errors']:
+        print("  ERRORS (must fix before /analyze):")
+        for e in details['errors']:
+            print(f"    ! {e}")
+        print()
+
+    if details['warnings']:
+        print("  WARNINGS:")
+        for w in details['warnings']:
+            print(f"    ? {w}")
+        print()
+
+    if verdict == "PASS":
+        print("  Ingestion complete. Ready for /analyze.")
+    elif verdict == "WARN":
+        print("  Ingestion has minor gaps. /analyze can proceed but review warnings.")
+    else:
+        print("  Ingestion INCOMPLETE. Fix errors before running /analyze.")
+        sys.exit(1)
+
+    trace_cmd(project, "pipeline", "validate_ingestion", verdict=verdict, **details)
+
+
 def _check_understanding_completeness(project: str, assumptions: list = None):
     """Check that critical knowledge categories are covered (known or assumed).
 
@@ -396,6 +570,21 @@ def cmd_draft_plan(args):
            "has_coverage": bool(getattr(args, "coverage", None)),
            "objective": getattr(args, "objective", None),
            "idea": getattr(args, "idea", None)})
+
+    # Contract C1: Ingestion completeness gate
+    ing_verdict, ing_details = validate_ingestion_completeness(args.project)
+    if ing_verdict == "FAIL":
+        error_lines = "\n".join(f"  ! {e}" for e in ing_details.get("errors", []))
+        raise PreconditionError(
+            f"Ingestion completeness gate FAILED (Contract C1).\n"
+            f"{error_lines}\n\n"
+            f"Fix: run /ingest to extract facts from source documents, "
+            f"then /analyze to create objectives.\n"
+            f"Check: python -m core.pipeline validate-ingestion {args.project}"
+        )
+    elif ing_verdict == "WARN":
+        warn_lines = "\n".join(f"  ? {w}" for w in ing_details.get("warnings", []))
+        print(f"\n**INGESTION WARNING** (Contract C1):\n{warn_lines}\n", file=sys.stderr)
 
     # Validate against add-tasks contract
     errors = validate_contract(CONTRACTS["add-tasks"], draft_tasks)
@@ -551,31 +740,23 @@ def cmd_draft_plan(args):
                   open_assumptions=len(open_assumptions),
                   warn_risks=len(warn_risks))
 
-    # Requirement → Objective mapping check (warning, not blocking)
-    if _s.exists(args.project, 'knowledge'):
-        k_data = _s.load_data(args.project, 'knowledge')
-        requirements = [k for k in k_data.get("knowledge", [])
-                        if k.get("category") == "requirement" and k.get("status") == "ACTIVE"]
-        if requirements:
-            unmapped = []
-            for req in requirements:
-                has_objective_link = any(
-                    le.get("entity_type") == "objective"
-                    for le in req.get("linked_entities", [])
-                )
-                if not has_objective_link:
-                    unmapped.append(req)
-            if unmapped:
-                print(f"\n**REQUIREMENT WARNING**: {len(unmapped)} requirement(s) not linked to any Objective:",
-                      file=sys.stderr)
-                for r in unmapped[:10]:
-                    print(f"  {r['id']}: {r.get('title', '')[:60]}", file=sys.stderr)
-                print(f"  Link with: knowledge link {{project}} --data "
-                      f"'[{{\"knowledge_id\": \"K-NNN\", \"entity_type\": \"objective\", "
-                      f"\"entity_id\": \"O-NNN\", \"relation\": \"required\"}}]'\n",
-                      file=sys.stderr)
-            trace_cmd(args.project, "pipeline", "requirement_mapping_check",
-                      total_requirements=len(requirements), unmapped=len(unmapped))
+    # Contract C2: Analysis completeness gate
+    from objectives import validate_analysis_completeness
+    c2_verdict, c2_details = validate_analysis_completeness(args.project)
+    if c2_verdict == "FAIL":
+        error_lines = "\n".join(f"  ! {e}" for e in c2_details.get("errors", []))
+        raise PreconditionError(
+            f"Analysis completeness gate FAILED (Contract C2).\n"
+            f"{error_lines}\n\n"
+            f"Fix: run /analyze to create objectives with measurable KRs from ingested requirements.\n"
+            f"Check: python -m core.objectives verify {args.project}"
+        )
+    elif c2_verdict == "WARN":
+        warn_lines = "\n".join(f"  ? {w}" for w in c2_details.get("warnings", []))
+        print(f"\n**ANALYSIS WARNING** (Contract C2):\n{warn_lines}\n", file=sys.stderr)
+    trace_cmd(args.project, "pipeline", "analysis_completeness_gate",
+              verdict=c2_verdict, **{k: v for k, v in c2_details.items()
+                                     if k not in ("errors", "warnings")})
 
     # Coverage gate: check all source requirements are accounted for
     coverage = None
@@ -630,37 +811,71 @@ def cmd_draft_plan(args):
                 print(f"  Auto-coverage: {len(req_knowledge)} requirements covered by tasks.",
                       file=sys.stderr)
 
-    # KR measurement gate: objectives linked to this plan must have KR with measurement
-    if _s.exists(args.project, 'objectives'):
-        obj_data_kr = _s.load_data(args.project, 'objectives')
-        # Find objectives linked to draft tasks via origin
-        draft_origins = {t.get("origin", "") for t in draft_tasks}
-        plan_objectives = [o for o in obj_data_kr.get("objectives", [])
-                           if o["id"] in draft_origins and o.get("status") == "ACTIVE"]
-        kr_without_measurement = []
-        for obj in plan_objectives:
-            for kr in obj.get("key_results", []):
-                if not kr.get("measurement"):
-                    kr_without_measurement.append(
-                        f"  {obj['id']}/{kr['id']}: "
-                        f"{kr.get('metric') or kr.get('description', '?')[:50]} — no measurement method"
+    # Objective linkage gate: block or warn when no objective is specified
+    _objective_arg = args.objective if hasattr(args, "objective") and args.objective else None
+    _idea_arg = args.idea if hasattr(args, "idea") and args.idea else None
+    if not _objective_arg and not _idea_arg:
+        # Check if any tasks have origin set explicitly
+        tasks_with_origin = [t for t in draft_tasks if t.get("origin")]
+        if not tasks_with_origin:
+            # Determine if source documents were ingested (implies /analyze should have run)
+            has_source_docs = False
+            if _s.exists(args.project, 'knowledge'):
+                k_data_obj = _s.load_data(args.project, 'knowledge')
+                has_source_docs = any(
+                    k.get("category") == "source-document"
+                    for k in k_data_obj.get("knowledge", [])
+                )
+
+            if _s.exists(args.project, 'objectives'):
+                obj_data_link = _s.load_data(args.project, 'objectives')
+                active_objs = [o for o in obj_data_link.get("objectives", [])
+                               if o.get("status") == "ACTIVE"]
+                if active_objs:
+                    # HARD GATE: active objectives exist but plan doesn't reference them
+                    obj_list = ", ".join(f"{o['id']}" for o in active_objs[:5])
+                    more = f" (+{len(active_objs) - 5} more)" if len(active_objs) > 5 else ""
+                    raise PreconditionError(
+                        f"Objective linkage gate FAILED — no --objective specified and no tasks have origin set.\n"
+                        f"  Active objectives exist: {obj_list}{more}\n"
+                        f"  Every plan must be linked to an objective so KR auto-update works.\n\n"
+                        f"  Fix: add --objective O-NNN to this command, or set origin on each task.\n"
+                        f"  List objectives: python -m core.objectives show {{project}}"
                     )
-        if kr_without_measurement:
-            details = "\n".join(kr_without_measurement)
-            print(f"\n**KR MEASUREMENT WARNING**: {len(kr_without_measurement)} KR(s) without measurement method:",
-                  file=sys.stderr)
-            print(details, file=sys.stderr)
-            print(f"  Add measurement (command/test/manual) via: objectives update --data '...'",
-                  file=sys.stderr)
-            print(f"  Without measurement, KR progress cannot be verified automatically.\n",
-                  file=sys.stderr)
-            trace_cmd(args.project, "pipeline", "kr_measurement_check",
-                      without_measurement=len(kr_without_measurement))
+                elif has_source_docs:
+                    # HARD GATE: source docs ingested but no objectives created — /analyze was skipped
+                    raise PreconditionError(
+                        f"Objective linkage gate FAILED — source documents were ingested but no objectives exist.\n"
+                        f"  This means /analyze was skipped. Run /analyze first to create objectives from\n"
+                        f"  ingested requirements, then plan against those objectives.\n\n"
+                        f"  Pipeline: /ingest → /analyze → /plan\n"
+                        f"  Run: /analyze to create objectives with measurable KRs."
+                    )
+                # else: no active objectives and no source docs — standalone project, just warn
+            elif has_source_docs:
+                # HARD GATE: source docs but no objectives file at all
+                raise PreconditionError(
+                    f"Objective linkage gate FAILED — source documents were ingested but no objectives exist.\n"
+                    f"  Run /analyze first to create objectives from ingested requirements.\n\n"
+                    f"  Pipeline: /ingest → /analyze → /plan"
+                )
+            else:
+                # No source docs, no objectives — simple standalone project, just warn
+                print(f"\n**OBJECTIVE WARNING**: No objectives defined for this project.",
+                      file=sys.stderr)
+                print(f"  Plan will proceed without objective linkage. KR tracking unavailable.",
+                      file=sys.stderr)
+                print(f"  For structured projects, run /objective or /analyze first.\n",
+                      file=sys.stderr)
+
+            trace_cmd(args.project, "pipeline", "objective_linkage_gate",
+                      has_objective=False, has_idea=False, has_source_docs=has_source_docs,
+                      tasks_with_origin=0, total_tasks=len(draft_tasks))
 
     # Store draft (overwrite previous draft)
     tracker["draft_plan"] = {
-        "source_idea_id": args.idea if hasattr(args, "idea") and args.idea else None,
-        "source_objective_id": args.objective if hasattr(args, "objective") and args.objective else None,
+        "source_idea_id": _idea_arg,
+        "source_objective_id": _objective_arg,
         "created": now_iso(),
         "tasks": draft_tasks,
         "assumptions": assumptions,
@@ -672,14 +887,20 @@ def cmd_draft_plan(args):
     # AC quality warnings (non-blocking at draft time — shows errors for user to fix)
     _warn_ac_quality(draft_tasks)
 
-    # Reference validation (non-blocking at draft time)
-    ref_warnings = _validate_plan_references(draft_tasks, args.project)
+    # Reference validation (Contract C3 — hard gate for origin/knowledge, soft for scopes)
+    ref_errors, ref_warnings = _validate_plan_references(draft_tasks, args.project)
+    if ref_errors:
+        print()
+        print(f"**REFERENCE ERRORS** ({len(ref_errors)}) — must fix before approving:")
+        for e in ref_errors:
+            print(e)
+        print()
     if ref_warnings:
         print()
         print(f"**REFERENCE WARNINGS** ({len(ref_warnings)}):")
         for w in ref_warnings:
             print(w)
-        print("Tip: fix invalid origins/scopes/knowledge_ids before approving.")
+        print("Tip: fix invalid scopes before approving.")
         print()
 
     # Context validation: auto-load project context, validate plan against it
@@ -815,15 +1036,41 @@ def cmd_approve_plan(args):
                                       source_objective_id=source_objective_id)
             entries.append(entry)
 
+        # Objective linkage check: warn when tasks have no origin
+        tasks_without_origin = [e for e in entries if not e.get("origin")]
+        if tasks_without_origin:
+            _s_approve = _get_storage()
+            has_active_objectives = False
+            if _s_approve.exists(args.project, 'objectives'):
+                obj_data_approve = _s_approve.load_data(args.project, 'objectives')
+                has_active_objectives = any(
+                    o.get("status") == "ACTIVE"
+                    for o in obj_data_approve.get("objectives", [])
+                )
+            if has_active_objectives:
+                no_origin_ids = ", ".join(e["id"] for e in tasks_without_origin[:5])
+                more = f" (+{len(tasks_without_origin) - 5} more)" if len(tasks_without_origin) > 5 else ""
+                print(f"\n**OBJECTIVE WARNING**: {len(tasks_without_origin)} task(s) have no origin objective: "
+                      f"{no_origin_ids}{more}", file=sys.stderr)
+                print(f"  KR auto-update will NOT work for these tasks.", file=sys.stderr)
+                print(f"  Fix after approval: update-task --data '{{\"id\": \"T-NNN\", \"origin\": \"O-NNN\"}}'\n",
+                      file=sys.stderr)
+
         # AC hard gate: feature/bug tasks must have acceptance criteria
         has_ac_errors = _warn_ac_quality(entries)
         if has_ac_errors:
             raise ValidationError("Cannot approve plan — feature/bug tasks without acceptance criteria.")
 
-        # Reference validation (non-blocking warnings)
-        ref_warnings = _validate_plan_references(entries, args.project)
+        # Reference validation (Contract C3/C4 — errors block, warnings don't)
+        ref_errors, ref_warnings = _validate_plan_references(entries, args.project)
+        if ref_errors:
+            detail = "\n".join(ref_errors)
+            raise ValidationError(
+                f"Reference validation failed (Contract C3) — {len(ref_errors)} invalid reference(s):\n"
+                f"{detail}\n\nFix origin and knowledge_ids to reference existing entities."
+            )
         if ref_warnings:
-            print(f"**REFERENCE WARNINGS** ({len(ref_warnings)}):", file=sys.stderr)
+            print(f"\n**REFERENCE WARNINGS** ({len(ref_warnings)}):", file=sys.stderr)
             for w in ref_warnings:
                 print(w, file=sys.stderr)
 

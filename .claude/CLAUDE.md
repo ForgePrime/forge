@@ -20,9 +20,24 @@ Tasks (core) ──→ Dependencies + Produces contracts
   └─ documented by Decisions (only when deviating or choosing between alternatives)
 ```
 
+**Required when source documents are ingested** (enforced by pipeline gates):
+Objectives (with measurable KRs), Knowledge, Research, Decisions.
+Pipeline: `/ingest` → `/analyze` (creates objectives) → `/plan --objective O-NNN` → `/run`.
+Skipping `/analyze` will BLOCK `/plan` when source documents exist.
+
 **Available for complex projects** (use via `/discover`, `/objective`):
-Ideas, Objectives, Knowledge, Research, AC Templates, Domain Modules, Lessons.
-These are opt-in tools, not required steps.
+Ideas, AC Templates, Domain Modules, Lessons — these are opt-in.
+
+## Pipeline Contracts (mechanically enforced)
+
+Each pipeline transition has a contract checked by CODE. See `docs/PIPELINE-CONTRACTS.md` for full spec.
+
+- **C1 — Ingestion completeness**: `draft-plan` BLOCKS if source docs registered but facts not extracted. Check: `python -m core.pipeline validate-ingestion {project}`
+- **C2 — Analysis completeness**: `draft-plan` BLOCKS if source docs exist but no objectives with measurable KRs. Check: `python -m core.objectives verify {project}`
+- **C3 — Plan linkage**: `draft-plan` BLOCKS without `--objective` when active objectives exist. `approve-plan` BLOCKS if origin/knowledge_ids reference non-existent entities.
+- **C5 — Begin contract**: `begin` WARNS if task targets an ACHIEVED objective.
+- **C6 — Complete + KR**: `complete` validates `kr_link` references, KR measurement failures are WARNED (not silent). Task without origin that should have one → WARNING.
+- **C7 — Objective completion**: When last task for O-NNN completes, auto-checks all KRs. If all met → objective ACHIEVED. If not → WARNING with unmet KRs.
 
 ## Mechanical Guardrails
 
@@ -31,11 +46,11 @@ These are opt-in tools, not required steps.
 - **Mechanical AC always runs**: structured AC with `verification: "test"|"command"` runs at completion **regardless of ceremony level or task type**. This is a gate, not ceremony.
 - **AC evidence required**: manual AC needs `--ac-reasoning` with concrete proof (min 50 chars). Each criterion must be addressed with specific evidence (file paths, command output, test results). Filler words like "done" or "verified" are rejected.
 - **Skip requires justification**: `skip` requires `--reason` (min 50 chars). Feature/bug tasks also require `--force`.
-- **KR auto-update**: completing a task with `origin: "O-XXX"` auto-updates descriptive KR statuses (NOT_STARTED → IN_PROGRESS → ACHIEVED). Numeric KRs require manual update.
+- **KR auto-update**: completing a task with `origin: "O-XXX"` auto-updates descriptive KR statuses (NOT_STARTED → IN_PROGRESS → ACHIEVED). Numeric KRs via measurement commands. Failures are WARNED, not silent.
 - **Contract alignment**: `begin` warns when task instruction doesn't reference upstream `produces` contracts
 - **Lean context**: `begin --lean` skips Knowledge, Research, Business Context, Lessons for simple tasks
 - **Coverage gate**: `draft-plan --coverage '[...]'` rejects plan if any source requirement has status MISSING. DEFERRED/OUT_OF_SCOPE require reason.
-- **Plan context auto-load**: `draft-plan` automatically loads must-guidelines, objectives, knowledge and shows them. It validates that tasks reference proper scopes (matching their origin objective's scopes) and that must-guideline scopes are covered by the plan. `approve-plan` blocks if context errors exist (use `--force` to override).
+- **Plan context auto-load**: `draft-plan` automatically loads must-guidelines, objectives, knowledge and shows them. It validates that tasks reference proper scopes (matching their origin objective's scopes) and that must-guideline scopes are covered by the plan. `approve-plan` blocks if context errors exist.
 - **Plan staleness**: `begin` warns when files in task instruction were modified (committed) since plan approval
 
 ## CLI Reference
@@ -91,7 +106,8 @@ When adding tasks, each task supports:
 - `parallel`, `conflicts_with` — multi-agent coordination
 - `blocked_by_decisions` — decision IDs that must be CLOSED before start
 - `skill` — path to SKILL.md for structured execution
-- `origin`, `knowledge_ids`, `test_requirements` — optional context
+- `origin` — objective ID (O-NNN). **Required** for feature/bug tasks when objectives exist. Enables KR auto-update.
+- `knowledge_ids`, `test_requirements` — optional context
 
 ### Validation
 
@@ -101,14 +117,20 @@ When adding tasks, each task supports:
 
 ## Workflow
 
-### Default: plan and execute
+### Default: standalone plan (no source documents)
 ```
 /plan {goal}  ──→  /run  ──→  done
 ```
 
+### From source documents (MANDATORY sequence — gates enforce this)
+```
+/ingest ──→ /analyze ──→ /plan --objective O-NNN ──→ /run ──→ verified
+```
+Skipping `/analyze` BLOCKS `/plan`. Missing `--objective` BLOCKS `draft-plan`.
+
 ### For complex work: discover first
 ```
-/objective ──→ /discover ──→ /plan ──→ /run ──→ /compound
+/objective ──→ /discover ──→ /plan --objective O-NNN ──→ /run ──→ /compound
 ```
 
 ### From documentation: full pipeline

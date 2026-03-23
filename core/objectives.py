@@ -778,6 +778,148 @@ def cmd_measure(args):
         print(f"\nProgress saved.")
 
 
+def validate_analysis_completeness(project: str) -> tuple:
+    """Validate that analysis produced all required artifacts (Contract C2).
+
+    Returns (verdict: "PASS"|"WARN"|"FAIL"|"SKIP", details: dict).
+    SKIP = no source documents (standalone project, analysis not required).
+    FAIL = analysis incomplete — hard gate should block planning.
+    """
+    from storage import JSONFileStorage
+    _s = JSONFileStorage()
+
+    # Check if source documents exist (analysis only required when docs were ingested)
+    has_source_docs = False
+    if _s.exists(project, 'knowledge'):
+        k_data = _s.load_data(project, 'knowledge')
+        has_source_docs = any(
+            k.get("category") == "source-document"
+            for k in k_data.get("knowledge", [])
+            if k.get("status", "ACTIVE") in ("ACTIVE", "DRAFT")
+        )
+
+    if not has_source_docs:
+        return "SKIP", {"reason": "no source documents — analysis not required"}
+
+    errors = []
+    warnings = []
+
+    # 1. Check objectives exist
+    if not _s.exists(project, 'objectives'):
+        errors.append("No objectives.json — run /analyze to create objectives from ingested requirements.")
+        return "FAIL", {"errors": errors, "warnings": warnings,
+                        "active_objectives": 0, "krs_without_measurement": [],
+                        "orphaned_requirements": []}
+
+    obj_data = _s.load_data(project, 'objectives')
+    active_objs = [o for o in obj_data.get("objectives", []) if o.get("status") == "ACTIVE"]
+
+    if not active_objs:
+        errors.append("No ACTIVE objectives. Run /analyze to create objectives from ingested requirements.")
+        return "FAIL", {"errors": errors, "warnings": warnings,
+                        "active_objectives": 0, "krs_without_measurement": [],
+                        "orphaned_requirements": []}
+
+    # 2. Check every KR has measurement field
+    krs_without_measurement = []
+    for obj in active_objs:
+        for kr in obj.get("key_results", []):
+            if not kr.get("measurement"):
+                krs_without_measurement.append(
+                    f"{obj['id']}/{kr['id']}: {kr.get('metric') or kr.get('description', '?')[:50]}"
+                )
+
+    if krs_without_measurement:
+        errors.append(
+            f"{len(krs_without_measurement)} KR(s) without measurement method. "
+            f"KR auto-update will not work. Fix via: "
+            f"python -m core.objectives update {{project}} --data '[{{\"id\": \"O-NNN\", ...}}]'"
+        )
+
+    # 3. Check orphaned requirements (K-NNN category=requirement without objective link)
+    orphaned_requirements = []
+    if _s.exists(project, 'knowledge'):
+        k_data = _s.load_data(project, 'knowledge')
+        requirements = [k for k in k_data.get("knowledge", [])
+                        if k.get("category") == "requirement"
+                        and k.get("status", "ACTIVE") in ("ACTIVE", "DRAFT")]
+        for req in requirements:
+            has_obj_link = any(
+                le.get("entity_type") == "objective"
+                for le in req.get("linked_entities", [])
+            )
+            if not has_obj_link:
+                orphaned_requirements.append(f"{req['id']}: {req.get('title', '?')[:60]}")
+
+    if orphaned_requirements:
+        warnings.append(
+            f"{len(orphaned_requirements)} requirement(s) not linked to any objective. "
+            f"Link via: python -m core.knowledge link {{project}} --data '[...]'"
+        )
+
+    # Determine verdict
+    if errors:
+        verdict = "FAIL"
+    elif warnings:
+        verdict = "WARN"
+    else:
+        verdict = "PASS"
+
+    return verdict, {
+        "errors": errors,
+        "warnings": warnings,
+        "active_objectives": len(active_objs),
+        "krs_without_measurement": krs_without_measurement,
+        "orphaned_requirements": orphaned_requirements,
+    }
+
+
+def cmd_verify(args):
+    """CLI command: verify analysis completeness (Contract C2)."""
+    project = args.project
+    verdict, details = validate_analysis_completeness(project)
+
+    print(f"## Analysis Verification: {project}")
+    print(f"Verdict: {verdict}")
+    print()
+
+    if verdict == "SKIP":
+        print(f"  {details.get('reason', 'Analysis not required.')}")
+        return
+
+    print(f"  Active objectives: {details.get('active_objectives', 0)}")
+
+    if details.get("krs_without_measurement"):
+        print(f"\n  KRs without measurement ({len(details['krs_without_measurement'])}):")
+        for kr in details["krs_without_measurement"]:
+            print(f"    [-] {kr}")
+
+    if details.get("orphaned_requirements"):
+        print(f"\n  Orphaned requirements ({len(details['orphaned_requirements'])}):")
+        for req in details["orphaned_requirements"]:
+            print(f"    [-] {req}")
+
+    if details.get("errors"):
+        print(f"\n  ERRORS (must fix before /plan):")
+        for e in details["errors"]:
+            print(f"    ! {e}")
+
+    if details.get("warnings"):
+        print(f"\n  WARNINGS:")
+        for w in details["warnings"]:
+            print(f"    ? {w}")
+
+    print()
+    if verdict == "PASS":
+        print("  Analysis complete. Ready for /plan --objective O-NNN.")
+    elif verdict == "WARN":
+        print("  Analysis has minor gaps. /plan can proceed but review warnings.")
+    else:
+        print("  Analysis INCOMPLETE. Fix errors before running /plan.")
+        import sys
+        sys.exit(1)
+
+
 # -- CLI --
 
 def _setup_extra_parsers(sub):
@@ -789,6 +931,9 @@ def _setup_extra_parsers(sub):
     p.add_argument("objective_id")
 
     p = sub.add_parser("status", help="Coverage dashboard")
+    p.add_argument("project")
+
+    p = sub.add_parser("verify", help="Verify analysis completeness (Contract C2)")
     p.add_argument("project")
 
     p = sub.add_parser("measure", help="Run KR measurement commands")
@@ -804,6 +949,7 @@ def main():
             "show": cmd_show,
             "status": cmd_status,
             "measure": cmd_measure,
+            "verify": cmd_verify,
         },
         setup_extra_parsers=_setup_extra_parsers,
         description="Forge Objectives \u2014 business goals with measurable key results",
