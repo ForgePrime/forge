@@ -287,7 +287,8 @@ def cmd_next(args):
                "ac_count": len(candidate.get("acceptance_criteria", [])),
                "exclusions_count": len(candidate.get("exclusions", [])),
                "has_alignment": bool(candidate.get("alignment")),
-               "has_produces": bool(candidate.get("produces"))})
+               "has_produces": bool(candidate.get("produces")),
+               "has_uses_from_deps": bool(candidate.get("uses_from_dependencies"))})
         return candidate
     else:
         # Multi-agent — use two-phase claim protocol

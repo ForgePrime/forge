@@ -191,7 +191,7 @@ CONTRACTS = {
                       "conflicts_with", "skill", "acceptance_criteria",
                       "type", "blocked_by_decisions", "scopes", "origin",
                       "knowledge_ids", "test_requirements", "alignment",
-                      "exclusions", "produces", "source_requirements"],
+                      "exclusions", "produces", "uses_from_dependencies", "source_requirements"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -206,6 +206,7 @@ CONTRACTS = {
             "alignment": dict,
             "exclusions": list,
             "produces": dict,
+            "uses_from_dependencies": dict,
         },
         "invariant_texts": [
             "id: existing task ID to update",

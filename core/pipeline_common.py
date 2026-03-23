@@ -313,6 +313,9 @@ def print_task_detail(task: dict):
     if task.get("produces"):
         print(f"**Produces**: {json.dumps(task['produces'], indent=2)}")
 
+    if task.get("uses_from_dependencies"):
+        print(f"**Uses from dependencies**: {json.dumps(task['uses_from_dependencies'], indent=2)}")
+
     # Alignment
     alignment = task.get("alignment")
     if alignment:

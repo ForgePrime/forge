@@ -121,6 +121,8 @@ Tagged input:
 - Every `[IMPLICIT]` must be written down with consequence if wrong.
 - Items tagged `[SCOPE-OUT]` go ONLY into the Out of Scope block. If any task
   implements a `[SCOPE-OUT]` item, the plan has a scope leak — fix it.
+- Every `[IMPLICIT]` assumption must be reconciled with must-guidelines from Step 2.
+  If an assumption contradicts a must-guideline, re-tag as `[CONFLICT]` and resolve.
 
 ---
 
@@ -642,7 +644,8 @@ Any NO = contract broken. Fix: either add the reference to instruction, fill
 **Check 4 — Scope leak:**
 List every item tagged `[SCOPE-OUT]` in Step 0. For each, write:
 "Is there a task that implements this? [task id / NONE]"
-Any answer other than NONE = scope leak. Remove that work from the task.
+Any answer other than NONE = scope leak. Fix: either remove that work from the task,
+or re-tag the item in Step 0 as `[REQ]` with clear boundary (e.g., "partial: only the X part").
 
 All 4 checks must produce written output. Unwritten = not done.
 If any check fails: fix the task, then restart from Check 1.

@@ -106,8 +106,6 @@ def _check_contract_alignment(task, tracker):
 
     warnings = []
     instruction = ((task.instruction or "") + " " + (task.description or "")).lower()
-    if not instruction.strip():
-        return warnings
 
     stop_words = {"http", "https", "with", "from", "that", "this", "will", "must",
                   "should", "into", "when", "then", "each", "also", "used", "none"}
@@ -133,6 +131,21 @@ def _check_contract_alignment(task, tracker):
                 warnings.append(
                     f"Dependency {dep_id} produces `{key}: {val}` "
                     f"but task instruction does not reference it. Verify alignment."
+                )
+
+    # Warn when depends_on is non-empty but uses_from_dependencies is missing
+    if task.depends_on and not task.uses_from_dependencies:
+        warnings.append(
+            f"Task has {len(task.depends_on)} dependencies but no `uses_from_dependencies`. "
+            f"Specify what this task consumes from each dependency to prevent decorative arrows."
+        )
+
+    # Warn when uses_from_dependencies references a dep not in depends_on
+    if task.uses_from_dependencies:
+        for ref_id in task.uses_from_dependencies:
+            if ref_id not in task.depends_on:
+                warnings.append(
+                    f"`uses_from_dependencies` references `{ref_id}` which is not in `depends_on`."
                 )
 
     return warnings
@@ -302,6 +315,14 @@ def cmd_context(args):
                 print(f"  **Produces**:")
                 for key, val in dep.produces.items():
                     print(f"    {key}: {val}")
+            print()
+
+        # Show what this task consumes from dependencies
+        if task.uses_from_dependencies:
+            print(f"### Uses from Dependencies")
+            print()
+            for dep_id, usage in task.uses_from_dependencies.items():
+                print(f"  **{dep_id}**: {usage}")
             print()
 
         # Contract alignment check
@@ -702,6 +723,7 @@ def cmd_context(args):
     _ctx_trace["has_alignment"] = bool(task.alignment)
     _ctx_trace["has_exclusions"] = bool(task.exclusions)
     _ctx_trace["has_produces"] = bool(task.produces)
+    _ctx_trace["has_uses_from_deps"] = bool(task.uses_from_dependencies)
     _ctx_trace["ac_count"] = len(task.acceptance_criteria)
     _trace(args.project, {"event": "context.delivered", **_ctx_trace})
 
