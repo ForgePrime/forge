@@ -873,6 +873,19 @@ def cmd_complete(args):
     git_cwd = get_project_dir(args.project)
     _check_implementation_fidelity(task, args.project, base_commit, cwd=git_cwd)
 
+    # Feature Registry: register what this task produced
+    try:
+        import subprocess as _sp_reg
+        diff_for_registry = ""
+        if base_commit and git_cwd:
+            r = _sp_reg.run(["git", "diff", base_commit, "HEAD"],
+                           capture_output=True, text=True, timeout=10, cwd=git_cwd)
+            diff_for_registry = r.stdout or ""
+        from feature_registry import register_feature
+        register_feature(args.project, task, diff_for_registry)
+    except Exception:
+        pass  # Don't fail completion if registry fails
+
     # Process deferred items — auto-create OPEN decisions
     # Required for STANDARD/FULL: agent must explicitly state what's covered vs deferred
     deferred_raw = getattr(args, "deferred", None)
@@ -1228,7 +1241,7 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
                     # No measurement — show manual update message
                     current = kr.get("current", baseline)
                     pct = _objective_kr_pct(baseline, kr["target"], current)
-                    print(f"    {kr['id']}: {current}/{target} ({pct}%) — update manually if changed")
+                    print(f"    {kr['id']}: {current}/{kr['target']} ({pct}%) — update manually if changed")
                 continue
 
             # Descriptive KRs: auto-update status
@@ -1453,6 +1466,16 @@ def _warn_ac_quality(tasks: list) -> bool:
                     errors.append(
                         f"  {tid}: AC \"{criterion.get('text', '?')[:60]}\" missing 'verification' field — "
                         f"must be 'test', 'command', or 'manual'"
+                    )
+                elif criterion.get("verification") == "test" and not criterion.get("test_path"):
+                    errors.append(
+                        f"  {tid}: AC \"{criterion.get('text', '?')[:60]}\" has verification='test' "
+                        f"but no 'test_path' — mechanical verification will fail"
+                    )
+                elif criterion.get("verification") == "command" and not criterion.get("command"):
+                    errors.append(
+                        f"  {tid}: AC \"{criterion.get('text', '?')[:60]}\" has verification='command' "
+                        f"but no 'command' — mechanical verification will fail"
                     )
                 elif criterion.get("verification") == "manual" and not criterion.get("check"):
                     warnings.append(

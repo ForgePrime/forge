@@ -28,6 +28,20 @@ Skipping `/analyze` will BLOCK `/plan` when source documents exist.
 **Available for complex projects** (use via `/discover`, `/objective`):
 Ideas, AC Templates, Domain Modules, Lessons — these are opt-in.
 
+## Fidelity Chain (mechanically enforced)
+
+Prevents information loss from docs → objectives → tasks → code:
+
+- **Atomic Requirements**: `knowledge add` warns on compound requirements (>100 chars + "and"/"oraz")
+- **Semantic Coverage**: `draft-plan` checks that task instructions contain key terms from requirements
+- **Cross-Objective Overlap**: `draft-plan` detects when new tasks duplicate DONE tasks from other objectives
+- **Feature Registry**: `complete` registers routes/components; `draft-plan` checks for conflicts
+- **Over-Coverage**: `approve-plan` detects when same requirement is covered by tasks from different objectives
+- **Source Fidelity**: `begin` compares task instruction against linked requirements, warns on drift
+- **Implementation Traceability**: `complete` checks git diff against requirement key terms
+
+Feature Registry: `python -m core.feature_registry show {project}` — shows what features exist.
+
 ## Pipeline Contracts (mechanically enforced)
 
 Each pipeline transition has a contract checked by CODE. See `docs/PIPELINE-CONTRACTS.md` for full spec.

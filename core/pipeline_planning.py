@@ -1091,6 +1091,20 @@ def cmd_draft_plan(args):
         print("  Tip: verify new tasks extend (not re-implement) completed features.")
         print()
 
+    # Feature Registry: check conflicts with registered features
+    try:
+        from feature_registry import check_conflicts
+        feature_warnings = check_conflicts(args.project, draft_tasks)
+        if feature_warnings:
+            print()
+            print(f"**FEATURE CONFLICTS** ({len(feature_warnings)}) — new tasks conflict with registered features:")
+            for w in feature_warnings:
+                print(f"  {w}")
+            print("  Tip: extend existing features instead of creating duplicates.")
+            print()
+    except Exception:
+        pass
+
     # Assumptions warnings
     if assumptions and 3 <= high_count <= 4:
         print(f"**ASSUMPTION WARNING**: {high_count} HIGH-severity assumptions — verify before Phase 1.")
