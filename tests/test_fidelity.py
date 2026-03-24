@@ -381,3 +381,91 @@ class TestOverCoverage:
 
         warnings = _check_over_coverage(new_tasks, project_name)
         assert len(warnings) == 0
+
+
+# ---------------------------------------------------------------------------
+# Feature Registry
+# ---------------------------------------------------------------------------
+
+class TestFeatureRegistry:
+
+    def test_extract_routes_from_diff(self):
+        from feature_registry import _extract_routes_from_diff
+        diff = '''
++@router.get("/api/priorities/lock-status")
++    router.push("/itrp/settings")
++app/maintenance/autobuy-schedule/page.tsx
+'''
+        routes = _extract_routes_from_diff(diff)
+        assert "/api/priorities/lock-status" in routes
+        assert "/itrp/settings" in routes
+        assert "/maintenance/autobuy-schedule" in routes
+
+    def test_extract_components_from_diff(self):
+        from feature_registry import _extract_components_from_diff
+        diff = '''
++export default function AutoBuySchedulePage() {
++export function AddCountryModal({ open }) {
++router = APIRouter(prefix="/api/v1/schedule")
+'''
+        components = _extract_components_from_diff(diff)
+        assert "AutoBuySchedulePage" in components
+        assert "AddCountryModal" in components
+        assert "router:/api/v1/schedule" in components
+
+    def test_register_and_check_conflict(self, forge_env, project_name):
+        """Full round-trip: register feature, then check for conflict."""
+        import json
+        from feature_registry import register_feature, check_conflicts
+
+        project_dir = forge_env / "forge_output" / project_name
+        project_dir.mkdir(parents=True)
+
+        # Register a feature
+        task = {
+            "id": "T-025",
+            "name": "settings-auto-schedules",
+            "origin": "O-003",
+            "instruction": "Build auto-buy schedule UI in /itrp/settings page",
+            "description": "Auto schedules configuration per country",
+            "scopes": ["frontend"],
+        }
+        diff = '+app/itrp/settings/page.tsx\n+router.push("/itrp/settings")'
+        register_feature(project_name, task, diff)
+
+        # Check that a new task creating same route conflicts
+        new_tasks = [{
+            "id": "_1",
+            "name": "schedule-maintenance-page",
+            "origin": "O-014",
+            "instruction": "Create new page at app/itrp/settings/autobuy for schedule config",
+            "description": "Schedule maintenance with grid for all countries",
+        }]
+        warnings = check_conflicts(project_name, new_tasks)
+        # Should detect feature overlap via key terms
+        assert len(warnings) >= 1
+        assert "FEATURE" in warnings[0]
+
+    def test_no_conflict_same_objective(self, forge_env, project_name):
+        """Features from same objective should not conflict."""
+        import json
+        from feature_registry import register_feature, check_conflicts
+
+        project_dir = forge_env / "forge_output" / project_name
+        project_dir.mkdir(parents=True)
+
+        register_feature(project_name, {
+            "id": "T-071", "name": "api-refactor", "origin": "O-014",
+            "instruction": "Refactor schedule API endpoints", "description": "7 schedule endpoints",
+            "scopes": ["backend"],
+        }, '+@router.get("/api/v1/schedule/config")')
+
+        new_tasks = [{
+            "id": "_1", "name": "schedule-frontend", "origin": "O-014",
+            "instruction": "Build frontend calling /api/v1/schedule/config",
+            "description": "Schedule UI",
+        }]
+        warnings = check_conflicts(project_name, new_tasks)
+        # Same objective — route reference is expected, not a conflict
+        route_conflicts = [w for w in warnings if "FEATURE_CONFLICT" in w]
+        assert len(route_conflicts) == 0

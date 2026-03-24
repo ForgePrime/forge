@@ -140,6 +140,7 @@ class EntityType(str, Enum):
     SKILLS = "skills"
     RESEARCH = "research"
     NOTIFICATIONS = "notifications"
+    FEATURES = "features"
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +230,11 @@ def default_structure(entity: str, project: str) -> dict:
             "updated": ts,
             "notifications": [],
             "unread_count": 0,
+        },
+        EntityType.FEATURES: {
+            "project": project,
+            "updated": ts,
+            "features": [],
         },
     }
 
