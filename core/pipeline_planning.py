@@ -931,6 +931,14 @@ def cmd_draft_plan(args):
         k_data_cov = _s.load_data(args.project, 'knowledge')
         req_knowledge = [k for k in k_data_cov.get("knowledge", [])
                          if k.get("category") == "requirement" and k.get("status") == "ACTIVE"]
+        source_docs = [k for k in k_data_cov.get("knowledge", [])
+                       if k.get("category") == "source-document"]
+        if source_docs and not req_knowledge:
+            print(f"\n**COVERAGE WARNING**: {len(source_docs)} source document(s) registered "
+                  f"but 0 requirements extracted. Ingestion may be incomplete.\n"
+                  f"  Run `/ingest` to extract requirements, or this plan has no traceability.",
+                  file=sys.stderr)
+
         if req_knowledge:
             # Check which requirements are covered by draft tasks via source_requirements
             task_req_ids = set()
@@ -1102,8 +1110,8 @@ def cmd_draft_plan(args):
                 print(f"  {w}")
             print("  Tip: extend existing features instead of creating duplicates.")
             print()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  WARNING: Feature registry check failed: {e}", file=sys.stderr)
 
     # Assumptions warnings
     if assumptions and 3 <= high_count <= 4:

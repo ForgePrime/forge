@@ -528,10 +528,9 @@ def _check_gates_before_complete(project, task_id, task, tracker):
 def _determine_ceremony_level(task, diff_file_count=0):
     """Auto-detect ceremony level based on task type and complexity.
 
-    Returns: 'MINIMAL', 'LIGHT', 'STANDARD', or 'FULL'
-    - MINIMAL: chore/investigation — reasoning optional, AC not required
-    - LIGHT: bug with <= 3 files — reasoning required, AC not required
-    - STANDARD: feature with <= 3 AC — reasoning + AC reasoning required
+    Returns: 'LIGHT', 'STANDARD', or 'FULL'
+    - LIGHT: chore/investigation/small bug — reasoning required, deferred optional
+    - STANDARD: feature with <= 3 AC — reasoning + AC reasoning + deferred required
     - FULL: everything else — all checks required
     """
     if isinstance(task, dict):
@@ -540,7 +539,7 @@ def _determine_ceremony_level(task, diff_file_count=0):
     ac_count = len(task.acceptance_criteria)
 
     if task_type in ("chore", "investigation"):
-        return "LIGHT"  # chore/investigation: AC required, reasoning required, but lighter ceremony
+        return "LIGHT"
     if task_type == "bug" and diff_file_count <= 3:
         return "LIGHT"
     if task_type == "feature" and ac_count <= 3:
@@ -590,7 +589,8 @@ def _check_implementation_fidelity(task: dict, project: str, base_commit: str, c
                 cwd=cwd
             )
             diff_text = result.stdout
-        except Exception:
+        except Exception as e:
+            print(f"  WARNING: Fidelity matrix skipped — git diff failed: {e}", file=sys.stderr)
             return
 
     if not diff_text:
@@ -883,8 +883,9 @@ def cmd_complete(args):
             diff_for_registry = r.stdout or ""
         from feature_registry import register_feature
         register_feature(args.project, task, diff_for_registry)
-    except Exception:
-        pass  # Don't fail completion if registry fails
+    except Exception as e:
+        print(f"  WARNING: Feature registry failed: {e}", file=sys.stderr)
+        _trace(args.project, {"event": "feature_registry.error", "task": task.get("id"), "error": str(e)})
 
     # Process deferred items — auto-create OPEN decisions
     # Required for STANDARD/FULL: agent must explicitly state what's covered vs deferred
@@ -897,9 +898,8 @@ def cmd_complete(args):
     if deferred_raw:
         try:
             deferred_items = load_json_data(deferred_raw)
-        except (json.JSONDecodeError, Exception):
-            print("WARNING: Invalid --deferred JSON, skipping.", file=sys.stderr)
-            deferred_items = []
+        except (json.JSONDecodeError, Exception) as e:
+            raise ValidationError(f"--deferred JSON is invalid: {e}. Fix the JSON or pass '[]' for empty.")
 
         if isinstance(deferred_items, list) and deferred_items:
             _s = _get_storage()
@@ -966,7 +966,16 @@ def cmd_complete(args):
     }
     task["completion_trace"] = completion_trace
 
-    save_tracker(args.project, tracker)
+    # Save with lock to prevent race conditions in multi-agent mode
+    with tracker_lock(args.project):
+        # Re-load tracker under lock, apply our task changes
+        fresh_tracker = load_tracker(args.project)
+        for i, t in enumerate(fresh_tracker["tasks"]):
+            if t["id"] == args.task_id:
+                fresh_tracker["tasks"][i] = task
+                break
+        save_tracker(args.project, fresh_tracker)
+        tracker = fresh_tracker
 
     done_count = sum(1 for t in tracker["tasks"] if t["status"] in ("DONE", "SKIPPED"))
     total = len(tracker["tasks"])

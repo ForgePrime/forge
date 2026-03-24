@@ -137,8 +137,8 @@ def _check_plan_staleness(task, tracker):
                     f"`{filepath}` modified since plan approval ({len(commits)} commit(s)): "
                     f"{commits[0][:60]}"
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.append(f"`{filepath}` staleness check failed: {e}")
 
     return warnings
 
