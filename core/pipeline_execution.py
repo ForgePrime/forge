@@ -1127,6 +1127,15 @@ def _auto_update_kr(project: str, task: dict, tracker: dict):
                "origin": origin, "obj_ids": list(obj_ids)})
         return
 
+    from storage import entity_lock
+    with entity_lock(project, "objectives"):
+        _auto_update_kr_locked(project, task, tracker, obj_ids, _s)
+
+
+def _auto_update_kr_locked(project, task, tracker, obj_ids, _s):
+    """Inner KR update logic, runs under objectives lock."""
+    from pipeline_context import _objective_kr_pct
+
     obj_data = _s.load_data(project, 'objectives')
     all_tasks = tracker.get("tasks", [])
     changed = False

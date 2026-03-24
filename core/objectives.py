@@ -335,6 +335,25 @@ class Objectives(EntityModule):
                           f"Valid: {', '.join(sorted(valid_next)) or 'none'}",
                           file=sys.stderr)
                     continue
+                # Validate: ACHIEVED requires all KRs met (unless --force or override)
+                if new_status == "ACHIEVED":
+                    krs = obj.get("key_results", [])
+                    unmet = [kr for kr in krs
+                             if kr.get("status") not in ("ACHIEVED", None)
+                             and kr.get("status") != "ACHIEVED"
+                             and kr.get("target") is not None
+                             and kr.get("current", 0) < kr.get("target", 0)]
+                    unmet_desc = [kr for kr in krs
+                                  if kr.get("target") is None
+                                  and kr.get("status") not in ("ACHIEVED",)]
+                    all_unmet = unmet + unmet_desc
+                    if all_unmet:
+                        unmet_ids = [kr.get("id", "?") for kr in all_unmet]
+                        print(f"  WARNING: Setting {u['id']} to ACHIEVED but {len(all_unmet)} "
+                              f"KR(s) not met: {', '.join(unmet_ids)}. "
+                              f"Verify KRs are actually achieved.",
+                              file=sys.stderr)
+
                 obj["status"] = new_status
                 # Lifecycle warning: check derived guidelines when objective ends
                 if new_status in ("ACHIEVED", "ABANDONED") and old_status == "ACTIVE":

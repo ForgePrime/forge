@@ -873,20 +873,36 @@ def cmd_draft_plan(args):
                 print(f"  {d['id']}: {d.get('issue', '')[:80]}", file=sys.stderr)
             print(f"  Plan saved — review before starting execution.\n", file=sys.stderr)
 
-        # Fidelity Chain: warn on ALL remaining OPEN decisions (architecture, implementation, etc.)
-        # These may silently dictate objective/task structure if left unresolved
+        # Fidelity Chain: BLOCK on OPEN architecture/implementation decisions
+        # These silently dictate objective/task structure (e.g., OI-14 "standalone vs Settings")
+        blocking_arch = [d for d in open_decisions
+                         if d.get("type") in ("architecture", "implementation")
+                         and d not in blocking_clarifications
+                         and d not in blocking_risks
+                         and d not in open_assumptions]
+        if blocking_arch:
+            details = "\n".join(f"  {d['id']} [{d.get('type')}]: {d.get('issue', '')[:80]}"
+                                for d in blocking_arch)
+            raise PreconditionError(
+                f"Cannot plan — {len(blocking_arch)} OPEN architecture/implementation decision(s):\n"
+                f"{details}\n\n"
+                f"These silently dictate task structure if left unresolved. "
+                f"Close them before planning (e.g., 'standalone page vs extend Settings')."
+            )
+
+        # Warn on remaining OPEN decisions (exploration, other types)
         other_open = [d for d in open_decisions
                       if d not in blocking_clarifications
                       and d not in blocking_risks
                       and d not in open_assumptions
-                      and d not in warn_risks]
+                      and d not in warn_risks
+                      and d not in blocking_arch]
         if other_open:
-            print(f"\n**OPEN DECISIONS WARNING** ({len(other_open)}) — unresolved decisions may affect plan correctness:",
+            print(f"\n**OPEN DECISIONS WARNING** ({len(other_open)}) — unresolved decisions:",
                   file=sys.stderr)
             for d in other_open[:5]:
                 print(f"  {d['id']} [{d.get('type', '?')}]: {d.get('issue', '')[:80]}", file=sys.stderr)
-            print(f"  Close these before approving — unresolved UI/scope/architecture decisions"
-                  f" silently dictate task structure.\n", file=sys.stderr)
+            print(f"  Review before approving.\n", file=sys.stderr)
 
         trace_cmd(args.project, "pipeline", "open_decisions_gate",
                   blocking_clarifications=len(blocking_clarifications),
@@ -1330,7 +1346,7 @@ def cmd_approve_plan(args):
                                       source_objective_id=source_objective_id)
             entries.append(entry)
 
-        # Objective linkage check: warn when tasks have no origin
+        # Objective linkage check: feature/bug tasks MUST have origin when objectives exist
         tasks_without_origin = [e for e in entries if not e.get("origin")]
         if tasks_without_origin:
             _s_approve = _get_storage()
@@ -1342,6 +1358,15 @@ def cmd_approve_plan(args):
                     for o in obj_data_approve.get("objectives", [])
                 )
             if has_active_objectives:
+                # Feature/bug tasks without origin = ERROR (chore/investigation = warning)
+                blocking_no_origin = [e for e in tasks_without_origin
+                                       if e.get("type", "feature") in ("feature", "bug")]
+                if blocking_no_origin:
+                    ids = ", ".join(e["id"] for e in blocking_no_origin[:5])
+                    raise ValidationError(
+                        f"Cannot approve — {len(blocking_no_origin)} feature/bug task(s) have no origin: {ids}. "
+                        f"Active objectives exist. Set origin: O-NNN on each feature/bug task."
+                    )
                 no_origin_ids = ", ".join(e["id"] for e in tasks_without_origin[:5])
                 more = f" (+{len(tasks_without_origin) - 5} more)" if len(tasks_without_origin) > 5 else ""
                 print(f"\n**OBJECTIVE WARNING**: {len(tasks_without_origin)} task(s) have no origin objective: "

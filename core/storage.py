@@ -120,6 +120,50 @@ def tracker_lock(project: str, base_dir: str = "forge_output", timeout: float = 
         f.close()
 
 
+@contextlib.contextmanager
+def entity_lock(project: str, entity: str, base_dir: str = "forge_output", timeout: float = 30.0):
+    """Exclusive lock on any entity file for atomic read-modify-write.
+
+    Same mechanism as tracker_lock but for any entity (objectives, decisions, etc.).
+    """
+    lock_path = Path(base_dir) / project / f".{entity}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    if not lock_path.exists():
+        lock_path.write_bytes(b"\x00")
+
+    f = open(lock_path, "r+b")
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except (IOError, OSError):
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"Could not acquire {entity} lock for '{project}' within {timeout}s"
+                        )
+                    time.sleep(0.05)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        if sys.platform == "win32":
+            import msvcrt
+            try:
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            except (IOError, OSError):
+                pass
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        f.close()
+
+
 # ---------------------------------------------------------------------------
 # Entity types
 # ---------------------------------------------------------------------------
