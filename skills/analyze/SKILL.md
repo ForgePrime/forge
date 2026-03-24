@@ -108,14 +108,20 @@ For each conflict:
 
 ### 2d. Gate check
 
-After resolution, verify:
+After resolution, verify **ALL OPEN decisions** — not just clarification_needed:
 ```bash
-python -m core.decisions read {project} --status OPEN --type clarification_needed
-# Should be empty (or only things that truly need user input)
-
-python -m core.decisions read {project} --status OPEN --type risk
-# HIGH severity should be resolved
+python -m core.decisions read {project} --status OPEN
+# ALL types: clarification_needed, architecture, implementation, risk, exploration
+# Each must be either CLOSED or explicitly left OPEN with documented reason
 ```
+
+**Rules:**
+- `clarification_needed` → MUST be CLOSED (or confirmed as blocking for user)
+- `risk` HIGH severity → MUST be CLOSED or mitigated
+- `architecture` → MUST be CLOSED before creating objectives that depend on the decision
+- Any OPEN decision about **UI placement, feature scope, or implementation approach** → MUST be CLOSED. These silently dictate objective structure if left open.
+
+**Anti-pattern this prevents:** OI-14 ("Schedule maintenance — part of Settings or standalone?") left OPEN → objective title inherited "standalone Maintenance Page" → plan created duplicate page instead of extending Settings.
 
 ---
 
@@ -127,6 +133,14 @@ Read all requirements and group them by what they collectively deliver:
 
 - NOT by technical area ("backend", "frontend") — that's scope, not objective
 - BY user-observable outcome ("User can authenticate", "Invoices are processed", "Reports are generated")
+- NOT by UI artifact — objective title describes WHAT users can do, not HOW (page, modal, tab)
+
+**Objective title rules:**
+- Good: "Auto-Buy Schedule Configuration per SPEC" (outcome)
+- Bad: "Auto-Buy Schedule Maintenance Page" (dictates UI: "Page" → /plan creates new page)
+- Good: "Priority Reorder with Auto-Buy Lock" (capability)
+- Bad: "Priority Management Frontend Modal" (dictates component type)
+- Do NOT inherit the source document filename as the objective title. "SPEC-auto-buy-schedule-maintenance.md" is a file, not an outcome.
 
 **Each objective should:**
 - Represent a coherent deliverable (demoable, testable)
@@ -246,8 +260,9 @@ If verdict is FAIL — fix before proceeding. `/plan` will BLOCK if this fails.
 ## Success Criteria
 
 - `python -m core.objectives verify {project}` returns PASS or WARN (not FAIL)
-- All `clarification_needed` decisions: CLOSED or confirmed as blocking
-- All `HIGH severity risk` decisions: resolved or mitigated
+- **ALL OPEN decisions**: CLOSED or explicitly documented as non-blocking with reason
+- Special attention: `clarification_needed` and `HIGH severity risk` MUST be CLOSED
+- Architecture/implementation decisions about UI placement, scope, feature boundaries MUST be CLOSED before objectives that depend on them
 - Every requirement K-NNN linked to an Objective
 - Every Objective has 2-5 KR with `measurement` field defined (command|test|manual)
 - Understanding gate would PASS (9 categories covered)

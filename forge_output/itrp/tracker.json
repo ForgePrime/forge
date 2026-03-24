@@ -2,7 +2,7 @@
   "project": "itrp",
   "goal": "Implement ITRP Application â€” Invoice Trading & Receivables Program for Randstad FTC. FastAPI backend + Next.js frontend + GCP (Firestore, BigQuery, Cloud Run). Replace legacy CREST system. Go-live: 30 June 2026.",
   "created": "2026-03-21T11:18:10Z",
-  "updated": "2026-03-24T07:44:08Z",
+  "updated": "2026-03-24T16:23:39Z",
   "tasks": [
     {
       "id": "T-001",
@@ -2276,7 +2276,7 @@
       "name": "priority-reorder-api-and-ui",
       "description": "Add PUT endpoint for updating priority order, add reorder endpoints (move up/down), and implement up/down buttons in frontend priorities page.",
       "instruction": "BACKEND:\n1. Add PUT /api/priorities/{priority_id} endpoint to update priority_order of existing priority. Require purchase:execute. Log audit UPDATE.\n2. Add POST /api/priorities/reorder endpoint accepting {country, items: [{id, priority_order}]} for batch reorder. Atomic Firestore batch write. Require purchase:execute.\n\nFRONTEND (priorities/page.tsx):\n3. Add Up/Down arrow buttons in table actions column.\n4. On click Up: swap priority_order with item above, call reorder API.\n5. On click Down: swap with item below.\n6. Disable Up on first row, Down on last row.\n7. Add success/error feedback on reorder.\n\nTESTS:\n8. Unit test for PUT endpoint.\n9. Unit test for reorder endpoint.\n10. Test edge cases: reorder single item, reorder non-existent ID.",
-      "status": "SKIPPED",
+      "status": "DONE",
       "type": "feature",
       "depends_on": [],
       "parallel": false,
@@ -2318,10 +2318,11 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T21:37:25Z",
-      "started_at_commit": "0c2480ceee5aef25a38ed02955203370fe803035",
+      "started_at": "2026-03-24T16:23:39Z",
+      "started_at_commit": "96f9efad884acc21c96afb3a83850fca1b1baa38",
       "skip_reason": "Pausing O-013 tasks to focus on O-014 O-015 O-016 O-017 auto-buy schedule and pipeline scope per user request. Will resume O-013 later.",
-      "completed_at": "2026-03-23T23:03:02Z"
+      "completed_at": "2026-03-24T16:24:53.937555+00:00",
+      "failed_reason": null
     },
     {
       "id": "T-063",
@@ -2369,7 +2370,7 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:22:11Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_evidence": [
         {
@@ -2393,7 +2394,7 @@
           "evidence": "useQuery refetchInterval=10000ms. isLocked disables Add/Up/Down/Delete buttons. Alert with LockOutlined shows locked message."
         }
       ],
-      "completed_at": "2026-03-23T23:30:22Z",
+      "completed_at": "2026-03-24T16:23:19.318088+00:00",
       "ceremony_level": "FULL",
       "completion_trace": {
         "ceremony": "FULL",
@@ -2405,7 +2406,8 @@
         "ac_reasoning_length": 0,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-064",
@@ -2450,7 +2452,7 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:30:30Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_evidence": [
         {
@@ -2474,7 +2476,7 @@
           "evidence": "All pages use PageGuard from components/auth/PageGuard.tsx with Ant Design Result status=403 in AppLayout wrapper."
         }
       ],
-      "completed_at": "2026-03-24T07:26:01Z",
+      "completed_at": "2026-03-24T16:23:19.318127+00:00",
       "ceremony_level": "FULL",
       "completion_trace": {
         "ceremony": "FULL",
@@ -2486,7 +2488,8 @@
         "ac_reasoning_length": 0,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-065",
@@ -2527,7 +2530,7 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-24T07:26:11Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_evidence": [
         {
@@ -2546,7 +2549,7 @@
           "evidence": "XTRP item removed from allNavItems array in AppLayout.tsx."
         }
       ],
-      "completed_at": "2026-03-24T07:30:05Z",
+      "completed_at": "2026-03-24T16:23:19.318134+00:00",
       "ceremony_level": "STANDARD",
       "completion_trace": {
         "ceremony": "STANDARD",
@@ -2558,7 +2561,8 @@
         "ac_reasoning_length": 0,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-066",
@@ -2595,7 +2599,7 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-24T07:30:11Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_evidence": [
         {
@@ -2609,7 +2613,7 @@
           "evidence": "OpCo PL user has scope_country=PL. allowedCountries returns Set(PL). Dropdown shows only PL."
         }
       ],
-      "completed_at": "2026-03-24T07:33:40Z",
+      "completed_at": "2026-03-24T16:23:19.318139+00:00",
       "ceremony_level": "FULL",
       "completion_trace": {
         "ceremony": "FULL",
@@ -2621,7 +2625,8 @@
         "ac_reasoning_length": 0,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-067",
@@ -2658,7 +2663,7 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-24T07:33:47Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_evidence": [
         {
@@ -2672,7 +2677,7 @@
           "evidence": "allowedCountries() derives from scope_country fields in permissions. Back Office sees only assigned countries."
         }
       ],
-      "completed_at": "2026-03-24T07:35:08Z",
+      "completed_at": "2026-03-24T16:23:19.318144+00:00",
       "ceremony_level": "STANDARD",
       "completion_trace": {
         "ceremony": "STANDARD",
@@ -2684,7 +2689,8 @@
         "ac_reasoning_length": 0,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-068",
@@ -2725,7 +2731,7 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-24T07:35:15Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_evidence": [
         {
@@ -2744,7 +2750,7 @@
           "evidence": "check_country_access logs country_access_denied via structlog with user, country, allowed countries."
         }
       ],
-      "completed_at": "2026-03-24T07:38:43Z",
+      "completed_at": "2026-03-24T16:23:19.318148+00:00",
       "ceremony_level": "STANDARD",
       "completion_trace": {
         "ceremony": "STANDARD",
@@ -2756,7 +2762,8 @@
         "ac_reasoning_length": 0,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-069",
@@ -2794,7 +2801,7 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-24T07:38:51Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_evidence": [
         {
@@ -2808,7 +2815,7 @@
           "evidence": "Manual Buy button disabled={isLocked}, text changes to Locked - Auto-Buy Running when locked."
         }
       ],
-      "completed_at": "2026-03-24T07:43:17Z",
+      "completed_at": "2026-03-24T16:23:19.318153+00:00",
       "ceremony_level": "STANDARD",
       "completion_trace": {
         "ceremony": "STANDARD",
@@ -2820,7 +2827,8 @@
         "ac_reasoning_length": 0,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-070",
@@ -2853,9 +2861,9 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-24T07:43:23Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
-      "completed_at": "2026-03-24T07:44:08Z",
+      "completed_at": "2026-03-24T16:23:19.318157+00:00",
       "ceremony_level": "LIGHT",
       "completion_trace": {
         "ceremony": "LIGHT",
@@ -2867,7 +2875,8 @@
         "ac_reasoning_length": 0,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-071",
@@ -2960,10 +2969,10 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:03:08Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_reasoning": "AC1: GET /api/v1/schedule/config returns entries filtered by user country assignment â€” PASS: router_v1.py line 130 calls user.allowed_countries(), line 136 filters by cc not in allowed. AC2: PUT /api/v1/schedule/config returns 403 for unassigned country â€” PASS: router_v1.py line 168 raises AppError(403, FORBIDDEN) when cc not in allowed set. AC3: POST /api/v1/schedule/countries returns 403 for non-GFI and forces auto_buy_enabled=false â€” PASS: line 267 checks _has_role(global_finance_it) with 403, line 285 sets auto_buy_enabled=False regardless of input. AC4: Countries with active buy_lock skipped in bulk PUT â€” PASS: line 185 calls _is_buy_lock_active(), line 187 appends to skipped_countries. AC5: Every schedule write produces audit_trail entry with old/new values â€” PASS: _write_audit() called in PUT (line 196), PATCH (line 236), POST (line 291), start-date PATCH (line 331).",
-      "completed_at": "2026-03-23T23:07:11Z",
+      "completed_at": "2026-03-24T16:23:19.318162+00:00",
       "ceremony_level": "FULL",
       "completion_trace": {
         "ceremony": "FULL",
@@ -2975,7 +2984,8 @@
         "ac_reasoning_length": 886,
         "gates_configured": false,
         "changes_count": 3
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-072",
@@ -3065,10 +3075,10 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:15:31Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_reasoning": "AC 1: Grid page at /maintenance/autobuy-schedule â€” PASS: page exists with Table, columns for country/currency/weekday/auto-buy/start-date. AC 2: RBAC guard â€” PASS: lines 56-60 redirect to /403 if no maintenance:read. AC 3: Add Country GFI only â€” PASS: isGFI check. AC 4: Unsaved changes warning â€” PASS: beforeunload + Alert banner. AC 5: Save with validation â€” PASS: FV-01/02/03 checks before PUT.",
-      "completed_at": "2026-03-23T23:22:04Z",
+      "completed_at": "2026-03-24T16:23:19.318166+00:00",
       "ceremony_level": "FULL",
       "completion_trace": {
         "ceremony": "FULL",
@@ -3080,7 +3090,8 @@
         "ac_reasoning_length": 397,
         "gates_configured": false,
         "changes_count": 4
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-073",
@@ -3155,10 +3166,10 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:07:20Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_reasoning": "AC1: When credit limit breach detected, auto-buy pauses and creates PENDING breach record â€” PASS: service.py step_4 sets status=pending (line 737), returns paused_for_confirmation (line 766), _save_paused_job saves to autobuy_paused_jobs (line 1267). AC2: POST breach-confirmation with action=confirm includes invoice and resumes â€” PASS: router.py confirm_breach updates status=confirmed (line 260), adds to confirmed_invoices (line 288), calls resume_buying_process (line 296). AC3: POST breach-confirmation with action=decline excludes invoice â€” PASS: router.py sets status=declined (line 260), invoice not added to confirmed_invoices. AC4: Each action logged in audit trail â€” PASS: router.py writes audit_trail entry with CREDIT_LIMIT_CONFIRM/DECLINE action (line 267-276).",
-      "completed_at": "2026-03-23T23:09:35Z",
+      "completed_at": "2026-03-24T16:23:19.318171+00:00",
       "ceremony_level": "FULL",
       "completion_trace": {
         "ceremony": "FULL",
@@ -3170,7 +3181,8 @@
         "ac_reasoning_length": 776,
         "gates_configured": false,
         "changes_count": 3
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-074",
@@ -3238,10 +3250,10 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:10:59Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_reasoning": "AC1: Successful auto-buy sends 2 emails Economic and Legal via send_purchase_complete â€” PASS: step_8_send_notifications splits bq_rows by sales_type (line 1277-1278), calls send_purchase_complete for each (lines 1283, 1288). AC2: Failed auto-buy sends 1 consolidated email via send_purchase_error â€” PASS: else branch calls send_purchase_error once (line 1298). AC3: Step 8 failure does not fail overall job â€” PASS: entire function wrapped in try/except, returns status=warning on error (line 1306).",
-      "completed_at": "2026-03-23T23:12:23Z",
+      "completed_at": "2026-03-24T16:23:19.318176+00:00",
       "ceremony_level": "STANDARD",
       "completion_trace": {
         "ceremony": "STANDARD",
@@ -3253,7 +3265,8 @@
         "ac_reasoning_length": 498,
         "gates_configured": false,
         "changes_count": 3
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-075",
@@ -3320,10 +3333,10 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:09:42Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_reasoning": "AC1: NotificationService has 6 event handlers â€” PASS: service.py has methods purchase_complete, purchase_error, backup_restore, credit_limit_breach, autobuy_disabled, pipeline_issue â€” verified all 6 exist as class methods. AC2: Clean interface send_email(template, recipients, data) is core method â€” PASS: all 6 handlers delegate to self.send_email() (line 39). AC3: Stub mode logs to structlog â€” PASS: when config.stub_mode=True, logger.info called with template, subject, recipients, body_preview (lines 44-51).",
-      "completed_at": "2026-03-23T23:10:52Z",
+      "completed_at": "2026-03-24T16:23:19.318180+00:00",
       "ceremony_level": "STANDARD",
       "completion_trace": {
         "ceremony": "STANDARD",
@@ -3335,7 +3348,8 @@
         "ac_reasoning_length": 513,
         "gates_configured": false,
         "changes_count": 3
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-076",
@@ -3404,10 +3418,10 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:12:30Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_reasoning": "AC1: Step 9 releases country lock after auto-buy (success or failure) â€” PASS: handle_trigger has finally block at line 99-100 calling release_buy_lock, executes on both success and exception paths. AC2: Lock release in finally block executes even if Steps 5-8 throw â€” PASS: scheduler/service.py handle_trigger wraps buying process in try/except/finally at lines 69-100. AC3: cleanup_expired_locks removes locks where expires_at < now â€” PASS: scheduler/service.py cleanup_expired_locks iterates buy_locks, compares expires_at to now, deletes expired ones (lines 49-61).",
-      "completed_at": "2026-03-23T23:13:56Z",
+      "completed_at": "2026-03-24T16:23:19.318184+00:00",
       "ceremony_level": "STANDARD",
       "completion_trace": {
         "ceremony": "STANDARD",
@@ -3419,7 +3433,8 @@
         "ac_reasoning_length": 568,
         "gates_configured": false,
         "changes_count": 3
-      }
+      },
+      "failed_reason": null
     },
     {
       "id": "T-077",
@@ -3489,10 +3504,10 @@
       "subtask_done": 0,
       "subtasks": [],
       "agent": "default",
-      "started_at": "2026-03-23T23:14:03Z",
+      "started_at": null,
       "started_at_commit": "add43f43d299557544984331f649e133c994ce63",
       "ac_reasoning": "AC1: Trigger Service checks file_load_status before initiating auto-buy â€” PASS: scheduler/service.py handle_trigger calls check_file_loaded at line 87, skips country with status=skipped_no_file if not loaded (line 91). AC2: Country with loaded status within current week proceeds â€” PASS: check_file_loaded returns True when status=loaded AND loaded_at >= week_start (Monday 00:00 UTC) at lines 52-68. AC3: POST /api/scheduler/file-status allows data pipeline to set load status â€” PASS: scheduler/router.py set_file_status writes to FILE_LOAD_STATUS collection with country_code, status, loaded_at, record_count.",
-      "completed_at": "2026-03-23T23:15:25Z",
+      "completed_at": "2026-03-24T16:23:19.318189+00:00",
       "ceremony_level": "STANDARD",
       "completion_trace": {
         "ceremony": "STANDARD",
@@ -3504,7 +3519,8 @@
         "ac_reasoning_length": 611,
         "gates_configured": false,
         "changes_count": 3
-      }
+      },
+      "failed_reason": null
     }
   ],
   "plan_approved_at": "2026-03-23T22:56:31Z",

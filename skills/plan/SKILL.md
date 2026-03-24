@@ -554,9 +554,7 @@ python -m core.pipeline draft-plan {project} --data '[...]' --assumptions '[{"as
 
 ---
 
-### Step 6.5 — Impact Map (Standard/Complex only)
-
-**Skip for Quick track.**
+### Step 6.5 — Impact Map (mandatory)
 
 Before drafting the plan, produce an **Impact Map** that proves understanding of the codebase you are about to modify. This prevents plans built on surface-level directory scans.
 
@@ -565,6 +563,14 @@ For each file that any task will create or modify:
 1. **Read the file** (or the directory it will be created in)
 2. **Search for usages**: `grep` for imports, function calls, references across the codebase
 3. **Identify invariants**: ordering constraints, interface contracts, configuration dependencies
+4. **Search for existing implementations**: For each NEW page, component, or endpoint the plan creates, search the codebase for existing features that do the same thing:
+   ```bash
+   # For new pages: check if a page/section already handles this feature
+   grep -r "{feature_keyword}" src/app/ src/components/ --include="*.tsx" --include="*.ts" -l
+   # For new endpoints: check if an endpoint already serves this data
+   grep -r "{route_path}" app/modules/ --include="*.py" -l
+   ```
+   If you find an existing implementation → **STOP and create a decision**: "Should we extend existing {file} or create new? Existing does X, new proposes Y."
 
 Produce this table:
 
@@ -576,6 +582,12 @@ Produce this table:
 | src/api/auth.ts | modify | routes/*.ts, middleware/rate-limit.ts | Must run BEFORE rate-limit middleware |
 | src/models/user.ts | create | api/auth.ts, api/users.ts | Matches DB migration schema |
 | migrations/002_sessions.sql | create | — | Must run AFTER 001_users.sql |
+
+### Existing Implementation Check
+| New task creates | Existing feature found? | Decision |
+|-----------------|------------------------|----------|
+| /maintenance/autobuy-schedule | YES: /itrp/settings AutoSchedulesSection | CONFLICT — must decide: extend or replace |
+| POST /api/v1/schedule/config | NO existing equivalent | OK — new endpoint |
 
 ### Integration Points
 1. {file} exports {symbol} used by {N consumers} — signature change is breaking
@@ -590,6 +602,7 @@ Produce this table:
 - Every file mentioned in task instructions MUST appear in the Impact Map
 - Every UNVERIFIED assumption must be assigned to a task for verification
 - If you discover an invariant that affects task ordering, update `depends_on` accordingly
+- **If you find an existing page/component that does similar work → create a Decision before proceeding. Do NOT silently create a duplicate.**
 
 Store the Impact Map as a knowledge object (W4):
 

@@ -204,3 +204,180 @@ class TestSemanticCoverage:
 
         warnings = _check_semantic_coverage(draft_tasks, project_name)
         assert len(warnings) == 0
+
+
+# ---------------------------------------------------------------------------
+# Cross-objective task overlap detection
+# ---------------------------------------------------------------------------
+
+class TestCompletedTaskOverlap:
+
+    def test_overlap_detected_cross_objective(self, forge_env, project_name):
+        """New task duplicating DONE task from different objective should produce OVERLAP."""
+        import json
+        from pipeline_planning import _check_completed_task_overlap
+
+        project_dir = forge_env / "forge_output" / project_name
+        project_dir.mkdir(parents=True)
+
+        # Existing tracker with a DONE task
+        tracker = {
+            "tasks": [{
+                "id": "T-025",
+                "name": "settings-auto-schedules",
+                "description": "Auto-buy schedule configuration per country",
+                "instruction": "Add toggle auto-buy enabled, purchase day selector, save schedule per country",
+                "status": "DONE",
+                "origin": "O-003",
+            }]
+        }
+        (project_dir / "tracker.json").write_text(json.dumps(tracker))
+
+        # New task from different objective that duplicates
+        draft_tasks = [{
+            "id": "_1",
+            "name": "schedule-maintenance-page",
+            "description": "Auto-buy schedule configuration per country with grid",
+            "instruction": "Create page with toggle auto-buy enabled, purchase day selector, save schedule per country, add country modal",
+            "origin": "O-014",
+        }]
+
+        warnings = _check_completed_task_overlap(draft_tasks, project_name)
+        assert len(warnings) >= 1
+        assert "OVERLAP" in warnings[0]
+        assert "T-025" in warnings[0]
+
+    def test_no_overlap_same_objective(self, forge_env, project_name):
+        """Tasks from same objective should NOT trigger overlap warning."""
+        import json
+        from pipeline_planning import _check_completed_task_overlap
+
+        project_dir = forge_env / "forge_output" / project_name
+        project_dir.mkdir(parents=True)
+
+        tracker = {
+            "tasks": [{
+                "id": "T-071",
+                "name": "refactor-schedule-api",
+                "description": "Refactor schedule API to v1 spec",
+                "instruction": "Create 7 endpoints for schedule configuration management",
+                "status": "DONE",
+                "origin": "O-014",
+            }]
+        }
+        (project_dir / "tracker.json").write_text(json.dumps(tracker))
+
+        draft_tasks = [{
+            "id": "_1",
+            "name": "schedule-frontend",
+            "description": "Schedule frontend page using v1 API",
+            "instruction": "Build page calling schedule configuration endpoints",
+            "origin": "O-014",
+        }]
+
+        warnings = _check_completed_task_overlap(draft_tasks, project_name)
+        assert len(warnings) == 0
+
+    def test_no_overlap_when_no_done_tasks(self, forge_env, project_name):
+        """Empty tracker should produce no warnings."""
+        import json
+        from pipeline_planning import _check_completed_task_overlap
+
+        project_dir = forge_env / "forge_output" / project_name
+        project_dir.mkdir(parents=True)
+        (project_dir / "tracker.json").write_text(json.dumps({"tasks": []}))
+
+        draft_tasks = [{"id": "_1", "name": "something", "instruction": "do stuff", "origin": "O-001"}]
+        warnings = _check_completed_task_overlap(draft_tasks, project_name)
+        assert len(warnings) == 0
+
+
+# ---------------------------------------------------------------------------
+# Over-coverage detection
+# ---------------------------------------------------------------------------
+
+class TestOverCoverage:
+
+    def test_over_coverage_detected(self, forge_env, project_name):
+        """Same requirement covered by tasks from different objectives should warn."""
+        import json
+        from pipeline_planning import _check_over_coverage
+
+        project_dir = forge_env / "forge_output" / project_name
+        project_dir.mkdir(parents=True)
+
+        knowledge_data = {
+            "knowledge": [{
+                "id": "K-024",
+                "title": "Schedule config per country",
+                "category": "requirement",
+                "status": "ACTIVE",
+                "content": "Configure auto-buy schedule per country",
+            }]
+        }
+        (project_dir / "knowledge.json").write_text(json.dumps(knowledge_data))
+
+        tracker = {
+            "tasks": [{
+                "id": "T-025",
+                "name": "settings-auto-schedules",
+                "status": "DONE",
+                "origin": "O-003",
+                "knowledge_ids": ["K-024"],
+                "source_requirements": [],
+            }]
+        }
+        (project_dir / "tracker.json").write_text(json.dumps(tracker))
+
+        new_tasks = [{
+            "id": "_1",
+            "name": "schedule-maintenance",
+            "origin": "O-014",
+            "knowledge_ids": ["K-024"],
+            "source_requirements": [],
+        }]
+
+        warnings = _check_over_coverage(new_tasks, project_name)
+        assert len(warnings) >= 1
+        assert "OVER_COVERAGE" in warnings[0]
+        assert "K-024" in warnings[0]
+
+    def test_no_over_coverage_same_objective(self, forge_env, project_name):
+        """Same requirement covered by tasks from same objective is OK."""
+        import json
+        from pipeline_planning import _check_over_coverage
+
+        project_dir = forge_env / "forge_output" / project_name
+        project_dir.mkdir(parents=True)
+
+        knowledge_data = {
+            "knowledge": [{
+                "id": "K-024",
+                "title": "Schedule config",
+                "category": "requirement",
+                "status": "ACTIVE",
+                "content": "Configure schedule",
+            }]
+        }
+        (project_dir / "knowledge.json").write_text(json.dumps(knowledge_data))
+
+        tracker = {
+            "tasks": [{
+                "id": "T-071",
+                "status": "DONE",
+                "origin": "O-014",
+                "knowledge_ids": ["K-024"],
+                "source_requirements": [],
+            }]
+        }
+        (project_dir / "tracker.json").write_text(json.dumps(tracker))
+
+        new_tasks = [{
+            "id": "_1",
+            "origin": "O-014",
+            "knowledge_ids": ["K-024"],
+            "source_requirements": [],
+        }]
+
+        warnings = _check_over_coverage(new_tasks, project_name)
+        assert len(warnings) == 0

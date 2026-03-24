@@ -335,6 +335,88 @@ def _check_semantic_coverage(draft_tasks: list, project: str) -> list:
     return warnings
 
 
+def _check_completed_task_overlap(draft_tasks: list, project: str) -> list:
+    """Fidelity Chain: detect when new tasks duplicate DONE tasks from other objectives.
+
+    Compares instruction key terms of new tasks against completed tasks.
+    Returns list of OVERLAP warning strings.
+    """
+    from pipeline_context import _extract_key_terms, _term_overlap
+
+    _s = _get_storage()
+    tracker = _s.load_data(project, 'tracker') if _s.exists(project, 'tracker') else {}
+    existing_tasks = tracker.get("tasks", [])
+
+    done_tasks = [t for t in existing_tasks if t.get("status") == "DONE"]
+    if not done_tasks:
+        return []
+
+    # Build term sets for all DONE tasks
+    done_index = []
+    for dt in done_tasks:
+        dt_text = " ".join(filter(None, [
+            dt.get("instruction", ""),
+            dt.get("description", ""),
+            dt.get("name", ""),
+        ]))
+        dt_terms = _extract_key_terms(dt_text)
+        if len(dt_terms) >= 3:
+            done_index.append((dt, dt_terms))
+
+    warnings = []
+    for new_task in draft_tasks:
+        new_text = " ".join(filter(None, [
+            new_task.get("instruction", ""),
+            new_task.get("description", ""),
+            new_task.get("name", ""),
+        ]))
+        new_terms = _extract_key_terms(new_text)
+        if len(new_terms) < 3:
+            continue
+
+        new_origin = new_task.get("origin", "")
+
+        for dt, dt_terms in done_index:
+            # Skip tasks from same objective (expected overlap)
+            if dt.get("origin") and dt.get("origin") == new_origin:
+                continue
+
+            matched, _, ratio = _term_overlap(new_terms, dt_terms)
+            if ratio > 0.5 and len(matched) >= 5:
+                warnings.append(
+                    f"OVERLAP: new task '{new_task.get('name', new_task.get('id', '?'))}' "
+                    f"({new_origin}) shares {len(matched)} terms ({ratio:.0%}) with "
+                    f"DONE task '{dt.get('name')}' ({dt.get('id')}, {dt.get('origin', '?')}). "
+                    f"Verify not duplicating completed work."
+                )
+
+    # Cross-objective produces contract check
+    done_produces = {}
+    for dt in done_tasks:
+        if dt.get("produces") and dt.get("origin"):
+            for key, val in dt["produces"].items():
+                done_produces.setdefault(key, []).append(
+                    (dt.get("id"), dt.get("origin"), str(val)[:60])
+                )
+
+    for new_task in draft_tasks:
+        if not new_task.get("produces"):
+            continue
+        new_origin = new_task.get("origin", "")
+        for key, val in new_task["produces"].items():
+            if key in done_produces:
+                for dt_id, dt_origin, dt_val in done_produces[key]:
+                    if dt_origin != new_origin:
+                        warnings.append(
+                            f"PRODUCES_CONFLICT: new task '{new_task.get('name', '?')}' "
+                            f"produces '{key}' but DONE task {dt_id} ({dt_origin}) "
+                            f"already produces '{key}': {dt_val}. "
+                            f"Verify: extend or replace?"
+                        )
+
+    return warnings
+
+
 CRITICAL_CATEGORIES = {
     "deployment": {
         "question": "Where will this system run? (cloud provider, Docker, serverless, on-prem)",
@@ -791,6 +873,21 @@ def cmd_draft_plan(args):
                 print(f"  {d['id']}: {d.get('issue', '')[:80]}", file=sys.stderr)
             print(f"  Plan saved — review before starting execution.\n", file=sys.stderr)
 
+        # Fidelity Chain: warn on ALL remaining OPEN decisions (architecture, implementation, etc.)
+        # These may silently dictate objective/task structure if left unresolved
+        other_open = [d for d in open_decisions
+                      if d not in blocking_clarifications
+                      and d not in blocking_risks
+                      and d not in open_assumptions
+                      and d not in warn_risks]
+        if other_open:
+            print(f"\n**OPEN DECISIONS WARNING** ({len(other_open)}) — unresolved decisions may affect plan correctness:",
+                  file=sys.stderr)
+            for d in other_open[:5]:
+                print(f"  {d['id']} [{d.get('type', '?')}]: {d.get('issue', '')[:80]}", file=sys.stderr)
+            print(f"  Close these before approving — unresolved UI/scope/architecture decisions"
+                  f" silently dictate task structure.\n", file=sys.stderr)
+
         trace_cmd(args.project, "pipeline", "open_decisions_gate",
                   blocking_clarifications=len(blocking_clarifications),
                   blocking_risks=len(blocking_risks),
@@ -984,6 +1081,16 @@ def cmd_draft_plan(args):
         print("  Tip: review task instructions against source K-NNN content. Rephrase or split tasks.")
         print()
 
+    # Fidelity Chain: cross-objective overlap check
+    overlap_warnings = _check_completed_task_overlap(draft_tasks, args.project)
+    if overlap_warnings:
+        print()
+        print(f"**OVERLAP WARNINGS** ({len(overlap_warnings)}) — new tasks may duplicate completed work:")
+        for w in overlap_warnings:
+            print(f"  {w}")
+        print("  Tip: verify new tasks extend (not re-implement) completed features.")
+        print()
+
     # Assumptions warnings
     if assumptions and 3 <= high_count <= 4:
         print(f"**ASSUMPTION WARNING**: {high_count} HIGH-severity assumptions — verify before Phase 1.")
@@ -1116,6 +1223,58 @@ def _check_plan_source_coverage(entries: list, project: str) -> list:
     return warnings
 
 
+def _check_over_coverage(entries: list, project: str) -> list:
+    """Fidelity Chain: detect when multiple tasks (new + DONE) cover the same requirement.
+
+    Returns OVER_COVERAGE warnings when tasks from DIFFERENT objectives cover the same K-NNN.
+    """
+    _s = _get_storage()
+    if not _s.exists(project, 'knowledge'):
+        return []
+
+    k_data = _s.load_data(project, 'knowledge')
+    requirements = {k["id"]: k for k in k_data.get("knowledge", [])
+                    if k.get("category") == "requirement"
+                    and k.get("status") in ("ACTIVE", "DRAFT")}
+    if not requirements:
+        return []
+
+    # Collect all tasks: DONE from tracker + new from draft
+    tracker = _s.load_data(project, 'tracker') if _s.exists(project, 'tracker') else {}
+    all_tasks = [t for t in tracker.get("tasks", []) if t.get("status") == "DONE"] + entries
+
+    # Map requirement → list of (task_id, origin)
+    req_to_tasks: dict[str, list[tuple[str, str]]] = {}
+    for task in all_tasks:
+        task_reqs = set()
+        for sr in task.get("source_requirements", []):
+            if sr.get("knowledge_id"):
+                task_reqs.add(sr["knowledge_id"])
+        for kid in task.get("knowledge_ids", []):
+            if kid in requirements:
+                task_reqs.add(kid)
+        for k_id in task_reqs:
+            entry = (task.get("id", "?"), task.get("origin", "?"))
+            req_to_tasks.setdefault(k_id, []).append(entry)
+
+    warnings = []
+    for k_id, task_list in req_to_tasks.items():
+        if len(task_list) < 2:
+            continue
+        # Check if tasks come from different objectives
+        origins = {origin for _, origin in task_list}
+        if len(origins) >= 2:
+            task_desc = ", ".join(f"{tid} ({orig})" for tid, orig in task_list)
+            req = requirements.get(k_id, {})
+            warnings.append(
+                f"OVER_COVERAGE: {k_id} ({req.get('title', '')[:40]}) covered by "
+                f"tasks from {len(origins)} objectives: {task_desc}. "
+                f"Verify not duplicating work across objectives."
+            )
+
+    return warnings
+
+
 def cmd_approve_plan(args):
     """Approve draft plan: materialize tasks into pipeline and mark idea COMMITTED."""
     mapping = {}
@@ -1204,6 +1363,16 @@ def cmd_approve_plan(args):
             for w in fidelity_warnings:
                 print(f"  {w}", file=sys.stderr)
             print(f"  Review requirements and adjust task instructions if needed.\n",
+                  file=sys.stderr)
+
+        # Fidelity Chain: over-coverage detection
+        over_cov_warnings = _check_over_coverage(entries, args.project)
+        if over_cov_warnings:
+            print(f"\n**OVER-COVERAGE WARNINGS** ({len(over_cov_warnings)}) — "
+                  f"requirements covered by tasks from multiple objectives:", file=sys.stderr)
+            for w in over_cov_warnings:
+                print(f"  {w}", file=sys.stderr)
+            print(f"  Verify new tasks extend (not duplicate) completed work.\n",
                   file=sys.stderr)
 
         # Validate DAG
