@@ -1,6 +1,6 @@
 {
   "project": "itrp",
-  "updated": "2026-03-23T22:38:56Z",
+  "updated": "2026-03-23T23:15:25Z",
   "objectives": [
     {
       "id": "O-001",
@@ -718,23 +718,29 @@
         {
           "id": "KR-1",
           "description": "Trigger Service checks file-completion gate (file_load_status) before initiating auto-buy for each country",
-          "status": "NOT_STARTED",
+          "status": "ACHIEVED",
           "measurement": "manual",
-          "check": "Call trigger endpoint without file_load_status flag set, verify auto-buy not initiated"
+          "check": "Call trigger endpoint without file_load_status flag set, verify auto-buy not initiated",
+          "achieved_at": "2026-03-23T23:15:25Z",
+          "achieved_by_task": "T-077"
         },
         {
           "id": "KR-2",
           "description": "Country lock acquired before auto-buy, released after (Step 9), with TTL for crash recovery",
-          "status": "NOT_STARTED",
+          "status": "ACHIEVED",
           "measurement": "manual",
-          "check": "Trigger auto-buy, verify lock acquired, verify lock released on completion and on failure"
+          "check": "Trigger auto-buy, verify lock acquired, verify lock released on completion and on failure",
+          "achieved_at": "2026-03-23T23:15:25Z",
+          "achieved_by_task": "T-077"
         },
         {
           "id": "KR-3",
           "description": "Trigger resolves countries from DB at runtime — no hardcoded country-to-day mapping in code",
-          "status": "NOT_STARTED",
+          "status": "ACHIEVED",
           "measurement": "manual",
-          "check": "Change schedule in DB, fire trigger, verify new schedule used"
+          "check": "Change schedule in DB, fire trigger, verify new schedule used",
+          "achieved_at": "2026-03-23T23:15:25Z",
+          "achieved_by_task": "T-077"
         }
       ],
       "appetite": "small",
@@ -762,9 +768,9 @@
         "G-010"
       ],
       "relations": [],
-      "status": "ACTIVE",
+      "status": "ACHIEVED",
       "created": "2026-03-23T22:38:56Z",
-      "updated": "2026-03-23T22:38:56Z"
+      "updated": "2026-03-23T23:15:25Z"
     },
     {
       "id": "O-017",
