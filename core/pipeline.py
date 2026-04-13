@@ -30,6 +30,7 @@ Commands:
     draft-plan        {project} --data '{json}'     Store draft plan for review
     show-draft        {project}                     Show current draft plan
     approve-plan      {project}                     Approve draft → materialize tasks
+    checkpoint        {project} {task_id} {name}    Mark a checkpoint on a task
 """
 
 import argparse
@@ -37,11 +38,11 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
-from storage import JSONFileStorage, load_json_data, now_iso, tracker_lock
+from contracts import render_contract, validate_contract, atomic_write_json
 
 CLAIM_WAIT_SECONDS = 1.5
 
@@ -53,33 +54,36 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Storage --
+# -- Paths --
 
-_default_storage = None
+def output_dir(project: str) -> Path:
+    return Path("forge_output") / project
 
-def _get_storage(storage=None):
-    """Get storage adapter, using module-level default if not provided."""
-    global _default_storage
-    if storage is not None:
-        return storage
-    if _default_storage is None:
-        _default_storage = JSONFileStorage()
-    return _default_storage
+
+def tracker_path(project: str) -> Path:
+    return output_dir(project) / "tracker.json"
+
+
+# -- Time --
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # -- Tracker I/O --
 
-def load_tracker(project: str, storage=None) -> dict:
-    s = _get_storage(storage)
-    if not s.exists(project, 'tracker'):
+def load_tracker(project: str) -> dict:
+    path = tracker_path(project)
+    if not path.exists():
         print(f"ERROR: No tracker for project '{project}'. Run: init {project} --goal \"...\"", file=sys.stderr)
         sys.exit(1)
-    return s.load_data(project, 'tracker')
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def save_tracker(project: str, tracker: dict, storage=None):
-    s = _get_storage(storage)
-    s.save_data(project, 'tracker', tracker)
+def save_tracker(project: str, tracker: dict):
+    path = tracker_path(project)
+    tracker["updated"] = now_iso()
+    atomic_write_json(path, tracker)
 
 
 def find_task(tracker: dict, task_id: str) -> dict:
@@ -88,53 +92,6 @@ def find_task(tracker: dict, task_id: str) -> dict:
             return task
     print(f"ERROR: Task '{task_id}' not found.", file=sys.stderr)
     sys.exit(1)
-
-
-def _max_task_num(tasks: list) -> int:
-    """Find highest T-NNN number in existing tasks."""
-    max_num = 0
-    for t in tasks:
-        tid = t["id"]
-        if tid.startswith("T-") and tid[2:].isdigit():
-            max_num = max(max_num, int(tid[2:]))
-    return max_num
-
-
-def _remap_temp_ids(new_tasks: list, existing_tasks: list,
-                    update_tasks: list = None) -> dict:
-    """Remap temporary IDs (_1, _2, ...) to real T-NNN IDs.
-
-    Returns mapping {temp_id: real_id}.
-    Remaps in-place: id, depends_on, conflicts_with in both new_tasks
-    and update_tasks. IDs not starting with '_' are left as-is.
-    """
-    counter = _max_task_num(existing_tasks)
-    mapping = {}
-
-    # Assign real IDs to temp IDs
-    for t in new_tasks:
-        if t["id"].startswith("_"):
-            counter += 1
-            real_id = f"T-{counter:03d}"
-            mapping[t["id"]] = real_id
-            t["id"] = real_id
-
-    # Remap references in new_tasks
-    for t in new_tasks:
-        if "depends_on" in t:
-            t["depends_on"] = [mapping.get(d, d) for d in t["depends_on"]]
-        if "conflicts_with" in t:
-            t["conflicts_with"] = [mapping.get(c, c) for c in t["conflicts_with"]]
-
-    # Remap references in update_tasks
-    if update_tasks:
-        for u in update_tasks:
-            if "depends_on" in u:
-                u["depends_on"] = [mapping.get(d, d) for d in u["depends_on"]]
-            if "conflicts_with" in u:
-                u["conflicts_with"] = [mapping.get(c, c) for c in u["conflicts_with"]]
-
-    return mapping
 
 
 def validate_dag(tasks: list) -> list:
@@ -186,9 +143,7 @@ CONTRACTS = {
         "required": ["id", "name"],
         "optional": ["description", "instruction", "depends_on", "parallel",
                       "conflicts_with", "skill", "acceptance_criteria",
-                      "type", "blocked_by_decisions", "scopes", "origin",
-                      "knowledge_ids", "test_requirements", "alignment",
-                      "exclusions", "produces"],
+                      "type", "blocked_by_decisions", "scopes", "origin"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -199,35 +154,24 @@ CONTRACTS = {
             "acceptance_criteria": list,
             "blocked_by_decisions": list,
             "scopes": list,
-            "knowledge_ids": list,
-            "test_requirements": dict,
-            "alignment": dict,
-            "exclusions": list,
-            "produces": dict,
         },
         "invariant_texts": [
-            "id: task identifier — use temporary IDs (_1, _2, ...) for auto-assignment, or explicit T-NNN. Temp IDs are remapped to T-NNN at materialize time.",
+            "id: unique task identifier (e.g., T-001)",
             "name: kebab-case descriptive name (e.g., setup-database-schema)",
             "description: WHAT needs to be done (concrete, not vague)",
             "instruction: HOW to do it (step-by-step, mention specific files)",
-            "depends_on: list of prerequisite task IDs — can use temp IDs (_1, _2) within the same batch",
+            "depends_on: list of prerequisite task IDs (must exist)",
             "parallel: true if this task can run alongside others",
-            "conflicts_with: list of task IDs that modify same files — can use temp IDs within the same batch",
-            "acceptance_criteria: list of conditions for DONE — supports plain strings or structured: {text, from_template, params}",
+            "conflicts_with: list of task IDs that modify same files",
+            "acceptance_criteria: list of concrete conditions that must be true when task is DONE",
             "type: task category — feature (default), bug, chore, or investigation",
             "blocked_by_decisions: list of decision IDs (D-001, etc.) that must be CLOSED before this task can start",
             "scopes: list of guideline scopes this task relates to (e.g., ['backend', 'database']). 'general' is always included automatically.",
             "origin: source of this task — idea ID (I-001) or free text tracing where this task came from",
-            "knowledge_ids: list of Knowledge IDs (K-001, etc.) linked to this task for context assembly",
-            "test_requirements: {unit: bool, integration: bool, e2e: bool, description: str} — what testing is needed",
-            "alignment: dict with {goal, boundaries: {must, must_not, not_in_scope}, success} — persisted alignment contract from planning",
-            "exclusions: list of task-specific DO NOT rules — things this task must NOT do (e.g., 'DO NOT modify WorkflowList.tsx', 'DO NOT add error handling — that is T-015')",
-            "produces: dict describing what this task creates for downstream consumers — semantic output contracts (e.g., {endpoint: 'POST /users → 201 {id, email}', model: 'User(id, email, name)'}). Shown in pipeline context for dependent tasks.",
-            "Batch format: --data '{\"new_tasks\": [...], \"update_tasks\": [...]}' — atomically adds new tasks and updates existing tasks. update_tasks can reference temp IDs from new_tasks in depends_on/conflicts_with.",
         ],
         "example": [
             {
-                "id": "_1",
+                "id": "T-001",
                 "name": "setup-database-schema",
                 "description": "Create the database schema for user authentication",
                 "instruction": "Create migrations/001_auth.sql with users and sessions tables. Follow existing migration patterns.",
@@ -241,13 +185,13 @@ CONTRACTS = {
                 ],
             },
             {
-                "id": "_2",
+                "id": "T-002",
                 "name": "implement-auth-middleware",
                 "description": "JWT validation middleware",
                 "instruction": "Create src/middleware/auth.ts with RS256 JWT validation. Use jsonwebtoken library.",
-                "depends_on": ["_1"],
+                "depends_on": ["T-001"],
                 "parallel": False,
-                "conflicts_with": ["_3"],
+                "conflicts_with": ["T-003"],
                 "blocked_by_decisions": ["D-001"],
                 "type": "feature",
                 "acceptance_criteria": [
@@ -261,9 +205,7 @@ CONTRACTS = {
         "required": ["id"],
         "optional": ["name", "description", "instruction", "depends_on",
                       "conflicts_with", "skill", "acceptance_criteria",
-                      "type", "blocked_by_decisions", "scopes", "origin",
-                      "knowledge_ids", "test_requirements", "alignment",
-                      "exclusions", "produces"],
+                      "type", "blocked_by_decisions", "scopes", "origin"],
         "enums": {
             "type": {"feature", "bug", "chore", "investigation"},
         },
@@ -273,11 +215,6 @@ CONTRACTS = {
             "acceptance_criteria": list,
             "blocked_by_decisions": list,
             "scopes": list,
-            "knowledge_ids": list,
-            "test_requirements": dict,
-            "alignment": dict,
-            "exclusions": list,
-            "produces": dict,
         },
         "invariant_texts": [
             "id: existing task ID to update",
@@ -322,8 +259,7 @@ CONTRACTS = {
     },
     "config": {
         "required": [],
-        "optional": ["test_cmd", "lint_cmd", "typecheck_cmd", "branch_prefix",
-                      "git_workflow"],
+        "optional": ["test_cmd", "lint_cmd", "typecheck_cmd", "branch_prefix"],
         "enums": {},
         "types": {},
         "invariant_texts": [
@@ -331,75 +267,13 @@ CONTRACTS = {
             "lint_cmd: shell command to run linter (e.g., 'ruff check .', 'npm run lint')",
             "typecheck_cmd: shell command for type checking (e.g., 'mypy src/', 'npx tsc --noEmit')",
             "branch_prefix: prefix for git branches (e.g., 'forge/')",
-            "git_workflow: nested object for git branch/worktree/PR automation",
-            "  git_workflow.enabled: true to activate (default: false)",
-            "  git_workflow.branch_prefix: branch name prefix (default: 'forge/')",
-            "  git_workflow.use_worktrees: true for worktree-per-task (default: false, uses branch-only)",
-            "  git_workflow.worktree_dir: directory for worktrees (default: 'forge_worktrees')",
-            "  git_workflow.auto_push: push branch on complete (default: true)",
-            "  git_workflow.auto_pr: create PR on complete (default: true)",
-            "  git_workflow.pr_target: PR target branch (default: 'main')",
-            "  git_workflow.pr_draft: create as draft PR (default: true)",
-            "Config is a flat JSON object (except git_workflow which is nested), not an array",
+            "Config is a flat JSON object, not an array",
         ],
         "example": [
             {
                 "test_cmd": "pytest",
                 "lint_cmd": "ruff check .",
-                "git_workflow": {
-                    "enabled": True,
-                    "branch_prefix": "forge/",
-                    "use_worktrees": False,
-                    "auto_push": True,
-                    "auto_pr": True,
-                    "pr_target": "main",
-                    "pr_draft": True,
-                },
-            },
-        ],
-    },
-    "draft-plan": {
-        "description": "Draft plan wraps an array of tasks (same schema as add-tasks) with metadata about the source objective/idea. "
-                       "Stored in tracker.json['draft_plan']. Approve with approve-plan to materialize.",
-        "required": ["tasks"],
-        "optional": ["idea_id", "objective_id"],
-        "types": {
-            "tasks": list,
-        },
-        "invariant_texts": [
-            "tasks: JSON array of task objects — each task follows the add-tasks contract (id, name required; see `pipeline contract add-tasks`)",
-            "idea_id: source idea ID (I-NNN) this plan was derived from",
-            "objective_id: source objective ID (O-NNN) this plan was derived from",
-            "Only ONE draft plan exists at a time — new draft overwrites previous",
-            "Draft is NOT materialized until `approve-plan` is called",
-            "CLI usage: python -m core.pipeline draft-plan {project} --data '[{tasks}]' [--idea I-NNN] [--objective O-NNN]",
-            "The --data argument is the tasks array (not the wrapper). idea_id and objective_id are passed as --idea and --objective flags.",
-        ],
-        "example": [
-            {
-                "id": "T-010",
-                "name": "setup-redis-cache",
-                "description": "Configure Redis caching layer",
-                "depends_on": [],
-                "type": "feature",
-                "scopes": ["backend", "infrastructure"],
-                "origin": "I-003",
-                "acceptance_criteria": [
-                    "Redis client configured and connected",
-                    "Health check endpoint returns Redis status",
-                ],
-            },
-            {
-                "id": "T-011",
-                "name": "implement-cache-middleware",
-                "description": "Add caching middleware to API routes",
-                "depends_on": ["T-010"],
-                "type": "feature",
-                "scopes": ["backend"],
-                "acceptance_criteria": [
-                    "GET endpoints cached with 60s TTL",
-                    "Cache invalidated on POST/PUT/DELETE",
-                ],
+                "branch_prefix": "forge/",
             },
         ],
     },
@@ -410,8 +284,8 @@ CONTRACTS = {
 
 def cmd_init(args):
     """Create a new project tracker."""
-    storage = _get_storage()
-    if storage.exists(args.project, 'tracker') and not args.force:
+    path = tracker_path(args.project)
+    if path.exists() and not args.force:
         print(f"Project '{args.project}' already exists.")
         tracker = load_tracker(args.project)
         print_status(args.project, tracker)
@@ -431,153 +305,76 @@ def cmd_init(args):
     print(f"## Project created: {args.project}")
     print(f"")
     print(f"Goal: {args.goal}")
-    print(f"Saved to: forge_output/{args.project}/tracker.json")
+    print(f"Saved to: {path}")
     print(f"")
     print(f"Next: Add tasks with `add-tasks` or run `/plan {args.project}` to decompose the goal.")
 
 
-def _build_task_entry(t: dict, source_idea_id: str = None, source_objective_id: str = None) -> dict:
-    """Build a task entry dict from raw task data. Single source of truth for task schema."""
-    entry = {
-        "id": t["id"],
-        "name": t["name"],
-        "description": t.get("description", ""),
-        "depends_on": t.get("depends_on", []),
-        "parallel": t.get("parallel", False),
-        "conflicts_with": t.get("conflicts_with", []),
-        "skill": t.get("skill"),
-        "instruction": t.get("instruction", ""),
-        "acceptance_criteria": t.get("acceptance_criteria", []),
-        "type": t.get("type", "feature"),
-        "blocked_by_decisions": t.get("blocked_by_decisions", []),
-        "scopes": t.get("scopes", []),
-        "origin": t.get("origin", source_idea_id or source_objective_id or ""),
-        "knowledge_ids": t.get("knowledge_ids", []),
-        "alignment": t.get("alignment"),
-        "exclusions": t.get("exclusions", []),
-        "produces": t.get("produces"),
-        "status": "TODO",
-        "started_at": None,
-        "completed_at": None,
-        "failed_reason": None,
-    }
-    if t.get("test_requirements"):
-        entry["test_requirements"] = t["test_requirements"]
-    # If origin not set but source_idea_id exists, set it
-    if source_idea_id and not entry["origin"]:
-        entry["origin"] = source_idea_id
-    if source_objective_id and not entry["origin"]:
-        entry["origin"] = source_objective_id
-    return entry
-
-
 def cmd_add_tasks(args):
-    """Add tasks to the project graph.
+    """Add tasks to the project graph."""
+    tracker = load_tracker(args.project)
 
-    Accepts two formats:
-    - Array: [{id: "_1", name: ...}, ...]  (backward compatible, also supports T-NNN)
-    - Batch: {new_tasks: [...], update_tasks: [...]}  (atomic add + update)
-
-    Temporary IDs (starting with '_') are auto-remapped to T-NNN.
-    """
     try:
-        raw_data = load_json_data(args.data)
+        new_tasks = json.loads(args.data)
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Detect format
-    if isinstance(raw_data, dict) and "new_tasks" in raw_data:
-        new_tasks = raw_data["new_tasks"]
-        update_tasks = raw_data.get("update_tasks", [])
-        if not isinstance(new_tasks, list):
-            print("ERROR: new_tasks must be a JSON array", file=sys.stderr)
-            sys.exit(1)
-        if not isinstance(update_tasks, list):
-            print("ERROR: update_tasks must be a JSON array", file=sys.stderr)
-            sys.exit(1)
-    elif isinstance(raw_data, list):
-        new_tasks = raw_data
-        update_tasks = []
-    else:
-        print("ERROR: --data must be a JSON array or {new_tasks: [...], update_tasks: [...]}",
-              file=sys.stderr)
+    if not isinstance(new_tasks, list):
+        print("ERROR: --data must be a JSON array", file=sys.stderr)
         sys.exit(1)
 
-    # Contract validation on new_tasks
+    # Contract validation
     errors = validate_contract(CONTRACTS["add-tasks"], new_tasks)
     if errors:
-        print(f"ERROR: {len(errors)} validation issues in new_tasks:", file=sys.stderr)
+        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
         for e in errors[:10]:
             print(f"  {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Validate update_tasks against update-task contract
-    if update_tasks:
-        for upd in update_tasks:
-            errs = validate_contract(CONTRACTS["update-task"], [upd])
-            if errs:
-                print(f"ERROR: Validation issues in update_tasks for '{upd.get('id', '?')}':",
-                      file=sys.stderr)
-                for e in errs[:5]:
-                    print(f"  {e}", file=sys.stderr)
-                sys.exit(1)
-
-    # Atomic section: lock → load → remap → validate → save
-    with tracker_lock(args.project):
-        tracker = load_tracker(args.project)
-
-        # Remap temporary IDs
-        mapping = _remap_temp_ids(new_tasks, tracker["tasks"], update_tasks)
-
-        # Check for duplicate IDs (after remap)
-        existing_ids = {t["id"] for t in tracker["tasks"]}
-        for t in new_tasks:
-            if t["id"] in existing_ids:
-                print(f"ERROR: Duplicate task ID '{t['id']}'", file=sys.stderr)
-                sys.exit(1)
-
-        # Build task entries
-        entries = [_build_task_entry(t) for t in new_tasks]
-
-        # Apply updates to existing tasks
-        updatable = ["name", "description", "instruction", "depends_on",
-                     "conflicts_with", "skill", "acceptance_criteria",
-                     "type", "blocked_by_decisions", "scopes", "origin",
-                     "knowledge_ids", "test_requirements"]
-        updated_ids = []
-        for upd in update_tasks:
-            task = find_task(tracker, upd["id"])
-            if task["status"] in ("IN_PROGRESS", "DONE"):
-                print(f"ERROR: Cannot update task {upd['id']} — status is {task['status']}.",
-                      file=sys.stderr)
-                sys.exit(1)
-            for field in updatable:
-                if field in upd:
-                    task[field] = upd[field]
-            updated_ids.append(upd["id"])
-
-        # Validate DAG with all tasks (existing + new)
-        all_tasks = tracker["tasks"] + entries
-        dag_errors = validate_dag(all_tasks)
-        if dag_errors:
-            print(f"ERROR: Task graph validation failed:", file=sys.stderr)
-            for e in dag_errors:
-                print(f"  {e}", file=sys.stderr)
+    # Check for duplicate IDs
+    existing_ids = {t["id"] for t in tracker["tasks"]}
+    for t in new_tasks:
+        if t["id"] in existing_ids:
+            print(f"ERROR: Duplicate task ID '{t['id']}'", file=sys.stderr)
             sys.exit(1)
 
-        tracker["tasks"].extend(entries)
-        save_tracker(args.project, tracker)
+    # Build task entries
+    entries = []
+    for t in new_tasks:
+        entries.append({
+            "id": t["id"],
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "depends_on": t.get("depends_on", []),
+            "parallel": t.get("parallel", False),
+            "conflicts_with": t.get("conflicts_with", []),
+            "skill": t.get("skill"),
+            "instruction": t.get("instruction", ""),
+            "acceptance_criteria": t.get("acceptance_criteria", []),
+            "type": t.get("type", "feature"),
+            "blocked_by_decisions": t.get("blocked_by_decisions", []),
+            "scopes": t.get("scopes", []),
+            "origin": t.get("origin", ""),
+            "status": "TODO",
+            "started_at": None,
+            "completed_at": None,
+            "failed_reason": None,
+        })
 
-    # Print ID mapping
-    if mapping:
-        print("ID mapping:")
-        for temp, real in sorted(mapping.items()):
-            print(f"  {temp} -> {real}")
+    # Validate DAG with all tasks (existing + new)
+    all_tasks = tracker["tasks"] + entries
+    dag_errors = validate_dag(all_tasks)
+    if dag_errors:
+        print(f"ERROR: Task graph validation failed:", file=sys.stderr)
+        for e in dag_errors:
+            print(f"  {e}", file=sys.stderr)
+        sys.exit(1)
+
+    tracker["tasks"].extend(entries)
+    save_tracker(args.project, tracker)
 
     print(f"Added {len(entries)} tasks to '{args.project}'")
-    if updated_ids:
-        print(f"Updated {len(updated_ids)} existing tasks: {', '.join(updated_ids)}")
     print_task_list(tracker)
     print(f"\nRun `next {args.project}` to start.")
 
@@ -595,13 +392,8 @@ def _get_current_commit() -> str:
         return ""
 
 
-def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning: str,
-                          cwd: str = None) -> int:
+def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning: str) -> int:
     """Auto-detect git changes since base_commit and record unrecorded ones.
-
-    Args:
-        cwd: Working directory for git commands (e.g. worktree path).
-             If None, uses current directory.
 
     Returns number of new changes recorded.
     """
@@ -614,8 +406,7 @@ def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning
     try:
         result = subprocess.run(
             ["git", "diff", "--numstat", base_commit, "HEAD"],
-            capture_output=True, text=True, encoding="utf-8",
-            cwd=cwd,
+            capture_output=True, text=True, encoding="utf-8"
         )
         committed = result.stdout.strip()
     except FileNotFoundError:
@@ -624,8 +415,7 @@ def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning
     # Also get uncommitted changes
     result2 = subprocess.run(
         ["git", "diff", "--numstat", "HEAD"],
-        capture_output=True, text=True, encoding="utf-8",
-        cwd=cwd,
+        capture_output=True, text=True, encoding="utf-8"
     )
     uncommitted = result2.stdout.strip()
 
@@ -650,8 +440,12 @@ def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning
         return 0
 
     # Load existing changes — skip already recorded files for this task
-    storage = _get_storage()
-    ch_data = storage.load_data(project, 'changes')
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    changes_path = Path("forge_output") / project / "changes.json"
+    if changes_path.exists():
+        ch_data = json.loads(changes_path.read_text(encoding="utf-8"))
+    else:
+        ch_data = {"project": project, "updated": now_iso(), "changes": []}
 
     existing_files = {c["file"] for c in ch_data.get("changes", [])
                       if c.get("task_id") == task_id}
@@ -675,16 +469,14 @@ def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning
         if added > 0 and removed == 0:
             check = subprocess.run(
                 ["git", "diff", "--diff-filter=A", "--name-only", base_commit, "HEAD", "--", filepath],
-                capture_output=True, text=True, encoding="utf-8",
-                cwd=cwd,
+                capture_output=True, text=True, encoding="utf-8"
             )
             if filepath in check.stdout:
                 action = "create"
         elif added == 0 and removed > 0:
             check = subprocess.run(
                 ["git", "diff", "--diff-filter=D", "--name-only", base_commit, "HEAD", "--", filepath],
-                capture_output=True, text=True, encoding="utf-8",
-                cwd=cwd,
+                capture_output=True, text=True, encoding="utf-8"
             )
             if filepath in check.stdout:
                 action = "delete"
@@ -708,43 +500,11 @@ def _auto_record_changes(project: str, task_id: str, base_commit: str, reasoning
 
     if new_changes:
         ch_data["changes"].extend(new_changes)
-        storage.save_data(project, 'changes', ch_data)
+        ch_data["updated"] = timestamp
+        from contracts import atomic_write_json
+        atomic_write_json(changes_path, ch_data)
 
     return len(new_changes)
-
-
-def _apply_git_workflow_start(project: str, tracker: dict, task: dict) -> dict:
-    """Apply git workflow on task start (branch + optional worktree).
-
-    Returns dict with branch/worktree_path keys, or empty dict if disabled.
-    """
-    try:
-        from git_ops import get_git_workflow_config, on_task_start
-    except ImportError:
-        return {}
-
-    config = get_git_workflow_config(tracker)
-    if not config.get("enabled"):
-        return {}
-
-    return on_task_start(project, task, config)
-
-
-def _apply_git_workflow_complete(project: str, tracker: dict, task: dict) -> dict:
-    """Apply git workflow on task complete (push + PR + cleanup).
-
-    Returns dict with pr_url and other result keys, or empty dict if disabled.
-    """
-    try:
-        from git_ops import get_git_workflow_config, on_task_complete
-    except ImportError:
-        return {}
-
-    config = get_git_workflow_config(tracker)
-    if not config.get("enabled"):
-        return {}
-
-    return on_task_complete(project, task, config)
 
 
 def _get_active_ids(tracker: dict) -> set:
@@ -761,8 +521,10 @@ def _has_conflict(task: dict, active_ids: set) -> bool:
 
 def _load_open_decision_ids(project: str) -> set:
     """Load set of OPEN decision IDs from decisions.json."""
-    storage = _get_storage()
-    data = storage.load_data(project, 'decisions')
+    dpath = Path("forge_output") / project / "decisions.json"
+    if not dpath.exists():
+        return set()
+    data = json.loads(dpath.read_text(encoding="utf-8"))
     return {d["id"] for d in data.get("decisions", []) if d.get("status") == "OPEN"}
 
 
@@ -798,24 +560,20 @@ def _claim_with_retry(args, candidate, agent, max_retries=5):
             task["status"] = "IN_PROGRESS"
             task["started_at"] = now_iso()
             task["started_at_commit"] = _get_current_commit()
-
-            # Git workflow: create branch + optional worktree
-            git_result = _apply_git_workflow_start(args.project, tracker, task)
-            if git_result:
-                task.update(git_result)
-
+            task["checkpoints"] = {
+                "context_loaded": False,
+                "guidelines_checked": False,
+                "gates_passed": False,
+                "changes_recorded": False,
+            }
             save_tracker(args.project, tracker)
 
             print(f"## Next task: {task['id']} — {task['name']}")
             print(f"Agent: {agent}")
             print(f"Status: TODO -> CLAIMING -> **IN_PROGRESS**")
-            if task.get("branch"):
-                print(f"Branch: `{task['branch']}`")
-            if task.get("worktree_path"):
-                print(f"Worktree: `{task['worktree_path']}`")
             print()
             print_task_detail(task)
-            return task
+            return
 
         # Claim lost — find next candidate
         print(f"  Claim conflict on {candidate['id']} (attempt {attempt + 1}/{max_retries})",
@@ -865,7 +623,7 @@ def cmd_next(args):
     if not tracker["tasks"]:
         print(f"## No tasks in project '{args.project}'")
         print(f"\nAdd tasks with `add-tasks` or run `/plan {args.project}`")
-        return None
+        return
 
     done_ids = {t["id"] for t in tracker["tasks"]
                 if t["status"] in ("DONE", "SKIPPED")}
@@ -876,25 +634,25 @@ def cmd_next(args):
         if task["status"] == "IN_PROGRESS" and task.get("agent") == agent:
             if task.get("has_subtasks"):
                 _next_subtask(args.project, tracker, task)
-                return task
+                return
             print(f"## Current task: {task['id']} — {task['name']}")
             print(f"Agent: {agent}")
             print(f"Status: **IN_PROGRESS** (started: {task['started_at']})")
             print()
             print_task_detail(task)
-            return task
+            return
 
     # Check if ANY task is IN_PROGRESS without an agent (single-agent compat)
     for task in tracker["tasks"]:
         if task["status"] == "IN_PROGRESS" and not task.get("agent"):
             if task.get("has_subtasks"):
                 _next_subtask(args.project, tracker, task)
-                return task
+                return
             print(f"## Current task: {task['id']} — {task['name']}")
             print(f"Status: **IN_PROGRESS** (started: {task['started_at']})")
             print()
             print_task_detail(task)
-            return task
+            return
 
     # Find next TODO with deps met, no conflicts, and no blocking decisions
     open_decisions = _load_open_decision_ids(args.project)
@@ -951,7 +709,7 @@ def cmd_next(args):
             else:
                 print(f"## No tasks available (dependencies not met)")
                 print_status(args.project, tracker)
-        return None
+        return
 
     # --- Check if other agents are active ---
     other_agents = {t.get("agent") for t in tracker["tasks"]
@@ -965,52 +723,22 @@ def cmd_next(args):
         candidate["agent"] = agent
         candidate["started_at"] = now_iso()
         candidate["started_at_commit"] = _get_current_commit()
-
-        # Git workflow: create branch + optional worktree
-        git_result = _apply_git_workflow_start(args.project, tracker, candidate)
-        if git_result:
-            candidate.update(git_result)
-
+        candidate["checkpoints"] = {
+            "context_loaded": False,
+            "guidelines_checked": False,
+            "gates_passed": False,
+            "changes_recorded": False,
+        }
         save_tracker(args.project, tracker)
 
         print(f"## Next task: {candidate['id']} — {candidate['name']}")
         print(f"Agent: {agent}")
         print(f"Status: TODO -> **IN_PROGRESS**")
-        if candidate.get("branch"):
-            print(f"Branch: `{candidate['branch']}`")
-        if candidate.get("worktree_path"):
-            print(f"Worktree: `{candidate['worktree_path']}`")
         print()
         print_task_detail(candidate)
-        return candidate
     else:
         # Multi-agent — use two-phase claim protocol
-        return _claim_with_retry(args, candidate, agent, max_retries=5)
-
-
-def cmd_begin(args):
-    """Combined next + context: claim task and show full execution context.
-
-    Calls cmd_next to claim/resume a task, then immediately prints
-    the full context (dependencies, guidelines, knowledge, risks, etc.).
-    Equivalent to running ``pipeline next`` followed by ``pipeline context``,
-    but in a single invocation.
-    """
-    task = cmd_next(args)
-
-    if not task or task.get("has_subtasks"):
-        return
-
-    print()
-    print("---")
-    print()
-
-    class _CtxArgs:
-        pass
-    ctx_args = _CtxArgs()
-    ctx_args.project = args.project
-    ctx_args.task_id = task["id"]
-    cmd_context(ctx_args)
+        _claim_with_retry(args, candidate, agent, max_retries=5)
 
 
 def cmd_complete(args):
@@ -1026,34 +754,21 @@ def cmd_complete(args):
         print(f"WARNING: Task {args.task_id} is owned by agent '{task['agent']}', "
               f"not '{agent}'. Completing anyway.", file=sys.stderr)
 
-    # Check blocked_by_decisions are resolved
-    if not force:
-        open_decisions = _load_open_decision_ids(args.project)
-        blocking = _blocked_by_open_decisions(task, open_decisions)
-        if blocking:
-            print(f"WARNING: Task {args.task_id} has OPEN blocking decisions: "
-                  f"{', '.join(blocking)}. Close them first or use --force.",
-                  file=sys.stderr)
-            sys.exit(1)
-
     # Auto-record changes from git before checking
     base_commit = task.get("started_at_commit", "")
     if base_commit:
-        # Use worktree path for git commands if task was executed in a worktree
-        git_cwd = task.get("worktree_path")
-        if git_cwd and not os.path.isdir(git_cwd):
-            git_cwd = None  # Worktree removed, fall back to main repo
-        auto_count = _auto_record_changes(args.project, args.task_id, base_commit,
-                                           reasoning, cwd=git_cwd)
+        auto_count = _auto_record_changes(args.project, args.task_id, base_commit, reasoning)
         if auto_count:
             print(f"  Auto-recorded {auto_count} change(s) from git.")
 
     # Check that changes were recorded for this task
     if not force:
-        storage = _get_storage()
-        changes_data = storage.load_data(args.project, 'changes')
-        task_changes = [c for c in changes_data.get("changes", [])
-                        if c.get("task_id") == args.task_id]
+        changes_file = Path("forge_output") / args.project / "changes.json"
+        task_changes = []
+        if changes_file.exists():
+            changes_data = json.loads(changes_file.read_text(encoding="utf-8"))
+            task_changes = [c for c in changes_data.get("changes", [])
+                            if c.get("task_id") == args.task_id]
         if not task_changes:
             print(f"WARNING: No changes recorded for {args.task_id}. "
                   f"Use --force to complete anyway.", file=sys.stderr)
@@ -1069,35 +784,30 @@ def cmd_complete(args):
                   f"Use --force to complete anyway.", file=sys.stderr)
             sys.exit(1)
 
-    # Check acceptance criteria verification
-    if not force:
-        ac = task.get("acceptance_criteria", [])
-        if ac:
-            ac_reasoning = getattr(args, "ac_reasoning", None)
-            if not ac_reasoning:
-                print(f"WARNING: Task {args.task_id} has {len(ac)} acceptance criteria "
-                      f"but no --ac-reasoning provided.", file=sys.stderr)
-                print(f"  Acceptance criteria:", file=sys.stderr)
-                for i, criterion in enumerate(ac, 1):
-                    text = criterion if isinstance(criterion, str) else criterion.get("text", str(criterion))
-                    print(f"    {i}. {text}", file=sys.stderr)
-                print(f"  Provide --ac-reasoning to justify how each criterion is met, "
-                      f"or --force to bypass.", file=sys.stderr)
-                sys.exit(1)
-            task["ac_reasoning"] = ac_reasoning
-            # Validate AC reasoning quality (advisory)
-            ac_warnings = _validate_ac_reasoning(ac_reasoning, ac)
-            if ac_warnings:
-                print(f"**AC REASONING WARNINGS** ({len(ac_warnings)}):", file=sys.stderr)
-                for w in ac_warnings:
-                    print(w, file=sys.stderr)
-                print("Tip: address each criterion with 'AC N: [criterion] — PASS|FAIL: [evidence]'",
-                      file=sys.stderr)
-
-    # Git workflow: push + PR + cleanup
-    git_result = _apply_git_workflow_complete(args.project, tracker, task)
-    if git_result:
-        task.update(git_result)
+    # Checkpoint warnings
+    checkpoints = task.get("checkpoints", {})
+    if not checkpoints.get("context_loaded") and not force:
+        print(f"  NOTE: Context was not loaded for this task (pipeline context not called).", file=sys.stderr)
+    if not checkpoints.get("guidelines_checked") and not force:
+        # Check if task has scopes with must-guidelines
+        task_scopes = set(task.get("scopes", []))
+        task_scopes.add("general")
+        guidelines_file = Path("forge_output") / args.project / "guidelines.json"
+        has_must = False
+        if guidelines_file.exists():
+            g_data = json.loads(guidelines_file.read_text(encoding="utf-8"))
+            for g in g_data.get("guidelines", []):
+                if g.get("status") == "ACTIVE" and g.get("weight") == "must":
+                    if g.get("scope", "general") in task_scopes or g.get("scope", "general") == "general":
+                        has_must = True
+                        break
+        if has_must:
+            print(f"  NOTE: Guidelines compliance was not verified for this task.", file=sys.stderr)
+    if not checkpoints.get("gates_passed") and not force:
+        config = tracker.get("config", {})
+        gates_file = Path("forge_output") / args.project / "gates.json"
+        if gates_file.exists() or config.get("test_cmd") or config.get("lint_cmd"):
+            print(f"  WARNING: Gates were not run for this task.", file=sys.stderr)
 
     task["status"] = "DONE"
     task["completed_at"] = now_iso()
@@ -1106,42 +816,6 @@ def cmd_complete(args):
     done_count = sum(1 for t in tracker["tasks"] if t["status"] in ("DONE", "SKIPPED"))
     total = len(tracker["tasks"])
     print(f"Task {args.task_id} ({task['name']}): -> DONE  [{done_count}/{total}]")
-
-    # KR progress reminder: trace task → origin → objective
-    _print_kr_reminder(args.project, task)
-
-
-def _print_kr_reminder(project: str, task: dict):
-    """Print KR progress reminder after task completion."""
-    origin = task.get("origin", "")
-    _s = _get_storage()
-    obj_ids = set()
-
-    if origin.startswith("O-"):
-        obj_ids.add(origin)
-    elif origin.startswith("I-"):
-        if _s.exists(project, 'ideas'):
-            ideas_data = _s.load_data(project, 'ideas')
-            for idea in ideas_data.get("ideas", []):
-                if idea["id"] == origin:
-                    obj_ids = {kr.split("/")[0] for kr in idea.get("advances_key_results", []) if "/" in kr}
-                    break
-
-    if not obj_ids or not _s.exists(project, 'objectives'):
-        return
-
-    obj_data = _s.load_data(project, 'objectives')
-    for obj in obj_data.get("objectives", []):
-        if obj["id"] in obj_ids and obj.get("status") == "ACTIVE":
-            print(f"\n  Objective {obj['id']}: {obj['title']}")
-            for kr in obj.get("key_results", []):
-                target = kr.get("target")
-                if target is not None:
-                    baseline = kr.get("baseline", 0)
-                    current = kr.get("current", baseline)
-                    pct = _objective_kr_pct(baseline, target, current)
-                    print(f"    {kr['id']}: {current}/{target} ({pct}%)")
-            print(f"  Consider updating KR progress: /objectives {obj['id']} update")
 
 
 def cmd_fail(args):
@@ -1233,8 +907,10 @@ def cmd_reset(args):
 
 def cmd_update_task(args):
     """Update fields of an existing task."""
+    tracker = load_tracker(args.project)
+
     try:
-        updates = load_json_data(args.data)
+        updates = json.loads(args.data)
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
@@ -1250,43 +926,39 @@ def cmd_update_task(args):
             print(f"  {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Atomic section: lock → load → update → validate → save
-    with tracker_lock(args.project):
-        tracker = load_tracker(args.project)
-        task = find_task(tracker, updates["id"])
+    task = find_task(tracker, updates["id"])
 
-        if task["status"] in ("IN_PROGRESS", "DONE"):
-            print(f"ERROR: Cannot update task {updates['id']} — status is {task['status']}. "
-                  f"Reset it first.", file=sys.stderr)
+    if task["status"] in ("IN_PROGRESS", "DONE"):
+        print(f"ERROR: Cannot update task {updates['id']} — status is {task['status']}. "
+              f"Reset it first.", file=sys.stderr)
+        sys.exit(1)
+
+    # Apply updates (only provided fields)
+    updatable = ["name", "description", "instruction", "depends_on",
+                 "conflicts_with", "skill", "acceptance_criteria",
+                 "type", "blocked_by_decisions", "scopes", "origin"]
+    changed = []
+    for field in updatable:
+        if field in updates:
+            old = task.get(field)
+            task[field] = updates[field]
+            if old != updates[field]:
+                changed.append(field)
+
+    if not changed:
+        print(f"No changes to task {updates['id']}.")
+        return
+
+    # Re-validate DAG if dependencies changed
+    if "depends_on" in updates:
+        dag_errors = validate_dag(tracker["tasks"])
+        if dag_errors:
+            print(f"ERROR: Updated dependencies create invalid graph:", file=sys.stderr)
+            for e in dag_errors:
+                print(f"  {e}", file=sys.stderr)
             sys.exit(1)
 
-        # Apply updates (only provided fields)
-        updatable = ["name", "description", "instruction", "depends_on",
-                     "conflicts_with", "skill", "acceptance_criteria",
-                     "type", "blocked_by_decisions", "scopes", "origin",
-                     "knowledge_ids", "test_requirements"]
-        changed = []
-        for field in updatable:
-            if field in updates:
-                old = task.get(field)
-                task[field] = updates[field]
-                if old != updates[field]:
-                    changed.append(field)
-
-        if not changed:
-            print(f"No changes to task {updates['id']}.")
-            return
-
-        # Re-validate DAG if dependencies changed
-        if "depends_on" in updates:
-            dag_errors = validate_dag(tracker["tasks"])
-            if dag_errors:
-                print(f"ERROR: Updated dependencies create invalid graph:", file=sys.stderr)
-                for e in dag_errors:
-                    print(f"  {e}", file=sys.stderr)
-                sys.exit(1)
-
-        save_tracker(args.project, tracker)
+    save_tracker(args.project, tracker)
     print(f"Updated task {updates['id']}: {', '.join(changed)}")
     print_task_detail(task)
 
@@ -1378,7 +1050,7 @@ def cmd_register_subtasks(args):
         return
 
     try:
-        raw = load_json_data(args.data)
+        raw = json.loads(args.data)
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
@@ -1461,6 +1133,26 @@ def cmd_complete_subtask(args):
     if done_count == total:
         print(f"\nAll {total} subtasks complete!")
         print(f"Complete parent: python -m core.pipeline complete {args.project} {parent_id}")
+
+
+def cmd_checkpoint(args):
+    """Update a checkpoint on the current in-progress task."""
+    tracker = load_tracker(args.project)
+    task = find_task(tracker, args.task_id)
+
+    if task["status"] != "IN_PROGRESS":
+        print(f"ERROR: Task {args.task_id} is not IN_PROGRESS (status: {task['status']})", file=sys.stderr)
+        sys.exit(1)
+
+    valid_checkpoints = {"context_loaded", "guidelines_checked", "gates_passed", "changes_recorded"}
+    if args.name not in valid_checkpoints:
+        print(f"ERROR: Unknown checkpoint '{args.name}'. Valid: {', '.join(sorted(valid_checkpoints))}", file=sys.stderr)
+        sys.exit(1)
+
+    task["checkpoints"] = task.get("checkpoints", {})
+    task["checkpoints"][args.name] = True
+    save_tracker(args.project, tracker)
+    print(f"Checkpoint '{args.name}' marked for {args.task_id}.")
 
 
 # -- Formatting --
@@ -1560,33 +1252,29 @@ def print_status(project: str, tracker: dict):
         ac = active.get("acceptance_criteria", [])
         if ac:
             # Load changes to check what's recorded for this task
-            _s = _get_storage()
-            ch_data = _s.load_data(project, 'changes')
-            recorded_files = {
-                c.get("summary", "").lower()
-                for c in ch_data.get("changes", [])
-                if c.get("task_id") == active["id"]
-            }
+            changes_file = Path("forge_output") / project / "changes.json"
+            recorded_files = set()
+            if changes_file.exists():
+                ch_data = json.loads(changes_file.read_text(encoding="utf-8"))
+                recorded_files = {
+                    c.get("summary", "").lower()
+                    for c in ch_data.get("changes", [])
+                    if c.get("task_id") == active["id"]
+                }
 
             print(f"  Acceptance criteria ({len(ac)}):")
             for criterion in ac:
-                if isinstance(criterion, dict):
-                    text = criterion.get("text", "")
-                    tmpl = criterion.get("from_template")
-                    if tmpl:
-                        print(f"    - {text} (from {tmpl})")
-                    else:
-                        print(f"    - {text}")
-                else:
-                    print(f"    - {criterion}")
+                # Simple heuristic: if changes recorded, show progress
+                print(f"    - {criterion}")
 
         # Show recorded changes count
-        _s = _get_storage()
-        ch_data = _s.load_data(project, 'changes')
-        task_changes = [c for c in ch_data.get("changes", [])
-                       if c.get("task_id") == active["id"]]
-        if task_changes:
-            print(f"  Changes recorded: {len(task_changes)} files")
+        changes_file = Path("forge_output") / project / "changes.json"
+        if changes_file.exists():
+            ch_data = json.loads(changes_file.read_text(encoding="utf-8"))
+            task_changes = [c for c in ch_data.get("changes", [])
+                           if c.get("task_id") == active["id"]]
+            if task_changes:
+                print(f"  Changes recorded: {len(task_changes)} files")
 
     # DAG visualization
     print()
@@ -1675,68 +1363,12 @@ def print_task_detail(task: dict):
     if blocked:
         print(f"**Blocked by decisions**: {', '.join(blocked)}")
 
-    k_ids = task.get("knowledge_ids", [])
-    if k_ids:
-        print(f"**Knowledge**: {', '.join(k_ids)}")
-
-    alignment = task.get("alignment")
-    if alignment:
-        print(f"")
-        print(f"**Alignment Contract**:")
-        if alignment.get("goal"):
-            print(f"  Goal: {alignment['goal']}")
-        bounds = alignment.get("boundaries", {})
-        if bounds.get("must"):
-            for m in bounds["must"]:
-                print(f"  Must: {m}")
-        if bounds.get("must_not"):
-            for m in bounds["must_not"]:
-                print(f"  Must not: {m}")
-        if alignment.get("success"):
-            print(f"  Success: {alignment['success']}")
-
-    test_req = task.get("test_requirements")
-    if test_req:
-        parts = []
-        if test_req.get("unit"):
-            parts.append("unit")
-        if test_req.get("integration"):
-            parts.append("integration")
-        if test_req.get("e2e"):
-            parts.append("e2e")
-        label = ", ".join(parts) if parts else "none specified"
-        print(f"**Test Requirements**: {label}")
-        if test_req.get("description"):
-            print(f"  {test_req['description']}")
-
     ac = task.get("acceptance_criteria", [])
     if ac:
         print(f"")
         print(f"**Acceptance Criteria**:")
         for criterion in ac:
-            if isinstance(criterion, dict):
-                text = criterion.get("text", "")
-                tmpl = criterion.get("from_template")
-                if tmpl:
-                    print(f"  - [ ] {text} (from {tmpl})")
-                else:
-                    print(f"  - [ ] {text}")
-            else:
-                print(f"  - [ ] {criterion}")
-
-    excl = task.get("exclusions", [])
-    if excl:
-        print(f"")
-        print(f"**Exclusions (DO NOT)**:")
-        for ex in excl:
-            print(f"  - {ex}")
-
-    produces = task.get("produces")
-    if produces:
-        print(f"")
-        print(f"**Produces (contract for downstream tasks)**:")
-        for key, val in produces.items():
-            print(f"  {key}: {val}")
+            print(f"  - [ ] {criterion}")
 
     print(f"")
     print(f"When done: `python -m core.pipeline complete {{project}} {task['id']}`")
@@ -1759,11 +1391,12 @@ def _objective_kr_pct(baseline, target, current) -> int:
 def _estimate_context_size(project: str, task_ids: set) -> int:
     """Estimate context size in characters for the given dependency tasks."""
     total = 0
-    _s = _get_storage()
-    for entity in ("changes", "decisions", "lessons"):
-        if _s.exists(project, entity):
-            data = _s.load_data(project, entity)
-            for entry in data.get(entity, []):
+    for fname in ("changes.json", "decisions.json", "lessons.json"):
+        fpath = Path("forge_output") / project / fname
+        if fpath.exists():
+            data = json.loads(fpath.read_text(encoding="utf-8"))
+            key = fname.replace(".json", "")
+            for entry in data.get(key, []):
                 if entry.get("task_id") in task_ids:
                     total += len(json.dumps(entry))
     return total
@@ -1778,8 +1411,10 @@ def cmd_context(args):
     print()
 
     # Pre-load decisions (used in multiple sections below)
-    _s = _get_storage()
-    dec_data = _s.load_data(args.project, 'decisions')
+    decisions_file = Path("forge_output") / args.project / "decisions.json"
+    dec_data = None
+    if decisions_file.exists():
+        dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
 
     # Task details
     if task.get("description"):
@@ -1787,39 +1422,6 @@ def cmd_context(args):
     if task.get("instruction"):
         print(f"**Instruction**: {task['instruction']}")
     print()
-
-    # Alignment contract (persisted from planning)
-    alignment = task.get("alignment")
-    if alignment:
-        print("### Alignment Contract")
-        print()
-        if alignment.get("goal"):
-            print(f"**Goal**: {alignment['goal']}")
-        bounds = alignment.get("boundaries", {})
-        if bounds.get("must"):
-            print("**Must**:")
-            for m in bounds["must"]:
-                print(f"  - {m}")
-        if bounds.get("must_not"):
-            print("**Must not**:")
-            for m in bounds["must_not"]:
-                print(f"  - {m}")
-        if bounds.get("not_in_scope"):
-            print("**Not in scope**:")
-            for m in bounds["not_in_scope"]:
-                print(f"  - {m}")
-        if alignment.get("success"):
-            print(f"**Success criteria**: {alignment['success']}")
-        print()
-
-    # Exclusions (task-specific DO NOT rules)
-    excl = task.get("exclusions", [])
-    if excl:
-        print("### Exclusions")
-        print()
-        for ex in excl:
-            print(f"- **DO NOT**: {ex}")
-        print()
 
     # Dependency context
     deps = task.get("depends_on", [])
@@ -1831,26 +1433,23 @@ def cmd_context(args):
             print(f"**{dep_id}** — {dep_task['name']} ({dep_task['status']})")
             if dep_task.get("description"):
                 print(f"  {dep_task['description']}")
-            dep_produces = dep_task.get("produces")
-            if dep_produces:
-                print(f"  **Produces**:")
-                for key, val in dep_produces.items():
-                    print(f"    {key}: {val}")
             print()
 
         # Show changes from dependency tasks
-        changes_data = _s.load_data(args.project, 'changes')
-        dep_changes = [c for c in changes_data.get("changes", [])
-                       if c.get("task_id") in deps]
-        if dep_changes:
-            print(f"### Changes from Dependencies")
-            print()
-            print("| Task | File | Action | Summary |")
-            print("|------|------|--------|---------|")
-            for c in dep_changes:
-                summary = c.get("summary", "")[:50]
-                print(f"| {c['task_id']} | {c['file']} | {c['action']} | {summary} |")
-            print()
+        changes_file = Path("forge_output") / args.project / "changes.json"
+        if changes_file.exists():
+            changes_data = json.loads(changes_file.read_text(encoding="utf-8"))
+            dep_changes = [c for c in changes_data.get("changes", [])
+                           if c.get("task_id") in deps]
+            if dep_changes:
+                print(f"### Changes from Dependencies")
+                print()
+                print("| Task | File | Action | Summary |")
+                print("|------|------|--------|---------|")
+                for c in dep_changes:
+                    summary = c.get("summary", "")[:50]
+                    print(f"| {c['task_id']} | {c['file']} | {c['action']} | {summary} |")
+                print()
 
         # Show decisions from dependency tasks
         if dec_data:
@@ -1881,222 +1480,47 @@ def cmd_context(args):
             print()
 
     # Show relevant lessons
-    lessons_data = _s.load_data(args.project, 'lessons')
-    lessons = lessons_data.get("lessons", [])
-    if lessons:
-        print(f"### Relevant Lessons")
-        print()
-        for l in lessons:
-            print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
-        print()
-
-    # Compute task_scopes (shared by guidelines and knowledge scope matching)
-    g_data = _s.load_data(args.project, 'guidelines')
-    project_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
-
-    task_scopes = set(task.get("scopes", []))
-    origin_for_scopes = task.get("origin", "")
-    if origin_for_scopes.startswith("O-") and _s.exists(args.project, 'objectives'):
-        obj_data_scopes = _s.load_data(args.project, 'objectives')
-        for obj in obj_data_scopes.get("objectives", []):
-            if obj["id"] == origin_for_scopes:
-                task_scopes.update(obj.get("scopes", []))
-                derived_gl_ids = set(obj.get("derived_guidelines", []))
-                if derived_gl_ids:
-                    for g in project_guidelines:
-                        if g["id"] in derived_gl_ids and g.get("scope"):
-                            task_scopes.add(g["scope"])
-                break
-    elif origin_for_scopes.startswith("I-") and _s.exists(args.project, 'ideas'):
-        ideas_data_sc = _s.load_data(args.project, 'ideas')
-        for idea in ideas_data_sc.get("ideas", []):
-            if idea["id"] == origin_for_scopes:
-                task_scopes.update(idea.get("scopes", []))
-                obj_ids_sc = {kr.split("/")[0] for kr in idea.get("advances_key_results", []) if "/" in kr}
-                if obj_ids_sc and _s.exists(args.project, 'objectives'):
-                    obj_data_sc = _s.load_data(args.project, 'objectives')
-                    for obj in obj_data_sc.get("objectives", []):
-                        if obj["id"] in obj_ids_sc:
-                            derived_gl_ids = set(obj.get("derived_guidelines", []))
-                            for g in project_guidelines:
-                                if g["id"] in derived_gl_ids and g.get("scope"):
-                                    task_scopes.add(g["scope"])
-                break
-    task_scopes.add("general")
+    lessons_file = Path("forge_output") / args.project / "lessons.json"
+    if lessons_file.exists():
+        lessons_data = json.loads(lessons_file.read_text(encoding="utf-8"))
+        lessons = lessons_data.get("lessons", [])
+        if lessons:
+            print(f"### Relevant Lessons")
+            print()
+            for l in lessons:
+                print(f"- **{l['id']}** [{l.get('severity', '')}]: {l['title']}")
+            print()
 
     # Guidelines context (uses shared renderer from guidelines module)
+    # Load global guidelines (bypass scope filter) and project guidelines (scope-filtered)
     global_guidelines = []
     if args.project != "_global":
-        g_global = _s.load_global('guidelines')
-        global_guidelines = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
+        global_guidelines_file = Path("forge_output") / "_global" / "guidelines.json"
+        if global_guidelines_file.exists():
+            g_global = json.loads(global_guidelines_file.read_text(encoding="utf-8"))
+            global_guidelines = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
+
+    project_guidelines = []
+    guidelines_file = Path("forge_output") / args.project / "guidelines.json"
+    if guidelines_file.exists():
+        g_data = json.loads(guidelines_file.read_text(encoding="utf-8"))
+        project_guidelines = [g for g in g_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     if global_guidelines or project_guidelines:
+        task_scopes = set(task.get("scopes", []))
         from guidelines import render_guidelines_context
         lines = render_guidelines_context(project_guidelines, task_scopes, args.project,
                                            global_guidelines=global_guidelines)
         for line in lines:
             print(line)
 
-    # Knowledge context (from task.knowledge_ids + origin chain + scope matching)
-    k_ids = set(task.get("knowledge_ids", []))
-    origin_k = task.get("origin", "")
-    if origin_k.startswith("I-"):
-        if _s.exists(args.project, 'ideas'):
-            ideas_data = _s.load_data(args.project, 'ideas')
-            for idea in ideas_data.get("ideas", []):
-                if idea["id"] == origin_k:
-                    k_ids.update(idea.get("knowledge_ids", []))
-                    obj_ids_k = {kr.split("/")[0] for kr in idea.get("advances_key_results", []) if "/" in kr}
-                    if obj_ids_k and _s.exists(args.project, 'objectives'):
-                        obj_data_k = _s.load_data(args.project, 'objectives')
-                        for obj in obj_data_k.get("objectives", []):
-                            if obj["id"] in obj_ids_k:
-                                k_ids.update(obj.get("knowledge_ids", []))
-                    break
-    elif origin_k.startswith("O-"):
-        if _s.exists(args.project, 'objectives'):
-            obj_data_k = _s.load_data(args.project, 'objectives')
-            for obj in obj_data_k.get("objectives", []):
-                if obj["id"] == origin_k:
-                    k_ids.update(obj.get("knowledge_ids", []))
-                    break
-
-    # Load knowledge data once (used for both explicit and scope matching)
-    k_data = {}
-    if _s.exists(args.project, 'knowledge'):
-        k_data = _s.load_data(args.project, 'knowledge')
-
-    # Scope-matched knowledge (additive to explicit IDs)
-    scope_matched_k_ids = set()
-    if task_scopes and k_data:
-        for k_obj in k_data.get("knowledge", []):
-            if k_obj.get("status") != "ACTIVE":
-                continue
-            k_scopes = set(k_obj.get("scopes", []))
-            if k_scopes & task_scopes and k_obj["id"] not in k_ids:
-                scope_matched_k_ids.add(k_obj["id"])
-
-    all_k_ids = k_ids | scope_matched_k_ids
-    if all_k_ids and k_data:
-        k_objects = {k["id"]: k for k in k_data.get("knowledge", [])
-                     if k.get("status") == "ACTIVE"}
-
-        explicit_linked = [k_objects[kid] for kid in sorted(k_ids) if kid in k_objects]
-        scope_linked = [k_objects[kid] for kid in sorted(scope_matched_k_ids) if kid in k_objects]
-
-        # Cap scope-matched at 10 to prevent context bloat
-        if len(scope_linked) > 10:
-            scope_linked = scope_linked[:10]
-
-        total = len(explicit_linked) + len(scope_linked)
-        if total > 0:
-            print(f"### Knowledge ({total})")
-            print()
-            for k in explicit_linked:
-                print(f"**{k['id']}**: {k['title']} [{k['category']}]")
-                content_preview = k.get("content", "")[:200]
-                if content_preview:
-                    print(f"  {content_preview}")
-            if scope_linked:
-                print()
-                print(f"*Scope-matched ({len(scope_linked)}):*")
-                for k in scope_linked:
-                    print(f"**{k['id']}**: {k['title']} [{k['category']}]")
-                    content_preview = k.get("content", "")[:200]
-                    if content_preview:
-                        print(f"  {content_preview}")
-            print()
-
-    # Research context (from task origin -> idea/objective -> research)
-    if _s.exists(args.project, 'research'):
-        r_data = _s.load_data(args.project, 'research')
-        active_research = [r for r in r_data.get("research", [])
-                          if r.get("status") == "ACTIVE"]
-        task_research = []
-        origin = task.get("origin", "")
-
-        if origin.startswith("I-"):
-            # Research linked to origin idea
-            task_research = [r for r in active_research
-                            if r.get("linked_entity_id") == origin
-                            or r.get("linked_idea_id") == origin]
-            # Also research linked to objective (via idea.advances_key_results)
-            if _s.exists(args.project, 'ideas'):
-                ideas_data_r = _s.load_data(args.project, 'ideas')
-                for idea in ideas_data_r.get("ideas", []):
-                    if idea["id"] == origin:
-                        obj_ids_r = {kr.split("/")[0] for kr in idea.get("advances_key_results", []) if "/" in kr}
-                        task_research.extend([r for r in active_research
-                                             if r.get("linked_entity_id") in obj_ids_r
-                                             and r["id"] not in {x["id"] for x in task_research}])
-                        break
-        elif origin.startswith("O-"):
-            # Direct objective origin (from /plan O-001)
-            task_research = [r for r in active_research
-                            if r.get("linked_entity_id") == origin]
-
-        if task_research:
-            seen = set()
-            unique = [r for r in task_research if r["id"] not in seen and not seen.add(r["id"])]
-            print(f"### Research ({len(unique)})")
-            print()
-            for r in sorted(unique, key=lambda x: x["id"]):
-                print(f"**{r['id']}**: {r['title']} [{r['category']}]")
-                if r.get("summary"):
-                    print(f"  {r['summary'][:200]}")
-                for f in (r.get("key_findings") or [])[:5]:
-                    print(f"  - {f}")
-                if r.get("decision_ids"):
-                    print(f"  Related decisions: {', '.join(r['decision_ids'])}")
-            print()
-
-    # Test requirements
-    test_req = task.get("test_requirements")
-    if test_req:
-        print(f"### Test Requirements")
-        print()
-        parts = []
-        if test_req.get("unit"):
-            parts.append("unit")
-        if test_req.get("integration"):
-            parts.append("integration")
-        if test_req.get("e2e"):
-            parts.append("e2e")
-        if parts:
-            print(f"Required: {', '.join(parts)}")
-        if test_req.get("description"):
-            print(f"{test_req['description']}")
-        print()
-
-    # Business context: trace task → origin → objective (F-001: graceful degradation)
-    origin = task.get("origin", "")
-    if origin.startswith("O-"):
-        # Direct objective origin (from /plan O-001)
-        if _s.exists(args.project, 'objectives'):
-            obj_data = _s.load_data(args.project, 'objectives')
-            for obj in obj_data.get("objectives", []):
-                if obj["id"] == origin:
-                    print("### Business Context")
-                    print()
-                    print(f"**{obj['id']}**: {obj['title']} [{obj['status']}]")
-                    for kr in obj.get("key_results", []):
-                        target = kr.get("target")
-                        if target is not None:
-                            baseline = kr.get("baseline", 0)
-                            current = kr.get("current", baseline)
-                            pct = _objective_kr_pct(baseline, target, current)
-                            print(f"  {kr['id']}: {kr.get('metric', '')} — {current}/{target} ({pct}%)")
-                        else:
-                            desc = kr.get("description") or kr.get("metric", "")
-                            status = kr.get("status", "")
-                            print(f"  {kr['id']}: {desc} [{status}]")
-                    print(f"  Origin: objective {origin}")
-                    print()
-                    break
-    elif origin.startswith("I-"):
-        if _s.exists(args.project, 'ideas') and _s.exists(args.project, 'objectives'):
-            ideas_data = _s.load_data(args.project, 'ideas')
-            obj_data = _s.load_data(args.project, 'objectives')
+    # Business context: trace task → origin idea → objective (F-001: graceful degradation)
+    if task.get("origin") and task["origin"].startswith("I-"):
+        ideas_file = Path("forge_output") / args.project / "ideas.json"
+        objectives_file = Path("forge_output") / args.project / "objectives.json"
+        if ideas_file.exists() and objectives_file.exists():
+            ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
+            obj_data = json.loads(objectives_file.read_text(encoding="utf-8"))
             # Find origin idea
             origin_idea = None
             for idea in ideas_data.get("ideas", []):
@@ -2118,21 +1542,19 @@ def cmd_context(args):
                                            if kr_ref.startswith(obj["id"] + "/")}
                         for kr in obj.get("key_results", []):
                             if kr["id"] in relevant_kr_ids:
-                                target = kr.get("target")
-                                if target is not None:
-                                    baseline = kr.get("baseline", 0)
-                                    current = kr.get("current", baseline)
-                                    pct = _objective_kr_pct(baseline, target, current)
-                                    print(f"  {kr['id']}: {kr.get('metric', '')} — {current}/{target} ({pct}%)")
-                                else:
-                                    desc = kr.get("description") or kr.get("metric", "")
-                                    status = kr.get("status", "")
-                                    print(f"  {kr['id']}: {desc} [{status}]")
+                                baseline = kr.get("baseline", 0)
+                                target = kr["target"]
+                                current = kr.get("current", baseline)
+                                pct = _objective_kr_pct(baseline, target, current)
+                                direction = "↓" if target < baseline else "↑"
+                                print(f"  {kr['id']}: {kr['metric']} — {current}/{target} ({pct}%)")
                     print(f"  Via idea: {origin_idea['id']} \"{origin_idea['title']}\"")
                     print()
 
     # Risks (type=risk decisions) linked to this task or origin idea
-    if _s.exists(args.project, 'decisions'):
+    if decisions_file.exists():
+        if not dec_data:
+            dec_data = json.loads(decisions_file.read_text(encoding="utf-8"))
         risk_decisions = [d for d in dec_data.get("decisions", [])
                           if d.get("type") == "risk"
                           and d.get("status") not in ("CLOSED",)]
@@ -2145,12 +1567,6 @@ def cmd_context(args):
                           if d.get("linked_entity_type") == "idea"
                           and d.get("linked_entity_id") == task["origin"]]
             task_risks.extend(idea_risks)
-        # Also show risks from origin objective
-        if task.get("origin") and task["origin"].startswith("O-"):
-            obj_risks = [d for d in risk_decisions
-                         if d.get("linked_entity_type") == "objective"
-                         and d.get("linked_entity_id") == task["origin"]]
-            task_risks.extend(obj_risks)
         if task_risks:
             print(f"### Active Risks ({len(task_risks)})")
             print()
@@ -2161,15 +1577,22 @@ def cmd_context(args):
                     print(f"  Mitigation: {r['mitigation_plan'][:80]}")
             print()
 
-    # Context budget estimate
+    # Context budget estimate (configurable via pipeline config)
     all_task_ids = set(deps) | {args.task_id}
     ctx_chars = _estimate_context_size(args.project, all_task_ids)
     ctx_kb = ctx_chars / 1024
+    budget_kb = tracker.get("config", {}).get("context_budget_kb", 50)
     print(f"### Context Budget")
-    print(f"Estimated context from dependencies: {ctx_kb:.1f} KB ({ctx_chars} chars)")
-    if ctx_kb > 50:
-        print(f"**WARNING**: Large context. Consider summarizing older dependency outputs.")
+    print(f"Estimated context: {ctx_kb:.1f} KB / {budget_kb} KB budget")
+    if ctx_kb > budget_kb:
+        print(f"**WARNING**: Context exceeds budget ({ctx_kb:.1f}/{budget_kb} KB). Consider summarizing older dependency outputs.")
+    print(f"_Configure: `pipeline config {{project}} --data '{{\"context_budget_kb\": {budget_kb}}}'`_")
     print()
+
+    # Mark checkpoint: context loaded
+    task["checkpoints"] = task.get("checkpoints", {})
+    task["checkpoints"]["context_loaded"] = True
+    save_tracker(args.project, tracker)
 
 
 def cmd_config(args):
@@ -2178,7 +1601,7 @@ def cmd_config(args):
 
     if args.data:
         try:
-            config = load_json_data(args.data)
+            config = json.loads(args.data)
         except json.JSONDecodeError as e:
             print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
             sys.exit(1)
@@ -2214,144 +1637,6 @@ def cmd_config(args):
             print(f"  {k}: {v}")
 
 
-# -- Plan Validation --
-
-
-def _validate_plan_references(entries: list, project: str) -> list:
-    """Validate origin, scopes, knowledge_ids references. Returns list of warning strings."""
-    warnings = []
-    _s = _get_storage()
-
-    # Collect valid IDs for batch checking
-    valid_idea_ids = set()
-    valid_obj_ids = set()
-    valid_k_ids = set()
-    valid_scopes = set()
-
-    if _s.exists(project, 'ideas'):
-        ideas = _s.load_data(project, 'ideas').get("ideas", [])
-        valid_idea_ids = {i["id"] for i in ideas}
-    if _s.exists(project, 'objectives'):
-        objs = _s.load_data(project, 'objectives').get("objectives", [])
-        valid_obj_ids = {o["id"] for o in objs}
-    if _s.exists(project, 'knowledge'):
-        k_data = _s.load_data(project, 'knowledge').get("knowledge", [])
-        valid_k_ids = {k["id"] for k in k_data if k.get("status") == "ACTIVE"}
-    if _s.exists(project, 'guidelines'):
-        g_data = _s.load_data(project, 'guidelines').get("guidelines", [])
-        valid_scopes = {g["scope"] for g in g_data if g.get("scope") and g.get("status") == "ACTIVE"}
-        valid_scopes.add("general")
-
-    for t in entries:
-        tid = t.get("id", "?")
-
-        # Origin validation
-        origin = t.get("origin", "")
-        if origin:
-            if origin.startswith("I-") and origin not in valid_idea_ids:
-                warnings.append(f"  {tid}: origin '{origin}' — idea not found")
-            elif origin.startswith("O-") and origin not in valid_obj_ids:
-                warnings.append(f"  {tid}: origin '{origin}' — objective not found")
-
-        # Scope validation (only warn if guidelines exist for the project)
-        for scope in t.get("scopes", []):
-            if valid_scopes and scope != "general" and scope not in valid_scopes:
-                warnings.append(f"  {tid}: scope '{scope}' — no guidelines with this scope")
-
-        # Knowledge validation
-        for kid in t.get("knowledge_ids", []):
-            if kid not in valid_k_ids:
-                warnings.append(f"  {tid}: knowledge '{kid}' — not found or not ACTIVE")
-
-    return warnings
-
-
-def _validate_ac_reasoning(ac_reasoning: str, ac_list: list) -> list:
-    """Validate that AC reasoning addresses each criterion. Returns list of warning strings."""
-    warnings = []
-    reasoning_lower = ac_reasoning.lower()
-
-    # Check that reasoning mentions each AC (by number or text fragment)
-    for i, criterion in enumerate(ac_list, 1):
-        text = criterion if isinstance(criterion, str) else criterion.get("text", "")
-        # Look for "AC-{i}:" or "AC{i}:" or "{i}." or "{i}:" patterns
-        markers = [f"ac-{i}:", f"ac{i}:", f"ac {i}:", f"{i}.", f"{i}:"]
-        # Also check if a significant fragment of the AC text appears
-        text_fragment = text[:30].lower().strip()
-
-        found = any(m in reasoning_lower for m in markers) or (
-            len(text_fragment) > 10 and text_fragment in reasoning_lower
-        )
-        if not found:
-            warnings.append(f"  AC {i} not addressed: \"{text[:60]}\"")
-
-    # Check for PASS/FAIL keywords
-    if "pass" not in reasoning_lower and "met" not in reasoning_lower:
-        warnings.append("  No PASS/met verdict found in reasoning")
-
-    # Check for test mapping (AC→test traceability)
-    has_test_ref = "→ test:" in reasoning_lower or "→ no test" in reasoning_lower or "-> test:" in reasoning_lower or "-> no test" in reasoning_lower
-    if not has_test_ref:
-        warnings.append("  No test mapping found — consider mapping each AC to a test (→ Test: file::test_name)")
-
-    return warnings
-
-
-# -- AC Quality --
-
-_VAGUE_AC_WORDS = {"handle", "handles", "ensure", "ensures", "properly", "robust",
-                   "correctly", "works", "appropriate", "appropriately",
-                   "should work", "as expected", "as needed"}
-
-
-def _warn_ac_quality(tasks: list) -> bool:
-    """Print warnings for missing or vague acceptance criteria.
-
-    Returns True if there are BLOCKING issues (feature/bug without AC).
-    """
-    warnings = []
-    errors = []
-    for t in tasks:
-        tid = t.get("id", "?")
-        ttype = t.get("type", "feature")
-        ac = t.get("acceptance_criteria", [])
-
-        if ttype in ("investigation", "chore"):
-            continue
-
-        if not ac:
-            errors.append(f"  {tid} ({t.get('name', '?')}): feature/bug task has no acceptance criteria")
-            continue
-
-        for criterion in ac:
-            text = criterion if isinstance(criterion, str) else criterion.get("text", "")
-            text_lower = text.lower()
-            found = [w for w in _VAGUE_AC_WORDS if w in text_lower]
-            if found:
-                warnings.append(
-                    f"  {tid}: vague AC \"{text[:60]}\" — contains: {', '.join(found)}"
-                )
-
-    if errors:
-        print()
-        print(f"**AC ERRORS** ({len(errors)}) — must fix before approving:")
-        for e in errors:
-            print(e)
-        print("Add acceptance_criteria to feature/bug tasks, or set type to 'chore'/'investigation'.")
-        print()
-
-    if warnings:
-        print()
-        print(f"**AC QUALITY WARNINGS** ({len(warnings)}):")
-        for w in warnings:
-            print(w)
-        print("Tip: rewrite vague AC as observable outcomes. "
-              "E.g., 'handles errors' → 'returns 400 with {error} body for invalid input'")
-        print()
-
-    return len(errors) > 0
-
-
 # -- CLI --
 
 def cmd_draft_plan(args):
@@ -2359,7 +1644,7 @@ def cmd_draft_plan(args):
     tracker = load_tracker(args.project)
 
     try:
-        draft_tasks = load_json_data(args.data)
+        draft_tasks = json.loads(args.data)
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
@@ -2379,31 +1664,15 @@ def cmd_draft_plan(args):
     # Store draft (overwrite previous draft)
     tracker["draft_plan"] = {
         "source_idea_id": args.idea if hasattr(args, "idea") and args.idea else None,
-        "source_objective_id": args.objective if hasattr(args, "objective") and args.objective else None,
         "created": now_iso(),
         "tasks": draft_tasks,
     }
 
     save_tracker(args.project, tracker)
 
-    # AC quality warnings (non-blocking at draft time — shows errors for user to fix)
-    _warn_ac_quality(draft_tasks)
-
-    # Reference validation (non-blocking at draft time)
-    ref_warnings = _validate_plan_references(draft_tasks, args.project)
-    if ref_warnings:
-        print()
-        print(f"**REFERENCE WARNINGS** ({len(ref_warnings)}):")
-        for w in ref_warnings:
-            print(w)
-        print("Tip: fix invalid origins/scopes/knowledge_ids before approving.")
-        print()
-
     print(f"## Draft Plan: {args.project}")
     if tracker["draft_plan"]["source_idea_id"]:
         print(f"Source idea: {tracker['draft_plan']['source_idea_id']}")
-    if tracker["draft_plan"].get("source_objective_id"):
-        print(f"Source objective: {tracker['draft_plan']['source_objective_id']}")
     print(f"Tasks in draft: {len(draft_tasks)}")
     print()
 
@@ -2429,8 +1698,6 @@ def cmd_show_draft(args):
     print(f"## Draft Plan: {args.project}")
     if draft.get("source_idea_id"):
         print(f"Source idea: {draft['source_idea_id']}")
-    if draft.get("source_objective_id"):
-        print(f"Source objective: {draft['source_objective_id']}")
     print(f"Created: {draft.get('created', '')}")
     print(f"Tasks: {len(draft['tasks'])}")
     print()
@@ -2444,89 +1711,81 @@ def cmd_show_draft(args):
 
 def cmd_approve_plan(args):
     """Approve draft plan: materialize tasks into pipeline and mark idea COMMITTED."""
-    mapping = {}
-    entries = []
+    tracker = load_tracker(args.project)
+    draft = tracker.get("draft_plan")
 
-    # Atomic section: lock → load → remap → validate → save
-    with tracker_lock(args.project):
-        tracker = load_tracker(args.project)
-        draft = tracker.get("draft_plan")
+    if not draft or not draft.get("tasks"):
+        print(f"ERROR: No draft plan for '{args.project}'.", file=sys.stderr)
+        sys.exit(1)
 
-        if not draft or not draft.get("tasks"):
-            print(f"ERROR: No draft plan for '{args.project}'.", file=sys.stderr)
-            sys.exit(1)
+    draft_tasks = draft["tasks"]
+    source_idea_id = draft.get("source_idea_id")
 
-        draft_tasks = draft["tasks"]
-        source_idea_id = draft.get("source_idea_id")
-        source_objective_id = draft.get("source_objective_id")
-
-        # Remap temporary IDs
-        mapping = _remap_temp_ids(draft_tasks, tracker["tasks"])
-
-        # Check for duplicate IDs against existing tasks (after remap)
-        existing_ids = {t["id"] for t in tracker["tasks"]}
-        for t in draft_tasks:
-            if t["id"] in existing_ids:
-                print(f"ERROR: Duplicate task ID '{t['id']}' — already exists in pipeline.",
-                      file=sys.stderr)
-                sys.exit(1)
-
-        # Build task entries (same logic as cmd_add_tasks)
-        entries = []
-        for t in draft_tasks:
-            entry = _build_task_entry(t, source_idea_id=source_idea_id,
-                                      source_objective_id=source_objective_id)
-            entries.append(entry)
-
-        # AC hard gate: feature/bug tasks must have acceptance criteria
-        has_ac_errors = _warn_ac_quality(entries)
-        if has_ac_errors:
-            print("ERROR: Cannot approve plan — feature/bug tasks without acceptance criteria.",
+    # Check for duplicate IDs against existing tasks
+    existing_ids = {t["id"] for t in tracker["tasks"]}
+    for t in draft_tasks:
+        if t["id"] in existing_ids:
+            print(f"ERROR: Duplicate task ID '{t['id']}' — already exists in pipeline.",
                   file=sys.stderr)
             sys.exit(1)
 
-        # Reference validation (non-blocking warnings)
-        ref_warnings = _validate_plan_references(entries, args.project)
-        if ref_warnings:
-            print(f"**REFERENCE WARNINGS** ({len(ref_warnings)}):", file=sys.stderr)
-            for w in ref_warnings:
-                print(w, file=sys.stderr)
+    # Build task entries (same logic as cmd_add_tasks)
+    entries = []
+    for t in draft_tasks:
+        entry = {
+            "id": t["id"],
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "depends_on": t.get("depends_on", []),
+            "parallel": t.get("parallel", False),
+            "conflicts_with": t.get("conflicts_with", []),
+            "skill": t.get("skill"),
+            "instruction": t.get("instruction", ""),
+            "acceptance_criteria": t.get("acceptance_criteria", []),
+            "type": t.get("type", "feature"),
+            "blocked_by_decisions": t.get("blocked_by_decisions", []),
+            "scopes": t.get("scopes", []),
+            "origin": t.get("origin", source_idea_id or ""),
+            "status": "TODO",
+            "started_at": None,
+            "completed_at": None,
+            "failed_reason": None,
+        }
+        # If origin not set but source_idea_id exists, set it
+        if not entry["origin"] and source_idea_id:
+            entry["origin"] = source_idea_id
+        entries.append(entry)
 
-        # Validate DAG
-        all_tasks = tracker["tasks"] + entries
-        dag_errors = validate_dag(all_tasks)
-        if dag_errors:
-            print(f"ERROR: Task graph validation failed:", file=sys.stderr)
-            for e in dag_errors:
-                print(f"  {e}", file=sys.stderr)
-            sys.exit(1)
+    # Validate DAG
+    all_tasks = tracker["tasks"] + entries
+    dag_errors = validate_dag(all_tasks)
+    if dag_errors:
+        print(f"ERROR: Task graph validation failed:", file=sys.stderr)
+        for e in dag_errors:
+            print(f"  {e}", file=sys.stderr)
+        sys.exit(1)
 
-        # Materialize
-        tracker["tasks"].extend(entries)
+    # Materialize
+    tracker["tasks"].extend(entries)
 
-        # Clear draft
-        tracker.pop("draft_plan", None)
+    # Clear draft
+    tracker.pop("draft_plan", None)
 
-        save_tracker(args.project, tracker)
+    save_tracker(args.project, tracker)
 
-    # Print ID mapping (outside lock)
-    if mapping:
-        print("ID mapping:")
-        for temp, real in sorted(mapping.items()):
-            print(f"  {temp} -> {real}")
-
-    # Mark source idea as COMMITTED (outside lock — separate entity)
+    # Mark source idea as COMMITTED
     if source_idea_id:
-        _s = _get_storage()
-        if _s.exists(args.project, 'ideas'):
-            ideas_data = _s.load_data(args.project, 'ideas')
+        ideas_file = Path("forge_output") / args.project / "ideas.json"
+        if ideas_file.exists():
+            ideas_data = json.loads(ideas_file.read_text(encoding="utf-8"))
             for idea in ideas_data.get("ideas", []):
                 if idea["id"] == source_idea_id:
                     if idea["status"] == "APPROVED":
                         idea["status"] = "COMMITTED"
                         idea["committed_at"] = now_iso()
                         idea["updated"] = now_iso()
-                        _s.save_data(args.project, 'ideas', ideas_data)
+                        ideas_data["updated"] = now_iso()
+                        atomic_write_json(ideas_file, ideas_data)
                         print(f"Idea {source_idea_id} marked as COMMITTED.")
                     elif idea["status"] == "COMMITTED":
                         pass  # already committed
@@ -2564,12 +1823,7 @@ def _print_draft_tasks(tasks: list):
         if t.get("acceptance_criteria"):
             print(f"  **Acceptance criteria**: {len(t['acceptance_criteria'])} items")
             for ac in t["acceptance_criteria"]:
-                if isinstance(ac, dict):
-                    text = ac.get("text", "")
-                    tmpl = ac.get("from_template")
-                    print(f"    - {text}" + (f" (from {tmpl})" if tmpl else ""))
-                else:
-                    print(f"    - {ac}")
+                print(f"    - {ac}")
         print()
 
 
@@ -2592,18 +1846,12 @@ def main():
     p.add_argument("project")
     p.add_argument("--agent", default=None, help="Agent name for multi-agent claim")
 
-    p = sub.add_parser("begin", help="Claim next task and show full execution context")
-    p.add_argument("project")
-    p.add_argument("--agent", default=None, help="Agent name for multi-agent claim")
-
     p = sub.add_parser("complete", help="Mark task DONE")
     p.add_argument("project")
     p.add_argument("task_id")
     p.add_argument("--agent", default=None, help="Agent name (verified against claim)")
     p.add_argument("--force", action="store_true", help="Complete even without changes or with failed gates")
     p.add_argument("--reasoning", default=None, help="Why these changes were made (used for auto-recorded changes)")
-    p.add_argument("--ac-reasoning", default=None, dest="ac_reasoning",
-                   help="Justification that acceptance criteria are met (required when task has AC)")
 
     p = sub.add_parser("fail", help="Mark task FAILED")
     p.add_argument("project")
@@ -2645,7 +1893,6 @@ def main():
     p.add_argument("project")
     p.add_argument("--data", required=True, help="JSON array of tasks (same format as add-tasks)")
     p.add_argument("--idea", default=None, help="Source idea ID (I-NNN)")
-    p.add_argument("--objective", default=None, help="Source objective ID (O-NNN)")
 
     p = sub.add_parser("show-draft", help="Show current draft plan")
     p.add_argument("project")
@@ -2653,9 +1900,8 @@ def main():
     p = sub.add_parser("approve-plan", help="Approve draft plan and materialize into pipeline")
     p.add_argument("project")
 
-    p = sub.add_parser("contract", help="Print contract spec (no project needed)")
+    p = sub.add_parser("contract", help="Print contract spec")
     p.add_argument("name", choices=sorted(CONTRACTS.keys()))
-    p.add_argument("_extra", nargs="*", help=argparse.SUPPRESS)
 
     p = sub.add_parser("register-subtasks", help="Register subtasks")
     p.add_argument("project")
@@ -2665,6 +1911,11 @@ def main():
     p = sub.add_parser("complete-subtask", help="Mark subtask DONE")
     p.add_argument("project")
     p.add_argument("subtask_id")
+
+    p = sub.add_parser("checkpoint", help="Mark a checkpoint on a task")
+    p.add_argument("project")
+    p.add_argument("task_id")
+    p.add_argument("name", help="Checkpoint name (context_loaded, guidelines_checked, gates_passed, changes_recorded)")
 
     args = parser.parse_args()
 
@@ -2676,7 +1927,6 @@ def main():
         "init": cmd_init,
         "add-tasks": cmd_add_tasks,
         "next": cmd_next,
-        "begin": cmd_begin,
         "complete": cmd_complete,
         "fail": cmd_fail,
         "skip": cmd_skip,
@@ -2693,6 +1943,7 @@ def main():
         "contract": lambda args: print(render_contract(args.name, CONTRACTS[args.name])),
         "register-subtasks": cmd_register_subtasks,
         "complete-subtask": cmd_complete_subtask,
+        "checkpoint": cmd_checkpoint,
     }
 
     cmd_func = commands.get(args.command)

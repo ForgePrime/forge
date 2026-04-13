@@ -27,6 +27,8 @@ from guidelines import (
     save_json,
     guidelines_path,
     render_guidelines_context,
+    scope_matches,
+    validate_scope,
 )
 from contracts import validate_contract, atomic_write_json
 
@@ -319,3 +321,154 @@ class TestGuidelineStatus:
         data = [{"id": "G-001", "status": "INVALID"}]
         errors = validate_contract(spec, data)
         assert any("status" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# Scope hierarchy (Faza 2)
+# ---------------------------------------------------------------------------
+
+class TestScopeHierarchy:
+    """Tests for hierarchical scope matching (parent applies to children)."""
+
+    def _make_guideline(self, gid, scope, weight="should"):
+        return {
+            "id": gid,
+            "title": f"Guideline {gid}",
+            "scope": scope,
+            "content": f"Content for {gid}",
+            "weight": weight,
+            "status": "ACTIVE",
+            "examples": [],
+        }
+
+    def test_parent_scope_matches_child(self):
+        """'backend' guideline should apply when task scope is 'backend/api'."""
+        guidelines = [
+            self._make_guideline("G-001", "backend"),
+        ]
+        lines = render_guidelines_context(guidelines, {"backend/api"})
+        text = "\n".join(lines)
+        assert "G-001" in text
+
+    def test_parent_matches_deep_child(self):
+        """'backend' should match 'backend/api/auth'."""
+        guidelines = [
+            self._make_guideline("G-001", "backend"),
+        ]
+        lines = render_guidelines_context(guidelines, {"backend/api/auth"})
+        text = "\n".join(lines)
+        assert "G-001" in text
+
+    def test_child_does_not_match_sibling(self):
+        """'backend/api' should NOT match 'backend/database'."""
+        guidelines = [
+            self._make_guideline("G-001", "backend/api"),
+        ]
+        lines = render_guidelines_context(guidelines, {"backend/database"})
+        text = "\n".join(lines)
+        assert "G-001" not in text
+
+    def test_exact_child_scope_matches(self):
+        """'backend/api' should match 'backend/api'."""
+        guidelines = [
+            self._make_guideline("G-001", "backend/api"),
+        ]
+        lines = render_guidelines_context(guidelines, {"backend/api"})
+        text = "\n".join(lines)
+        assert "G-001" in text
+
+    def test_child_does_not_match_parent_scope(self):
+        """'backend/api' guideline should NOT apply when task scope is just 'backend'."""
+        guidelines = [
+            self._make_guideline("G-001", "backend/api"),
+        ]
+        lines = render_guidelines_context(guidelines, {"backend"})
+        text = "\n".join(lines)
+        assert "G-001" not in text
+
+
+# ---------------------------------------------------------------------------
+# Lessons promote and guidelines import
+# ---------------------------------------------------------------------------
+
+class TestLessonsPromote:
+    """Tests for lessons promote command."""
+
+    def test_promote_creates_global_guideline(self, forge_env, project_name):
+        """Promoting a lesson should create a global guideline."""
+        from lessons import cmd_add as lessons_add, load_or_create as lessons_load
+
+        # Create a lesson
+        args = SimpleNamespace(
+            project=project_name,
+            data=json.dumps([{
+                "category": "pattern-discovered",
+                "title": "Always validate JWT audience",
+                "detail": "Skipping aud validation allows cross-service token reuse",
+                "severity": "critical",
+                "applies_to": "Any API with auth",
+                "tags": ["jwt", "security"],
+            }])
+        )
+        lessons_add(args)
+
+        # Promote it
+        from lessons import cmd_promote
+        promote_args = SimpleNamespace(lesson_id="L-001", scope="backend", weight=None)
+        cmd_promote(promote_args)
+
+        # Check global guidelines
+        global_path = Path("forge_output") / "_global" / "guidelines.json"
+        assert global_path.exists()
+        global_data = json.loads(global_path.read_text(encoding="utf-8"))
+        promoted = [g for g in global_data["guidelines"] if g.get("promoted_from") == "L-001"]
+        assert len(promoted) == 1
+        assert promoted[0]["weight"] == "must"  # critical → must
+        assert promoted[0]["scope"] == "backend"
+
+
+class TestGuidelinesImport:
+    """Tests for guidelines import command."""
+
+    def test_import_from_another_project(self, forge_env):
+        """Import guidelines from source project to target."""
+        source = "source-proj"
+        target = "target-proj"
+        Path("forge_output", source).mkdir(parents=True, exist_ok=True)
+        Path("forge_output", target).mkdir(parents=True, exist_ok=True)
+
+        # Add guidelines to source
+        cmd_add(_add_args(source, [
+            {"title": "Rule A", "scope": "backend", "content": "Do A", "weight": "must"},
+            {"title": "Rule B", "scope": "frontend", "content": "Do B"},
+        ]))
+
+        # Import to target
+        from guidelines import cmd_import
+        import_args = SimpleNamespace(project=target, source=source, scope=None)
+        cmd_import(import_args)
+
+        target_store = load_or_create(target)
+        assert len(target_store["guidelines"]) == 2
+        # Check imported_from tracking
+        assert "source-proj" in target_store["guidelines"][0].get("rationale", "")
+
+    def test_import_dedup_by_title(self, forge_env):
+        """Duplicate titles should be skipped during import."""
+        source = "src-proj"
+        target = "tgt-proj"
+        Path("forge_output", source).mkdir(parents=True, exist_ok=True)
+        Path("forge_output", target).mkdir(parents=True, exist_ok=True)
+
+        cmd_add(_add_args(source, [
+            {"title": "Same Rule", "scope": "general", "content": "Content"},
+        ]))
+        cmd_add(_add_args(target, [
+            {"title": "Same Rule", "scope": "general", "content": "Already here"},
+        ]))
+
+        from guidelines import cmd_import
+        cmd_import(SimpleNamespace(project=target, source=source, scope=None))
+
+        target_store = load_or_create(target)
+        assert len(target_store["guidelines"]) == 1  # no duplicate added

@@ -5,6 +5,19 @@ version: "1.0"
 description: "Decompose a high-level goal into a tracked, dependency-aware task graph."
 ---
 
+## Quick Reference (8 steps)
+
+1. Assess complexity → Quick (1-2 tasks), Standard (3-8), Complex (9+)
+2. `lessons read-all` → learn from past projects
+3. Align on goal with user (restate + scoping questions)
+4. `pipeline init {slug} --goal "..."` → create project (if none)
+5. Decompose into tasks with deps, scopes, acceptance criteria
+6. `pipeline draft-plan {project} --data '[...]'` → store draft
+7. Present draft to user → review → adjust
+8. `pipeline approve-plan {project}` → materialize tasks
+
+---
+
 # Plan
 
 ## Identity
@@ -22,21 +35,16 @@ description: "Decompose a high-level goal into a tracked, dependency-aware task 
 | R1 | `python -m core.pipeline status {project}` | Current pipeline state (if project exists) | Step 1 — check existing state |
 | R2 | `python -m core.lessons read-all` | Lessons from past projects | Step 2 — learn from history |
 | R3 | `python -m core.guidelines read {project} --weight must` | Must-follow project guidelines | Step 2 — inform decomposition |
+| R4 | `python -m core.decisions contract add` | Contract for recording decisions | Step 4 — before recording planning decisions |
 | R5 | `python -m core.changes contract` | Contract for recording changes | Reference only |
 | R6 | `skills/deep-align/SKILL.md` | Alignment procedure | Step 3 — before decomposition |
-| R7 | `python -m core.research context {project} --entity {id}` | Research linked to entity | Step 2 — load research context |
-| R8 | `python -m core.objectives show {project} {objective_id}` | Objective details + KRs | Step 2 — if planning from objective |
-| R9 | `python -m core.knowledge read {project}` | Available knowledge objects | Step 2 — for task knowledge assignment |
-| R10 | `python -m core.guidelines scopes {project}` | Available guideline scopes | Step 2 — for task scope assignment |
-| R11 | `python -m core.decisions read {project} --type risk` | Active risk decisions | Step 6 — inform task structure and AC |
-| R12 | `python -m core.domain_modules for-scopes --scopes "{s}" --phase planning` | Domain decomposition rules | Step 4.5 — if Standard/Complex |
 
 ## Write Commands
 
 | ID | Command | Effect | When | Contract |
 |----|---------|--------|------|----------|
 | W1 | `python -m core.pipeline init {project} --goal "..."` | Creates tracker.json | Step 3 — create project |
-| W2 | `python -m core.pipeline draft-plan {project} --data '{json}' [--idea I-NNN] [--objective O-NNN]` | Stores draft plan for review | Step 5 — after decomposition |
+| W2 | `python -m core.pipeline draft-plan {project} --data '{json}' [--idea I-NNN]` | Stores draft plan for review | Step 5 — after decomposition |
 | W2b | `python -m core.pipeline approve-plan {project}` | Materializes draft into pipeline | Step 7 — after user approval |
 | W2c | `python -m core.pipeline add-tasks {project} --data '{json}'` | Direct task addition (alternative to draft) | Step 5 — when bypassing draft review |
 | W3 | `python -m core.decisions add {project} --data '{json}'` | Records planning decisions | Step 4 — for architectural choices | `python -m core.decisions contract add` |
@@ -107,53 +115,13 @@ python -m core.guidelines read {project} --weight must
 
 Note any lessons and `must` guidelines that apply to the current goal. Guidelines inform decomposition — e.g., if a guideline says "every endpoint needs rate limiting", that affects task structure.
 
-When decomposing (Step 6), assign `scopes` to each task based on which guidelines apply.
+When decomposing (Step 5), assign `scopes` to each task based on which guidelines apply.
 
-Load available scopes and knowledge so you can assign them to tasks (R9, R10):
-```bash
-python -m core.guidelines scopes {project}
-python -m core.knowledge read {project}
-```
-This gives you the full list of available scopes (e.g., `backend`, `frontend`, `database`) and knowledge objects (K-NNN). Use these when assigning `scopes` and `knowledge_ids` to tasks in Step 6. **Do not assign scopes that don't exist in guidelines** — backend tasks get backend scopes, frontend tasks get frontend scopes.
-
-If planning from an idea (`/plan I-001`), load the idea's scopes, knowledge, and research:
+If planning from an idea (`/plan I-001`), load the idea's scopes and use them to filter guidelines:
 ```bash
 python -m core.ideas show {project} {idea_id}
 python -m core.guidelines context {project} --scopes "{idea_scopes}"
-python -m core.research context {project} --entity {idea_id}
 ```
-The idea's `scopes` and `knowledge_ids` are the baseline — propagate them to tasks that implement this idea. Tasks may have narrower scopes (e.g., idea has `["backend", "frontend"]` but a task only touches backend).
-
-If planning from an objective (`/plan O-001`), load the objective context, knowledge, and research:
-```bash
-python -m core.objectives show {project} {objective_id}
-python -m core.research context {project} --entity {objective_id}
-```
-The objective's `scopes` and `knowledge_ids` are the baseline for all tasks. Propagate relevant knowledge to tasks — if K-001 is about API patterns and K-002 about database schema, backend tasks get K-001, database tasks get K-002.
-
-**Scope resolution for objectives**: Build the full scope set by combining:
-1. `objective.scopes` — the objective's own scopes
-2. Scopes from `derived_guidelines` — load each guideline ID from `objective.derived_guidelines`, extract its `scope`, add to the set
-
-```bash
-python -m core.guidelines read {project}
-```
-Find guidelines whose IDs are in `objective.derived_guidelines`. Collect their scopes. Merge with `objective.scopes`. Then load:
-```bash
-python -m core.guidelines context {project} --scopes "{merged_scopes}"
-```
-
-**IMPORTANT**: If a derived guideline has a scope NOT in the objective's scopes, warn the user:
-```
-WARNING: Derived guideline G-015 (scope: "latency") has scope not in objective O-001 scopes.
-Consider adding "latency" to objective scopes: python -m core.objectives update {project} --data '[{"id": "O-001", "scopes": ["backend", "performance", "latency"]}]'
-```
-
-Also check for approved ideas advancing this objective:
-```bash
-python -m core.ideas read {project} --status APPROVED
-```
-Filter to ideas with `advances_key_results` referencing this objective's KRs. If found, their research and exploration notes provide additional context for decomposition. Inherit their `knowledge_ids` where relevant.
 
 **Must-guidelines are non-negotiable during decomposition:**
 - If a must-guideline says "all endpoints need rate limiting" → include a rate limiting task or subtask
@@ -162,70 +130,28 @@ Filter to ideas with `advances_key_results` referencing this objective's KRs. If
 
 ---
 
-### Step 2.5 — Research Readiness Gate
+### Step 3 — Align on Goal (medium alignment per `skills/deep-align/SKILL.md`)
 
-Before planning, verify that all related research/explorations are ready:
+Before decomposing, build shared understanding of the goal:
 
-```bash
-python -m core.decisions read {project} --type exploration
-```
+**a. Restate** the goal in one sentence: "You want X so that Y."
+Get confirmation. If the restatement is wrong, the entire plan will be wrong.
 
-**Gate rule**: If ANY exploration decision linked to this entity (via `task_id` matching the idea/objective ID) has `ready_for_tracker: false` and status is OPEN, **BLOCK** planning:
+**b. Ask scoping questions** — only where you'd have to guess. Pick from:
+- **Scope:** "Does this include X or just Y?"
+- **Constraints:** "Any technologies/approaches that are off limits?"
+- **Quality:** "What does 'done' look like? MVP or production-ready?"
+- **Priority:** "If I have to choose between X and Y, which matters more?"
 
-```
-BLOCKED: Cannot plan — {N} exploration(s) not ready for tracker.
-  - D-{NNN}: {issue} (ready_for_tracker: false)
+Group questions in one message (2-4 questions max). Don't ask what you
+already know from the idea, discovery findings, or codebase context.
 
-Resolve before planning:
-  - Complete exploration: `/discover {entity_id}`
-  - Or mark ready: `python -m core.decisions update {project} --data '[{"id": "D-NNN", "ready_for_tracker": true}]'`
-```
+**c. If planning from an approved idea** (`/plan I-001`): the idea's description
+and discovery decisions provide most context — ask fewer questions, focus
+only on gaps not covered by prior exploration.
 
-Also warn (but don't block) on HIGH-severity OPEN risks without mitigation:
-
-```
-WARNING: {N} HIGH-severity risk(s) without mitigation plan.
-  - D-{NNN}: {issue}
-
-Consider addressing these before planning, or acknowledge them as accepted risks.
-```
-
-The gate BLOCKS on unready explorations but only WARNS on unmitigated HIGH risks.
-
----
-
-### Step 3 — Align on Goal
-
-**If planning from idea/objective** (`/plan I-001` or `/plan O-001`): alignment already exists
-from /objective or /discover. Read it — don't re-do it:
-```bash
-python -m core.ideas show {project} {idea_id}       # has description, scopes, discovery context
-python -m core.objectives show {project} {obj_id}   # has KRs, description, scopes
-```
-Ask only about implementation gaps (quality level, priorities between KRs, verification approach).
-
-**If planning directly** (`/plan {goal text}`): this IS the entry point — do full alignment:
-- **Restate** the goal: "You want X so that Y." Get confirmation.
-- **Ask 2-4 scoping questions**: scope, constraints, quality, boundaries, verification.
-
-**If user says "just plan it"** — proceed but flag top 2 assumptions.
-
-**Capture alignment contract** for all tasks:
-```json
-{
-  "goal": "single sentence goal",
-  "boundaries": {"must": [...], "must_not": [...], "not_in_scope": [...]},
-  "success": "how user judges if done — what to test/observe"
-}
-```
-Stored on each task as `alignment` field. Narrowing `success` per task is encouraged.
-
-**Persist as Vision** — so context survives to task 5 of 8:
-```bash
-python -m core.knowledge add {project} --data - <<'EOF'
-[{"title": "Vision: {goal}", "category": "business-context", "scopes": ["{scopes}"], "content": "{goal, boundaries, success criteria}"}]
-EOF
-```
+**d. If user says "just plan it"** — proceed but flag your top 2 assumptions
+in planning decisions (Step 6).
 
 ---
 
@@ -250,23 +176,6 @@ Ask user to confirm before proceeding.
 
 ---
 
-### Step 4.5 — Load Domain Guidance (Standard/Complex only)
-
-If the plan involves specific technical domains (not Quick track), load domain-specific
-decomposition rules before generating tasks:
-
-```bash
-python -m core.domain_modules for-scopes --scopes "{scopes}" --phase planning
-```
-
-Apply the domain module's decomposition strategy, AC format, and exclusion patterns
-when generating tasks in Step 6. If no scopes are known yet, determine them from the
-goal description (see scope discovery in `skills/domain-modules/SKILL.md`).
-
-Skip for Quick track or when no scopes match any domain module.
-
----
-
 ### Step 5 — Create Project
 
 Generate a project slug from the goal (lowercase, hyphens, max 40 chars):
@@ -275,10 +184,25 @@ python -m core.pipeline init {slug} --goal "{full goal text}"
 ```
 
 If you make any architectural decisions during planning (e.g., choosing a framework,
-deciding on a pattern), record them:
+deciding on a pattern), record them immediately:
 
+MANDATORY — load contract first (R4):
 ```bash
-python -m core.decisions add {project} --data '[...]'
+python -m core.decisions contract add
+```
+
+Then record:
+```bash
+python -m core.decisions add {project} --data '[{
+  "task_id": "PLANNING",
+  "type": "architecture",
+  "issue": "...",
+  "recommendation": "...",
+  "reasoning": "...",
+  "alternatives": ["...", "..."],
+  "confidence": "HIGH|MEDIUM|LOW",
+  "decided_by": "claude"
+}]'
 ```
 
 Use `task_id: "PLANNING"` for decisions made before tasks exist.
@@ -286,8 +210,6 @@ Use `task_id: "PLANNING"` for decisions made before tasks exist.
 ---
 
 ### Step 6 — Decompose
-
-If decomposition approach isn't obvious, consult `references/splitting-patterns.md` for 9 named strategies (workflow steps, CRUD, business rules, etc.). Choose the strategy that matches the goal's shape. **Never split by technical layer** (frontend/backend/tests) — always by vertical slices delivering end-to-end value.
 
 Apply these decomposition rules:
 
@@ -306,97 +228,19 @@ Phase 4 — Quality:     Tests, validation, documentation
 ```
 
 For each task, specify:
-- `id`: Use temporary IDs: `_1`, `_2`, `_3`, etc. These are auto-remapped to real `T-NNN` IDs when the plan is approved (`approve-plan`) or tasks are added (`add-tasks`). This prevents ID collisions between concurrent planning processes. Use temp IDs in `depends_on` and `conflicts_with` too — they will be remapped together.
+- `id`: T-001, T-002, etc.
 - `name`: kebab-case, descriptive (e.g., "setup-database-schema")
-- `description`: WHAT needs to be done (concrete, not vague). Include boundary when scope edge is ambiguous: "This task IS {X}. This task is NOT {Y}."
-- `instruction`: HOW to do it. Must include:
-  1. **Reference existing patterns**: Name the file/component to use as a model (e.g., "Follow the pattern in `src/components/EntityForm.tsx`")
-  2. **Name files to create/modify**: List exact file paths (e.g., "Create `src/api/routes/tasks.ts`")
-  3. **Name files NOT to modify**: Reinforce boundaries (e.g., "Do NOT modify `src/api/routes/auth.ts`")
-  4. **Step-by-step actions**: Concrete steps, not vague directives
-- `depends_on`: list of prerequisite task IDs (use temp IDs `_1`, `_2` for tasks in the same batch, or real `T-NNN` IDs for existing tasks)
+- `description`: WHAT needs to be done (concrete, not vague)
+- `instruction`: HOW to do it (step-by-step, mention specific files)
+- `depends_on`: list of prerequisite task IDs
 - `parallel`: true if this task can run alongside siblings
-- `conflicts_with`: list of task IDs modifying same files (supports temp IDs within the same batch)
-- `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). **Only use scopes that exist in the project** (loaded via R10 in Step 2). Inherit from idea/objective scopes but narrow per task — a backend-only task should NOT get frontend scopes. `general` is always included automatically during execution.
-- `knowledge_ids`: list of Knowledge IDs (K-001, etc.) that provide context for this task. **Only assign knowledge relevant to the task** — if K-001 is about API patterns and the task is pure CSS, don't assign K-001. Inherit from source idea/objective but distribute selectively. Loaded by `pipeline context` for LLM assembly.
-- `test_requirements`: dict with boolean keys `unit`, `integration`, `e2e` indicating which test types this task needs.
-- `alignment`: the alignment contract from Step 3 (dict with `goal`, `boundaries`, `success`). All tasks share the same plan-level alignment. Required for feature/bug tasks planned via `/plan`. Narrowing `success` per task is encouraged when tasks cover different aspects of the goal.
-- `produces`: dict describing what this task creates for downstream consumers. Use when other tasks depend on this task's output. Keys are semantic labels, values describe the contract:
-  - `endpoint`: "POST /api/users → 201 {id, email}" (API shape for consuming tasks)
-  - `model`: "User(id, email, hashed_password)" (data model for dependent tasks)
-  - `migration`: "users table with columns: id, email, hashed_password, created_at" (schema for model tasks)
-  - `component`: "UserForm component accepting onSubmit(data) prop" (interface for integration tasks)
-  - `errors`: "409 duplicate email, 422 validation, 401 unauthorized" (error contract)
-  Downstream tasks see this contract in `pipeline context` and should verify their implementation matches it.
-- `exclusions`: list of task-specific DO NOT rules. Generate from:
-  1. **Cross-task boundaries**: If T-005 does backend and T-008 does frontend, T-005 gets `"DO NOT modify frontend components or pages"`, T-008 gets `"DO NOT modify API routes or backend logic"`
-  2. **File-level exclusions**: Name specific files this task must NOT touch that a sibling task owns (e.g., `"DO NOT modify WorkflowList.tsx — that is T-012"`)
-  3. **Scope creep prevention**: Exclude work that belongs to a later task (e.g., `"DO NOT add error handling — that is T-015"`, `"DO NOT implement pagination — out of scope"`)
-  4. **Pattern violations**: Exclude anti-patterns for this codebase (e.g., `"DO NOT use inline styles — project uses CSS modules"`)
-
-  For chore/investigation tasks, exclusions are optional but recommended.
-- `acceptance_criteria`: list of concrete, verifiable conditions for DONE (2-5 per task). Generate from these sources:
-  1. **Alignment success criteria** — from the alignment contract captured in Step 3. The `success` field defines what the user will test/observe. Derive at least one AC per task from this.
-  2. **User's answer** to "what does done look like?" / "how will you verify?" (Step 3)
-  3. **Task output** — what artifact exists after? (file created, endpoint responding, test passing)
-  4. **Integration point** — how does this connect to the next task? (data format, API contract, import path)
-  5. **Boundary** — "Does NOT {thing}" when the scope edge is ambiguous
-
-  Anti-patterns (these trigger warnings in `draft-plan`):
-  | Vague (reject) | Specific (good) |
-  |----------------|-----------------|
-  | "Error handling works correctly" | "Returns 400 with `{error: string}` body for invalid input" |
-  | "Component handles edge cases" | "Empty list renders 'No items found' message" |
-  | "API is properly secured" | "Unauthenticated requests return 401, not 500" |
-  | "Tests pass" | "Unit tests cover create, read, update, delete operations" |
-
-  Skip AC for `investigation` and `chore` tasks — use `--force` on completion.
-
-  **AC should be functional, not metric-based:**
-  - Describe what the feature DOES from the user's perspective, not implementation metrics
-  - Good: "Jest przycisk 'Uruchom' na górze strony obok 'Edytuj'" / "Kliknięcie otwiera modal z listą kroków"
-  - Bad: "Component renders in under 100ms" / "Function has O(n) complexity"
-  - Exception: performance/infrastructure tasks where metrics ARE the deliverable
-
-**Cross-task exclusion derivation:**
-
-After defining all tasks, do a second pass to derive cross-task exclusions:
-1. Group tasks by the files/directories they modify
-2. For each group of tasks touching related areas, add exclusions that prevent overlap:
-   - If tasks are in the same domain (e.g., both backend), exclude specific files
-   - If tasks are in different domains (e.g., backend vs frontend), exclude the other domain entirely
-3. For sequential tasks (A depends on B), ensure B does not redo or undo A's work:
-   - B gets `"DO NOT revert changes from {A.id}"`
-   - If A creates an interface, B gets `"DO NOT modify the interface created by {A.id} — extend it instead"`
-
-**Risk-informed decomposition:**
-
-Load active risk decisions that may affect task design (R11):
-```bash
-python -m core.decisions read {project} --type risk
-```
-
-For each OPEN or MITIGATED risk:
-- If the risk has a `mitigation_plan`, consider whether a task should implement that mitigation
-- If the risk affects specific components, ensure tasks touching those components have appropriate acceptance criteria that address the risk
-- HIGH-severity risks should result in explicit AC on relevant tasks (e.g., "Rate limiting handles 1000 req/s without degradation")
-
-If planning from an idea or objective, also check risks linked to that entity:
-```bash
-python -m core.decisions read {project} --entity {idea_or_objective_id}
-```
+- `conflicts_with`: list of task IDs modifying same files
+- `scopes`: list of guideline scopes this task relates to (e.g., `["backend", "database"]`). Inherit from idea scopes where applicable. `general` is always included automatically during execution.
 
 Store as draft plan for review (W2):
 ```bash
-# If planning from an idea:
-python -m core.pipeline draft-plan {project} --data '[...]' --idea {idea_id}
-
-# If planning from an objective:
-python -m core.pipeline draft-plan {project} --data '[...]' --objective {objective_id}
+python -m core.pipeline draft-plan {project} --data '[...]' --idea {idea_id_if_applicable}
 ```
-
-When planning from an objective, each task's `origin` is set to the objective ID (e.g., `O-001`).
-If there are APPROVED ideas advancing this objective, consider using them as intermediate origins for specific tasks.
 
 ---
 

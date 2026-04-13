@@ -25,12 +25,12 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Import contracts from sibling module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
-from storage import JSONFileStorage, load_json_data, now_iso
+from contracts import render_contract, validate_contract, atomic_write_json
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -40,18 +40,56 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
 
 
-# -- Storage --
+# -- Paths --
 
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    return storage.load_data(project, 'guidelines')
+def guidelines_path(project: str) -> Path:
+    return Path("forge_output") / project / "guidelines.json"
 
 
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    storage.save_data(project, 'guidelines', data)
+def now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def load_or_create(project: str) -> dict:
+    path = guidelines_path(project)
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return {
+        "project": project,
+        "updated": now_iso(),
+        "guidelines": [],
+    }
+
+
+def save_json(project: str, data: dict):
+    path = guidelines_path(project)
+    data["updated"] = now_iso()
+    atomic_write_json(path, data)
+
+
+def validate_scope(scope: str) -> str:
+    """Validate and normalize scope. Max 3 levels (domain/area/detail)."""
+    scope = scope.lower().strip()
+    parts = scope.split("/")
+    if len(parts) > 3:
+        print(f"ERROR: Scope '{scope}' exceeds max depth of 3 (domain/area/detail)", file=sys.stderr)
+        sys.exit(1)
+    # Validate each part is non-empty
+    for p in parts:
+        if not p.strip():
+            print(f"ERROR: Scope '{scope}' has empty segments", file=sys.stderr)
+            sys.exit(1)
+    return scope
+
+
+def scope_matches(guideline_scope: str, task_scopes: set) -> bool:
+    """Check if guideline scope applies to any task scope.
+    Parent scopes apply to children: 'backend' matches 'backend/api/auth'.
+    """
+    for ts in task_scopes:
+        if ts == guideline_scope or ts.startswith(guideline_scope + "/"):
+            return True
+    return False
 
 
 # -- Contracts --
@@ -69,7 +107,7 @@ CONTRACTS = {
         },
         "invariant_texts": [
             "title: concise name for the guideline (e.g., 'Repository Pattern for data access')",
-            "scope: area this applies to — open string, lowercase (e.g., 'backend', 'database', 'frontend', 'api', 'testing', 'general')",
+            "scope: area this applies to — supports hierarchy up to 3 levels (e.g., 'backend', 'backend/api', 'backend/api/auth'). Lowercase. Parent scopes apply to children.",
             "content: the actual guideline — what to do and how",
             "rationale: WHY this guideline exists",
             "examples: concrete code or pattern examples",
@@ -130,7 +168,7 @@ CONTRACTS = {
 def cmd_add(args):
     """Add guidelines to the registry."""
     try:
-        new_guidelines = load_json_data(args.data)
+        new_guidelines = json.loads(args.data)
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
@@ -165,7 +203,7 @@ def cmd_add(args):
     added = []
     skipped = []
     for g in new_guidelines:
-        scope = g["scope"].lower().strip()
+        scope = validate_scope(g["scope"])
         key = (scope, g["title"].lower().strip())
         if key in existing_keys:
             skipped.append(f"Duplicate: {g['title'][:50]}")
@@ -204,12 +242,12 @@ def cmd_add(args):
 
 def cmd_read(args):
     """Read guidelines (optionally filtered)."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'guidelines'):
+    path = guidelines_path(args.project)
+    if not path.exists():
         print(f"No guidelines for '{args.project}' yet.")
         return
 
-    data = storage.load_data(args.project, 'guidelines')
+    data = json.loads(path.read_text(encoding="utf-8"))
     guidelines = data.get("guidelines", [])
 
     # Filter
@@ -269,7 +307,7 @@ def cmd_read(args):
 def cmd_update(args):
     """Update guideline fields."""
     try:
-        updates = load_json_data(args.data)
+        updates = json.loads(args.data)
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
@@ -340,13 +378,13 @@ def render_guidelines_context(active_guidelines: list, scopes: set, project: str
     # Global guidelines: always included (bypass scope filter)
     # Project guidelines: filtered by scope
     must = [g for g in global_guidelines if g.get("weight") == "must"]
-    must += [g for g in active_guidelines if g.get("weight") == "must" and g.get("scope") in scopes]
+    must += [g for g in active_guidelines if g.get("weight") == "must" and scope_matches(g.get("scope", ""), scopes)]
 
     should = [g for g in global_guidelines if g.get("weight") == "should"]
-    should += [g for g in active_guidelines if g.get("weight") == "should" and g.get("scope") in scopes]
+    should += [g for g in active_guidelines if g.get("weight") == "should" and scope_matches(g.get("scope", ""), scopes)]
 
     may = [g for g in global_guidelines if g.get("weight") == "may"]
-    may += [g for g in active_guidelines if g.get("weight") == "may" and g.get("scope") in scopes]
+    may += [g for g in active_guidelines if g.get("weight") == "may" and scope_matches(g.get("scope", ""), scopes)]
 
     total = len(must) + len(should) + len(may)
     if total == 0:
@@ -386,17 +424,18 @@ def render_guidelines_context(active_guidelines: list, scopes: set, project: str
 
 def cmd_context(args):
     """Output formatted guidelines for LLM context injection."""
-    storage = JSONFileStorage()
-
     # Load global guidelines (bypass scope filter) and project guidelines (scope-filtered)
     global_active = []
     if args.project != "_global":
-        g_global = storage.load_global('guidelines')
-        global_active = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
+        global_path = guidelines_path("_global")
+        if global_path.exists():
+            g_global = json.loads(global_path.read_text(encoding="utf-8"))
+            global_active = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     project_active = []
-    if storage.exists(args.project, 'guidelines'):
-        data = storage.load_data(args.project, 'guidelines')
+    path = guidelines_path(args.project)
+    if path.exists():
+        data = json.loads(path.read_text(encoding="utf-8"))
         project_active = [g for g in data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     if not global_active and not project_active:
@@ -415,12 +454,12 @@ def cmd_context(args):
 
 def cmd_scopes(args):
     """List unique scopes in the project."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'guidelines'):
+    path = guidelines_path(args.project)
+    if not path.exists():
         print(f"No guidelines for '{args.project}' yet.")
         return
 
-    data = storage.load_data(args.project, 'guidelines')
+    data = json.loads(path.read_text(encoding="utf-8"))
     guidelines = data.get("guidelines", [])
 
     scope_counts = {}
@@ -444,12 +483,12 @@ def cmd_scopes(args):
 
 def cmd_import(args):
     """Import guidelines from another project into this one."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.source, 'guidelines'):
+    source_path = guidelines_path(args.source)
+    if not source_path.exists():
         print(f"ERROR: No guidelines found in project '{args.source}'", file=sys.stderr)
         sys.exit(1)
 
-    source_data = storage.load_data(args.source, 'guidelines')
+    source_data = json.loads(source_path.read_text(encoding="utf-8"))
     source_guidelines = [g for g in source_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     if not source_guidelines:
@@ -458,7 +497,7 @@ def cmd_import(args):
 
     # Filter by scope if specified
     if args.scope:
-        scope_filter = args.scope.lower()
+        scope_filter = validate_scope(args.scope)
         source_guidelines = [g for g in source_guidelines if g.get("scope", "").lower() == scope_filter]
         if not source_guidelines:
             print(f"No active guidelines with scope '{args.scope}' in '{args.source}'.")
@@ -552,9 +591,8 @@ def main():
     p.add_argument("--source", required=True, help="Source project to import from")
     p.add_argument("--scope", help="Only import guidelines with this scope")
 
-    p = sub.add_parser("contract", help="Print contract spec (no project needed)")
+    p = sub.add_parser("contract", help="Print contract spec")
     p.add_argument("name", choices=sorted(CONTRACTS.keys()))
-    p.add_argument("_extra", nargs="*", help=argparse.SUPPRESS)
 
     args = parser.parse_args()
 
