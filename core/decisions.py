@@ -39,28 +39,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from contracts import render_contract, validate_contract
 from storage import JSONFileStorage, load_json_data, now_iso
 
-if sys.platform == "win32":
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
+from _compat import configure_encoding
+from entity_base import EntityModule
+from errors import EntityNotFound
+from models import Decision
+from trace import trace_cmd
 
-
-# -- Storage --
-
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    return storage.load_data(project, 'decisions')
-
-
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    data["open_count"] = sum(1 for d in data.get("decisions", [])
-                             if d.get("status") == "OPEN")
-    storage.save_data(project, 'decisions', data)
+configure_encoding()
 
 
 # -- Status transitions for risk lifecycle --
@@ -96,7 +81,7 @@ CONTRACTS = {
             "type": {"architecture", "implementation", "dependency", "security",
                      "performance", "testing", "naming", "convention", "constraint",
                      "business", "strategy", "other",
-                     "exploration", "risk"},
+                     "exploration", "risk", "clarification_needed"},
             "confidence": {"HIGH", "MEDIUM", "LOW"},
             "status": {"OPEN", "CLOSED", "DEFERRED", "ANALYZING", "MITIGATED", "ACCEPTED"},
             "decided_by": {"claude", "user", "imported"},
@@ -228,446 +213,416 @@ CONTRACTS = {
 }
 
 
-# -- Commands --
+# -- Decisions entity module --
 
-def cmd_add(args):
-    """Add decisions to the log."""
-    try:
-        new_decisions = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+class Decisions(EntityModule):
+    entity_type = "decisions"
+    list_key = "decisions"
+    id_prefix = "D"
+    display_name = "Decisions"
+    dedup_keys = ()
+    contracts = CONTRACTS
+    model_class = Decision
 
-    if not isinstance(new_decisions, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
+    def save(self, project: str, data: dict):
+        """Override: recalculate open_count before saving."""
+        data["open_count"] = sum(1 for d in data.get("decisions", [])
+                                 if d.get("status") == "OPEN")
+        self.storage.save_data(project, self.entity_type, data)
 
-    errors = validate_contract(CONTRACTS["add"], new_decisions)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+    def cmd_add(self, args):
+        """Override: decisions add has cross-validation and complex field assembly."""
+        new_decisions = self._parse_and_validate(args.data, "add")
 
-    # Cross-validate: check task_ids exist in pipeline
-    _s = JSONFileStorage()
-    if _s.exists(args.project, 'tracker'):
-        tracker = _s.load_data(args.project, 'tracker')
-        valid_task_ids = {t["id"] for t in tracker.get("tasks", [])}
-        # Special task IDs used by skills for pre-task decisions
-        special_ids = {"PLANNING", "ONBOARDING", "REVIEW", "DISCOVERY"}
-        # Also allow idea IDs (I-NNN) as task_id for exploration decisions
-        idea_ids = set()
-        if _s.exists(args.project, 'ideas'):
-            ideas_data = _s.load_data(args.project, 'ideas')
-            idea_ids = {i["id"] for i in ideas_data.get("ideas", [])}
+        # Cross-validate: check task_ids exist in pipeline
+        _s = JSONFileStorage()
+        if _s.exists(args.project, 'tracker'):
+            tracker = _s.load_data(args.project, 'tracker')
+            valid_task_ids = {t["id"] for t in tracker.get("tasks", [])}
+            # Special task IDs used by skills for pre-task decisions
+            special_ids = {"PLANNING", "ONBOARDING", "REVIEW", "DISCOVERY"}
+            # Also allow idea IDs (I-NNN) as task_id for exploration decisions
+            idea_ids = set()
+            if _s.exists(args.project, 'ideas'):
+                ideas_data = _s.load_data(args.project, 'ideas')
+                idea_ids = {i["id"] for i in ideas_data.get("ideas", [])}
+            for d in new_decisions:
+                tid = d.get("task_id", "")
+                if tid and tid not in valid_task_ids and tid not in special_ids and tid not in idea_ids:
+                    print(f"WARNING: task_id '{tid}' not found in pipeline or ideas. "
+                          f"Decision will be saved but may be orphaned.", file=sys.stderr)
+
+        # Cross-validate linked_entity_id for risk type
         for d in new_decisions:
-            tid = d.get("task_id", "")
-            if tid and tid not in valid_task_ids and tid not in special_ids and tid not in idea_ids:
-                print(f"WARNING: task_id '{tid}' not found in pipeline or ideas. "
-                      f"Decision will be saved but may be orphaned.", file=sys.stderr)
+            if d.get("type") == "risk" and d.get("linked_entity_id"):
+                _validate_linked_entity(args.project, d)
 
-    # Cross-validate linked_entity_id for risk type
-    for d in new_decisions:
-        if d.get("type") == "risk" and d.get("linked_entity_id"):
-            _validate_linked_entity(args.project, d)
+        data = self.load(args.project)
+        timestamp = now_iso()
+        next_id = self.next_num(data)
 
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    # Find next D-NNN ID
-    existing_ids = [
-        int(d["id"].split("-")[1]) for d in data.get("decisions", [])
-        if d.get("id", "").startswith("D-")
-    ]
-    next_id = max(existing_ids, default=0) + 1
-
-    # Dedup by (task_id, type, issue) composite key
-    existing_keys = {
-        (d.get("task_id"), d.get("type"), d.get("issue"))
-        for d in data.get("decisions", [])
-    }
-
-    added = []
-    skipped = []
-    for d in new_decisions:
-        key = (d.get("task_id"), d.get("type"), d.get("issue"))
-        if key in existing_keys:
-            skipped.append(f"Duplicate: {d.get('issue', '')[:50]}")
-            continue
-
-        decision = {
-            "id": f"D-{next_id:03d}",
-            "task_id": d["task_id"],
-            "type": d["type"],
-            "issue": d["issue"],
-            "recommendation": d["recommendation"],
-            "reasoning": d.get("reasoning", ""),
-            "alternatives": d.get("alternatives", []),
-            "confidence": d.get("confidence", "MEDIUM"),
-            "status": d.get("status", "OPEN"),
-            "decided_by": d.get("decided_by", "claude"),
-            "file": d.get("file", ""),
-            "scope": d.get("scope", ""),
-            "timestamp": timestamp,
+        # Dedup by (task_id, type, issue) composite key
+        existing_keys = {
+            (d.get("task_id"), d.get("type"), d.get("issue"))
+            for d in data.get("decisions", [])
         }
 
-        # Exploration fields
-        if d.get("type") == "exploration":
-            decision["exploration_type"] = d.get("exploration_type", "")
-            decision["findings"] = d.get("findings", [])
-            decision["options"] = d.get("options", [])
-            decision["open_questions"] = d.get("open_questions", [])
-            decision["blockers"] = d.get("blockers", [])
-            decision["ready_for_tracker"] = d.get("ready_for_tracker", False)
-            decision["evidence_refs"] = d.get("evidence_refs", [])
-
-        # Risk fields
-        if d.get("type") == "risk":
-            decision["severity"] = d.get("severity", "MEDIUM")
-            decision["likelihood"] = d.get("likelihood", "MEDIUM")
-            decision["linked_entity_type"] = d.get("linked_entity_type", "")
-            decision["linked_entity_id"] = d.get("linked_entity_id", "")
-            decision["mitigation_plan"] = d.get("mitigation_plan", "")
-            decision["resolution_notes"] = d.get("resolution_notes", "")
-
-        # Common optional
-        decision["tags"] = d.get("tags", [])
-
-        data["decisions"].append(decision)
-        existing_keys.add(key)
-        added.append(decision["id"])
-        next_id += 1
-
-    save_json(args.project, data)
-
-    print(f"Decisions saved: {args.project}")
-    if added:
-        print(f"  Added: {len(added)} ({', '.join(added)})")
-    if skipped:
-        print(f"  Skipped (duplicate): {len(skipped)}")
-    print(f"  Total: {len(data['decisions'])} | Open: {data['open_count']}")
-
-
-def cmd_read(args):
-    """Read decisions (optionally filtered)."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'decisions'):
-        print(f"No decisions for '{args.project}' yet.")
-        return
-
-    data = storage.load_data(args.project, 'decisions')
-    decisions = data.get("decisions", [])
-
-    # Filter
-    if args.status:
-        decisions = [d for d in decisions if d.get("status") == args.status]
-    if args.task:
-        decisions = [d for d in decisions if d.get("task_id") == args.task]
-    if args.type:
-        decisions = [d for d in decisions if d.get("type") == args.type]
-    if args.entity:
-        decisions = [d for d in decisions if d.get("linked_entity_id") == args.entity]
-
-    # Sort by ID
-    decisions.sort(key=lambda d: d.get("id", ""))
-
-    # Render as Markdown table
-    print(f"## Decisions: {args.project}")
-    filters = []
-    if args.status:
-        filters.append(f"status={args.status}")
-    if args.task:
-        filters.append(f"task={args.task}")
-    if args.type:
-        filters.append(f"type={args.type}")
-    if args.entity:
-        filters.append(f"entity={args.entity}")
-    if filters:
-        print(f"Filter: {', '.join(filters)}")
-    print(f"Count: {len(decisions)}")
-    print()
-
-    if not decisions:
-        print("(none)")
-        return
-
-    # Adaptive table based on types present
-    has_risks = any(d.get("type") == "risk" for d in decisions)
-    has_explorations = any(d.get("type") == "exploration" for d in decisions)
-
-    if has_risks and not has_explorations:
-        print("| ID | Severity | Likelihood | Status | Entity | Issue |")
-        print("|----|----------|------------|--------|--------|-------|")
-        for d in decisions:
-            if d.get("type") == "risk":
-                issue = d.get("issue", "")[:40]
-                entity = d.get("linked_entity_id", "")
-                print(f"| {d['id']} | {d.get('severity', '')} | {d.get('likelihood', '')} | {d.get('status', '')} | {entity} | {issue} |")
-            else:
-                issue = d.get("issue", "")[:40]
-                print(f"| {d['id']} | — | — | {d.get('status', '')} | {d.get('task_id', '')} | {issue} |")
-    elif has_explorations and not has_risks:
-        print("| ID | Task | Type | Expl.Type | Issue | Status |")
-        print("|----|------|------|-----------|-------|--------|")
-        for d in decisions:
-            issue = d.get("issue", "")[:40]
-            etype = d.get("exploration_type", "") if d.get("type") == "exploration" else "—"
-            print(f"| {d['id']} | {d.get('task_id', '')} | {d.get('type', '')} | {etype} | {issue} | {d.get('status', '')} |")
-    else:
-        print("| ID | Task | Type | Issue | Recommendation | Status | By | Conf |")
-        print("|----|------|------|-------|----------------|--------|----|------|")
-        for d in decisions:
-            issue = d.get("issue", "")[:40]
-            rec = d.get("recommendation", "")[:30]
-            print(f"| {d['id']} | {d.get('task_id', '')} | {d.get('type', '')} | {issue} | {rec} | {d.get('status', '')} | {d.get('decided_by', '')} | {d.get('confidence', '')} |")
-
-
-def cmd_update(args):
-    """Update decision statuses and fields."""
-    try:
-        updates = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(updates, list):
-        updates = [updates]
-
-    errors = validate_contract(CONTRACTS["update"], updates)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    decisions_by_id = {d["id"]: d for d in data.get("decisions", [])}
-    timestamp = now_iso()
-
-    updated = []
-    for u in updates:
-        d_id = u["id"]
-        if d_id not in decisions_by_id:
-            print(f"  WARNING: Decision {d_id} not found, skipping", file=sys.stderr)
-            continue
-
-        d = decisions_by_id[d_id]
-
-        # Validate status transition for risk-type decisions
-        if "status" in u:
-            new_status = u["status"]
-            current = d.get("status", "OPEN")
-            valid_next = VALID_STATUS_TRANSITIONS.get(current, set())
-            if new_status not in valid_next:
-                print(f"  WARNING: Invalid transition {current}→{new_status} for {d_id}. "
-                      f"Valid: {', '.join(sorted(valid_next)) or 'none'}",
-                      file=sys.stderr)
+        added = []
+        skipped = []
+        for d in new_decisions:
+            key = (d.get("task_id"), d.get("type"), d.get("issue"))
+            if key in existing_keys:
+                skipped.append(f"Duplicate: {d.get('issue', '')[:50]}")
                 continue
-            d["status"] = new_status
 
-        # Standard decision update fields
-        if "action" in u:
-            d["action"] = u["action"]
-        if "override_value" in u:
-            d["override_value"] = u["override_value"]
-        if "override_reason" in u:
-            d["override_reason"] = u["override_reason"]
+            decision = {
+                "id": self.make_id(next_id),
+                "task_id": d["task_id"],
+                "type": d["type"],
+                "issue": d["issue"],
+                "recommendation": d["recommendation"],
+                "reasoning": d.get("reasoning", ""),
+                "alternatives": d.get("alternatives", []),
+                "confidence": d.get("confidence", "MEDIUM"),
+                "status": d.get("status", "OPEN"),
+                "decided_by": d.get("decided_by", "claude"),
+                "file": d.get("file", ""),
+                "scope": d.get("scope", ""),
+                "timestamp": timestamp,
+            }
 
-        # Updatable fields (all decision types)
-        updatable_fields = [
-            "task_id", "issue", "recommendation", "reasoning",
-            "alternatives", "confidence", "decided_by",
-            "file", "scope", "tags", "evidence_refs",
-            "severity", "likelihood", "mitigation_plan",
-            "resolution_notes",
-            "linked_entity_type", "linked_entity_id",
-            "exploration_type", "open_questions", "blockers",
-        ]
-        for field in updatable_fields:
-            if field in u:
-                d[field] = u[field]
+            # Exploration fields
+            if d.get("type") == "exploration":
+                decision["exploration_type"] = d.get("exploration_type", "")
+                decision["findings"] = d.get("findings", [])
+                decision["options"] = d.get("options", [])
+                decision["open_questions"] = d.get("open_questions", [])
+                decision["blockers"] = d.get("blockers", [])
+                decision["ready_for_tracker"] = d.get("ready_for_tracker", False)
+                decision["evidence_refs"] = d.get("evidence_refs", [])
 
-        d["updated"] = timestamp
-        updated.append(d_id)
+            # Risk fields
+            if d.get("type") == "risk":
+                decision["severity"] = d.get("severity", "MEDIUM")
+                decision["likelihood"] = d.get("likelihood", "MEDIUM")
+                decision["linked_entity_type"] = d.get("linked_entity_type", "")
+                decision["linked_entity_id"] = d.get("linked_entity_id", "")
+                decision["mitigation_plan"] = d.get("mitigation_plan", "")
+                decision["resolution_notes"] = d.get("resolution_notes", "")
 
-    data["decisions"] = list(decisions_by_id.values())
-    save_json(args.project, data)
+            # Common optional
+            decision["tags"] = d.get("tags", [])
 
-    print(f"Updated {len(updated)} decisions: {args.project}")
-    for d_id in updated:
-        d = decisions_by_id[d_id]
-        extra = ""
-        if d.get("action"):
-            extra = f" ({d['action']})"
-        print(f"  {d_id}: {d.get('status', '')}{extra}")
-    print(f"  Open: {data['open_count']}")
+            data["decisions"].append(decision)
+            existing_keys.add(key)
+            added.append(decision["id"])
+            next_id += 1
 
+        self.save(args.project, data)
+        trace_cmd(args.project, "decisions", "add",
+                  added=added, skipped=len(skipped),
+                  total=len(data['decisions']))
 
-def cmd_show(args):
-    """Show full details for a single decision."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'decisions'):
-        print(f"No decisions for '{args.project}' yet.", file=sys.stderr)
-        sys.exit(1)
+        print(f"Decisions saved: {args.project}")
+        if added:
+            print(f"  Added: {len(added)} ({', '.join(added)})")
+        if skipped:
+            print(f"  Skipped (duplicate): {len(skipped)}")
+        print(f"  Total: {len(data['decisions'])} | Open: {data['open_count']}")
 
-    data = storage.load_data(args.project, 'decisions')
-    decision = None
-    for d in data.get("decisions", []):
-        if d["id"] == args.decision_id:
-            decision = d
-            break
+    def cmd_update(self, args):
+        """Override: complex field-by-field update with status transition validation."""
+        updates = self._parse_and_validate(args.data, "update")
 
-    if not decision:
-        print(f"ERROR: Decision '{args.decision_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        data = self.load(args.project)
+        decisions_by_id = {d["id"]: d for d in data.get("decisions", [])}
+        timestamp = now_iso()
 
-    dtype = decision.get("type", "other")
+        updated = []
+        for u in updates:
+            d_id = u["id"]
+            if d_id not in decisions_by_id:
+                print(f"  WARNING: Decision {d_id} not found, skipping", file=sys.stderr)
+                continue
 
-    # Header
-    print(f"## Decision {decision['id']}: {decision.get('issue', '')}")
-    print()
-    print(f"- **Type**: {dtype}")
-    print(f"- **Status**: {decision.get('status', '')}")
-    print(f"- **Task/Entity**: {decision.get('task_id', '')}")
-    print(f"- **Confidence**: {decision.get('confidence', '')}")
-    print(f"- **Decided by**: {decision.get('decided_by', '')}")
-    print(f"- **Created**: {decision.get('timestamp', '')}")
-    if decision.get("updated"):
-        print(f"- **Updated**: {decision['updated']}")
-    if decision.get("file"):
-        print(f"- **File**: {decision['file']}")
-    if decision.get("scope"):
-        print(f"- **Scope**: {decision['scope']}")
-    if decision.get("tags"):
-        print(f"- **Tags**: {', '.join(decision['tags'])}")
-    print()
+            d = decisions_by_id[d_id]
 
-    # Risk-specific fields
-    if dtype == "risk":
-        print(f"- **Severity**: {decision.get('severity', '')}")
-        print(f"- **Likelihood**: {decision.get('likelihood', '')}")
-        matrix = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
-        score = matrix.get(decision.get("severity", "LOW"), 1) * matrix.get(decision.get("likelihood", "LOW"), 1)
-        level = "CRITICAL" if score >= 6 else "SIGNIFICANT" if score >= 3 else "MINOR"
-        print(f"- **Risk Level**: {level} (score: {score}/9)")
-        if decision.get("linked_entity_type"):
-            print(f"- **Linked to**: {decision.get('linked_entity_type', '')} {decision.get('linked_entity_id', '')}")
+            # Validate status transition for risk-type decisions
+            if "status" in u:
+                new_status = u["status"]
+                current = d.get("status", "OPEN")
+                valid_next = VALID_STATUS_TRANSITIONS.get(current, set())
+                if new_status not in valid_next:
+                    print(f"  WARNING: Invalid transition {current}\u2192{new_status} for {d_id}. "
+                          f"Valid: {', '.join(sorted(valid_next)) or 'none'}",
+                          file=sys.stderr)
+                    continue
+                d["status"] = new_status
+
+            # Standard decision update fields
+            if "action" in u:
+                d["action"] = u["action"]
+            if "override_value" in u:
+                d["override_value"] = u["override_value"]
+            if "override_reason" in u:
+                d["override_reason"] = u["override_reason"]
+
+            # Updatable fields (all decision types)
+            updatable_fields = [
+                "task_id", "issue", "recommendation", "reasoning",
+                "alternatives", "confidence", "decided_by",
+                "file", "scope", "tags", "evidence_refs",
+                "severity", "likelihood", "mitigation_plan",
+                "resolution_notes",
+                "linked_entity_type", "linked_entity_id",
+                "exploration_type", "open_questions", "blockers",
+            ]
+            for field in updatable_fields:
+                if field in u:
+                    d[field] = u[field]
+
+            d["updated"] = timestamp
+            updated.append(d_id)
+
+        data["decisions"] = list(decisions_by_id.values())
+        self.save(args.project, data)
+        trace_cmd(args.project, "decisions", "update",
+                  updated=updated,
+                  fields_per_id={u["id"]: [k for k in u if k != "id"]
+                                 for u in updates if u["id"] in updated})
+
+        print(f"Updated {len(updated)} decisions: {args.project}")
+        for d_id in updated:
+            d = decisions_by_id[d_id]
+            extra = ""
+            if d.get("action"):
+                extra = f" ({d['action']})"
+            print(f"  {d_id}: {d.get('status', '')}{extra}")
+        print(f"  Open: {data['open_count']}")
+
+    def cmd_read(self, args):
+        """Read decisions (optionally filtered)."""
+        if not self.storage.exists(args.project, self.entity_type):
+            print(f"No decisions for '{args.project}' yet.")
+            return
+
+        data = self.load(args.project)
+        decisions = data.get("decisions", [])
+
+        # Filter
+        if args.status:
+            decisions = [d for d in decisions if d.get("status") == args.status]
+        if args.task:
+            decisions = [d for d in decisions if d.get("task_id") == args.task]
+        if args.type:
+            decisions = [d for d in decisions if d.get("type") == args.type]
+        if args.entity:
+            decisions = [d for d in decisions if d.get("linked_entity_id") == args.entity]
+
+        # Sort by ID
+        decisions.sort(key=lambda d: d.get("id", ""))
+
+        # Render as Markdown table
+        print(f"## Decisions: {args.project}")
+        filters = []
+        if args.status:
+            filters.append(f"status={args.status}")
+        if args.task:
+            filters.append(f"task={args.task}")
+        if args.type:
+            filters.append(f"type={args.type}")
+        if args.entity:
+            filters.append(f"entity={args.entity}")
+        if filters:
+            print(f"Filter: {', '.join(filters)}")
+        print(f"Count: {len(decisions)}")
         print()
 
-    # Exploration-specific fields
-    if dtype == "exploration":
-        if decision.get("exploration_type"):
-            print(f"- **Exploration type**: {decision['exploration_type']}")
-        print()
+        if not decisions:
+            print("(none)")
+            return
 
-    # Recommendation
-    print("### Recommendation")
-    print(decision.get("recommendation", ""))
-    print()
+        # Adaptive table based on types present
+        has_risks = any(d.get("type") == "risk" for d in decisions)
+        has_explorations = any(d.get("type") == "exploration" for d in decisions)
 
-    if decision.get("reasoning"):
-        print("### Reasoning")
-        print(decision["reasoning"])
-        print()
-
-    if decision.get("alternatives"):
-        print(f"### Alternatives ({len(decision['alternatives'])})")
-        for alt in decision["alternatives"]:
-            print(f"- {alt}")
-        print()
-
-    # Exploration content
-    if dtype == "exploration":
-        findings = decision.get("findings", [])
-        if findings:
-            print(f"### Findings ({len(findings)})")
-            for f in findings:
-                if isinstance(f, dict):
-                    print(f"- **{f.get('finding', '')}**: {f.get('detail', '')}")
+        if has_risks and not has_explorations:
+            print("| ID | Severity | Likelihood | Status | Entity | Issue |")
+            print("|----|----------|------------|--------|--------|-------|")
+            for d in decisions:
+                if d.get("type") == "risk":
+                    issue = d.get("issue", "")[:40]
+                    entity = d.get("linked_entity_id", "")
+                    print(f"| {d['id']} | {d.get('severity', '')} | {d.get('likelihood', '')} | {d.get('status', '')} | {entity} | {issue} |")
                 else:
-                    print(f"- {f}")
-            print()
-
-        options = decision.get("options", [])
-        if options:
-            print(f"### Options ({len(options)})")
-            for o in options:
-                if isinstance(o, dict):
-                    print(f"- **{o.get('name', '')}**: {o.get('recommendation', '')}")
-                    if o.get("pros"):
-                        print(f"  Pros: {', '.join(o['pros'])}")
-                    if o.get("cons"):
-                        print(f"  Cons: {', '.join(o['cons'])}")
-                else:
-                    print(f"- {o}")
-            print()
-
-        open_q = decision.get("open_questions", [])
-        if open_q:
-            print(f"### Open Questions ({len(open_q)})")
-            for q in open_q:
-                print(f"- {q}")
-            print()
-
-        blockers = decision.get("blockers", [])
-        if blockers:
-            print(f"### Blockers ({len(blockers)})")
-            for b in blockers:
-                print(f"- {b}")
-            print()
-
-        if "ready_for_tracker" in decision:
-            ready = "YES" if decision["ready_for_tracker"] else "NO"
-            print(f"**Ready for tracker**: {ready}")
-
-        evidence = decision.get("evidence_refs", [])
-        if evidence:
-            print()
-            print(f"### Evidence ({len(evidence)})")
-            for ref in evidence:
-                print(f"- {ref}")
-
-    # Risk content
-    if dtype == "risk":
-        if decision.get("mitigation_plan"):
-            print("### Mitigation Plan")
-            print(decision["mitigation_plan"])
-            print()
-
-        if decision.get("resolution_notes"):
-            print("### Resolution Notes")
-            print(decision["resolution_notes"])
-            print()
-
-    # Override info
-    if decision.get("override_value"):
-        print("### Override")
-        print(f"**Value**: {decision['override_value']}")
-        if decision.get("override_reason"):
-            print(f"**Reason**: {decision['override_reason']}")
-        print()
-
-    # Next steps hint
-    status = decision.get("status", "")
-    if status == "OPEN":
-        if dtype == "risk":
-            print("**Next**: Analyze the risk, then update to ANALYZING, MITIGATED, or ACCEPTED")
+                    issue = d.get("issue", "")[:40]
+                    print(f"| {d['id']} | — | — | {d.get('status', '')} | {d.get('task_id', '')} | {issue} |")
+        elif has_explorations and not has_risks:
+            print("| ID | Task | Type | Expl.Type | Issue | Status |")
+            print("|----|------|------|-----------|-------|--------|")
+            for d in decisions:
+                issue = d.get("issue", "")[:40]
+                etype = d.get("exploration_type", "") if d.get("type") == "exploration" else "\u2014"
+                print(f"| {d['id']} | {d.get('task_id', '')} | {d.get('type', '')} | {etype} | {issue} | {d.get('status', '')} |")
         else:
-            print("**Next**: Review and close with `/decide` or update command")
-    elif status == "ANALYZING":
-        print("**Next**: Define mitigation, then update to MITIGATED or ACCEPTED")
-    elif status == "MITIGATED":
-        print("**Next**: Verify mitigation works, then CLOSE")
+            print("| ID | Task | Type | Issue | Recommendation | Status | By | Conf |")
+            print("|----|------|------|-------|----------------|--------|----|------|")
+            for d in decisions:
+                issue = d.get("issue", "")[:40]
+                rec = d.get("recommendation", "")[:30]
+                print(f"| {d['id']} | {d.get('task_id', '')} | {d.get('type', '')} | {issue} | {rec} | {d.get('status', '')} | {d.get('decided_by', '')} | {d.get('confidence', '')} |")
 
+    def cmd_show(self, args):
+        """Show full details for a single decision."""
+        if not self.storage.exists(args.project, self.entity_type):
+            raise EntityNotFound(f"No decisions for '{args.project}' yet.")
 
-def cmd_contract(args):
-    """Print contract spec for a command."""
-    if args.name not in CONTRACTS:
-        print(f"ERROR: Unknown contract '{args.name}'", file=sys.stderr)
-        print(f"Available: {', '.join(sorted(CONTRACTS.keys()))}", file=sys.stderr)
-        sys.exit(1)
-    print(render_contract(args.name, CONTRACTS[args.name]))
+        data = self.load(args.project)
+        decision = self.find_by_id(data, args.decision_id)
+
+        if not decision:
+            raise EntityNotFound(f"Decision '{args.decision_id}' not found.")
+
+        trace_cmd(args.project, "decisions", "show",
+                  decision_id=args.decision_id)
+
+        dtype = decision.get("type", "other")
+
+        # Header
+        print(f"## Decision {decision['id']}: {decision.get('issue', '')}")
+        print()
+        print(f"- **Type**: {dtype}")
+        print(f"- **Status**: {decision.get('status', '')}")
+        print(f"- **Task/Entity**: {decision.get('task_id', '')}")
+        print(f"- **Confidence**: {decision.get('confidence', '')}")
+        print(f"- **Decided by**: {decision.get('decided_by', '')}")
+        print(f"- **Created**: {decision.get('timestamp', '')}")
+        if decision.get("updated"):
+            print(f"- **Updated**: {decision['updated']}")
+        if decision.get("file"):
+            print(f"- **File**: {decision['file']}")
+        if decision.get("scope"):
+            print(f"- **Scope**: {decision['scope']}")
+        if decision.get("tags"):
+            print(f"- **Tags**: {', '.join(decision['tags'])}")
+        print()
+
+        # Risk-specific fields
+        if dtype == "risk":
+            print(f"- **Severity**: {decision.get('severity', '')}")
+            print(f"- **Likelihood**: {decision.get('likelihood', '')}")
+            matrix = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+            score = matrix.get(decision.get("severity", "LOW"), 1) * matrix.get(decision.get("likelihood", "LOW"), 1)
+            level = "CRITICAL" if score >= 6 else "SIGNIFICANT" if score >= 3 else "MINOR"
+            print(f"- **Risk Level**: {level} (score: {score}/9)")
+            if decision.get("linked_entity_type"):
+                print(f"- **Linked to**: {decision.get('linked_entity_type', '')} {decision.get('linked_entity_id', '')}")
+            print()
+
+        # Exploration-specific fields
+        if dtype == "exploration":
+            if decision.get("exploration_type"):
+                print(f"- **Exploration type**: {decision['exploration_type']}")
+            print()
+
+        # Recommendation
+        print("### Recommendation")
+        print(decision.get("recommendation", ""))
+        print()
+
+        if decision.get("reasoning"):
+            print("### Reasoning")
+            print(decision["reasoning"])
+            print()
+
+        if decision.get("alternatives"):
+            print(f"### Alternatives ({len(decision['alternatives'])})")
+            for alt in decision["alternatives"]:
+                print(f"- {alt}")
+            print()
+
+        # Exploration content
+        if dtype == "exploration":
+            findings = decision.get("findings", [])
+            if findings:
+                print(f"### Findings ({len(findings)})")
+                for f in findings:
+                    if isinstance(f, dict):
+                        print(f"- **{f.get('finding', '')}**: {f.get('detail', '')}")
+                    else:
+                        print(f"- {f}")
+                print()
+
+            options = decision.get("options", [])
+            if options:
+                print(f"### Options ({len(options)})")
+                for o in options:
+                    if isinstance(o, dict):
+                        print(f"- **{o.get('name', '')}**: {o.get('recommendation', '')}")
+                        if o.get("pros"):
+                            print(f"  Pros: {', '.join(o['pros'])}")
+                        if o.get("cons"):
+                            print(f"  Cons: {', '.join(o['cons'])}")
+                    else:
+                        print(f"- {o}")
+                print()
+
+            open_q = decision.get("open_questions", [])
+            if open_q:
+                print(f"### Open Questions ({len(open_q)})")
+                for q in open_q:
+                    print(f"- {q}")
+                print()
+
+            blockers = decision.get("blockers", [])
+            if blockers:
+                print(f"### Blockers ({len(blockers)})")
+                for b in blockers:
+                    print(f"- {b}")
+                print()
+
+            if "ready_for_tracker" in decision:
+                ready = "YES" if decision["ready_for_tracker"] else "NO"
+                print(f"**Ready for tracker**: {ready}")
+
+            evidence = decision.get("evidence_refs", [])
+            if evidence:
+                print()
+                print(f"### Evidence ({len(evidence)})")
+                for ref in evidence:
+                    print(f"- {ref}")
+
+        # Risk content
+        if dtype == "risk":
+            if decision.get("mitigation_plan"):
+                print("### Mitigation Plan")
+                print(decision["mitigation_plan"])
+                print()
+
+            if decision.get("resolution_notes"):
+                print("### Resolution Notes")
+                print(decision["resolution_notes"])
+                print()
+
+        # Override info
+        if decision.get("override_value"):
+            print("### Override")
+            print(f"**Value**: {decision['override_value']}")
+            if decision.get("override_reason"):
+                print(f"**Reason**: {decision['override_reason']}")
+            print()
+
+        # Next steps hint
+        status = decision.get("status", "")
+        if status == "OPEN":
+            if dtype == "risk":
+                print("**Next**: Analyze the risk, then update to ANALYZING, MITIGATED, or ACCEPTED")
+            else:
+                print("**Next**: Review and close with `/decide` or update command")
+        elif status == "ANALYZING":
+            print("**Next**: Define mitigation, then update to MITIGATED or ACCEPTED")
+        elif status == "MITIGATED":
+            print("**Next**: Verify mitigation works, then CLOSE")
 
 
 # -- Helpers --
@@ -718,6 +673,13 @@ def _format_counts(counts: dict) -> str:
     return " | ".join(parts) if parts else "empty"
 
 
+# -- Module-level aliases --
+
+_mod = Decisions()
+load_or_create = _mod.load
+save_json = _mod.save
+
+
 # -- CLI --
 
 def main():
@@ -751,14 +713,19 @@ def main():
     args = parser.parse_args()
 
     commands = {
-        "add": cmd_add,
-        "read": cmd_read,
-        "update": cmd_update,
-        "show": cmd_show,
-        "contract": cmd_contract,
+        "add": _mod.cmd_add,
+        "read": _mod.cmd_read,
+        "update": _mod.cmd_update,
+        "show": _mod.cmd_show,
+        "contract": _mod.cmd_contract,
     }
 
-    commands[args.command](args)
+    from errors import ForgeError
+    try:
+        commands[args.command](args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

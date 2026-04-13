@@ -20,35 +20,16 @@ Commands:
 """
 
 import argparse
-import json
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract
-from storage import JSONFileStorage, load_json_data, now_iso
 
-if sys.platform == "win32":
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
-
-
-# -- Storage --
-
-def load_or_create(project: str, storage=None) -> dict:
-    if storage is None:
-        storage = JSONFileStorage()
-    return storage.load_data(project, 'knowledge')
-
-
-def save_json(project: str, data: dict, storage=None):
-    if storage is None:
-        storage = JSONFileStorage()
-    storage.save_data(project, 'knowledge', data)
+from entity_base import EntityModule
+from errors import EntityNotFound, ValidationError
+from models import Knowledge as KnowledgeModel
+from storage import JSONFileStorage, now_iso
+from trace import trace_cmd
 
 
 # -- Constants --
@@ -56,6 +37,7 @@ def save_json(project: str, data: dict, storage=None):
 VALID_CATEGORIES = {
     "domain-rules", "api-reference", "architecture", "business-context",
     "technical-context", "code-patterns", "integration", "infrastructure",
+    "requirement", "source-document",
 }
 
 VALID_STATUSES = {"DRAFT", "ACTIVE", "REVIEW_NEEDED", "DEPRECATED", "ARCHIVED"}
@@ -173,70 +155,22 @@ CONTRACTS = {
 }
 
 
-# -- Helpers --
+# -- Module --
 
-def find_knowledge(data: dict, knowledge_id: str) -> dict | None:
-    """Find knowledge object by ID."""
-    for k in data.get("knowledge", []):
-        if k["id"] == knowledge_id:
-            return k
-    return None
+class Knowledge(EntityModule):
+    entity_type = "knowledge"
+    list_key = "knowledge"
+    id_prefix = "K"
+    display_name = "Knowledge"
+    dedup_keys = ("category", "title")
+    contracts = CONTRACTS
+    model_class = KnowledgeModel
 
-
-def _next_id(data: dict) -> str:
-    """Generate next K-NNN ID."""
-    existing = [
-        int(k["id"].split("-")[1]) for k in data.get("knowledge", [])
-        if k.get("id", "").startswith("K-")
-    ]
-    num = max(existing, default=0) + 1
-    return f"K-{num:03d}"
-
-
-# -- Commands --
-
-def cmd_add(args):
-    """Create knowledge objects."""
-    try:
-        new_items = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(new_items, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
-
-    errors = validate_contract(CONTRACTS["add"], new_items)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    # Dedup by (category, title) — normalized
-    existing_keys = {
-        (k.get("category", "").lower().strip(), k.get("title", "").lower().strip())
-        for k in data.get("knowledge", [])
-    }
-
-    added = []
-    skipped = []
-    for item in new_items:
-        category = item["category"].lower().strip()
-        key = (category, item["title"].lower().strip())
-        if key in existing_keys:
-            skipped.append(f"Duplicate: {item['title'][:50]}")
-            continue
-
-        k_id = _next_id(data)
-        created_by = item.get("created_by", "user")
+    def build_entity(self, input_item, entity_id, timestamp, args):
+        created_by = input_item.get("created_by", "user")
 
         # Build source object
-        source = item.get("source", {})
+        source = input_item.get("source", {})
         if not source.get("type"):
             source["type"] = "user"
         if source["type"] not in VALID_SOURCE_TYPES:
@@ -245,21 +179,21 @@ def cmd_add(args):
                   file=sys.stderr)
 
         knowledge = {
-            "id": k_id,
-            "title": item["title"],
-            "category": category,
-            "content": item["content"],
+            "id": entity_id,
+            "title": input_item["title"],
+            "category": input_item["category"].lower().strip(),
+            "content": input_item["content"],
             "status": "DRAFT",
             "version": 1,
-            "scopes": item.get("scopes", []),
-            "tags": item.get("tags", []),
+            "scopes": input_item.get("scopes", []),
+            "tags": input_item.get("tags", []),
             "source": source,
-            "linked_entities": item.get("linked_entities", []),
-            "dependencies": item.get("dependencies", []),
+            "linked_entities": input_item.get("linked_entities", []),
+            "dependencies": input_item.get("dependencies", []),
             "versions": [
                 {
                     "version": 1,
-                    "content": item["content"],
+                    "content": input_item["content"],
                     "changed_by": created_by,
                     "changed_at": timestamp,
                     "change_reason": "Initial creation",
@@ -267,13 +201,17 @@ def cmd_add(args):
             ],
             "review": {
                 "last_reviewed_at": timestamp,
-                "review_interval_days": item.get("review_interval_days", 30),
+                "review_interval_days": input_item.get("review_interval_days", 30),
                 "next_review_at": None,
             },
             "created_at": timestamp,
             "updated_at": timestamp,
             "created_by": created_by,
         }
+
+        # Fidelity Chain: warn on compound requirements
+        if knowledge["category"] == "requirement":
+            self._warn_compound_requirement(knowledge["content"], entity_id)
 
         # Validate linked_entities if provided
         for le in knowledge["linked_entities"]:
@@ -284,75 +222,120 @@ def cmd_add(args):
                 print(f"WARNING: Invalid relation '{le.get('relation')}' in linked_entities",
                       file=sys.stderr)
 
-        data["knowledge"].append(knowledge)
-        existing_keys.add(key)
-        added.append(k_id)
+        return knowledge
 
-    save_json(args.project, data)
+    @staticmethod
+    def _warn_compound_requirement(content: str, entity_id: str):
+        """Warn if a requirement appears compound (multiple independent clauses)."""
+        compound_markers = [" and ", " oraz ", " + ", "; ", " & "]
+        content_lower = content.lower()
+        triggers = [m.strip() for m in compound_markers if m in content_lower]
+        if triggers and len(content) > 100:
+            print(f"  FIDELITY_WARNING: {entity_id} may be compound "
+                  f"(markers: {triggers}, {len(content)} chars). "
+                  f"Consider splitting into atomic requirements.",
+                  file=sys.stderr)
+        elif len(content) > 200:
+            print(f"  FIDELITY_WARNING: {entity_id} content is {len(content)} chars. "
+                  f"Long requirements risk losing fidelity during decomposition. "
+                  f"Consider splitting.",
+                  file=sys.stderr)
 
-    print(f"Knowledge saved: {args.project}")
-    if added:
-        print(f"  Added: {len(added)} ({', '.join(added)})")
-    if skipped:
-        print(f"  Skipped (duplicate): {len(skipped)}")
-    print(f"  Total: {len(data['knowledge'])}")
+    def apply_filters(self, items, args):
+        if args.status:
+            items = [k for k in items if k.get("status") == args.status]
+        if args.category:
+            items = [k for k in items if k.get("category") == args.category.lower().strip()]
+        if args.scope:
+            scope = args.scope.lower().strip()
+            items = [k for k in items if scope in k.get("scopes", [])]
+        return items
+
+    def render_list(self, items, args):
+        print(f"## Knowledge: {args.project}")
+        filters = []
+        if args.status:
+            filters.append(f"status={args.status}")
+        if args.category:
+            filters.append(f"category={args.category}")
+        if args.scope:
+            filters.append(f"scope={args.scope}")
+        if filters:
+            print(f"Filter: {', '.join(filters)}")
+        print(f"Count: {len(items)}")
+        print()
+
+        if not items:
+            print("(none)")
+            return
+
+        print("| ID | Category | Status | Version | Title |")
+        print("|----|----------|--------|---------|-------|")
+        for k in items:
+            title = k.get("title", "")[:45]
+            print(f"| {k['id']} | {k.get('category', '')} | {k.get('status', '')} "
+                  f"| v{k.get('version', 1)} | {title} |")
+
+    def apply_update(self, item, update, timestamp):
+        # Status transition validation
+        if "status" in update:
+            new_status = update["status"]
+            current_status = item.get("status", "DRAFT")
+            if new_status not in VALID_TRANSITIONS.get(current_status, set()):
+                print(f"  WARNING: Invalid transition {current_status} → {new_status} for {update['id']}. "
+                      f"Valid: {VALID_TRANSITIONS.get(current_status, set())}",
+                      file=sys.stderr)
+                return False
+
+        # Content change → new version
+        if "content" in update and update["content"] != item.get("content"):
+            if not update.get("change_reason"):
+                print(f"  WARNING: Content change for {update['id']} requires 'change_reason'",
+                      file=sys.stderr)
+                return False
+            new_version = item.get("version", 1) + 1
+            item["versions"].append({
+                "version": new_version,
+                "content": update["content"],
+                "changed_by": update.get("changed_by", "user"),
+                "changed_at": timestamp,
+                "change_reason": update["change_reason"],
+            })
+            item["version"] = new_version
+            item["content"] = update["content"]
+
+        # Update other fields
+        updatable = ["title", "status", "category", "scopes", "tags",
+                     "source", "dependencies"]
+        for field in updatable:
+            if field in update:
+                item[field] = update[field]
+
+        # Update review interval
+        if "review_interval_days" in update:
+            if "review" not in item:
+                item["review"] = {}
+            item["review"]["review_interval_days"] = update["review_interval_days"]
+
+        item["updated_at"] = timestamp
 
 
-def cmd_read(args):
-    """List/filter knowledge objects."""
-    storage = JSONFileStorage()
-    if not storage.exists(args.project, 'knowledge'):
-        print(f"No knowledge for '{args.project}' yet.")
-        return
+_mod = Knowledge()
 
-    data = storage.load_data(args.project, 'knowledge')
-    items = data.get("knowledge", [])
+# Public API used by other modules
+load_or_create = _mod.load
+save_json = _mod.save
+find_knowledge = _mod.find_by_id
 
-    # Filter
-    if args.status:
-        items = [k for k in items if k.get("status") == args.status]
-    if args.category:
-        items = [k for k in items if k.get("category") == args.category.lower().strip()]
-    if args.scope:
-        scope = args.scope.lower().strip()
-        items = [k for k in items if scope in k.get("scopes", [])]
 
-    # Sort by ID
-    items.sort(key=lambda k: k.get("id", ""))
-
-    # Render
-    print(f"## Knowledge: {args.project}")
-    filters = []
-    if args.status:
-        filters.append(f"status={args.status}")
-    if args.category:
-        filters.append(f"category={args.category}")
-    if args.scope:
-        filters.append(f"scope={args.scope}")
-    if filters:
-        print(f"Filter: {', '.join(filters)}")
-    print(f"Count: {len(items)}")
-    print()
-
-    if not items:
-        print("(none)")
-        return
-
-    print("| ID | Category | Status | Version | Title |")
-    print("|----|----------|--------|---------|-------|")
-    for k in items:
-        title = k.get("title", "")[:45]
-        print(f"| {k['id']} | {k.get('category', '')} | {k.get('status', '')} "
-              f"| v{k.get('version', 1)} | {title} |")
-
+# -- Custom commands --
 
 def cmd_show(args):
     """Show full details of a knowledge object."""
-    data = load_or_create(args.project)
-    k = find_knowledge(data, args.knowledge_id)
+    data = _mod.load(args.project)
+    k = _mod.find_by_id(data, args.knowledge_id)
     if not k:
-        print(f"ERROR: Knowledge '{args.knowledge_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Knowledge '{args.knowledge_id}' not found.")
 
     print(f"## {k['id']}: {k['title']}")
     print(f"**Category**: {k['category']} | **Status**: {k['status']} | **Version**: v{k.get('version', 1)}")
@@ -422,107 +405,29 @@ def cmd_show(args):
     print(f"Updated: {k.get('updated_at', '')}")
 
 
-def cmd_update(args):
-    """Update knowledge objects."""
-    try:
-        updates = load_json_data(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(updates, list):
-        updates = [updates]
-
-    errors = validate_contract(CONTRACTS["update"], updates)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    updated = []
-    for u in updates:
-        k = find_knowledge(data, u["id"])
-        if not k:
-            print(f"  WARNING: Knowledge {u['id']} not found, skipping", file=sys.stderr)
-            continue
-
-        # Status transition validation
-        if "status" in u:
-            new_status = u["status"]
-            current_status = k.get("status", "DRAFT")
-            if new_status not in VALID_TRANSITIONS.get(current_status, set()):
-                print(f"  WARNING: Invalid transition {current_status} → {new_status} for {u['id']}. "
-                      f"Valid: {VALID_TRANSITIONS.get(current_status, set())}",
-                      file=sys.stderr)
-                continue
-
-        # Content change → new version
-        if "content" in u and u["content"] != k.get("content"):
-            if not u.get("change_reason"):
-                print(f"  WARNING: Content change for {u['id']} requires 'change_reason'",
-                      file=sys.stderr)
-                continue
-            new_version = k.get("version", 1) + 1
-            k["versions"].append({
-                "version": new_version,
-                "content": u["content"],
-                "changed_by": u.get("changed_by", "user"),
-                "changed_at": timestamp,
-                "change_reason": u["change_reason"],
-            })
-            k["version"] = new_version
-            k["content"] = u["content"]
-
-        # Update other fields
-        updatable = ["title", "status", "category", "scopes", "tags",
-                     "source", "dependencies"]
-        for field in updatable:
-            if field in u:
-                k[field] = u[field]
-
-        # Update review interval
-        if "review_interval_days" in u:
-            if "review" not in k:
-                k["review"] = {}
-            k["review"]["review_interval_days"] = u["review_interval_days"]
-
-        k["updated_at"] = timestamp
-        updated.append(u["id"])
-
-    save_json(args.project, data)
-
-    if updated:
-        print(f"Updated: {', '.join(updated)}")
-    else:
-        print("No knowledge objects were updated.")
-
-
 def cmd_link(args):
     """Link knowledge to an entity."""
+    from contracts import validate_contract
+    from storage import load_json_data
+    import json
+
     try:
         link_data = load_json_data(args.data)
     except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid JSON: {e}")
 
     if not isinstance(link_data, list):
         link_data = [link_data]
 
     errors = validate_contract(CONTRACTS["link"], link_data)
     if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+        details = "; ".join(errors[:10])
+        raise ValidationError(f"{len(errors)} validation issues: {details}")
 
-    data = load_or_create(args.project)
+    data = _mod.load(args.project)
 
     for ld in link_data:
-        k = find_knowledge(data, ld["knowledge_id"])
+        k = _mod.find_by_id(data, ld["knowledge_id"])
         if not k:
             print(f"  WARNING: Knowledge {ld['knowledge_id']} not found", file=sys.stderr)
             continue
@@ -547,40 +452,43 @@ def cmd_link(args):
 
         k["updated_at"] = now_iso()
 
-    save_json(args.project, data)
+    _mod.save(args.project, data)
+    for ld in link_data:
+        trace_cmd(args.project, "knowledge", "link",
+                  knowledge_id=ld["knowledge_id"],
+                  entity=f"{ld['entity_type']}:{ld['entity_id']}")
 
 
 def cmd_unlink(args):
     """Remove link by index."""
-    data = load_or_create(args.project)
-    k = find_knowledge(data, args.knowledge_id)
+    data = _mod.load(args.project)
+    k = _mod.find_by_id(data, args.knowledge_id)
     if not k:
-        print(f"ERROR: Knowledge '{args.knowledge_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Knowledge '{args.knowledge_id}' not found.")
 
     links = k.get("linked_entities", [])
     if not links:
-        print(f"ERROR: No links on '{args.knowledge_id}' to remove.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"No links on '{args.knowledge_id}' to remove.")
     index = int(args.index)
     if index < 0 or index >= len(links):
-        print(f"ERROR: Link index {index} out of range (0-{len(links) - 1}).", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Link index {index} out of range (0-{len(links) - 1}).")
 
     removed = links.pop(index)
     k["updated_at"] = now_iso()
-    save_json(args.project, data)
+    _mod.save(args.project, data)
+    trace_cmd(args.project, "knowledge", "unlink",
+              knowledge_id=args.knowledge_id,
+              removed=f"{removed['entity_type']}:{removed['entity_id']}")
     print(f"Removed link: {args.knowledge_id} → {removed['entity_type']}:{removed['entity_id']}")
 
 
 def cmd_impact(args):
     """Find all entities that reference this knowledge object."""
     storage = JSONFileStorage()
-    data = load_or_create(args.project, storage)
-    k = find_knowledge(data, args.knowledge_id)
+    data = _mod.load(args.project)
+    k = _mod.find_by_id(data, args.knowledge_id)
     if not k:
-        print(f"ERROR: Knowledge '{args.knowledge_id}' not found.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Knowledge '{args.knowledge_id}' not found.")
 
     k_id = args.knowledge_id
     print(f"## Impact Analysis: {k_id} — {k['title']}")
@@ -670,15 +578,6 @@ def cmd_impact(args):
               f"changes may affect them.", file=sys.stderr)
 
 
-def cmd_contract(args):
-    """Print contract spec."""
-    if args.name not in CONTRACTS:
-        print(f"ERROR: Unknown contract '{args.name}'. Available: {', '.join(sorted(CONTRACTS.keys()))}",
-              file=sys.stderr)
-        sys.exit(1)
-    print(render_contract(args.name, CONTRACTS[args.name]))
-
-
 # -- CLI --
 
 def main():
@@ -723,17 +622,22 @@ def main():
     args = parser.parse_args()
 
     commands = {
-        "add": cmd_add,
-        "read": cmd_read,
+        "add": _mod.cmd_add,
+        "read": _mod.cmd_read,
         "show": cmd_show,
-        "update": cmd_update,
+        "update": _mod.cmd_update,
         "link": cmd_link,
         "unlink": cmd_unlink,
         "impact": cmd_impact,
-        "contract": cmd_contract,
+        "contract": _mod.cmd_contract,
     }
 
-    commands[args.command](args)
+    from errors import ForgeError
+    try:
+        commands[args.command](args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

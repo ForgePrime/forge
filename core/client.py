@@ -995,7 +995,7 @@ class JSONBackend(ForgeBackend):
 
     def assemble_context(self, project: str, task_id: str,
                          contract: Any = None) -> dict:
-        from core.llm.context import ContextAssembler
+        from _future.context_assembler import ContextAssembler
         assembler = ContextAssembler(self.storage)
         ctx = assembler.assemble(project, task_id, contract=contract)
         return {

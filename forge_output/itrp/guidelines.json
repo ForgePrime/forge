@@ -1,0 +1,217 @@
+{
+  "project": "itrp",
+  "updated": "2026-03-23T22:20:06Z",
+  "guidelines": [
+    {
+      "id": "G-001",
+      "title": "Firestore is the ONLY transactional store",
+      "scope": "backend",
+      "content": "All application state (RBAC, config, purchases, audit, schedules, OpCo data) lives in Google Cloud Firestore. There is NO PostgreSQL. Do NOT introduce PostgreSQL, Cloud SQL, or any SQL database.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T11:29:55Z",
+      "updated": "2026-03-21T11:29:55Z"
+    },
+    {
+      "id": "G-002",
+      "title": "BigQuery is the analytical store",
+      "scope": "backend",
+      "content": "BigQuery stores Warsaw-sourced invoice data (temp_invoice table), reporting tables, and job execution records. BigQuery is read for invoices, written for purchase records and reports. No cross-project reads from Warsaw — we have our own temp_invoice table.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T11:29:55Z",
+      "updated": "2026-03-21T11:29:55Z"
+    },
+    {
+      "id": "G-003",
+      "title": "Mock SSO for authentication",
+      "scope": "backend",
+      "content": "Authentication uses Mock SSO (email/password in Firestore, JWT tokens). Production will use Randstad Central OAuth. Do NOT build production OAuth — Mock SSO is sufficient for current development.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "should",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T11:29:55Z",
+      "updated": "2026-03-21T11:29:55Z"
+    },
+    {
+      "id": "G-004",
+      "title": "FastAPI backend, Next.js frontend",
+      "scope": "general",
+      "content": "Backend: Python 3.12+, FastAPI, async Firestore client, structlog. Frontend: Next.js 14, React 18, Ant Design 5, Zustand, TanStack Query, TypeScript. Do NOT introduce new frameworks or UI libraries.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T11:29:55Z",
+      "updated": "2026-03-21T11:29:55Z"
+    },
+    {
+      "id": "G-005",
+      "title": "Modular monolith architecture",
+      "scope": "backend",
+      "content": "One backend service with internal modules (buying, rbac, audit, reporting, schedule, scheduler, maintenance, notifications). Modules communicate via direct imports, not HTTP. Do NOT split into microservices.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T11:29:55Z",
+      "updated": "2026-03-21T11:29:55Z"
+    },
+    {
+      "id": "G-006",
+      "title": "Code lives in ITRP directory",
+      "scope": "general",
+      "content": "Application code: C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/ITRP. Backend: ITRP/backend/app. Frontend: ITRP/frontend/src. Documentation: track_changes/.documentation.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T11:29:55Z",
+      "updated": "2026-03-21T11:29:55Z"
+    },
+    {
+      "id": "G-007",
+      "title": "Audit trail is immutable",
+      "scope": "backend",
+      "content": "Every state change must be logged to audit_trail Firestore collection. Audit entries are write-once — no UPDATE or DELETE on audit records. Include: user_email, action, entity_type, entity_id, old_value, new_value, timestamp.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T11:29:55Z",
+      "updated": "2026-03-21T11:29:55Z"
+    },
+    {
+      "id": "G-008",
+      "title": "RBAC enforced server-side",
+      "scope": "backend",
+      "content": "Every API endpoint must verify permissions via RBAC middleware. Frontend permission gates are UX only, NOT security. 5 roles: itrp_manager, back_office, mid_office, opco, global_finance_it. Permissions are resource:action pairs with optional country/OpCo scope.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T11:29:55Z",
+      "updated": "2026-03-21T11:29:55Z"
+    },
+    {
+      "id": "G-009",
+      "title": "Customer code in my_customers directory",
+      "scope": "backend",
+      "content": "Customer feature code lives in C:/Users/lukasz.krysik/Desktop/LINGARO/08 Projekty/11. Randstad Ninja Code/my_customers. NOT in ITRP directory. Backend: my_customers/backend/app. Frontend: my_customers/frontend/src.",
+      "rationale": "",
+      "examples": [],
+      "tags": [],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-21T13:25:43Z",
+      "updated": "2026-03-21T13:25:43Z"
+    },
+    {
+      "id": "G-010",
+      "title": "No hardcoded schedule/country/currency data",
+      "scope": "general",
+      "content": "No country, currency, or schedule data may be hardcoded in application code, frontend code, or environment variables. All such data must be stored in the database and fetched at runtime. Frontend must not contain hardcoded country lists.",
+      "rationale": "From SPEC-auto-buy-schedule-maintenance.md BR-SCH-05 and AC Backend #7. Trust: HIGH.",
+      "examples": [],
+      "tags": [
+        "schedule",
+        "architecture"
+      ],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-23T22:20:06Z",
+      "updated": "2026-03-23T22:20:06Z"
+    },
+    {
+      "id": "G-011",
+      "title": "Audit trail on every state mutation",
+      "scope": "backend",
+      "content": "Every write operation that changes schedule, country, or auto-buy state must produce an immutable audit trail entry with: user_id (or SYSTEM), timestamp, entity, changed_fields with old+new values. Audit records are write-once — no update/delete permitted.",
+      "rationale": "From SPEC Section 6 and NFR-001 immutability requirement. Trust: HIGH.",
+      "examples": [],
+      "tags": [
+        "audit",
+        "compliance"
+      ],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-23T22:20:06Z",
+      "updated": "2026-03-23T22:20:06Z"
+    },
+    {
+      "id": "G-012",
+      "title": "Server-side RBAC enforcement — frontend is UX only",
+      "scope": "backend",
+      "content": "All permission checks must be enforced server-side. Frontend role-based visibility is for UX convenience only, not a security control. Every API endpoint must validate role + country assignment before executing.",
+      "rationale": "From RBAC-roles-analysis.md overview and SPEC Section 2.2. Trust: HIGH.",
+      "examples": [],
+      "tags": [
+        "rbac",
+        "security"
+      ],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-23T22:20:06Z",
+      "updated": "2026-03-23T22:20:06Z"
+    },
+    {
+      "id": "G-013",
+      "title": "Soft delete only — no hard deletion of operational data",
+      "scope": "backend",
+      "content": "Countries, OpCos, and schedule records must never be hard-deleted. Use soft delete (deleted_at timestamp, revoked_at for assignments). This preserves audit trail integrity.",
+      "rationale": "From SPEC Section 5 and BR-015/REQ-002. Trust: HIGH.",
+      "examples": [],
+      "tags": [
+        "data-model",
+        "compliance"
+      ],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-23T22:20:06Z",
+      "updated": "2026-03-23T22:20:06Z"
+    },
+    {
+      "id": "G-014",
+      "title": "file_day_basis field is obsolete — do not implement",
+      "scope": "general",
+      "content": "The file_day_basis field in documentation and data model is based on a file-based ingestion model that does not exist. Architecture uses BigQuery direct reads. Do NOT implement file_day_basis in buying service logic, do NOT add to UI. Field may exist in DB schema but must be inert.",
+      "rationale": "DISCREPANCIES.md ARCH-007, confirmed by user. Trust: HIGH.",
+      "examples": [],
+      "tags": [
+        "architecture",
+        "obsolete"
+      ],
+      "weight": "must",
+      "derived_from": "",
+      "status": "ACTIVE",
+      "created": "2026-03-23T22:20:06Z",
+      "updated": "2026-03-23T22:20:06Z"
+    }
+  ]
+}

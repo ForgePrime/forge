@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from core.llm.provider import Message
+from _future.llm.provider import Message
 
 logger = logging.getLogger(__name__)
 

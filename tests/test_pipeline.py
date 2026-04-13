@@ -41,9 +41,10 @@ from pipeline import (
     _warn_ac_quality,
     _validate_plan_references,
     _validate_ac_reasoning,
-    _print_kr_reminder,
+    _auto_update_kr,
 )
 from contracts import validate_contract, atomic_write_json
+from errors import ForgeError, ValidationError, PreconditionError
 from conftest import make_task
 
 
@@ -189,7 +190,7 @@ class TestStateTransitions:
         assert "compilation error" in reloaded["tasks"][0]["failed_reason"]
 
     def test_todo_to_skipped(self, forge_env, project_name):
-        """skip moves TODO -> SKIPPED."""
+        """skip moves TODO -> SKIPPED (requires --reason, feature needs --force)."""
         tracker = {
             "project": project_name,
             "goal": "Test",
@@ -199,30 +200,18 @@ class TestStateTransitions:
         }
         save_tracker(project_name, tracker)
 
-        args = SimpleNamespace(project=project_name, task_id="T-001")
+        args = SimpleNamespace(
+            project=project_name, task_id="T-001",
+            reason="This task is blocked by external dependency and cannot proceed at this time.",
+            force=True,
+        )
         cmd_skip(args)
 
         reloaded = load_tracker(project_name)
         assert reloaded["tasks"][0]["status"] == "SKIPPED"
+        assert reloaded["tasks"][0]["skip_reason"] is not None
 
-    def test_complete_with_force_bypasses_changes_check(self, forge_env, project_name):
-        """--force allows completing without recorded changes."""
-        task = make_task("T-001", "investigation", status="IN_PROGRESS")
-        tracker = {
-            "project": project_name,
-            "goal": "Test",
-            "created": "2025-01-01T00:00:00Z",
-            "updated": "2025-01-01T00:00:00Z",
-            "tasks": [task],
-        }
-        save_tracker(project_name, tracker)
-
-        args = SimpleNamespace(project=project_name, task_id="T-001",
-                               agent=None, force=True, reasoning="no changes needed")
-        cmd_complete(args)
-
-        reloaded = load_tracker(project_name)
-        assert reloaded["tasks"][0]["status"] == "DONE"
+    # test_complete_with_force_bypasses_changes_check removed: --force no longer exists
 
     def test_complete_without_changes_exits(self, forge_env, project_name):
         """Complete without --force and no changes recorded should exit."""
@@ -239,7 +228,7 @@ class TestStateTransitions:
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="",
                                ac_reasoning=None)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_complete(args)
 
     def test_complete_with_ac_requires_reasoning(self, forge_env, project_name):
@@ -268,7 +257,7 @@ class TestStateTransitions:
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="done",
                                ac_reasoning=None)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_complete(args)
 
     def test_complete_with_ac_and_reasoning_succeeds(self, forge_env, project_name):
@@ -296,7 +285,8 @@ class TestStateTransitions:
 
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="done",
-                               ac_reasoning="1. Feature X works: verified. 2. Tests pass: pytest green.")
+                               ac_reasoning="1. Feature X works: verified. 2. Tests pass: pytest green.",
+                               deferred="[]")
         cmd_complete(args)
 
         reloaded = load_tracker(project_name)
@@ -332,26 +322,7 @@ class TestStateTransitions:
         reloaded = load_tracker(project_name)
         assert reloaded["tasks"][0]["status"] == "DONE"
 
-    def test_complete_with_ac_force_bypasses(self, forge_env, project_name):
-        """--force bypasses AC reasoning requirement."""
-        task = make_task("T-001", "ac-force-task", status="IN_PROGRESS",
-                         acceptance_criteria=["Feature X works"])
-        tracker = {
-            "project": project_name,
-            "goal": "Test",
-            "created": "2025-01-01T00:00:00Z",
-            "updated": "2025-01-01T00:00:00Z",
-            "tasks": [task],
-        }
-        save_tracker(project_name, tracker)
-
-        args = SimpleNamespace(project=project_name, task_id="T-001",
-                               agent=None, force=True, reasoning="investigation only",
-                               ac_reasoning=None)
-        cmd_complete(args)
-
-        reloaded = load_tracker(project_name)
-        assert reloaded["tasks"][0]["status"] == "DONE"
+    # test_complete_with_ac_force_bypasses removed: --force no longer exists
 
     def test_ac_reasoning_stored_on_task(self, forge_env, project_name):
         """After complete with AC reasoning, task should have ac_reasoning field."""
@@ -376,10 +347,10 @@ class TestStateTransitions:
             ]},
         )
 
-        ac_text = "Criterion A met: verified in integration test"
+        ac_text = "AC 1: Criterion A met — PASS: verified via integration test in tests/test_criterion.py::test_a, returns 200 OK"
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                agent=None, force=False, reasoning="done",
-                               ac_reasoning=ac_text)
+                               ac_reasoning=ac_text, deferred="[]")
         cmd_complete(args)
 
         reloaded = load_tracker(project_name)
@@ -435,7 +406,7 @@ class TestAddTasksContract:
             project=project_name,
             data=json.dumps([{"id": "T-001", "name": "duplicate"}]),
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_add_tasks(args)
 
     def test_add_tasks_cmd_succeeds(self, forge_env, project_name):
@@ -450,8 +421,12 @@ class TestAddTasksContract:
         save_tracker(project_name, tracker)
 
         tasks_data = [
-            {"id": "T-001", "name": "first"},
-            {"id": "T-002", "name": "second", "depends_on": ["T-001"]},
+            {"id": "T-001", "name": "first", "acceptance_criteria": [
+                {"text": "task completes", "verification": "manual", "check": "verify output"}
+            ]},
+            {"id": "T-002", "name": "second", "depends_on": ["T-001"], "acceptance_criteria": [
+                {"text": "depends on T-001", "verification": "manual", "check": "check dependency"}
+            ]},
         ]
         args = SimpleNamespace(project=project_name, data=json.dumps(tasks_data))
         cmd_add_tasks(args)
@@ -476,7 +451,7 @@ class TestAddTasksContract:
             {"id": "T-002", "name": "b", "depends_on": ["T-001"]},
         ]
         args = SimpleNamespace(project=project_name, data=json.dumps(tasks_data))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_add_tasks(args)
 
 
@@ -657,9 +632,9 @@ class TestDraftPlan:
                 "created": "2025-01-01T00:00:00Z",
                 "tasks": [
                     {"id": "T-001", "name": "first",
-                     "acceptance_criteria": ["first task done"]},
+                     "acceptance_criteria": [{"text": "first task done", "verification": "manual", "check": "verify first task"}]},
                     {"id": "T-002", "name": "second", "depends_on": ["T-001"],
-                     "acceptance_criteria": ["second task done"]},
+                     "acceptance_criteria": [{"text": "second task done", "verification": "manual", "check": "verify second task"}]},
                 ],
             },
         }
@@ -685,7 +660,7 @@ class TestDraftPlan:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name)
-        with pytest.raises(SystemExit):
+        with pytest.raises(PreconditionError):
             cmd_approve_plan(args)
 
     def test_approve_plan_rejects_duplicate_ids(self, forge_env, project_name):
@@ -705,7 +680,7 @@ class TestDraftPlan:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_approve_plan(args)
 
     def test_draft_plan_with_idea_source(self, forge_env, project_name):
@@ -778,7 +753,7 @@ class TestSubtasks:
 
         args = SimpleNamespace(project=project_name, task_id="T-001",
                                data=json.dumps([{"id": "S-001", "name": "x"}]))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_register_subtasks(args)
 
     def test_complete_subtask(self, forge_env, project_name):
@@ -845,9 +820,9 @@ class TestAlignmentField:
         assert entry["alignment"] == alignment
 
     def test_build_task_entry_none_without_alignment(self):
-        """_build_task_entry sets alignment to None when not provided."""
+        """_build_task_entry omits alignment when not provided (None dropped by to_dict)."""
         entry = _build_task_entry({"id": "T-001", "name": "x"})
-        assert entry["alignment"] is None
+        assert "alignment" not in entry or entry.get("alignment") is None
 
 
 # ---------------------------------------------------------------------------
@@ -867,26 +842,50 @@ class TestACHardGate:
         tasks = [{"id": "T-001", "name": "x", "type": "bug"}]
         assert _warn_ac_quality(tasks) is True
 
-    def test_chore_without_ac_ok(self):
-        """_warn_ac_quality returns False for chore without AC."""
+    def test_chore_without_ac_blocked(self):
+        """_warn_ac_quality returns True for chore without AC (all tasks need AC)."""
         tasks = [{"id": "T-001", "name": "x", "type": "chore"}]
-        assert _warn_ac_quality(tasks) is False
+        assert _warn_ac_quality(tasks) is True
 
-    def test_investigation_without_ac_ok(self):
-        """_warn_ac_quality returns False for investigation without AC."""
+    def test_investigation_without_ac_blocked(self):
+        """_warn_ac_quality returns True for investigation without AC (all tasks need AC)."""
         tasks = [{"id": "T-001", "name": "x", "type": "investigation"}]
+        assert _warn_ac_quality(tasks) is True
+
+    def test_chore_with_ac_ok(self):
+        """_warn_ac_quality returns False for chore WITH AC."""
+        tasks = [{"id": "T-001", "name": "x", "type": "chore",
+                  "acceptance_criteria": [{"text": "cleanup done", "verification": "manual", "check": "verify files removed"}]}]
         assert _warn_ac_quality(tasks) is False
 
-    def test_feature_with_ac_ok(self):
-        """_warn_ac_quality returns False for feature with AC."""
+    def test_feature_with_structured_ac_ok(self):
+        """_warn_ac_quality returns False for feature with structured AC."""
+        tasks = [{"id": "T-001", "name": "x", "type": "feature",
+                  "acceptance_criteria": [{"text": "endpoint returns 200", "verification": "test", "test_path": "tests/test_api.py"}]}]
+        assert _warn_ac_quality(tasks) is False
+
+    def test_feature_with_plain_string_ac_errors(self):
+        """_warn_ac_quality returns True for feature with plain-string AC."""
         tasks = [{"id": "T-001", "name": "x", "type": "feature",
                   "acceptance_criteria": ["endpoint returns 200"]}]
+        assert _warn_ac_quality(tasks) is True
+
+    def test_ac_dict_without_verification_errors(self):
+        """_warn_ac_quality returns True for AC dict missing verification field."""
+        tasks = [{"id": "T-001", "name": "x", "type": "feature",
+                  "acceptance_criteria": [{"text": "endpoint returns 200"}]}]
+        assert _warn_ac_quality(tasks) is True
+
+    def test_manual_ac_without_check_warns(self):
+        """_warn_ac_quality returns False (warning only) for manual AC without check."""
+        tasks = [{"id": "T-001", "name": "x", "type": "feature",
+                  "acceptance_criteria": [{"text": "endpoint returns 200", "verification": "manual"}]}]
         assert _warn_ac_quality(tasks) is False
 
     def test_vague_ac_warns_but_no_error(self):
         """Vague AC triggers warning but not error (returns False)."""
         tasks = [{"id": "T-001", "name": "x", "type": "feature",
-                  "acceptance_criteria": ["error handling works correctly"]}]
+                  "acceptance_criteria": [{"text": "error handling works correctly", "verification": "manual"}]}]
         assert _warn_ac_quality(tasks) is False
 
     def test_approve_plan_rejects_feature_without_ac(self, forge_env, project_name):
@@ -906,11 +905,11 @@ class TestACHardGate:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ForgeError):
             cmd_approve_plan(args)
 
-    def test_approve_plan_accepts_chore_without_ac(self, forge_env, project_name):
-        """approve-plan allows chore task without AC."""
+    def test_approve_plan_rejects_chore_without_ac(self, forge_env, project_name):
+        """approve-plan rejects chore task without AC (all tasks need AC)."""
         tracker = {
             "project": project_name,
             "goal": "Test",
@@ -926,7 +925,8 @@ class TestACHardGate:
         save_tracker(project_name, tracker)
 
         args = SimpleNamespace(project=project_name)
-        cmd_approve_plan(args)
+        with pytest.raises(ForgeError):
+            cmd_approve_plan(args)
 
         reloaded = load_tracker(project_name)
         assert len(reloaded["tasks"]) == 1

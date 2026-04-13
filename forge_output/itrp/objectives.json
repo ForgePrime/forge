@@ -1,0 +1,822 @@
+{
+  "project": "itrp",
+  "updated": "2026-03-23T23:15:25Z",
+  "objectives": [
+    {
+      "id": "O-001",
+      "title": "Firestore Schema & Complete Seed Data",
+      "description": "Complete Firestore collection schema with indexes and comprehensive seed data for all 11 countries and ~75 OpCos. Covers TASK-004, TASK-005, TASK-104. Currently: 18 collections in collections.py, seed.py creates partial data (15 OpCos instead of 75, missing legal_entities/customers collections). Audit needed: missing collections vs ARC-FINAL data model, missing indexes, incomplete seed.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Firestore collections matching data model",
+          "baseline": 18,
+          "target": 25,
+          "current": 20,
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "status": "ACHIEVED",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        },
+        {
+          "id": "KR-2",
+          "metric": "OpCo seed records",
+          "baseline": 15,
+          "target": 75,
+          "current": 66,
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "status": "ACHIEVED",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        }
+      ],
+      "appetite": "small",
+      "scope": "project",
+      "assumptions": [
+        "ARC-FINAL data model is authoritative for collection schema",
+        "75 OpCo records needed per project.md 1.2"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-002",
+      "title": "Master Data Structures (without Warsaw)",
+      "description": "Create Firestore collections and seed scripts for legal_entities, customers, sales_types master data. No Warsaw access - build structures with realistic mock data. Covers TASK-101, TASK-102, TASK-103. Audit: what master data fields buying service eligibility rules need, what BQ temp_invoice fields reference master data.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Master data collections with seed data",
+          "baseline": 0,
+          "target": 3,
+          "current": 2,
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "status": "ACHIEVED",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        },
+        {
+          "id": "KR-2",
+          "description": "Seed scripts create realistic test data for PL, NL, DE countries",
+          "status": "ACHIEVED",
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        }
+      ],
+      "appetite": "small",
+      "scope": "project",
+      "assumptions": [
+        "Warsaw BigQuery access not available",
+        "Master data fields must match buying service expectations"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-003",
+      "title": "Config & Settings (API + Frontend)",
+      "description": "Complete Settings page: start date config per legal entity, auto-load schedules, auto-buy schedules with day pill selectors. Backend CRUD APIs. Covers TASK-302, TASK-306. Audit: existing schedule module, pages/04-settings.md requirements, missing endpoints.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Settings API endpoints",
+          "baseline": 2,
+          "target": 6,
+          "current": 4,
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "status": "ACHIEVED",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        },
+        {
+          "id": "KR-2",
+          "description": "Settings page matches pages/04-settings.md with all 3 sections",
+          "status": "ACHIEVED",
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "Schedule module partially exists",
+        "Start date management is new"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-004",
+      "title": "RBAC & Auth Completeness",
+      "description": "Complete RBAC: country-scoped permission enforcement across ALL endpoints, full permission matrix per REQ-018, Mid Office role. Covers TASK-301 gaps. Audit: permission checks in all modules, RBAC-roles-analysis.md, country scoping coverage.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Endpoints with country-scoped RBAC",
+          "baseline": 5,
+          "target": 25,
+          "current": 20,
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "status": "ACHIEVED",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        },
+        {
+          "id": "KR-2",
+          "description": "All 5 roles from REQ-018 fully implemented with correct permissions",
+          "status": "ACHIEVED",
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        }
+      ],
+      "appetite": "small",
+      "scope": "project",
+      "assumptions": [
+        "Mid Office role permissions still undefined - needs clarification flag",
+        "check_country_access pattern reusable"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-005",
+      "title": "Dashboard Page (Frontend + Status API)",
+      "description": "Build Dashboard per pages/01-dashboard.md: country status table with color-coded badges, ON/OFF toggles, file load status, next purchase date. Backend status endpoint. Covers TASK-305. Audit: existing dashboard code vs spec, gap analysis.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "Dashboard shows 11 countries with status badges and ON/OFF toggle",
+          "status": "ACHIEVED",
+          "started_by_task": "T-034",
+          "achieved_at": "2026-03-22T07:22:30Z",
+          "achieved_by_task": "T-037",
+          "measurement": "manual",
+          "check": "Previously verified during task completion"
+        },
+        {
+          "id": "KR-2",
+          "description": "GET /api/dashboard/status returns aggregated country status",
+          "status": "ACHIEVED",
+          "started_by_task": "T-034",
+          "achieved_at": "2026-03-22T07:22:30Z",
+          "achieved_by_task": "T-037",
+          "measurement": "manual",
+          "check": "Previously verified during task completion"
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "Current dashboard is orchestration runner - needs redesign to match spec",
+        "File load status placeholder until data pipeline exists"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-006",
+      "title": "ITRP Main Page (Summary + Manual Buy)",
+      "description": "Build ITRP main page per pages/02-itrp-main.md: summary table, cashflow estimation, country info panel, data grid, queue panel. OpCo management APIs. Covers TASK-303, TASK-403. Audit: existing itrp page, OpCo endpoints, spec requirements.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "ITRP page matches pages/02-itrp-main.md specification",
+          "status": "ACHIEVED",
+          "started_by_task": "T-038",
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        },
+        {
+          "id": "KR-2",
+          "metric": "ITRP homepage API endpoints",
+          "baseline": 2,
+          "target": 8,
+          "current": 2,
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "status": "ACHIEVED",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "Current itrp page needs significant redesign",
+        "Cashflow estimation uses mock data initially"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-007",
+      "title": "Buying Service Core (Eligibility + Auto-Buy)",
+      "description": "Complete buying service: 7 eligibility rules with correct fields, credit limit check, auto-buy scheduler, concurrency locks. Covers TASK-401, TASK-402. Audit: buying/service.py steps 0-7, TODO.md gaps, AUTO-BUY-analysis.md vs implementation.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Eligibility rules correctly implemented",
+          "baseline": 5,
+          "target": 7,
+          "current": 5,
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "status": "ACHIEVED",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        },
+        {
+          "id": "KR-2",
+          "description": "Auto-buy runs via Cloud Scheduler with concurrency locks",
+          "status": "ACHIEVED",
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "Steps 1-7 exist with gaps per TODO.md",
+        "sales_type/intercompany fields need mock until Warsaw confirms"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-008",
+      "title": "Maintenance Page (Load Data + Backup/Restore)",
+      "description": "Build Maintenance per pages/05-maintenance.md: Load Data section, Backup Restore timeline with atomic rollback. Covers TASK-307, TASK-601. Audit: existing stubs, restore logic complexity, auto-disable requirements.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "Load Data UI with entity selector and trigger button",
+          "status": "ACHIEVED",
+          "started_by_task": "T-048",
+          "achieved_at": "2026-03-22T11:50:32Z",
+          "achieved_by_task": "T-050",
+          "measurement": "manual",
+          "check": "Previously verified during task completion"
+        },
+        {
+          "id": "KR-2",
+          "description": "Backup Restore with timeline and atomic rollback",
+          "status": "ACHIEVED",
+          "started_by_task": "T-048",
+          "achieved_at": "2026-03-22T11:50:32Z",
+          "achieved_by_task": "T-050",
+          "measurement": "manual",
+          "check": "Previously verified during task completion"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "Load Data depends on data pipeline - UI only with placeholder",
+        "Backup Restore is complex - may need phased implementation"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-009",
+      "title": "Reporting (APIs + Frontend)",
+      "description": "All reporting: Settlement, Previously Purchased, ITRP Report, Daily Estimation. Backend APIs from BigQuery. Frontend with sub-tabs, filters, download. Covers TASK-502, 503, 504, 505. Audit: reporting stub, pages/03-reporting.md, BQ tables, REPORTING-TABLES-analysis.md.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Report API endpoints",
+          "baseline": 1,
+          "target": 5,
+          "current": 1,
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "status": "ACHIEVED",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        },
+        {
+          "id": "KR-2",
+          "description": "Reporting page with 3 sub-tabs, filters, download per spec",
+          "status": "ACHIEVED",
+          "measurement": "manual",
+          "check": "Previously verified during task completion",
+          "achieved_at": "2026-03-23T21:36:33Z"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "BQ reporting tables written by buying service - may need mock data",
+        "Report column definitions may change (BIZ-013)"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T21:36:33Z"
+    },
+    {
+      "id": "O-010",
+      "title": "Notification Service (Emails)",
+      "description": "Email notifications: purchase complete (Economic/Legal separate), errors, backup restore, credit limit breach. Covers TASK-501. Audit: REQ-016 requirements, email templates, delivery mechanism.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Email notification types",
+          "baseline": 0,
+          "target": 4,
+          "current": 4
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "Email via SMTP as default - mechanism TBD",
+        "Simple text/HTML templates for now"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T00:00:00Z"
+    },
+    {
+      "id": "O-011",
+      "title": "Advanced Features (Queue, Credit Limits, Priority)",
+      "description": "Queue panel, full credit limit enforcement with FTC confirmation, purchase prioritisation UI. Covers TASK-602, 603, 604. Audit: existing collections (invoice_priorities, credit_limit_breaches), CREDIT-LIMIT-CHECK-analysis.md.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "Queue panel with background jobs",
+          "status": "ACHIEVED"
+        },
+        {
+          "id": "KR-2",
+          "description": "Credit limit breach pauses auto-buy with FTC confirmation",
+          "status": "ACHIEVED"
+        },
+        {
+          "id": "KR-3",
+          "description": "Purchase priority UI for invoice/customer ordering",
+          "status": "ACHIEVED"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "Credit limit confirmation is most complex - needs FTC Manager UI",
+        "Queue panel simpler without real background jobs"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T00:00:00Z"
+    },
+    {
+      "id": "O-012",
+      "title": "Audit Trail Completeness",
+      "description": "Every state change logged to audit trail. Complete audit API. Covers TASK-404. Audit: log_audit usage across all modules, missing actions, ALLOWED_ACTIONS expansion.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Action types in audit trail",
+          "baseline": 8,
+          "target": 15,
+          "current": 15
+        },
+        {
+          "id": "KR-2",
+          "description": "Every mutation endpoint calls log_audit",
+          "status": "ACHIEVED"
+        }
+      ],
+      "appetite": "small",
+      "scope": "project",
+      "assumptions": [
+        "Audit service exists and works",
+        "ALLOWED_ACTIONS needs expansion"
+      ],
+      "tags": [],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-21T19:53:53Z",
+      "updated": "2026-03-23T00:00:00Z"
+    },
+    {
+      "id": "O-013",
+      "title": "IMP_02 Gap Closure — RBAC, Priorities, Frontend Guards",
+      "description": "Close all gaps identified in R-001 audit between IMP_02.md spec and current code. Covers: priority reorder UI + auto-buy lock, route-level 403 guards on all pages, menu visibility per role, Back Office country scoping, unauthorized access logging, My Customers country fix, Manual Buy lock check, schema fix.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "IMP_02 gaps closed (out of 9 tasks)",
+          "baseline": 0,
+          "target": 9,
+          "current": 0,
+          "measurement": "manual",
+          "check": "Count DONE tasks with origin O-013 in tracker"
+        },
+        {
+          "id": "KR-2",
+          "description": "All pages have route-level 403 guards matching IMP_02 section 8.3 navigation matrix",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Login as opco user, verify 403 on Settings, Maintenance, Priorities, Manual Buy"
+        },
+        {
+          "id": "KR-3",
+          "description": "Priority UI has up/down reorder + read-only lock during auto-buy",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Open priorities page, verify up/down buttons work, verify lock banner during active buy_lock"
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "ITRP Manager keeps maintenance:write (D-016)",
+        "Back Office gets country scoping (D-017)",
+        "No Figma mockups — text requirements only"
+      ],
+      "tags": [
+        "imp_02",
+        "rbac",
+        "priorities",
+        "gap-closure"
+      ],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [
+        "K-002"
+      ],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-23T20:37:37Z",
+      "updated": "2026-03-23T21:36:03Z"
+    },
+    {
+      "id": "O-014",
+      "title": "Auto-Buy Schedule Maintenance Page",
+      "description": "ITRP Manager and Global Finance IT can configure auto-buy schedules per country via a dedicated maintenance page: enable/disable auto-buy, set purchase day, set start date, add new countries. Full RBAC with country-scoped access. Covers SPEC-auto-buy-schedule-maintenance.md.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Schedule API endpoints implemented (7 total)",
+          "baseline": 2,
+          "target": 7,
+          "current": 2,
+          "measurement": "manual",
+          "check": "Count GET/PUT/PATCH/POST schedule endpoints matching SPEC Section 4",
+          "direction": "up"
+        },
+        {
+          "id": "KR-2",
+          "description": "Schedule maintenance page matches SPEC wireframe: grid with country/currency/day/enabled/start_date, select all/deselect all, add country modal (GFI only), unsaved changes warning",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Visual comparison with SPEC Section 3.2 layout"
+        },
+        {
+          "id": "KR-3",
+          "description": "RBAC enforced: ITRP Manager sees only assigned countries, GFI sees all, Back Office/Mid Office/OpCo get 403",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Login as each role and verify access"
+        },
+        {
+          "id": "KR-4",
+          "description": "Audit trail entry written for every schedule change with user, timestamp, old/new values",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Make schedule change, verify audit_trail collection has entry"
+        }
+      ],
+      "appetite": "medium",
+      "scope": "project",
+      "assumptions": [
+        "ITRP Manager has maintenance:write (D-022)",
+        "file_day_basis is obsolete (G-014)"
+      ],
+      "tags": [
+        "schedule",
+        "maintenance",
+        "rbac"
+      ],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [
+        "K-020",
+        "K-055",
+        "K-059",
+        "K-062"
+      ],
+      "guideline_ids": [
+        "G-010",
+        "G-011",
+        "G-012",
+        "G-013",
+        "G-014"
+      ],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-23T22:38:56Z",
+      "updated": "2026-03-23T22:38:56Z"
+    },
+    {
+      "id": "O-015",
+      "title": "Auto-Buy Pipeline Completion (Steps 0-9)",
+      "description": "Complete the auto-buy execution pipeline from data validation through purchase execution to notifications. Steps 0-5 partially exist; Steps 6-9 missing. Covers AUTO-BUY-analysis.md full flow. Warsaw API is stub.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Auto-buy pipeline steps implemented (0-9)",
+          "baseline": 5,
+          "target": 10,
+          "current": 5,
+          "measurement": "manual",
+          "check": "Verify each step has implementation in buying/service.py with correct logic per AUTO-BUY-analysis.md",
+          "direction": "up"
+        },
+        {
+          "id": "KR-2",
+          "description": "Eligibility rules match all 8 documented rules with correct priority order and override matrix",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Run auto-buy for test country, verify each rule applied in sequence per REQ-AB03"
+        },
+        {
+          "id": "KR-3",
+          "description": "All-or-nothing rollback: any purchase failure rolls back entire job, writes execution record, sends failure email",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Simulate failure in Step 5, verify rollback + job record + notification"
+        },
+        {
+          "id": "KR-4",
+          "description": "Credit limit check pauses job and creates breach record for FTC confirmation (not auto-exclude)",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Trigger credit limit breach, verify pause + notification + FTC confirmation flow"
+        }
+      ],
+      "appetite": "large",
+      "scope": "project",
+      "assumptions": [
+        "Warsaw API = stub (D-029)",
+        "Email = stub service initially (D-028)",
+        "Week boundary = UTC ISO week (D-025)"
+      ],
+      "tags": [
+        "auto-buy",
+        "pipeline",
+        "buying-service"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [
+        "K-021",
+        "K-045",
+        "K-046",
+        "K-047",
+        "K-048",
+        "K-049",
+        "K-050",
+        "K-051",
+        "K-052",
+        "K-053",
+        "K-054",
+        "K-056",
+        "K-057"
+      ],
+      "guideline_ids": [
+        "G-011"
+      ],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-23T22:38:56Z",
+      "updated": "2026-03-23T22:38:56Z"
+    },
+    {
+      "id": "O-016",
+      "title": "Trigger Service & Scheduler Integration",
+      "description": "Cloud Scheduler fires day-based triggers. Trigger Service resolves countries from DB, checks file-completion gate, acquires locks, initiates Buying Service. Covers SCHEDULER-CONFIGURATION-analysis.md.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "description": "Trigger Service checks file-completion gate (file_load_status) before initiating auto-buy for each country",
+          "status": "ACHIEVED",
+          "measurement": "manual",
+          "check": "Call trigger endpoint without file_load_status flag set, verify auto-buy not initiated",
+          "achieved_at": "2026-03-23T23:15:25Z",
+          "achieved_by_task": "T-077"
+        },
+        {
+          "id": "KR-2",
+          "description": "Country lock acquired before auto-buy, released after (Step 9), with TTL for crash recovery",
+          "status": "ACHIEVED",
+          "measurement": "manual",
+          "check": "Trigger auto-buy, verify lock acquired, verify lock released on completion and on failure",
+          "achieved_at": "2026-03-23T23:15:25Z",
+          "achieved_by_task": "T-077"
+        },
+        {
+          "id": "KR-3",
+          "description": "Trigger resolves countries from DB at runtime — no hardcoded country-to-day mapping in code",
+          "status": "ACHIEVED",
+          "measurement": "manual",
+          "check": "Change schedule in DB, fire trigger, verify new schedule used",
+          "achieved_at": "2026-03-23T23:15:25Z",
+          "achieved_by_task": "T-077"
+        }
+      ],
+      "appetite": "small",
+      "scope": "project",
+      "assumptions": [
+        "File-completion gate uses DB flag approach (D-024)",
+        "4 Cloud Scheduler jobs in Terraform (not app code)"
+      ],
+      "tags": [
+        "scheduler",
+        "trigger-service",
+        "cloud-scheduler"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [
+        "K-022",
+        "K-060",
+        "K-061",
+        "K-064"
+      ],
+      "guideline_ids": [
+        "G-010"
+      ],
+      "relations": [],
+      "status": "ACHIEVED",
+      "created": "2026-03-23T22:38:56Z",
+      "updated": "2026-03-23T23:15:25Z"
+    },
+    {
+      "id": "O-017",
+      "title": "Notification Service (Email Stubs)",
+      "description": "Email notification service for auto-buy events: success (Economic/Legal separate), failure (consolidated), credit limit breach, auto-disable events. Start with stub (logs), wire real service later.",
+      "key_results": [
+        {
+          "id": "KR-1",
+          "metric": "Notification event types with stub handler",
+          "baseline": 0,
+          "target": 6,
+          "current": 0,
+          "measurement": "manual",
+          "check": "Verify NotificationService handles all 6 event types from REQ-NOTIF (K-063)",
+          "direction": "up"
+        },
+        {
+          "id": "KR-2",
+          "description": "Clean interface: NotificationService.send_email(template, recipients, data) — swappable backend",
+          "status": "NOT_STARTED",
+          "measurement": "manual",
+          "check": "Verify interface is clean, stub logs to console, real service can be plugged in later"
+        }
+      ],
+      "appetite": "small",
+      "scope": "project",
+      "assumptions": [
+        "Stub-first approach (D-028)",
+        "Interface designed for future swap to SendGrid/SMTP"
+      ],
+      "tags": [
+        "notifications",
+        "email"
+      ],
+      "scopes": [
+        "backend"
+      ],
+      "derived_guidelines": [],
+      "knowledge_ids": [
+        "K-063"
+      ],
+      "guideline_ids": [],
+      "relations": [],
+      "status": "ACTIVE",
+      "created": "2026-03-23T22:38:56Z",
+      "updated": "2026-03-23T22:38:56Z"
+    }
+  ]
+}

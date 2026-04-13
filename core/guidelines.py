@@ -22,74 +22,16 @@ Commands:
 """
 
 import argparse
-import json
-import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
-# Import contracts from sibling module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contracts import render_contract, validate_contract, atomic_write_json
 
-if sys.platform == "win32":
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
-
-
-# -- Paths --
-
-def guidelines_path(project: str) -> Path:
-    return Path("forge_output") / project / "guidelines.json"
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def load_or_create(project: str) -> dict:
-    path = guidelines_path(project)
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {
-        "project": project,
-        "updated": now_iso(),
-        "guidelines": [],
-    }
-
-
-def save_json(project: str, data: dict):
-    path = guidelines_path(project)
-    data["updated"] = now_iso()
-    atomic_write_json(path, data)
-
-
-def validate_scope(scope: str) -> str:
-    """Validate and normalize scope. Max 3 levels (domain/area/detail)."""
-    scope = scope.lower().strip()
-    parts = scope.split("/")
-    if len(parts) > 3:
-        print(f"ERROR: Scope '{scope}' exceeds max depth of 3 (domain/area/detail)", file=sys.stderr)
-        sys.exit(1)
-    # Validate each part is non-empty
-    for p in parts:
-        if not p.strip():
-            print(f"ERROR: Scope '{scope}' has empty segments", file=sys.stderr)
-            sys.exit(1)
-    return scope
-
-
-def scope_matches(guideline_scope: str, task_scopes: set) -> bool:
-    """Check if guideline scope applies to any task scope.
-    Parent scopes apply to children: 'backend' matches 'backend/api/auth'.
-    """
-    for ts in task_scopes:
-        if ts == guideline_scope or ts.startswith(guideline_scope + "/"):
-            return True
-    return False
+from entity_base import EntityModule, make_cli
+from errors import EntityNotFound
+from models import Guideline
+from storage import JSONFileStorage, now_iso
+from trace import trace_cmd
 
 
 # -- Contracts --
@@ -107,7 +49,7 @@ CONTRACTS = {
         },
         "invariant_texts": [
             "title: concise name for the guideline (e.g., 'Repository Pattern for data access')",
-            "scope: area this applies to — supports hierarchy up to 3 levels (e.g., 'backend', 'backend/api', 'backend/api/auth'). Lowercase. Parent scopes apply to children.",
+            "scope: area this applies to — open string, lowercase (e.g., 'backend', 'database', 'frontend', 'api', 'testing', 'general')",
             "content: the actual guideline — what to do and how",
             "rationale: WHY this guideline exists",
             "examples: concrete code or pattern examples",
@@ -163,201 +105,118 @@ CONTRACTS = {
 }
 
 
-# -- Commands --
+# -- Module --
 
-def cmd_add(args):
-    """Add guidelines to the registry."""
-    try:
-        new_guidelines = json.loads(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+class Guidelines(EntityModule):
+    entity_type = "guidelines"
+    list_key = "guidelines"
+    id_prefix = "G"
+    display_name = "Guidelines"
+    contracts = CONTRACTS
+    dedup_keys = ("scope", "title")
+    model_class = Guideline
 
-    if not isinstance(new_guidelines, list):
-        print("ERROR: --data must be a JSON array", file=sys.stderr)
-        sys.exit(1)
-
-    errors = validate_contract(CONTRACTS["add"], new_guidelines)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    timestamp = now_iso()
-
-    # Find next G-NNN ID
-    existing_ids = [
-        int(g["id"].split("-")[1]) for g in data.get("guidelines", [])
-        if g.get("id", "").startswith("G-")
-    ]
-    next_id = max(existing_ids, default=0) + 1
-
-    # Dedup by (scope, title) — normalized
-    existing_keys = {
-        (g.get("scope", "").lower().strip(), g.get("title", "").lower().strip())
-        for g in data.get("guidelines", [])
-    }
-
-    added = []
-    skipped = []
-    for g in new_guidelines:
-        scope = validate_scope(g["scope"])
-        key = (scope, g["title"].lower().strip())
-        if key in existing_keys:
-            skipped.append(f"Duplicate: {g['title'][:50]}")
-            continue
-
-        guideline = {
-            "id": f"G-{next_id:03d}",
-            "title": g["title"],
-            "scope": scope,
-            "content": g["content"],
-            "rationale": g.get("rationale", ""),
-            "examples": g.get("examples", []),
-            "tags": g.get("tags", []),
-            "weight": g.get("weight", "should"),
-            "derived_from": g.get("derived_from", ""),
+    def build_entity(self, input_item, entity_id, timestamp, args):
+        return {
+            "id": entity_id,
+            "title": input_item["title"],
+            "scope": input_item["scope"].lower().strip(),
+            "content": input_item["content"],
+            "rationale": input_item.get("rationale", ""),
+            "examples": input_item.get("examples", []),
+            "tags": input_item.get("tags", []),
+            "weight": input_item.get("weight", "should"),
+            "derived_from": input_item.get("derived_from", ""),
             "status": "ACTIVE",
             "created": timestamp,
             "updated": timestamp,
         }
 
-        data["guidelines"].append(guideline)
-        existing_keys.add(key)
-        added.append(guideline["id"])
-        next_id += 1
+    def print_add_summary(self, project, data, added, skipped):
+        active_count = sum(1 for g in self.items(data) if g.get("status") == "ACTIVE")
+        print(f"Guidelines saved: {project}")
+        if added:
+            print(f"  Added: {len(added)} ({', '.join(added)})")
+        if skipped:
+            print(f"  Skipped (duplicate): {len(skipped)}")
+        print(f"  Total: {len(self.items(data))} | Active: {active_count}")
 
-    save_json(args.project, data)
+    def apply_filters(self, items, args):
+        if getattr(args, "scope", None):
+            items = [g for g in items if g.get("scope") == args.scope.lower().strip()]
+        if getattr(args, "status", None):
+            items = [g for g in items if g.get("status") == args.status]
+        if getattr(args, "weight", None):
+            items = [g for g in items if g.get("weight") == args.weight]
+        return items
 
-    active_count = sum(1 for g in data["guidelines"] if g.get("status") == "ACTIVE")
-    print(f"Guidelines saved: {args.project}")
-    if added:
-        print(f"  Added: {len(added)} ({', '.join(added)})")
-    if skipped:
-        print(f"  Skipped (duplicate): {len(skipped)}")
-    print(f"  Total: {len(data['guidelines'])} | Active: {active_count}")
-
-
-def cmd_read(args):
-    """Read guidelines (optionally filtered)."""
-    path = guidelines_path(args.project)
-    if not path.exists():
-        print(f"No guidelines for '{args.project}' yet.")
-        return
-
-    data = json.loads(path.read_text(encoding="utf-8"))
-    guidelines = data.get("guidelines", [])
-
-    # Filter
-    if args.scope:
-        guidelines = [g for g in guidelines if g.get("scope") == args.scope.lower().strip()]
-    if args.status:
-        guidelines = [g for g in guidelines if g.get("status") == args.status]
-    if args.weight:
-        guidelines = [g for g in guidelines if g.get("weight") == args.weight]
-
-    # Sort by ID
-    guidelines.sort(key=lambda g: g.get("id", ""))
-
-    # Render
-    print(f"## Guidelines: {args.project}")
-    filters = []
-    if args.scope:
-        filters.append(f"scope={args.scope}")
-    if args.status:
-        filters.append(f"status={args.status}")
-    if args.weight:
-        filters.append(f"weight={args.weight}")
-    if filters:
-        print(f"Filter: {', '.join(filters)}")
-    print(f"Count: {len(guidelines)}")
-    print()
-
-    if not guidelines:
-        print("(none)")
-        return
-
-    print("| ID | Scope | Weight | Title | Status |")
-    print("|----|-------|--------|-------|--------|")
-    for g in guidelines:
-        title = g.get("title", "")[:50]
-        print(f"| {g['id']} | {g.get('scope', '')} | {g.get('weight', '')} | {title} | {g.get('status', '')} |")
-
-    # Show full content below table
-    print()
-    for g in guidelines:
-        print(f"### {g['id']}: {g['title']}")
-        derived = f" | **Derived from**: {g['derived_from']}" if g.get("derived_from") else ""
-        print(f"**Scope**: {g['scope']} | **Weight**: {g['weight']} | **Status**: {g['status']}{derived}")
-        print()
-        print(g.get("content", ""))
-        if g.get("rationale"):
-            print()
-            print(f"**Rationale**: {g['rationale']}")
-        if g.get("examples"):
-            print()
-            print("**Examples**:")
-            for ex in g["examples"]:
-                print(f"  - {ex}")
+    def render_list(self, items, args):
+        print(f"## Guidelines: {args.project}")
+        filters = []
+        if getattr(args, "scope", None):
+            filters.append(f"scope={args.scope}")
+        if getattr(args, "status", None):
+            filters.append(f"status={args.status}")
+        if getattr(args, "weight", None):
+            filters.append(f"weight={args.weight}")
+        if filters:
+            print(f"Filter: {', '.join(filters)}")
+        print(f"Count: {len(items)}")
         print()
 
+        if not items:
+            print("(none)")
+            return
 
-def cmd_update(args):
-    """Update guideline fields."""
-    try:
-        updates = json.loads(args.data)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        print("| ID | Scope | Weight | Title | Status |")
+        print("|----|-------|--------|-------|--------|")
+        for g in items:
+            title = g.get("title", "")[:50]
+            print(f"| {g['id']} | {g.get('scope', '')} | {g.get('weight', '')} | {title} | {g.get('status', '')} |")
 
-    if not isinstance(updates, list):
-        updates = [updates]
+        # Show full content below table
+        print()
+        for g in items:
+            print(f"### {g['id']}: {g['title']}")
+            derived = f" | **Derived from**: {g['derived_from']}" if g.get("derived_from") else ""
+            print(f"**Scope**: {g['scope']} | **Weight**: {g['weight']} | **Status**: {g['status']}{derived}")
+            print()
+            print(g.get("content", ""))
+            if g.get("rationale"):
+                print()
+                print(f"**Rationale**: {g['rationale']}")
+            if g.get("examples"):
+                print()
+                print("**Examples**:")
+                for ex in g["examples"]:
+                    print(f"  - {ex}")
+            print()
 
-    errors = validate_contract(CONTRACTS["update"], updates)
-    if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
-
-    data = load_or_create(args.project)
-    guidelines_by_id = {g["id"]: g for g in data.get("guidelines", [])}
-    timestamp = now_iso()
-
-    updated = []
-    for u in updates:
-        g_id = u["id"]
-        if g_id not in guidelines_by_id:
-            print(f"  WARNING: Guideline {g_id} not found, skipping", file=sys.stderr)
-            continue
-
-        g = guidelines_by_id[g_id]
-        updatable = ["title", "content", "status", "rationale", "scope",
-                      "examples", "tags", "weight", "derived_from"]
+    def apply_update(self, item, update, timestamp):
+        updatable = ["title", "scope", "content", "rationale",
+                      "examples", "tags", "weight", "status", "derived_from"]
         for field in updatable:
-            if field in u:
+            if field in update:
                 if field == "scope":
-                    g[field] = u[field].lower().strip()
+                    item[field] = update[field].lower().strip()
                 else:
-                    g[field] = u[field]
-        g["updated"] = timestamp
-        updated.append(g_id)
+                    item[field] = update[field]
+        item["updated"] = timestamp
 
-    # Update in-place (preserve original list order)
-    for g in data.get("guidelines", []):
-        if g["id"] in guidelines_by_id:
-            g.update(guidelines_by_id[g["id"]])
-    save_json(args.project, data)
 
-    active_count = sum(1 for g in data["guidelines"] if g.get("status") == "ACTIVE")
-    print(f"Updated {len(updated)} guidelines: {args.project}")
-    for g_id in updated:
-        g = guidelines_by_id[g_id]
-        print(f"  {g_id}: {g.get('title', '')[:40]} ({g.get('status', '')})")
-    print(f"  Active: {active_count}")
+_mod = Guidelines()
 
+# Public API used by other modules
+load_or_create = _mod.load
+save_json = _mod.save
+
+# Test compatibility exports
+cmd_add = _mod.cmd_add
+cmd_read = _mod.cmd_read
+cmd_update = _mod.cmd_update
+
+
+# -- Custom commands (standalone) --
 
 def render_guidelines_context(active_guidelines: list, scopes: set, project: str = "",
                                global_guidelines: list = None) -> list:
@@ -378,13 +237,13 @@ def render_guidelines_context(active_guidelines: list, scopes: set, project: str
     # Global guidelines: always included (bypass scope filter)
     # Project guidelines: filtered by scope
     must = [g for g in global_guidelines if g.get("weight") == "must"]
-    must += [g for g in active_guidelines if g.get("weight") == "must" and scope_matches(g.get("scope", ""), scopes)]
+    must += [g for g in active_guidelines if g.get("weight") == "must" and g.get("scope") in scopes]
 
     should = [g for g in global_guidelines if g.get("weight") == "should"]
-    should += [g for g in active_guidelines if g.get("weight") == "should" and scope_matches(g.get("scope", ""), scopes)]
+    should += [g for g in active_guidelines if g.get("weight") == "should" and g.get("scope") in scopes]
 
     may = [g for g in global_guidelines if g.get("weight") == "may"]
-    may += [g for g in active_guidelines if g.get("weight") == "may" and scope_matches(g.get("scope", ""), scopes)]
+    may += [g for g in active_guidelines if g.get("weight") == "may" and g.get("scope") in scopes]
 
     total = len(must) + len(should) + len(may)
     if total == 0:
@@ -424,18 +283,17 @@ def render_guidelines_context(active_guidelines: list, scopes: set, project: str
 
 def cmd_context(args):
     """Output formatted guidelines for LLM context injection."""
+    storage = JSONFileStorage()
+
     # Load global guidelines (bypass scope filter) and project guidelines (scope-filtered)
     global_active = []
     if args.project != "_global":
-        global_path = guidelines_path("_global")
-        if global_path.exists():
-            g_global = json.loads(global_path.read_text(encoding="utf-8"))
-            global_active = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
+        g_global = storage.load_global('guidelines')
+        global_active = [g for g in g_global.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     project_active = []
-    path = guidelines_path(args.project)
-    if path.exists():
-        data = json.loads(path.read_text(encoding="utf-8"))
+    if storage.exists(args.project, 'guidelines'):
+        data = storage.load_data(args.project, 'guidelines')
         project_active = [g for g in data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     if not global_active and not project_active:
@@ -454,12 +312,12 @@ def cmd_context(args):
 
 def cmd_scopes(args):
     """List unique scopes in the project."""
-    path = guidelines_path(args.project)
-    if not path.exists():
+    storage = JSONFileStorage()
+    if not storage.exists(args.project, 'guidelines'):
         print(f"No guidelines for '{args.project}' yet.")
         return
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = storage.load_data(args.project, 'guidelines')
     guidelines = data.get("guidelines", [])
 
     scope_counts = {}
@@ -483,12 +341,11 @@ def cmd_scopes(args):
 
 def cmd_import(args):
     """Import guidelines from another project into this one."""
-    source_path = guidelines_path(args.source)
-    if not source_path.exists():
-        print(f"ERROR: No guidelines found in project '{args.source}'", file=sys.stderr)
-        sys.exit(1)
+    storage = JSONFileStorage()
+    if not storage.exists(args.source, 'guidelines'):
+        raise EntityNotFound(f"No guidelines found in project '{args.source}'")
 
-    source_data = json.loads(source_path.read_text(encoding="utf-8"))
+    source_data = storage.load_data(args.source, 'guidelines')
     source_guidelines = [g for g in source_data.get("guidelines", []) if g.get("status") == "ACTIVE"]
 
     if not source_guidelines:
@@ -497,7 +354,7 @@ def cmd_import(args):
 
     # Filter by scope if specified
     if args.scope:
-        scope_filter = validate_scope(args.scope)
+        scope_filter = args.scope.lower()
         source_guidelines = [g for g in source_guidelines if g.get("scope", "").lower() == scope_filter]
         if not source_guidelines:
             print(f"No active guidelines with scope '{args.scope}' in '{args.source}'.")
@@ -543,6 +400,9 @@ def cmd_import(args):
     if imported:
         save_json(args.project, target_data)
 
+    trace_cmd(args.project, "guidelines", "import",
+              source=args.source, imported_count=len(imported))
+
     print(f"Guidelines imported: {args.source} → {args.project}")
     print(f"  Imported: {len(imported)} ({', '.join(imported)})")
     if skipped:
@@ -550,34 +410,18 @@ def cmd_import(args):
     print(f"  Total in {args.project}: {len(target_data['guidelines'])}")
 
 
-def cmd_contract(args):
-    """Print contract spec for a command."""
-    if args.name not in CONTRACTS:
-        print(f"ERROR: Unknown contract '{args.name}'", file=sys.stderr)
-        print(f"Available: {', '.join(sorted(CONTRACTS.keys()))}", file=sys.stderr)
-        sys.exit(1)
-    print(render_contract(args.name, CONTRACTS[args.name]))
-
-
 # -- CLI --
 
-def main():
-    parser = argparse.ArgumentParser(description="Forge Guidelines -- project standards registry")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("add", help="Add guidelines")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
-
-    p = sub.add_parser("read", help="Read guidelines")
-    p.add_argument("project")
-    p.add_argument("--scope", help="Filter by scope")
-    p.add_argument("--status", help="Filter by status")
-    p.add_argument("--weight", help="Filter by weight")
-
-    p = sub.add_parser("update", help="Update guidelines")
-    p.add_argument("project")
-    p.add_argument("--data", required=True)
+def _setup_extra_parsers(sub):
+    # Add extra args to the 'read' parser — we need to get it from the subparsers
+    # Since make_cli creates 'read' before calling this, we access it via choices
+    read_parser = sub.choices.get("read")
+    if read_parser:
+        read_parser.add_argument("--scope", help="Filter by scope")
+        read_parser.add_argument("--status", choices=["ACTIVE", "DEPRECATED"],
+                                  help="Filter by status")
+        read_parser.add_argument("--weight", choices=["must", "should", "may"],
+                                  help="Filter by weight")
 
     p = sub.add_parser("context", help="Formatted guidelines for LLM context")
     p.add_argument("project")
@@ -591,22 +435,18 @@ def main():
     p.add_argument("--source", required=True, help="Source project to import from")
     p.add_argument("--scope", help="Only import guidelines with this scope")
 
-    p = sub.add_parser("contract", help="Print contract spec")
-    p.add_argument("name", choices=sorted(CONTRACTS.keys()))
 
-    args = parser.parse_args()
-
-    commands = {
-        "add": cmd_add,
-        "read": cmd_read,
-        "update": cmd_update,
-        "context": cmd_context,
-        "scopes": cmd_scopes,
-        "import": cmd_import,
-        "contract": cmd_contract,
-    }
-
-    commands[args.command](args)
+def main():
+    make_cli(
+        _mod,
+        extra_commands={
+            "context": cmd_context,
+            "scopes": cmd_scopes,
+            "import": cmd_import,
+        },
+        setup_extra_parsers=_setup_extra_parsers,
+        description="Forge Guidelines -- project standards registry",
+    )
 
 
 if __name__ == "__main__":

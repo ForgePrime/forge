@@ -32,12 +32,9 @@ except ImportError:
     psycopg2 = None  # type: ignore
     pgsql = None  # type: ignore
 
-if sys.platform == "win32":
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _compat import configure_encoding
+configure_encoding()
 
 
 # -----------------------------------------------------------------------
@@ -542,14 +539,14 @@ def load_json_file(path: Path) -> dict | None:
 
 def cmd_import(args):
     """Import a JSON project into PostgreSQL."""
+    from errors import PreconditionError, EntityNotFound
+
     if psycopg2 is None:
-        print("ERROR: psycopg2 not installed.", file=sys.stderr)
-        sys.exit(1)
+        raise PreconditionError("psycopg2 not installed.")
 
     source_dir = Path(args.source)
     if not source_dir.is_dir():
-        print(f"ERROR: Source directory not found: {source_dir}", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"Source directory not found: {source_dir}")
 
     database_url = args.database_url or os.environ.get(
         "DATABASE_URL", "postgresql://forge:forge@localhost:5432/forge_db"
@@ -558,8 +555,7 @@ def cmd_import(args):
     # Detect project slug from tracker.json
     tracker_data = load_json_file(source_dir / "tracker.json")
     if tracker_data is None:
-        print(f"ERROR: No tracker.json found in {source_dir}", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"No tracker.json found in {source_dir}")
 
     project_slug = tracker_data.get("project", source_dir.name)
     print(f"## Forge Migrate: {project_slug}")
@@ -790,8 +786,8 @@ def cmd_import(args):
 
     except Exception as e:
         conn.rollback()
-        print(f"ERROR: Import failed: {e}", file=sys.stderr)
-        sys.exit(1)
+        from errors import ForgeError
+        raise ForgeError(f"Import failed: {e}")
     finally:
         conn.close()
 
@@ -800,8 +796,8 @@ def cmd_status(args):
     """Show what would be imported from a project directory."""
     source_dir = Path(args.source)
     if not source_dir.is_dir():
-        print(f"ERROR: Source directory not found: {source_dir}", file=sys.stderr)
-        sys.exit(1)
+        from errors import EntityNotFound
+        raise EntityNotFound(f"Source directory not found: {source_dir}")
 
     print(f"## Migration Status: {source_dir}")
     print()
@@ -854,7 +850,12 @@ def main():
         "status": cmd_status,
     }
 
-    commands[args.command](args)
+    from errors import ForgeError
+    try:
+        commands[args.command](args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

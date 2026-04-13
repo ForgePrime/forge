@@ -52,6 +52,14 @@ Print the following guide:
 | `/log` | See full audit trail: changes, decisions, timeline. |
 | `/compound` | After project completion — extract lessons learned for future use. |
 
+### Documentation Pipeline
+
+| Command | When to use |
+|---------|-------------|
+| `/ingest [path]` | Register source documents, extract structured facts, detect conflicts and assumptions. |
+| `/analyze` | After ingestion — resolve decisions, group requirements into objectives with measurable KR. |
+| `/change-request {desc}` | During execution — new/changed requirements arrived, assess impact and update plan. |
+
 ### Special
 
 | Command | When to use |
@@ -75,9 +83,19 @@ Print the following guide:
 /plan {goal} → /run → /compound
 ```
 
+**From documentation** (requirements-driven):
+```
+/ingest → /analyze → /plan → /run → /compound
+```
+
 **Full** (complex/risky work):
 ```
 /objective → /idea → /discover → /decide → /plan → /run → /compound
+```
+
+**Mid-flight changes**:
+```
+/change-request {description} → impact assessed → plan updated
 ```
 
 When in doubt, start with `/task`. Escalate to `/plan` if it gets complex.

@@ -11,6 +11,8 @@ Architecture:
     (which are synchronous). The FastAPI layer uses asyncpg separately.
   - Connection pooling via psycopg2.pool.ThreadedConnectionPool.
   - Entity type → table name mapping with row↔dict converters.
+  - Single-source-of-truth column registry (ColDef) — adding a column
+    is a one-line change.
 
 Reference: docs/FORGE-PLATFORM-V2.md Section 7.1
 """
@@ -20,7 +22,9 @@ from __future__ import annotations
 import json
 import os
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Optional
 
 from core.storage import (
@@ -51,12 +55,263 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
+# Column registry — single source of truth for DB ↔ JSON mapping
+# ---------------------------------------------------------------------------
+
+class ColType(Enum):
+    TEXT = "text"
+    INT = "int"
+    BOOL = "bool"
+    JSONB = "jsonb"
+    TEXT_ARRAY = "text[]"
+    TIMESTAMP = "timestamp"
+
+
+@dataclass(frozen=True)
+class ColDef:
+    """Definition of a single database column and its JSON mapping.
+
+    name:     DB column name (e.g. "ext_id", "created_at")
+    col_type: PostgreSQL type category
+    json_key: JSON key if different from DB name. Empty string = same as name.
+              Special value "id" maps ext_id ↔ id.
+    """
+    name: str
+    col_type: ColType
+    json_key: str = ""
+
+    @property
+    def json_name(self) -> str:
+        return self.json_key or self.name
+
+
+class TableMeta:
+    """Derived metadata for a table, computed once from its ColDef list."""
+
+    def __init__(self, columns: list[ColDef]):
+        self.columns = columns
+        self.known_cols = {c.name for c in columns}
+        self.jsonb_cols = {c.name for c in columns if c.col_type == ColType.JSONB}
+        self.array_cols = {c.name for c in columns if c.col_type == ColType.TEXT_ARRAY}
+        self.ts_cols = {c.name for c in columns if c.col_type == ColType.TIMESTAMP}
+        self.has_updated_at = "updated_at" in self.known_cols
+        # JSON key → DB column (for keys that differ)
+        self.json_to_db = {
+            c.json_key: c.name
+            for c in columns
+            if c.json_key and c.json_key != c.name
+        }
+        # DB column → JSON key (for keys that differ)
+        self.db_to_json = {
+            c.name: c.json_key
+            for c in columns
+            if c.json_key and c.json_key != c.name
+        }
+
+
+# ---------------------------------------------------------------------------
+# Per-table column definitions
+# ---------------------------------------------------------------------------
+
+_TASKS_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("name", ColType.TEXT),
+    ColDef("description", ColType.TEXT),
+    ColDef("instruction", ColType.TEXT),
+    ColDef("type", ColType.TEXT),
+    ColDef("status", ColType.TEXT),
+    ColDef("origin", ColType.TEXT),
+    ColDef("origin_idea_id", ColType.TEXT),
+    ColDef("skill", ColType.TEXT),
+    ColDef("parallel", ColType.BOOL),
+    ColDef("acceptance_criteria", ColType.JSONB),
+    ColDef("test_requirements", ColType.JSONB),
+    ColDef("depends_on", ColType.TEXT_ARRAY),
+    ColDef("conflicts_with", ColType.TEXT_ARRAY),
+    ColDef("knowledge_ids", ColType.TEXT_ARRAY),
+    ColDef("scopes", ColType.TEXT_ARRAY),
+    ColDef("blocked_by_decisions", ColType.TEXT_ARRAY),
+    ColDef("agent", ColType.TEXT),
+    ColDef("failed_reason", ColType.TEXT),
+    ColDef("started_at", ColType.TIMESTAMP),
+    ColDef("completed_at", ColType.TIMESTAMP),
+    ColDef("created_at", ColType.TIMESTAMP),
+    ColDef("updated_at", ColType.TIMESTAMP),
+]
+
+_DECISIONS_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("task_id", ColType.TEXT),
+    ColDef("type", ColType.TEXT),
+    ColDef("status", ColType.TEXT),
+    ColDef("issue", ColType.TEXT),
+    ColDef("recommendation", ColType.TEXT),
+    ColDef("reasoning", ColType.TEXT),
+    ColDef("alternatives", ColType.JSONB),
+    ColDef("confidence", ColType.TEXT),
+    ColDef("decided_by", ColType.TEXT),
+    ColDef("file", ColType.TEXT),
+    ColDef("scope", ColType.TEXT),
+    ColDef("tags", ColType.TEXT_ARRAY),
+    ColDef("exploration_type", ColType.TEXT),
+    ColDef("findings", ColType.JSONB),
+    ColDef("options", ColType.JSONB),
+    ColDef("open_questions", ColType.JSONB),
+    ColDef("severity", ColType.TEXT),
+    ColDef("likelihood", ColType.TEXT),
+    ColDef("linked_entity_type", ColType.TEXT),
+    ColDef("linked_entity_id", ColType.TEXT),
+    ColDef("mitigation_plan", ColType.TEXT),
+    ColDef("resolution_notes", ColType.TEXT),
+    ColDef("blockers", ColType.JSONB),
+    ColDef("ready_for_tracker", ColType.BOOL),
+    ColDef("evidence_refs", ColType.JSONB),
+    ColDef("created_at", ColType.TIMESTAMP, json_key="timestamp"),
+    ColDef("updated_at", ColType.TIMESTAMP),
+]
+
+_CHANGES_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("task_id", ColType.TEXT),
+    ColDef("file", ColType.TEXT),
+    ColDef("action", ColType.TEXT),
+    ColDef("summary", ColType.TEXT),
+    ColDef("reasoning_trace", ColType.JSONB),
+    ColDef("decision_ids", ColType.TEXT_ARRAY),
+    ColDef("guidelines_checked", ColType.TEXT_ARRAY),
+    ColDef("group_id", ColType.TEXT),
+    ColDef("lines_added", ColType.INT),
+    ColDef("lines_removed", ColType.INT),
+    ColDef("recorded_at", ColType.TIMESTAMP, json_key="timestamp"),
+]
+
+_GUIDELINES_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("title", ColType.TEXT),
+    ColDef("scope", ColType.TEXT),
+    ColDef("content", ColType.TEXT),
+    ColDef("rationale", ColType.TEXT),
+    ColDef("examples", ColType.JSONB),
+    ColDef("tags", ColType.TEXT_ARRAY),
+    ColDef("weight", ColType.TEXT),
+    ColDef("status", ColType.TEXT),
+    ColDef("derived_from", ColType.TEXT),
+    ColDef("imported_from", ColType.TEXT),
+    ColDef("promoted_from", ColType.TEXT),
+    ColDef("created_at", ColType.TIMESTAMP, json_key="created"),
+    ColDef("updated_at", ColType.TIMESTAMP, json_key="updated"),
+]
+
+_IDEAS_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("parent_id", ColType.TEXT),
+    ColDef("title", ColType.TEXT),
+    ColDef("description", ColType.TEXT),
+    ColDef("category", ColType.TEXT),
+    ColDef("status", ColType.TEXT),
+    ColDef("appetite", ColType.TEXT),
+    ColDef("priority", ColType.TEXT),
+    ColDef("tags", ColType.TEXT_ARRAY),
+    ColDef("scopes", ColType.TEXT_ARRAY),
+    ColDef("knowledge_ids", ColType.TEXT_ARRAY),
+    ColDef("guidelines", ColType.TEXT_ARRAY),
+    ColDef("advances_key_results", ColType.TEXT_ARRAY),
+    ColDef("rejection_reason", ColType.TEXT),
+    ColDef("merged_into", ColType.TEXT),
+    ColDef("exploration_notes", ColType.TEXT),
+    ColDef("committed_at", ColType.TIMESTAMP),
+    ColDef("created_at", ColType.TIMESTAMP, json_key="created"),
+    ColDef("updated_at", ColType.TIMESTAMP, json_key="updated"),
+]
+
+_OBJECTIVES_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("title", ColType.TEXT),
+    ColDef("description", ColType.TEXT),
+    ColDef("appetite", ColType.TEXT),
+    ColDef("scope", ColType.TEXT),
+    ColDef("status", ColType.TEXT),
+    ColDef("assumptions", ColType.JSONB),
+    ColDef("tags", ColType.TEXT_ARRAY),
+    ColDef("scopes", ColType.TEXT_ARRAY),
+    ColDef("derived_guidelines", ColType.TEXT_ARRAY),
+    ColDef("knowledge_ids", ColType.TEXT_ARRAY),
+    ColDef("created_at", ColType.TIMESTAMP, json_key="created"),
+    ColDef("updated_at", ColType.TIMESTAMP, json_key="updated"),
+]
+
+_LESSONS_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("category", ColType.TEXT),
+    ColDef("title", ColType.TEXT),
+    ColDef("detail", ColType.TEXT),
+    ColDef("task_id", ColType.TEXT),
+    ColDef("decision_ids", ColType.TEXT_ARRAY),
+    ColDef("severity", ColType.TEXT),
+    ColDef("applies_to", ColType.TEXT),
+    ColDef("tags", ColType.TEXT_ARRAY),
+    ColDef("promoted_to_guideline", ColType.TEXT),
+    ColDef("promoted_to_knowledge", ColType.TEXT),
+    ColDef("created_at", ColType.TIMESTAMP, json_key="timestamp"),
+]
+
+_KNOWLEDGE_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("title", ColType.TEXT),
+    ColDef("category", ColType.TEXT),
+    ColDef("content", ColType.TEXT),
+    ColDef("current_version", ColType.INT),
+    ColDef("status", ColType.TEXT),
+    ColDef("scopes", ColType.TEXT_ARRAY),
+    ColDef("tags", ColType.TEXT_ARRAY),
+    ColDef("dependencies", ColType.TEXT_ARRAY),
+    ColDef("source", ColType.JSONB),
+    ColDef("source_type", ColType.TEXT),
+    ColDef("created_by", ColType.TEXT),
+    ColDef("linked_entities", ColType.JSONB),
+    ColDef("review", ColType.JSONB),
+    ColDef("created_at", ColType.TIMESTAMP),
+    ColDef("updated_at", ColType.TIMESTAMP),
+]
+
+_AC_TEMPLATES_COLS = [
+    ColDef("ext_id", ColType.TEXT, json_key="id"),
+    ColDef("title", ColType.TEXT),
+    ColDef("description", ColType.TEXT),
+    ColDef("template", ColType.TEXT),
+    ColDef("category", ColType.TEXT),
+    ColDef("verification_method", ColType.TEXT),
+    ColDef("parameters", ColType.JSONB),
+    ColDef("scopes", ColType.TEXT_ARRAY),
+    ColDef("tags", ColType.TEXT_ARRAY),
+    ColDef("status", ColType.TEXT),
+    ColDef("usage_count", ColType.INT),
+    ColDef("created_at", ColType.TIMESTAMP),
+    ColDef("updated_at", ColType.TIMESTAMP),
+]
+
+
+# ---------------------------------------------------------------------------
+# Build derived metadata from column definitions
+# ---------------------------------------------------------------------------
+
+_TABLE_META: dict[str, TableMeta] = {
+    "tasks": TableMeta(_TASKS_COLS),
+    "decisions": TableMeta(_DECISIONS_COLS),
+    "changes": TableMeta(_CHANGES_COLS),
+    "guidelines": TableMeta(_GUIDELINES_COLS),
+    "ideas": TableMeta(_IDEAS_COLS),
+    "objectives": TableMeta(_OBJECTIVES_COLS),
+    "lessons": TableMeta(_LESSONS_COLS),
+    "knowledge": TableMeta(_KNOWLEDGE_COLS),
+    "ac_templates": TableMeta(_AC_TEMPLATES_COLS),
+}
+
+
+# ---------------------------------------------------------------------------
 # Entity → Table mapping
 # ---------------------------------------------------------------------------
 
-# Maps EntityType to (table_name, list_key)
-# list_key is the key in the dict that contains the list of items
-# e.g., EntityType.DECISIONS → ("decisions", "decisions")
 _ENTITY_TABLE_MAP: dict[str, tuple[str, str]] = {
     EntityType.TRACKER: ("tasks", "tasks"),
     EntityType.DECISIONS: ("decisions", "decisions"),
@@ -69,152 +324,43 @@ _ENTITY_TABLE_MAP: dict[str, tuple[str, str]] = {
     EntityType.AC_TEMPLATES: ("ac_templates", "ac_templates"),
 }
 
-# Columns that are JSONB in PostgreSQL (need json serialization)
-_JSONB_COLUMNS = {
-    "config", "assumptions", "acceptance_criteria", "test_requirements",
-    "alternatives", "findings", "options", "open_questions", "blockers",
-    "evidence_refs", "reasoning_trace", "examples", "parameters",
-    "linked_entities", "review",
-}
-
-# Columns that are TEXT[] arrays in PostgreSQL
-_ARRAY_COLUMNS = {
-    "tags", "scopes", "knowledge_ids", "derived_guidelines",
-    "advances_key_results", "guidelines", "depends_on", "conflicts_with",
-    "blocked_by_decisions", "decision_ids", "guidelines_checked",
-    "dependencies",
-}
-
-# Timestamp column names used in DB (mapped from JSON keys)
-_TIMESTAMP_FIELDS = {
-    "created_at", "updated_at", "started_at", "completed_at",
-    "recorded_at", "committed_at", "checked_at",
-}
-
-# JSON timestamp keys → DB column mapping (per-entity, for save_data)
-# Generic mappings used by most entities
-_JSON_TS_TO_DB = {
-    "created": "created_at",
-    "updated": "updated_at",
-}
-
-# Per-entity overrides for timestamp key mapping
-_ENTITY_TS_OVERRIDES: dict[str, dict[str, str]] = {
-    "changes": {"timestamp": "recorded_at"},
-    "decisions": {"timestamp": "created_at"},
-    "lessons": {"timestamp": "created_at"},
-}
-
-# Reverse mapping: DB column → JSON key (per-entity, for load_data)
-_DB_TS_TO_JSON: dict[str, dict[str, str]] = {
-    "changes": {"recorded_at": "timestamp"},
-    "decisions": {"created_at": "timestamp"},
-    "lessons": {"created_at": "timestamp"},
-}
-
-# Known columns per table — used to filter out unknown dict keys
-_TABLE_COLUMNS: dict[str, set[str]] = {
-    "tasks": {
-        "ext_id", "name", "description", "instruction", "type", "status",
-        "origin", "origin_idea_id", "skill", "parallel",
-        "acceptance_criteria", "test_requirements", "depends_on",
-        "conflicts_with", "knowledge_ids", "scopes", "blocked_by_decisions",
-        "agent", "failed_reason", "started_at", "completed_at",
-        "created_at", "updated_at",
-    },
-    "decisions": {
-        "ext_id", "task_id", "type", "status", "issue", "recommendation",
-        "reasoning", "alternatives", "confidence", "decided_by", "file",
-        "scope", "tags", "exploration_type", "findings", "options",
-        "open_questions", "severity", "likelihood", "linked_entity_type",
-        "linked_entity_id", "mitigation_plan", "resolution_notes",
-        "blockers", "ready_for_tracker", "evidence_refs",
-        "created_at", "updated_at",
-    },
-    "changes": {
-        "ext_id", "task_id", "file", "action", "summary", "reasoning_trace",
-        "decision_ids", "guidelines_checked", "group_id",
-        "lines_added", "lines_removed", "recorded_at",
-    },
-    "guidelines": {
-        "ext_id", "title", "scope", "content", "rationale", "examples",
-        "tags", "weight", "status", "derived_from", "imported_from",
-        "promoted_from", "created_at", "updated_at",
-    },
-    "ideas": {
-        "ext_id", "parent_id", "title", "description", "category", "status",
-        "appetite", "priority", "tags", "scopes", "knowledge_ids",
-        "guidelines", "advances_key_results", "rejection_reason",
-        "merged_into", "exploration_notes", "committed_at",
-        "created_at", "updated_at",
-    },
-    "objectives": {
-        "ext_id", "title", "description", "appetite", "scope", "status",
-        "assumptions", "tags", "scopes", "derived_guidelines",
-        "knowledge_ids", "created_at", "updated_at",
-    },
-    "lessons": {
-        "ext_id", "category", "title", "detail", "task_id", "decision_ids",
-        "severity", "applies_to", "tags", "promoted_to_guideline",
-        "promoted_to_knowledge", "created_at",
-    },
-    "knowledge": {
-        "ext_id", "title", "category", "content", "current_version",
-        "status", "scopes", "tags", "dependencies", "source",
-        "source_type", "created_by", "linked_entities", "review",
-        "created_at", "updated_at",
-    },
-    "ac_templates": {
-        "ext_id", "title", "description", "template", "category",
-        "verification_method", "parameters", "scopes", "tags",
-        "status", "usage_count", "created_at", "updated_at",
-    },
-}
-
 
 # ---------------------------------------------------------------------------
-# Row ↔ Dict converters
+# Row ↔ Dict converters (metadata-driven)
 # ---------------------------------------------------------------------------
 
 def _row_to_dict(row: dict, entity_type: str) -> dict:
-    """Convert a database row (dict) to the JSON-compatible dict format.
+    """Convert a database row to JSON-compatible dict.
 
-    Handles:
-    - JSONB columns: already parsed by psycopg2
-    - TEXT[] arrays: already parsed by psycopg2
-    - Timestamps: converted to ISO strings, with per-entity reverse mapping
-    - id → internal, ext_id → id (JSON uses ext_id as the primary identifier)
+    Uses TableMeta to determine key mapping, timestamp conversion, etc.
     """
-    # Get the table name for reverse TS lookups
     table = entity_type
     if isinstance(entity_type, EntityType):
         table = _ENTITY_TABLE_MAP.get(entity_type, (entity_type, ""))[0]
-    reverse_ts = _DB_TS_TO_JSON.get(table, {})
+
+    meta = _TABLE_META.get(table)
+    if meta is None:
+        return dict(row)
 
     result = {}
     for key, value in row.items():
-        # Skip internal DB columns
         if key == "project_id":
             continue
-        # Map ext_id → id (JSON format uses ext_id as "id")
         if key == "ext_id":
             result["id"] = value
             continue
-        # Keep internal id as _db_id for reference
         if key == "id":
             result["_db_id"] = value
             continue
-        # Convert timestamps to ISO strings, applying reverse mapping
-        if key in _TIMESTAMP_FIELDS and value is not None:
+        if key in meta.ts_cols and value is not None:
             ts_str = value.strftime("%Y-%m-%dT%H:%M:%SZ") if isinstance(value, datetime) else str(value)
-            out_key = reverse_ts.get(key, key)
+            out_key = meta.db_to_json.get(key, key)
             result[out_key] = ts_str
             continue
-        if key in _TIMESTAMP_FIELDS and value is None:
-            out_key = reverse_ts.get(key, key)
+        if key in meta.ts_cols and value is None:
+            out_key = meta.db_to_json.get(key, key)
             result[out_key] = value
             continue
-        # JSONB and arrays are already deserialized by psycopg2
         result[key] = value
 
     return result
@@ -223,49 +369,38 @@ def _row_to_dict(row: dict, entity_type: str) -> dict:
 def _dict_to_row(item: dict, entity_type: str, project_id: int) -> dict:
     """Convert a JSON-format dict to database row columns.
 
-    Handles:
-    - id → ext_id mapping
-    - Per-entity timestamp key mapping (e.g., "timestamp" → "recorded_at" for changes)
-    - JSONB columns → json.dumps for psycopg2
-    - Filters out keys not in the table's column set (prevents SQL errors)
+    Uses TableMeta for key mapping, JSONB serialization, and column filtering.
     """
-    # Get table name for column validation and TS overrides
     table = entity_type
     if isinstance(entity_type, EntityType):
         table = _ENTITY_TABLE_MAP.get(entity_type, (entity_type, ""))[0]
-    ts_overrides = _ENTITY_TS_OVERRIDES.get(table, {})
-    known_cols = _TABLE_COLUMNS.get(table)
 
+    meta = _TABLE_META.get(table)
     row = {"project_id": project_id}
 
+    if meta is None:
+        row.update(item)
+        return row
+
     for key, value in item.items():
-        # Skip internal fields
         if key in ("_db_id", "project"):
             continue
-        # Map "id" back to ext_id
         if key == "id":
             row["ext_id"] = value
             continue
-        # Map JSON timestamp keys to DB column names (entity-specific first, then generic)
-        if key in ts_overrides:
-            row[ts_overrides[key]] = value
+        # Map JSON key → DB column (e.g. "timestamp" → "recorded_at")
+        if key in meta.json_to_db:
+            row[meta.json_to_db[key]] = value
             continue
-        if key in _JSON_TS_TO_DB:
-            row[_JSON_TS_TO_DB[key]] = value
-            continue
-        # JSONB columns: serialize to JSON string for psycopg2
-        if key in _JSONB_COLUMNS and value is not None:
+        # JSONB: serialize non-string values
+        if key in meta.jsonb_cols and value is not None:
             row[key] = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
             continue
-        # Everything else passes through
         row[key] = value
 
-    # Filter out unknown columns to prevent SQL errors
-    if known_cols is not None:
-        allowed = known_cols | {"project_id", "ext_id"}
-        row = {k: v for k, v in row.items() if k in allowed}
-
-    return row
+    # Filter out unknown columns
+    allowed = meta.known_cols | {"project_id", "ext_id"}
+    return {k: v for k, v in row.items() if k in allowed}
 
 
 # ---------------------------------------------------------------------------
@@ -273,24 +408,9 @@ def _dict_to_row(item: dict, entity_type: str, project_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 def _tracker_rows_to_dict(rows: list[dict], project: str, project_row: Optional[dict]) -> dict:
-    """Convert task rows + project row into the tracker dict format.
-
-    Tracker JSON format:
-    {
-        "project": "slug",
-        "goal": "...",
-        "created": "...",
-        "updated": "...",
-        "config": {},
-        "tasks": [...]
-    }
-    """
+    """Convert task rows + project row into the tracker dict format."""
     tasks = [_row_to_dict(r, "tasks") for r in rows]
-
-    # Remap some task fields for JSON compatibility
     for t in tasks:
-        # JSON uses "depends_on" as list, already handled
-        # Remove _db_id from output
         t.pop("_db_id", None)
 
     result = {
@@ -316,15 +436,7 @@ def _tracker_rows_to_dict(rows: list[dict], project: str, project_row: Optional[
 
 
 def _entity_rows_to_dict(rows: list[dict], entity_type: str, project: str, list_key: str) -> dict:
-    """Convert entity rows into the standard JSON dict format.
-
-    Standard format:
-    {
-        "project": "slug",
-        "updated": "...",
-        "<list_key>": [...]
-    }
-    """
+    """Convert entity rows into the standard JSON dict format."""
     items = [_row_to_dict(r, entity_type) for r in rows]
     for item in items:
         item.pop("_db_id", None)
@@ -335,7 +447,6 @@ def _entity_rows_to_dict(rows: list[dict], entity_type: str, project: str, list_
         list_key: items,
     }
 
-    # Decisions have extra open_count
     if entity_type == EntityType.DECISIONS:
         result["open_count"] = sum(1 for i in items if i.get("status") == "OPEN")
 
@@ -351,11 +462,6 @@ class PostgreSQLAdapter:
 
     Implements the same StorageAdapter Protocol as JSONFileStorage.
     Core modules call load_data/save_data and get the same dict format.
-
-    Connection management:
-    - Uses psycopg2.pool.ThreadedConnectionPool for thread safety
-    - Each operation acquires/releases a connection from the pool
-    - Transactions are per-operation (not per-session)
     """
 
     def __init__(self, database_url: Optional[str] = None, min_conn: int = 1, max_conn: int = 5) -> None:
@@ -368,18 +474,15 @@ class PostgreSQLAdapter:
         self._pool = psycopg2.pool.ThreadedConnectionPool(
             min_conn, max_conn, self._database_url
         )
-        # Knowledge versioning service (lazy: only used when saving knowledge)
         self._versioning: Optional[KnowledgeVersioningService] = None
         if KnowledgeVersioningService is not None:
             self._versioning = KnowledgeVersioningService(self._pool)
-        # Knowledge impact analysis service
         self._impact: Optional[KnowledgeImpactService] = None
         if KnowledgeImpactService is not None:
             self._impact = KnowledgeImpactService(self._pool)
 
     @contextmanager
     def _conn(self):
-        """Acquire a connection from the pool with auto-release."""
         conn = self._pool.getconn()
         try:
             yield conn
@@ -387,13 +490,11 @@ class PostgreSQLAdapter:
             self._pool.putconn(conn)
 
     def _get_project_id(self, cur, project: str) -> Optional[int]:
-        """Get the internal project ID from slug. Returns None if not found."""
         cur.execute("SELECT id FROM projects WHERE slug = %s", (project,))
         row = cur.fetchone()
         return row["id"] if row else None
 
     def _ensure_project(self, cur, project: str) -> int:
-        """Get or create project, returning its internal ID."""
         pid = self._get_project_id(cur, project)
         if pid is not None:
             return pid
@@ -404,7 +505,6 @@ class PostgreSQLAdapter:
         return cur.fetchone()["id"]
 
     def _get_knowledge_db_id(self, cur, pid: int, ext_id: str) -> Optional[int]:
-        """Get the internal DB id for a knowledge entry by project_id + ext_id."""
         cur.execute(
             "SELECT id FROM knowledge WHERE project_id = %s AND ext_id = %s",
             (pid, ext_id),
@@ -413,15 +513,10 @@ class PostgreSQLAdapter:
         return row["id"] if row else None
 
     # -------------------------------------------------------------------
-    # StorageAdapter Protocol: load_data
+    # load_data
     # -------------------------------------------------------------------
 
     def load_data(self, project: str, entity: str) -> dict:
-        """Load entity data for a project from PostgreSQL.
-
-        Returns dict in same format as JSONFileStorage.
-        If project doesn't exist, returns default empty structure.
-        """
         entity_key = EntityType(entity) if isinstance(entity, str) else entity
         table, list_key = _ENTITY_TABLE_MAP[entity_key]
 
@@ -432,7 +527,6 @@ class PostgreSQLAdapter:
                     if pid is None:
                         return default_structure(entity, project)
 
-                    # Tracker is special: needs project row + task rows
                     if entity_key == EntityType.TRACKER:
                         cur.execute("SELECT * FROM projects WHERE id = %s", (pid,))
                         project_row = cur.fetchone()
@@ -443,7 +537,6 @@ class PostgreSQLAdapter:
                         rows = cur.fetchall()
                         return _tracker_rows_to_dict(rows, project, project_row)
 
-                    # Standard entities
                     cur.execute(
                         f"SELECT * FROM {table} WHERE project_id = %s ORDER BY ext_id",
                         (pid,),
@@ -451,18 +544,13 @@ class PostgreSQLAdapter:
                     rows = cur.fetchall()
                     return _entity_rows_to_dict(rows, entity_key, project, list_key)
             finally:
-                conn.rollback()  # End any implicit read transaction
+                conn.rollback()
 
     # -------------------------------------------------------------------
-    # StorageAdapter Protocol: save_data
+    # save_data
     # -------------------------------------------------------------------
 
     def save_data(self, project: str, entity: str, data: dict) -> None:
-        """Save entity data for a project to PostgreSQL.
-
-        Performs upsert: inserts new items, updates existing ones.
-        Sets data['updated'] to current timestamp (matching JSONFileStorage behavior).
-        """
         entity_key = EntityType(entity) if isinstance(entity, str) else entity
         table, list_key = _ENTITY_TABLE_MAP[entity_key]
         data["updated"] = now_iso()
@@ -472,7 +560,6 @@ class PostgreSQLAdapter:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                     pid = self._ensure_project(cur, project)
 
-                    # Tracker: update project row + upsert tasks
                     if entity_key == EntityType.TRACKER:
                         self._save_tracker(cur, pid, project, data)
                     else:
@@ -484,8 +571,6 @@ class PostgreSQLAdapter:
                 raise StorageWriteError(f"Failed to save {entity} for {project}: {e}") from e
 
     def _save_tracker(self, cur, pid: int, project: str, data: dict) -> None:
-        """Save tracker data: update project + upsert tasks."""
-        # Update project metadata
         config = data.get("config", {})
         goal = data.get("goal", "")
         cur.execute(
@@ -493,9 +578,7 @@ class PostgreSQLAdapter:
             (goal, json.dumps(config, ensure_ascii=False), pid),
         )
 
-        # Upsert tasks
         tasks = data.get("tasks", [])
-        # Get existing ext_ids
         cur.execute("SELECT ext_id FROM tasks WHERE project_id = %s", (pid,))
         existing = {row["ext_id"] for row in cur.fetchall()}
 
@@ -505,10 +588,9 @@ class PostgreSQLAdapter:
                 continue
 
             row = _dict_to_row(task, "tasks", pid)
-            row.pop("project_id", None)  # Don't include in SET clause
+            row.pop("project_id", None)
 
             if ext_id in existing:
-                # UPDATE existing task
                 sets = []
                 vals = []
                 for k, v in row.items():
@@ -525,7 +607,6 @@ class PostgreSQLAdapter:
                         vals,
                     )
             else:
-                # INSERT new task
                 row["project_id"] = pid
                 cols = list(row.keys())
                 placeholders = ["%s"] * len(cols)
@@ -535,7 +616,6 @@ class PostgreSQLAdapter:
                 )
                 existing.add(ext_id)
 
-        # Remove tasks that are in DB but not in the data
         data_ext_ids = {t.get("id", "") for t in tasks}
         removed = existing - data_ext_ids
         if removed:
@@ -545,15 +625,10 @@ class PostgreSQLAdapter:
             )
 
     def _save_entity_list(self, cur, pid: int, table: str, list_key: str, data: dict) -> None:
-        """Save a standard entity list: upsert items, remove deleted ones.
-
-        For knowledge entities, automatically creates version rows when content
-        changes (via KnowledgeVersioningService).
-        """
         items = data.get(list_key, [])
         is_knowledge = table == "knowledge"
+        meta = _TABLE_META.get(table)
 
-        # For knowledge: load existing content to detect changes
         existing_content: dict[str, str] = {}
         if is_knowledge and self._versioning:
             cur.execute(
@@ -562,7 +637,6 @@ class PostgreSQLAdapter:
             )
             existing_content = {r["ext_id"]: (r["content"] or "") for r in cur.fetchall()}
 
-        # Get existing ext_ids
         cur.execute(f"SELECT ext_id FROM {table} WHERE project_id = %s", (pid,))
         existing = {row["ext_id"] for row in cur.fetchall()}
 
@@ -575,7 +649,6 @@ class PostgreSQLAdapter:
             row.pop("project_id", None)
 
             if ext_id in existing:
-                # UPDATE
                 sets = []
                 vals = []
                 for k, v in row.items():
@@ -584,9 +657,7 @@ class PostgreSQLAdapter:
                     sets.append(f"{k} = %s")
                     vals.append(v)
                 if sets:
-                    # Add updated_at = NOW() for tables that have it
-                    has_updated_at = "updated_at" in (_TABLE_COLUMNS.get(table) or set())
-                    update_suffix = ", updated_at = NOW()" if has_updated_at else ""
+                    update_suffix = ", updated_at = NOW()" if meta and meta.has_updated_at else ""
                     vals.append(pid)
                     vals.append(ext_id)
                     cur.execute(
@@ -595,7 +666,6 @@ class PostgreSQLAdapter:
                         vals,
                     )
 
-                # Knowledge versioning: create version if content changed
                 if is_knowledge and self._versioning:
                     new_content = item.get("content", "")
                     old_content = existing_content.get(ext_id, "")
@@ -610,7 +680,6 @@ class PostgreSQLAdapter:
                                 conn=cur.connection,
                             )
             else:
-                # INSERT
                 row["project_id"] = pid
                 cols = list(row.keys())
                 placeholders = ["%s"] * len(cols)
@@ -620,7 +689,6 @@ class PostgreSQLAdapter:
                 )
                 existing.add(ext_id)
 
-                # Knowledge versioning: ensure initial version for new entries
                 if is_knowledge and self._versioning:
                     db_id = self._get_knowledge_db_id(cur, pid, ext_id)
                     if db_id is not None:
@@ -630,7 +698,6 @@ class PostgreSQLAdapter:
                             conn=cur.connection,
                         )
 
-        # Remove items not in the new data
         data_ext_ids = {i.get("id", "") for i in items}
         removed = existing - data_ext_ids
         if removed:
@@ -640,11 +707,10 @@ class PostgreSQLAdapter:
             )
 
     # -------------------------------------------------------------------
-    # StorageAdapter Protocol: exists
+    # exists
     # -------------------------------------------------------------------
 
     def exists(self, project: str, entity: str) -> bool:
-        """Check whether entity data exists for a project in PostgreSQL."""
         entity_key = EntityType(entity) if isinstance(entity, str) else entity
         table, _ = _ENTITY_TABLE_MAP[entity_key]
 
@@ -654,10 +720,8 @@ class PostgreSQLAdapter:
                     pid = self._get_project_id(cur, project)
                     if pid is None:
                         return False
-
                     if entity_key == EntityType.TRACKER:
                         return True
-
                     cur.execute(
                         f"SELECT EXISTS(SELECT 1 FROM {table} WHERE project_id = %s) AS e",
                         (pid,),
@@ -667,11 +731,10 @@ class PostgreSQLAdapter:
                 conn.rollback()
 
     # -------------------------------------------------------------------
-    # StorageAdapter Protocol: list_projects
+    # list_projects
     # -------------------------------------------------------------------
 
     def list_projects(self) -> list[str]:
-        """List all project slugs from PostgreSQL."""
         with self._conn() as conn:
             try:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -681,14 +744,10 @@ class PostgreSQLAdapter:
                 conn.rollback()
 
     # -------------------------------------------------------------------
-    # StorageAdapter Protocol: load_global
+    # load_global / save_global
     # -------------------------------------------------------------------
 
     def load_global(self, entity: str) -> dict:
-        """Load global entity data (project_id IS NULL).
-
-        For entities like guidelines and knowledge that can be global.
-        """
         entity_key = EntityType(entity) if isinstance(entity, str) else entity
         table, list_key = _ENTITY_TABLE_MAP[entity_key]
 
@@ -703,7 +762,6 @@ class PostgreSQLAdapter:
                     items = [_row_to_dict(r, entity_key) for r in rows]
                     for item in items:
                         item.pop("_db_id", None)
-
                     return {
                         "project": "_global",
                         "updated": now_iso(),
@@ -712,12 +770,7 @@ class PostgreSQLAdapter:
             finally:
                 conn.rollback()
 
-    # -------------------------------------------------------------------
-    # StorageAdapter Protocol: save_global
-    # -------------------------------------------------------------------
-
     def save_global(self, entity: str, data: dict) -> None:
-        """Save global entity data (project_id IS NULL)."""
         entity_key = EntityType(entity) if isinstance(entity, str) else entity
         table, list_key = _ENTITY_TABLE_MAP[entity_key]
         data["updated"] = now_iso()
@@ -727,7 +780,6 @@ class PostgreSQLAdapter:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                     items = data.get(list_key, [])
 
-                    # Get existing global ext_ids
                     cur.execute(
                         f"SELECT ext_id FROM {table} WHERE project_id IS NULL",
                         (),
@@ -739,11 +791,10 @@ class PostgreSQLAdapter:
                         if not ext_id:
                             continue
 
-                        row = _dict_to_row(item, table, 0)  # project_id=0 placeholder
+                        row = _dict_to_row(item, table, 0)
                         row.pop("project_id", None)
 
                         if ext_id in existing:
-                            # UPDATE
                             sets = []
                             vals = []
                             for k, v in row.items():
@@ -759,10 +810,8 @@ class PostgreSQLAdapter:
                                     vals,
                                 )
                         else:
-                            # INSERT with project_id = NULL
                             cols = ["ext_id"] + [k for k in row.keys() if k != "ext_id"]
                             vals = [row.get(c) for c in cols]
-                            # Replace project_id column with NULL explicitly
                             col_str = "project_id, " + ", ".join(cols)
                             val_str = "NULL, " + ", ".join(["%s"] * len(cols))
                             cur.execute(
@@ -771,7 +820,6 @@ class PostgreSQLAdapter:
                             )
                             existing.add(ext_id)
 
-                    # Remove globals not in new data
                     data_ext_ids = {i.get("id", "") for i in items}
                     removed = existing - data_ext_ids
                     if removed:
@@ -790,16 +838,6 @@ class PostgreSQLAdapter:
     # -------------------------------------------------------------------
 
     def analyze_knowledge_impact(self, project: str, knowledge_ext_id: str) -> dict:
-        """Run impact analysis for a knowledge entry.
-
-        Finds all entities linked to the knowledge object and returns
-        a structured report with impact levels.
-
-        Uses a single connection for both lookup and analysis (no double checkout).
-        Handles global knowledge (NULL project_id) correctly.
-
-        Returns empty report if impact service is not available.
-        """
         if self._impact is None:
             return {
                 "knowledge_id": None,
@@ -818,7 +856,6 @@ class PostgreSQLAdapter:
                     if pid is None:
                         raise ValueError(f"Project '{project}' not found")
 
-                    # Resolve ext_id → DB id (handle both project-scoped and global)
                     cur.execute(
                         "SELECT id FROM knowledge "
                         "WHERE (project_id = %s OR project_id IS NULL) AND ext_id = %s "
@@ -832,7 +869,6 @@ class PostgreSQLAdapter:
                             f"Knowledge '{knowledge_ext_id}' not found in project '{project}'"
                         )
 
-                    # Pass cursor to avoid double pool checkout (F-04 fix)
                     return self._impact.analyze_impact(
                         row["id"], pid, cur=cur
                     )
@@ -844,7 +880,6 @@ class PostgreSQLAdapter:
     # -------------------------------------------------------------------
 
     def close(self) -> None:
-        """Close all connections in the pool."""
         if self._pool:
             self._pool.closeall()
             self._pool = None

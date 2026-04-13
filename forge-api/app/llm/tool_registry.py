@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Awaitable, ClassVar
 
-from core.llm.provider import ToolDefinition
+from _future.llm.provider import ToolDefinition
 
 logger = logging.getLogger(__name__)
 

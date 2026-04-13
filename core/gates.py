@@ -23,14 +23,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from contracts import render_contract, validate_contract
+from errors import EntityNotFound, ValidationError
 from storage import JSONFileStorage, load_json_data, now_iso
 
-if sys.platform == "win32":
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
+from _compat import configure_encoding
+configure_encoding()
 
 
 # -- Contracts --
@@ -64,8 +61,7 @@ def load_tracker(project: str, storage=None) -> dict:
     if storage is None:
         storage = JSONFileStorage()
     if not storage.exists(project, 'tracker'):
-        print(f"ERROR: No tracker for project '{project}'.", file=sys.stderr)
-        sys.exit(1)
+        raise EntityNotFound(f"No tracker for project '{project}'.")
     return storage.load_data(project, 'tracker')
 
 
@@ -84,19 +80,15 @@ def cmd_config(args):
     try:
         gates = load_json_data(args.data)
     except json.JSONDecodeError as e:
-        print(f"ERROR: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError(f"Invalid JSON: {e}")
 
     if not isinstance(gates, list):
-        print("ERROR: --data must be a JSON array of gate objects", file=sys.stderr)
-        sys.exit(1)
+        raise ValidationError("--data must be a JSON array of gate objects")
 
     errors = validate_contract(CONTRACTS["config"], gates)
     if errors:
-        print(f"ERROR: {len(errors)} validation issues:", file=sys.stderr)
-        for e in errors[:10]:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+        detail = "; ".join(errors[:10])
+        raise ValidationError(f"{len(errors)} validation issues: {detail}")
 
     tracker["gates"] = gates
     save_tracker(args.project, tracker)
@@ -247,7 +239,12 @@ def main():
         "contract": lambda a: print(render_contract(a.name, CONTRACTS[a.name])),
     }
 
-    commands[args.command](args)
+    from errors import ForgeError
+    try:
+        commands[args.command](args)
+    except ForgeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

@@ -103,7 +103,7 @@ class LLMAgentStepExecutor(StepExecutor):
             system_prompt = self._build_prompt(step_def, context)
 
             # Build messages
-            from core.llm.provider import CompletionConfig, Message
+            from _future.llm.provider import CompletionConfig, Message
             messages = [
                 Message(role="system", content=system_prompt),
                 Message(role="user", content=step_def.prompt_template or step_def.description),
