@@ -1,0 +1,5 @@
+alembic==1.13.1
+SQLAlchemy==2.0.28
+psycopg2-binary==2.9.9
+pytest==8.0.2
+python-dotenv==1.0.1
