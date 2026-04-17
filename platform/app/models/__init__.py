@@ -12,6 +12,7 @@ from app.models.knowledge import Knowledge, task_knowledge
 from app.models.objective import Objective, KeyResult
 from app.models.execution_attempt import ExecutionAttempt
 from app.models.llm_call import LLMCall
+from app.models.test_run import TestRun
 
 __all__ = [
     "Project",

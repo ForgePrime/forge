@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}{{ r.task.external_id }} report — Forge{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <a href="/ui/projects/{{ project }}?tab=tasks" class="text-sm text-blue-600 hover:underline">← project {{ project }}</a>
+</div>
+
+<div class="bg-white rounded shadow p-5 mb-4">
+    <div class="flex items-center justify-between mb-2">
+        <h1 class="text-2xl font-bold">{{ r.task.external_id }} — {{ r.task.name }}</h1>
+        <span class="pill {% if r.task.status == 'DONE' %}bg-green-100 text-green-700{% elif r.task.status == 'FAILED' %}bg-red-100 text-red-700{% else %}bg-slate-100{% endif %} text-base px-3 py-1">{{ r.task.status }}</span>
+    </div>
+    <div class="flex gap-4 text-sm text-slate-500 mono">
+        <span>type: {{ r.task.type }}</span>
+        <span>ceremony: {{ r.task.ceremony_level or '—' }}</span>
+        <span>attempts: {{ r.attempts }}</span>
+        <span>cost: ${{ r.cost_usd }}</span>
+    </div>
+    <div class="text-xs text-slate-500 mono mt-1">
+        {% for p, c in r.cost_by_purpose.items() %}{{ p }}=${{ '%.3f' % c }} · {% endfor %}
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <!-- REQUIREMENTS -->
+    <div class="bg-white rounded shadow p-5">
+        <h2 class="font-semibold text-lg mb-2">📋 Requirements covered</h2>
+        {% if r.requirements_covered %}
+        <ul class="text-sm space-y-1">
+            {% for req in r.requirements_covered %}
+            <li class="flex gap-2">
+                <span class="{% if req.source_known %}text-green-600{% else %}text-amber-600{% endif %}">{% if req.source_known %}✓{% else %}?{% endif %}</span>
+                <span class="mono">{{ req.ref }}</span>
+                {% if req.source_title %}<span class="text-slate-500">→ {{ req.source_title }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-slate-400">No requirement_refs set on this task (pre-Phase-B)</p>
+        {% endif %}
+    </div>
+
+    <!-- OBJECTIVE & KRs -->
+    <div class="bg-white rounded shadow p-5">
+        <h2 class="font-semibold text-lg mb-2">🎯 Objective</h2>
+        {% if r.objective %}
+        <div class="mb-2">
+            <span class="mono text-xs text-slate-500">{{ r.objective.external_id }}</span>
+            <span class="pill bg-slate-100 ml-2">{{ r.objective.status }}</span>
+        </div>
+        <p class="font-medium">{{ r.objective.title }}</p>
+        <ul class="text-sm mt-2 space-y-1">
+            {% for kr in r.objective.key_results %}
+            <li class="flex items-start gap-2">
+                {% if kr.completed_by_this_task %}<span class="text-yellow-500">★</span>{% endif %}
+                <span class="pill text-xs {% if kr.status == 'ACHIEVED' %}bg-green-100 text-green-700{% elif kr.status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700{% else %}bg-slate-100{% endif %}">{{ kr.status }}</span>
+                <span>KR{{ kr.position }}: {{ kr.text[:140] }}
+                    {% if kr.target_value is not none %}<span class="mono text-xs text-slate-500 block">target={{ kr.target_value }} · current={{ kr.current_value or '—' }}</span>{% endif %}
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-slate-400">No objective linked</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- TESTS EXECUTED BY FORGE -->
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold text-lg mb-2">🧪 Tests executed BY FORGE (not self-report)</h2>
+    {% if r.tests_executed_by_forge %}
+    {% set t = r.tests_executed_by_forge %}
+    <div class="flex gap-4 text-sm mb-3 mono">
+        <span>language: {{ t.language }}</span>
+        <span>collected: {{ t.collected }}</span>
+        <span class="text-green-600">passed: {{ t.passed }}</span>
+        <span class="{% if t.failed %}text-red-600{% else %}text-slate-400{% endif %}">failed: {{ t.failed }}</span>
+        <span class="text-slate-500">error: {{ t.error }} · skipped: {{ t.skipped }}</span>
+        <span>dur: {{ t.duration_ms }}ms</span>
+    </div>
+    {% if t.per_ac %}
+    <table class="w-full text-sm mb-3">
+        <thead class="text-xs uppercase text-slate-500"><tr>
+            <th class="text-left py-1">AC</th><th class="text-left py-1">verdict</th>
+            <th class="text-left py-1">tests matched</th><th class="text-left py-1">test_path</th>
+        </tr></thead>
+        <tbody>
+        {% for ac in t.per_ac %}
+        <tr class="border-t">
+            <td class="py-1">AC-{{ ac.ac_index }}</td>
+            <td class="py-1"><span class="pill {% if ac.passed %}bg-green-100 text-green-700{% else %}bg-red-100 text-red-700{% endif %}">{% if ac.passed %}PASS{% else %}FAIL{% endif %}</span></td>
+            <td class="py-1">{{ ac.tests_matched }} matched / {{ ac.tests_passed or 0 }}P / {{ ac.tests_failed or 0 }}F</td>
+            <td class="py-1 mono text-xs">{{ ac.test_path }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% if t.per_test %}
+    <details>
+        <summary class="cursor-pointer text-sm text-slate-600">per-test outcomes ({{ t.per_test|length }})</summary>
+        <ul class="text-xs mono mt-2 space-y-0.5">
+            {% for test in t.per_test %}
+            <li>
+                <span class="{% if test.outcome == 'passed' %}text-green-600{% elif test.outcome in ['failed','error'] %}text-red-600{% else %}text-slate-500{% endif %}">{{ test.outcome }}</span>
+                {{ test.nodeid }} ({{ test.duration_sec|round(2) }}s)
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+    {% else %}
+    <p class="text-sm text-slate-400">No Phase A test run data</p>
+    {% endif %}
+</div>
+
+<!-- CHALLENGE (Phase C) -->
+{% if r.challenge %}
+<div class="bg-white rounded shadow p-5 mb-4 border-l-4 {% if r.challenge.verdict == 'PASS' %}border-green-500{% elif r.challenge.verdict == 'NEEDS_REWORK' %}border-amber-500{% else %}border-red-500{% endif %}">
+    <h2 class="font-semibold text-lg mb-2">⚔️ Cross-model challenge ({{ r.challenge.model_used }})</h2>
+    <div class="flex gap-3 items-center mb-2">
+        <span class="pill text-base px-3 py-1 {% if r.challenge.verdict == 'PASS' %}bg-green-100 text-green-700{% elif r.challenge.verdict == 'NEEDS_REWORK' %}bg-amber-100 text-amber-700{% else %}bg-red-100 text-red-700{% endif %}">{{ r.challenge.verdict }}</span>
+        <span class="text-sm">{{ r.challenge.claims_verified }} verified / {{ r.challenge.claims_refuted }} refuted</span>
+        <span class="text-xs text-slate-500 mono">${{ r.challenge.cost_usd }} · {{ r.challenge.duration_ms }}ms</span>
+    </div>
+    {% if r.challenge.summary %}<p class="text-sm text-slate-700 italic">{{ r.challenge.summary }}</p>{% endif %}
+    {% if r.challenge.per_claim_verdicts %}
+    <details class="mt-2">
+        <summary class="cursor-pointer text-sm text-slate-600">per-claim verdicts ({{ r.challenge.per_claim_verdicts|length }})</summary>
+        <ul class="text-xs mt-2 space-y-1">
+            {% for cv in r.challenge.per_claim_verdicts %}
+            <li class="border-l-2 {% if cv.verified %}border-green-500{% else %}border-red-500{% endif %} pl-2">
+                <span class="{% if cv.verified %}text-green-600{% else %}text-red-600{% endif %} font-medium">{% if cv.verified %}VERIFIED{% else %}REFUTED{% endif %}:</span>
+                {{ cv.claim }}
+                <div class="text-slate-500 italic">→ {{ cv.evidence }}</div>
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- FINDINGS -->
+{% if r.auto_extracted_findings %}
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold text-lg mb-2">🔍 Findings auto-extracted ({{ r.auto_extracted_findings|length }})</h2>
+    <div class="space-y-2">
+        {% for f in r.auto_extracted_findings %}
+        <div class="border-l-4 {% if f.severity == 'HIGH' %}border-red-500{% elif f.severity == 'MEDIUM' %}border-amber-500{% else %}border-slate-300{% endif %} pl-3 py-1">
+            <div class="flex gap-2 flex-wrap items-center">
+                <span class="mono text-xs text-slate-500">{{ f.external_id }}</span>
+                <span class="pill text-xs bg-slate-100">{{ f.type }}</span>
+                <span class="pill text-xs {% if f.severity == 'HIGH' %}bg-red-100 text-red-700{% elif f.severity == 'MEDIUM' %}bg-amber-100 text-amber-700{% else %}bg-slate-100{% endif %}">{{ f.severity }}</span>
+                <span class="pill text-xs {% if f.source == 'challenger' %}bg-purple-100 text-purple-700{% else %}bg-indigo-100 text-indigo-700{% endif %}">{{ f.source }}</span>
+                <span class="font-medium">{{ f.title }}</span>
+            </div>
+            <p class="text-sm text-slate-600 mt-1">{{ f.description }}</p>
+            {% if f.suggested_action %}<p class="text-xs text-slate-500 mt-1">→ {{ f.suggested_action }}</p>{% endif %}
+            {% if f.file_path %}<p class="text-xs mono text-slate-400">{{ f.file_path }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- DECISIONS -->
+{% if r.auto_extracted_decisions %}
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold text-lg mb-2">💡 Decisions auto-extracted ({{ r.auto_extracted_decisions|length }})</h2>
+    <div class="space-y-2">
+        {% for d in r.auto_extracted_decisions %}
+        <div class="pl-3 py-1">
+            <div class="flex gap-2 items-center">
+                <span class="mono text-xs text-slate-500">{{ d.external_id }}</span>
+                <span class="pill text-xs {% if d.severity == 'HIGH' %}bg-red-100 text-red-700{% elif d.severity == 'MEDIUM' %}bg-amber-100 text-amber-700{% else %}bg-slate-100{% endif %}">{{ d.severity }}</span>
+                <span class="font-medium">{{ d.issue }}</span>
+            </div>
+            <p class="text-sm text-slate-600 mt-1"><span class="text-slate-400">→</span> {{ d.recommendation }}</p>
+            {% if d.reasoning %}<p class="text-xs text-slate-500 mt-1 italic">{{ d.reasoning[:250] }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ACCEPTANCE CRITERIA -->
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold text-lg mb-2">✔️ Acceptance criteria</h2>
+    <ul class="text-sm space-y-1">
+        {% for ac in r.acceptance_criteria %}
+        <li class="flex items-start gap-2 py-1">
+            <span class="pill text-xs bg-slate-100 mono">{{ ac.scenario_type }}</span>
+            <span class="pill text-xs bg-slate-100 mono">{{ ac.verification }}</span>
+            <span class="flex-1">AC-{{ ac.position }}: {{ ac.text }}</span>
+        </li>
+        {% if ac.test_path %}<li class="text-xs mono text-slate-400 ml-6">→ {{ ac.test_path }}</li>{% endif %}
+        {% if ac.command %}<li class="text-xs mono text-slate-400 ml-6">→ cmd: {{ ac.command }}</li>{% endif %}
+        {% endfor %}
+    </ul>
+</div>
+
+<!-- NOT EXECUTED -->
+{% if r.not_executed_claims %}
+<div class="bg-amber-50 rounded shadow p-5 mb-4 border border-amber-200">
+    <h2 class="font-semibold text-lg mb-2 text-amber-800">⚠️ Explicitly not executed</h2>
+    <ul class="text-sm space-y-2">
+        {% for ne in r.not_executed_claims %}
+        <li>
+            <div><strong>{{ ne.action }}</strong></div>
+            <div class="text-xs text-slate-600">reason: {{ ne.reason }}</div>
+            {% if ne.impact %}<div class="text-xs text-slate-600">impact: {{ ne.impact }}</div>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+{% endblock %}

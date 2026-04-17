@@ -8,7 +8,7 @@ from app.models.base import TimestampMixin
 class Finding(Base, TimestampMixin):
     __tablename__ = "findings"
     __table_args__ = (
-        CheckConstraint("type IN ('bug', 'improvement', 'risk', 'dependency', 'question')", name="valid_finding_type"),
+        CheckConstraint("type IN ('bug', 'improvement', 'risk', 'dependency', 'question', 'smell', 'opportunity', 'gap')", name="valid_finding_type"),
         CheckConstraint("severity IN ('HIGH', 'MEDIUM', 'LOW')", name="valid_finding_severity"),
         CheckConstraint(
             "status IN ('OPEN', 'APPROVED', 'DEFERRED', 'REJECTED')",

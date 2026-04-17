@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Forge{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        .pill { @apply inline-block px-2 py-0.5 rounded text-xs font-medium; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+<nav class="bg-slate-900 text-white px-6 py-3 flex items-center justify-between">
+    <a href="/ui/" class="font-semibold text-lg">⚒ Forge</a>
+    <div class="text-xs text-slate-400">
+        {% if project %}<a href="/ui/projects/{{ project }}" class="hover:text-white">project: {{ project }}</a>{% endif %}
+    </div>
+</nav>
+<main class="max-w-7xl mx-auto px-6 py-6">
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>

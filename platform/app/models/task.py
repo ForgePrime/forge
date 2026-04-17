@@ -53,6 +53,8 @@ class Task(Base, TimestampMixin):
     started_at_commit: Mapped[str | None] = mapped_column(String(50))
     skip_reason: Mapped[str | None] = mapped_column(Text)
     fail_reason: Mapped[str | None] = mapped_column(Text)
+    requirement_refs: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    completes_kr_ids: Mapped[list[str] | None] = mapped_column(ARRAY(String))
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
     acceptance_criteria: Mapped[list["AcceptanceCriterion"]] = relationship(

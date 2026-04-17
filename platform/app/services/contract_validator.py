@@ -201,18 +201,30 @@ def validate_delivery(delivery: dict, contract: dict, task_type: str, prev_attem
                 fix_parts.append(f"Change [{i}] summary too short")
                 all_pass = False
 
-        # Unique summaries check
+        # Unique summaries check — compare semantic cores, not scaffolding
         if c_contract.get("unique_summaries") and len(summaries) > 1:
-            threshold = anti_patterns.get("duplicate_summaries_threshold", 0.8)
-            for i in range(len(summaries)):
-                for j in range(i + 1, len(summaries)):
-                    sim = SequenceMatcher(None, summaries[i], summaries[j]).ratio()
+            threshold = anti_patterns.get("duplicate_summaries_threshold", 0.85)
+            def _summary_core(s: str) -> str:
+                import re
+                t = s or ""
+                # Strip file path references like app/auth/routes.py
+                t = re.sub(r"[\w/\-.]+\.\w{1,5}\b", "", t)
+                # Strip common action words at start
+                t = re.sub(r"^(created?|added?|updated?|modified?|edited?|deleted?|removed?|refactored?)\s+", "", t, flags=re.IGNORECASE)
+                t = re.sub(r"\s+", " ", t).strip().lower()
+                return t
+            cores = [_summary_core(s) for s in summaries]
+            for i in range(len(cores)):
+                for j in range(i + 1, len(cores)):
+                    if len(cores[i]) < 20 or len(cores[j]) < 20:
+                        continue
+                    sim = SequenceMatcher(None, cores[i], cores[j]).ratio()
                     if sim >= threshold:
                         checks.append(CheckResult(
                             "FAIL", "anti_pattern.duplicate_summaries",
-                            f"changes [{i}] vs [{j}] similarity {sim:.2f} >= {threshold}"
+                            f"changes [{i}] vs [{j}] core similarity {sim:.2f} >= {threshold} (after stripping paths+verbs)"
                         ))
-                        fix_parts.append(f"Change summaries too similar ({sim:.0%}). Each change needs unique description.")
+                        fix_parts.append(f"Change summaries describe different behavior per file — not just different paths.")
                         all_pass = False
                         break
 

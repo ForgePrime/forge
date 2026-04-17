@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     heartbeat_interval_minutes: int = 10
     workspace_root: str = "C:/Users/lukasz.krysik/Desktop/LINGARO/AI/forge/forge_output"
     claude_model: str = "sonnet"
+    claude_model_challenger: str = "opus"
     claude_budget_per_task_usd: float = 5.0
     claude_budget_per_scenario_usd: float = 50.0
     claude_timeout_sec: int = 900

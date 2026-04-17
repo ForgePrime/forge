@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}LLM call #{{ c.id }} — Forge{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <a href="javascript:history.back()" class="text-sm text-blue-600 hover:underline">← back</a>
+</div>
+
+<div class="bg-white rounded shadow p-5 mb-4">
+    <div class="flex items-center gap-3 mb-2">
+        <h1 class="text-xl font-bold">LLM call #{{ c.id }}</h1>
+        <span class="pill bg-slate-100">{{ c.purpose }}</span>
+        {% if c.is_error %}<span class="pill bg-red-100 text-red-700">error</span>{% endif %}
+    </div>
+    <div class="grid grid-cols-4 gap-4 text-sm">
+        <div><div class="text-xs text-slate-500">model asked</div><div class="mono">{{ c.model }}</div></div>
+        <div><div class="text-xs text-slate-500">model used</div><div class="mono">{{ c.model_used or '—' }}</div></div>
+        <div><div class="text-xs text-slate-500">cost</div><div class="mono">${{ '%.4f' % (c.cost_usd or 0) }}</div></div>
+        <div><div class="text-xs text-slate-500">duration</div><div class="mono">{{ ((c.duration_ms or 0) / 1000)|round(1) }}s</div></div>
+        <div><div class="text-xs text-slate-500">input tokens</div><div class="mono">{{ c.input_tokens or '—' }}</div></div>
+        <div><div class="text-xs text-slate-500">output tokens</div><div class="mono">{{ c.output_tokens or '—' }}</div></div>
+        <div><div class="text-xs text-slate-500">cache read</div><div class="mono">{{ c.cache_read_tokens or '—' }}</div></div>
+        <div><div class="text-xs text-slate-500">return code</div><div class="mono">{{ c.return_code }}</div></div>
+    </div>
+    {% if c.parse_error %}<div class="mt-2 text-sm text-red-600 mono">parse_error: {{ c.parse_error }}</div>{% endif %}
+    {% if c.workspace_dir %}<div class="mt-1 text-xs text-slate-400 mono">workspace: {{ c.workspace_dir }}</div>{% endif %}
+</div>
+
+{% if c.full_prompt %}
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold mb-2">Full prompt ({{ c.prompt_chars }}ch)</h2>
+    <pre class="text-xs mono bg-slate-900 text-slate-100 p-3 rounded overflow-auto max-h-96 whitespace-pre-wrap">{{ c.full_prompt }}</pre>
+</div>
+{% endif %}
+
+{% if c.response_text %}
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold mb-2">Response ({{ c.response_chars }}ch)</h2>
+    <pre class="text-xs mono bg-slate-100 p-3 rounded overflow-auto max-h-96 whitespace-pre-wrap">{{ c.response_text }}</pre>
+</div>
+{% endif %}
+
+{% if c.delivery_parsed %}
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold mb-2">Parsed delivery</h2>
+    <pre class="text-xs mono bg-slate-100 p-3 rounded overflow-auto max-h-96">{{ c.delivery_parsed | tojson(indent=2) }}</pre>
+</div>
+{% endif %}
+
+{% if c.stderr_tail %}
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold mb-2">stderr tail</h2>
+    <pre class="text-xs mono bg-red-50 text-red-900 p-3 rounded overflow-auto max-h-64">{{ c.stderr_tail }}</pre>
+</div>
+{% endif %}
+{% endblock %}

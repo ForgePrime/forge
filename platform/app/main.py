@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.execute import router as execute_router
 from app.api.projects import router as projects_router
 from app.api.pipeline import router as pipeline_router
+from app.api.ui import router as ui_router
 from app.config import settings
 from app.database import engine, Base
 
@@ -35,11 +36,18 @@ app.add_middleware(
 app.include_router(execute_router)
 app.include_router(projects_router)
 app.include_router(pipeline_router)
+app.include_router(ui_router)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/")
+def root():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ui/")
 
 
 if __name__ == "__main__":

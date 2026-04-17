@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/warehouseflow_test",
+    "postgresql://forge:forge@localhost:5432/warehouseflow_test",
 )
 
 
