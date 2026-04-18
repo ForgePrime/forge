@@ -7,8 +7,30 @@ from app.api.execute import router as execute_router
 from app.api.projects import router as projects_router
 from app.api.pipeline import router as pipeline_router
 from app.api.ui import router as ui_router
+from app.api.auth import router as auth_router
+from app.api.webhooks_api import router as webhooks_router
 from app.config import settings
-from app.database import engine, Base
+from app.database import engine, Base, SessionLocal
+
+
+def _bootstrap_default_org():
+    """Ensure default organization exists for existing pilots + register fallback flow."""
+    import app.models  # ensure models loaded
+    from app.models import Organization, Project
+    db = SessionLocal()
+    try:
+        default = db.query(Organization).filter(Organization.slug == settings.default_org_slug).first()
+        if not default:
+            default = Organization(slug=settings.default_org_slug, name=settings.default_org_name)
+            db.add(default)
+            db.flush()
+        # Migrate existing projects without org_id to default
+        orphan_projects = db.query(Project).filter(Project.organization_id.is_(None)).all()
+        for p in orphan_projects:
+            p.organization_id = default.id
+        db.commit()
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -16,6 +38,8 @@ async def lifespan(app: FastAPI):
     # Create tables on startup (MVP — use Alembic in production)
     import app.models  # noqa: ensure all models registered
     Base.metadata.create_all(bind=engine)
+    # Bootstrap default org + assign existing projects (Phase 1 migration)
+    _bootstrap_default_org()
     yield
 
 app = FastAPI(
@@ -25,6 +49,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from app.middleware.auth_mw import AuthMiddleware
+from app.middleware.role_mw import RoleMiddleware
+from app.services.csrf import CSRFMiddleware
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,11 +60,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Order: middleware added later runs FIRST on request, LAST on response.
+# Pipeline desired: Auth (loads user/org/role) → CSRF (validates token) → Role (enforces RBAC) → handler
+# So add: Role first (runs LAST on request), CSRF second, Auth last (runs FIRST).
+app.add_middleware(RoleMiddleware)
+app.add_middleware(CSRFMiddleware)
+app.add_middleware(AuthMiddleware)
 
+app.include_router(auth_router)
 app.include_router(execute_router)
 app.include_router(projects_router)
 app.include_router(pipeline_router)
+app.include_router(webhooks_router)
 app.include_router(ui_router)
+from app.api.ui import share_router
+app.include_router(share_router)
 
 
 @app.get("/health")

@@ -185,20 +185,69 @@
 </div>
 {% endif %}
 
-<!-- ACCEPTANCE CRITERIA -->
+<!-- DIFF VIEWER (Phase W7) -->
+{% if r.diff and not r.diff.get('error') %}
 <div class="bg-white rounded shadow p-5 mb-4">
-    <h2 class="font-semibold text-lg mb-2">✔️ Acceptance criteria</h2>
-    <ul class="text-sm space-y-1">
-        {% for ac in r.acceptance_criteria %}
-        <li class="flex items-start gap-2 py-1">
-            <span class="pill text-xs bg-slate-100 mono">{{ ac.scenario_type }}</span>
-            <span class="pill text-xs bg-slate-100 mono">{{ ac.verification }}</span>
-            <span class="flex-1">AC-{{ ac.position }}: {{ ac.text }}</span>
+    <h2 class="font-semibold text-lg mb-2">📝 Files changed (git diff)</h2>
+    <div class="text-xs text-slate-500 mono mb-2">{{ r.diff.from_sha[:8] }}..{{ r.diff.to_sha[:8] }}</div>
+    {% if r.diff.files %}
+    <ul class="text-sm mb-3">
+        {% for f in r.diff.files %}
+        <li class="mono text-xs">
+            <span class="text-green-700">+{{ f.added }}</span>
+            <span class="text-red-700">-{{ f.removed }}</span>
+            <span class="ml-2">{{ f.path }}</span>
         </li>
-        {% if ac.test_path %}<li class="text-xs mono text-slate-400 ml-6">→ {{ ac.test_path }}</li>{% endif %}
-        {% if ac.command %}<li class="text-xs mono text-slate-400 ml-6">→ cmd: {{ ac.command }}</li>{% endif %}
         {% endfor %}
     </ul>
+    {% endif %}
+    <details>
+        <summary class="cursor-pointer text-sm text-blue-600">Pokaż diff ({{ r.diff.diff|length }} bytes{% if r.diff.truncated %}, truncated{% endif %})</summary>
+        <pre class="text-xs mono bg-slate-900 p-3 rounded mt-2 overflow-auto max-h-[600px]"><code>{% for line in r.diff.diff.split('\n') %}{% if line.startswith('+') and not line.startswith('+++') %}<span class="text-green-400">{{ line }}</span>
+{% elif line.startswith('-') and not line.startswith('---') %}<span class="text-red-400">{{ line }}</span>
+{% elif line.startswith('@@') %}<span class="text-cyan-400">{{ line }}</span>
+{% elif line.startswith('diff --git') or line.startswith('+++') or line.startswith('---') %}<span class="text-yellow-400">{{ line }}</span>
+{% else %}<span class="text-slate-300">{{ line }}</span>
+{% endif %}{% endfor %}</code></pre>
+    </details>
+</div>
+{% endif %}
+
+<!-- ACCEPTANCE CRITERIA (with CRUD) -->
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold text-lg mb-2">✔️ Acceptance criteria ({{ r.acceptance_criteria|length }})</h2>
+    <ul id="ac-list-{{ r.task.external_id }}" class="text-sm space-y-1">
+        {% for ac in r.acceptance_criteria %}
+            {% with task_ext=r.task.external_id, ac_edit=None %}
+                {% include "_ac_row.html" %}
+            {% endwith %}
+        {% endfor %}
+        {% with task_ext=r.task.external_id %}
+            {% include "_ac_add_form.html" %}
+        {% endwith %}
+    </ul>
+</div>
+
+<!-- COMMENTS (Phase 2 collab) -->
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold text-lg mb-2">💬 Comments</h2>
+    <ul id="comments-list" hx-get="/ui/projects/{{ project }}/tasks/{{ r.task.external_id }}/comments"
+        hx-trigger="load" hx-swap="innerHTML"
+        class="space-y-2 mb-3 text-sm">
+        <li class="text-slate-400">Loading...</li>
+    </ul>
+    <form hx-post="/ui/projects/{{ project }}/tasks/{{ r.task.external_id }}/comments"
+          hx-target="#comments-list"
+          hx-swap="beforeend"
+          hx-on::after-request="if(event.detail.successful) this.reset()"
+          class="flex gap-2">
+        <textarea name="content" required minlength="1" maxlength="4000" rows="2"
+                  placeholder="Dodaj komentarz..."
+                  class="flex-1 border rounded px-3 py-2 text-sm"></textarea>
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 text-sm rounded hover:bg-blue-700 self-start">
+            Dodaj
+        </button>
+    </form>
 </div>
 
 <!-- NOT EXECUTED -->

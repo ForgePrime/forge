@@ -1,0 +1,51 @@
+{# Expects: o (objective with external_id), kr (KR dict or ORM object with .obj_id attr set by server), project #}
+<li id="kr-{{o.external_id}}-{{kr.position}}" class="flex items-start gap-2 py-1 border-b last:border-b-0">
+{% if kr_edit is not none and kr_edit == kr.position %}
+    <form hx-patch="/ui/objectives/{{kr.obj_id}}/key-results/{{kr.position}}?obj_ext={{o.external_id}}&project={{project}}"
+          hx-target="#kr-{{o.external_id}}-{{kr.position}}"
+          hx-swap="outerHTML"
+          class="flex-1 space-y-1 bg-slate-50 p-2 rounded">
+        <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500 mono">KR{{kr.position}}</span>
+            <select name="status" class="border rounded px-2 py-0.5 text-xs">
+                {% for s in ["NOT_STARTED","IN_PROGRESS","ACHIEVED","MISSED"] %}
+                <option value="{{s}}" {% if kr.status == s %}selected{% endif %}>{{s}}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <input name="text" value="{{kr.text}}" class="w-full border rounded px-2 py-1 text-sm" required>
+        <div class="flex gap-2">
+            {% if kr.kr_type == "numeric" %}
+            <label class="text-xs flex-1">Target
+                <input name="target_value" type="number" step="0.01" value="{{kr.target_value or ''}}" class="w-full border rounded px-2 py-0.5 text-xs mono">
+            </label>
+            <label class="text-xs flex-1">Current
+                <input name="current_value" type="number" step="0.01" value="{{kr.current_value or ''}}" class="w-full border rounded px-2 py-0.5 text-xs mono">
+            </label>
+            {% endif %}
+        </div>
+        {% if kr.kr_type == "numeric" %}
+        <input name="measurement_command" value="{{kr.measurement_command or ''}}" placeholder="bash command for measurement" class="w-full border rounded px-2 py-1 text-xs mono">
+        {% endif %}
+        <div class="flex gap-2">
+            <button type="submit" class="bg-green-600 text-white px-2 py-0.5 text-xs rounded hover:bg-green-700">Zapisz</button>
+            <button type="button"
+                    hx-get="/ui/objectives/{{kr.obj_id}}/key-results/{{kr.position}}/row?obj_ext={{o.external_id}}&project={{project}}"
+                    hx-target="#kr-{{o.external_id}}-{{kr.position}}"
+                    hx-swap="outerHTML"
+                    class="text-slate-500 px-2 py-0.5 text-xs hover:text-slate-800">Anuluj</button>
+        </div>
+    </form>
+{% else %}
+    <span class="pill text-xs {% if kr.status == 'ACHIEVED' %}bg-green-100 text-green-700{% elif kr.status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700{% elif kr.status == 'MISSED' %}bg-red-100 text-red-700{% else %}bg-slate-100{% endif %}">{{kr.status}}</span>
+    <span class="flex-1">KR{{kr.position}}: {{kr.text}}
+        {% if kr.target_value is not none %}
+        <span class="mono text-xs text-slate-500">[target={{kr.target_value}} current={{kr.current_value or '—'}}]</span>
+        {% endif %}
+    </span>
+    <button hx-get="/ui/objectives/{{kr.obj_id}}/key-results/{{kr.position}}/row?edit=1&obj_ext={{o.external_id}}&project={{project}}"
+            hx-target="#kr-{{o.external_id}}-{{kr.position}}"
+            hx-swap="outerHTML"
+            class="text-blue-600 hover:underline text-xs">Edit</button>
+{% endif %}
+</li>

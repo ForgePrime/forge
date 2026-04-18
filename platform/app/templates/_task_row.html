@@ -1,0 +1,47 @@
+{# Expects: t (task dict), project. Display mode OR edit mode #}
+<tr id="task-{{t.external_id}}" class="border-t hover:bg-slate-50">
+{% if edit %}
+<td colspan="7" class="p-0">
+    <form hx-patch="/ui/projects/{{project}}/tasks/{{t.external_id}}"
+          hx-target="#task-{{t.external_id}}"
+          hx-swap="outerHTML"
+          class="bg-slate-50 p-3 space-y-2">
+        <div class="flex items-center gap-2">
+            <span class="mono text-xs text-slate-500">{{t.external_id}}</span>
+            <span class="pill bg-slate-100 text-xs">{{t.status}}</span>
+            <span class="text-xs text-slate-500">origin: {{t.origin or '—'}}</span>
+        </div>
+        <input name="name" value="{{t.name}}" required class="w-full border rounded px-2 py-1 font-semibold text-sm">
+        <textarea name="instruction" rows="4" class="w-full border rounded px-2 py-1 text-sm mono">{{t.instruction or ''}}</textarea>
+        <div class="flex gap-2">
+            <input name="scopes" value="{{ (t.scopes or [])|join(',') }}" placeholder="scopes (comma-separated)" class="flex-1 border rounded px-2 py-1 text-xs">
+            <input name="completes_kr_ids" value="{{ (t.completes_kr_ids or [])|join(',') }}" placeholder="KR0,KR1" class="w-32 border rounded px-2 py-1 text-xs mono">
+        </div>
+        <input name="requirement_refs" value="{{ (t.requirement_refs or [])|join('; ') }}" placeholder="SRC-001 §X; SRC-002 §Y" class="w-full border rounded px-2 py-1 text-xs">
+        <div class="flex gap-2">
+            <button type="submit" class="bg-green-600 text-white px-3 py-1 text-xs rounded hover:bg-green-700">Zapisz</button>
+            <button type="button"
+                    hx-get="/ui/projects/{{project}}/tasks/{{t.external_id}}/row"
+                    hx-target="#task-{{t.external_id}}"
+                    hx-swap="outerHTML"
+                    class="text-slate-500 px-3 py-1 text-xs hover:text-slate-800">Anuluj</button>
+        </div>
+    </form>
+</td>
+{% else %}
+    <td class="px-3 py-2 mono"><a href="/ui/projects/{{project}}/tasks/{{t.external_id}}" class="text-blue-600 hover:underline">{{t.external_id}}</a></td>
+    <td class="px-3 py-2">{{t.name}}</td>
+    <td class="px-3 py-2 mono text-xs text-slate-500">{{t.origin or '—'}}</td>
+    <td class="px-3 py-2">
+        <span class="pill {% if t.status == 'DONE' %}bg-green-100 text-green-700{% elif t.status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700{% elif t.status == 'FAILED' %}bg-red-100 text-red-700{% else %}bg-slate-100{% endif %}">{{t.status}}</span>
+    </td>
+    <td class="px-3 py-2">{{t.ac_count}}</td>
+    <td class="px-3 py-2 text-xs">{{ (t.requirement_refs or [])|length }}</td>
+    <td class="px-3 py-2 text-xs mono">{{ (t.completes_kr_ids or [])|join(',') or '—' }}
+        <button hx-get="/ui/projects/{{project}}/tasks/{{t.external_id}}/row?edit=1"
+                hx-target="#task-{{t.external_id}}"
+                hx-swap="outerHTML"
+                class="ml-2 text-blue-600 hover:underline">Edit</button>
+    </td>
+{% endif %}
+</tr>

@@ -190,10 +190,11 @@ def run_pytest(
 
 
 def detect_language(workspace_dir: str) -> str:
-    """Detect primary language based on project marker files.
+    """Detect primary language based on project marker files OR file extensions.
 
     Returns: 'python' | 'node' | 'go' | 'rust' | 'java' | 'unknown'
-    Multi-language workspaces resolve to the first detected in priority order.
+    Marker files take priority. Falls back to file-extension scan if no markers
+    (Claude often skips creating pyproject.toml/package.json for small scaffolds).
     """
     ws = pathlib.Path(workspace_dir)
     markers = [
@@ -207,6 +208,27 @@ def detect_language(workspace_dir: str) -> str:
         for f in files:
             if (ws / f).exists() or list(ws.rglob(f))[:1]:
                 return lang
+    # Fallback: extension-based detection (skip dot-dirs like .git, .venv)
+    EXT_RANK = [
+        ("python", {".py"}),
+        ("node", {".ts", ".tsx", ".js", ".jsx"}),
+        ("go", {".go"}),
+        ("rust", {".rs"}),
+        ("java", {".java", ".kt"}),
+    ]
+    counts = {lang: 0 for lang, _ in EXT_RANK}
+    for path in ws.rglob("*"):
+        if any(part.startswith(".") for part in path.parts):
+            continue
+        if not path.is_file():
+            continue
+        ext = path.suffix.lower()
+        for lang, exts in EXT_RANK:
+            if ext in exts:
+                counts[lang] += 1
+                break
+    if any(counts.values()):
+        return max(counts, key=counts.get)
     return "unknown"
 
 

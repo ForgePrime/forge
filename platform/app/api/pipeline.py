@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models import (
     Project, Task, AcceptanceCriterion, Knowledge, Objective, KeyResult,
-    Decision, Execution, LLMCall, TestRun, Finding,
+    Decision, Execution, LLMCall, TestRun, Finding, OrchestrateRun,
 )
 from app.services.claude_cli import invoke_claude, CLIResult
 from app.services.prompt_parser import assemble_prompt
@@ -45,6 +45,63 @@ def _project(db: Session, slug: str) -> Project:
     if not proj:
         raise HTTPException(404, f"Project '{slug}' not found")
     return proj
+
+
+def _resolve_anthropic_key(db: Session, project: Project) -> str | None:
+    """Decrypt project's org Anthropic key. Returns None if no key set — subprocess
+    falls back to system Claude CLI auth (dev-friendly).
+    """
+    if not project.organization_id:
+        return None
+    from app.models import Organization
+    from app.services.auth import decrypt_secret
+    org = db.query(Organization).filter(Organization.id == project.organization_id).first()
+    if not org or not org.anthropic_api_key_encrypted:
+        return None
+    return decrypt_secret(org.anthropic_api_key_encrypted)
+
+
+def _enforce_budget(db: Session, project: Project) -> None:
+    """Hard stop — raise 402 Payment Required if org's current-month spend hit budget.
+    Called BEFORE every LLM invocation.
+
+    Returns silently if:
+    - project has no org
+    - org has no budget set
+    - current month spend < budget
+    """
+    if not project.organization_id:
+        return
+    from app.models import Organization
+    from sqlalchemy import func as _func
+    # populate_existing() bypasses session identity cache — gets fresh budget from DB
+    org = db.query(Organization).populate_existing().filter(
+        Organization.id == project.organization_id
+    ).first()
+    if not org or org.budget_usd_monthly is None:
+        return
+    import datetime as _dt
+    first = _dt.datetime.now(_dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    spend = db.query(_func.sum(LLMCall.cost_usd)).join(
+        Project, Project.id == LLMCall.project_id
+    ).filter(
+        Project.organization_id == org.id,
+        LLMCall.created_at >= first,
+    ).scalar() or 0.0
+    if float(spend) >= float(org.budget_usd_monthly):
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "monthly_budget_exceeded",
+                "current_spend_usd": round(float(spend), 4),
+                "budget_usd_monthly": float(org.budget_usd_monthly),
+                "message": (
+                    f"Organization '{org.slug}' has spent ${float(spend):.2f} this month, "
+                    f"which meets/exceeds the budget of ${float(org.budget_usd_monthly):.2f}. "
+                    f"Increase budget in Org settings to continue."
+                ),
+            },
+        )
 
 
 def _workspace(proj_slug: str) -> str:
@@ -218,6 +275,8 @@ def analyze_documents(slug: str, db: Session = Depends(get_db)):
 
     prompt = ANALYZE_PROMPT_TEMPLATE.format(source_docs=src_text)
     workspace = _workspace(slug)
+    _enforce_budget(db, proj)
+    anthropic_key = _resolve_anthropic_key(db, proj)
 
     cli = invoke_claude(
         prompt=prompt,
@@ -225,6 +284,7 @@ def analyze_documents(slug: str, db: Session = Depends(get_db)):
         model=settings.claude_model,
         max_budget_usd=settings.claude_budget_per_task_usd,
         timeout_sec=settings.claude_timeout_sec,
+        api_key=anthropic_key,
     )
 
     llm_call = _record_llm_call(
@@ -402,6 +462,8 @@ def plan_from_objective(slug: str, body: PlanRequest, db: Session = Depends(get_
         source_docs=src_bundle,
     )
     workspace = _workspace(slug)
+    _enforce_budget(db, proj)
+    anthropic_key = _resolve_anthropic_key(db, proj)
 
     cli = invoke_claude(
         prompt=prompt,
@@ -409,6 +471,7 @@ def plan_from_objective(slug: str, body: PlanRequest, db: Session = Depends(get_
         model=settings.claude_model,
         max_budget_usd=settings.claude_budget_per_task_usd,
         timeout_sec=settings.claude_timeout_sec,
+        api_key=anthropic_key,
     )
 
     llm_call = _record_llm_call(
@@ -544,8 +607,50 @@ class OrchestrateRequest(BaseModel):
     enable_redis: bool = False
 
 
+def _run_orchestrate_background(slug: str, params: dict, run_id: int):
+    """Background worker — runs full orchestrate with own DB session.
+    Updates orchestrate_runs row throughout via _update_run.
+    """
+    from app.database import SessionLocal as _SL
+    db = _SL()
+    try:
+        body = OrchestrateRequest(**params)
+        _update_run(db, run_id, status="RUNNING")
+        try:
+            orchestrate(slug, body, db, run_id=run_id)
+        except HTTPException as ex:
+            _update_run(db, run_id, status="BUDGET_EXCEEDED" if ex.status_code == 402 else "FAILED",
+                        error=str(ex.detail), finished_at=dt.datetime.now(dt.timezone.utc))
+        except Exception as ex:
+            _update_run(db, run_id, status="FAILED",
+                        error=f"{type(ex).__name__}: {str(ex)[:500]}",
+                        finished_at=dt.datetime.now(dt.timezone.utc))
+    finally:
+        db.close()
+
+
+def _update_run(db: Session, run_id: int | None, **fields):
+    """Helper — update orchestrate_runs row inline (best-effort, ignore if no run_id)."""
+    if not run_id:
+        return
+    db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).update(fields)
+    db.commit()
+
+
+def _check_cancel(db: Session, run_id: int | None) -> bool:
+    if not run_id:
+        return False
+    row = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    return bool(row and row.cancel_requested)
+
+
 @router.post("/projects/{slug}/orchestrate")
-def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session = Depends(get_db)):
+def orchestrate(
+    slug: str,
+    body: OrchestrateRequest | None = None,
+    db: Session = Depends(get_db),
+    run_id: int | None = None,
+):
     """Run orchestration loop until no more tasks or limits hit.
 
     Loop per task:
@@ -566,6 +671,12 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
     total_cost = 0.0
     # Ensure workspace is a git repo (for diff verification)
     ensure_repo(workspace)
+
+    # Phase W4: resolve org's Anthropic key once per orchestrate run.
+    # Wrapped invoke_fn used by Phase B (extract) + Phase C (challenge).
+    anthropic_key_orchestrate = _resolve_anthropic_key(db, proj)
+    from functools import partial as _partial
+    invoke_claude_with_key = _partial(invoke_claude, api_key=anthropic_key_orchestrate)
 
     # Phase C: ensure isolated workspace infrastructure (postgres + optional redis)
     infra_env: dict[str, str] = {}
@@ -606,10 +717,24 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
         if not candidate:
             break
 
+        # Cooperative cancel check
+        if _check_cancel(db, run_id):
+            _update_run(db, run_id, status="CANCELLED",
+                        progress_message="Cancelled by user request",
+                        finished_at=dt.datetime.now(dt.timezone.utc))
+            return {"tasks_run": len(results), "results": results,
+                    "total_cost_usd": round(total_cost, 4),
+                    "workspace": workspace, "workspace_infra": infra_info,
+                    "stopped_reason": "cancelled"}
+
         # Claim
         candidate.status = "IN_PROGRESS"
         candidate.agent = "orchestrator-cli"
         candidate.started_at = dt.datetime.now(dt.timezone.utc)
+        _update_run(db, run_id,
+                    current_task_external_id=candidate.external_id,
+                    current_phase="claim",
+                    progress_message=f"Claimed task {candidate.external_id} ({candidate.name[:80]})")
         ac_count = len(candidate.acceptance_criteria)
         ceremony = "LIGHT" if (candidate.type in ("chore", "investigation") or ac_count <= 1) else ("STANDARD" if ac_count <= 3 else "FULL")
         candidate.ceremony_level = ceremony
@@ -663,6 +788,9 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
         accepted = False
         fix_hint = ""
         for attempt in range(1, max_retries + 1):
+            _update_run(db, run_id,
+                        current_phase=f"execute (attempt {attempt}/{max_retries})",
+                        progress_message=f"{candidate.external_id}: Claude CLI executing... (attempt {attempt})")
             full_prompt = asm.prompt_text + EXECUTE_SUFFIX
             if fix_hint:
                 full_prompt += (
@@ -673,12 +801,40 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
                     f"ZAMIAST pisać instrukcje w tekście.\n"
                 )
 
+            try:
+                _enforce_budget(db, proj)
+            except HTTPException as ex:
+                # Budget hit during orchestration — stop loop, mark task back to TODO
+                candidate.status = "TODO"
+                candidate.agent = None
+                candidate.started_at = None
+                execution.status = "FAILED"
+                db.commit()
+                results.append({
+                    "task": candidate.external_id,
+                    "status": "BUDGET_EXCEEDED",
+                    "detail": ex.detail,
+                })
+                _update_run(db, run_id, status="BUDGET_EXCEEDED",
+                            error=str(ex.detail),
+                            progress_message=f"{candidate.external_id}: budget exceeded — stopped",
+                            finished_at=dt.datetime.now(dt.timezone.utc))
+                return {
+                    "tasks_run": len(results),
+                    "results": results,
+                    "total_cost_usd": round(total_cost, 4),
+                    "workspace": workspace,
+                    "workspace_infra": infra_info,
+                    "stopped_reason": "monthly_budget_exceeded",
+                }
+
             cli = invoke_claude(
                 prompt=full_prompt,
                 workspace_dir=workspace,
                 model=settings.claude_model,
                 max_budget_usd=settings.claude_budget_per_task_usd,
                 timeout_sec=settings.claude_timeout_sec,
+                api_key=_resolve_anthropic_key(db, proj),
             )
             total_cost += cli.cost_usd or 0.0
 
@@ -733,6 +889,8 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
                         )
                     # undeclared files → WARNING only (Claude may create legitimate support files)
 
+                _update_run(db, run_id, current_phase="verify",
+                            progress_message=f"{candidate.external_id}: running pytest + git diff + KR measurement")
                 # 2. Test execution — Forge runs AC tests itself
                 lang = detect_language(workspace)
                 verification_report["language"] = lang
@@ -851,11 +1009,13 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
                 candidate.completed_at = dt.datetime.now(dt.timezone.utc)
                 db.commit()
 
+                _update_run(db, run_id, current_phase="extract",
+                            progress_message=f"{candidate.external_id}: extractor pulling decisions + findings")
                 # ------ PHASE B: auto-extract decisions + findings from delivery ------
                 try:
                     extraction = extract_from_delivery(
                         delivery=delivery,
-                        invoke_fn=invoke_claude,
+                        invoke_fn=invoke_claude_with_key,
                         workspace_dir=workspace,
                         model=settings.claude_model,
                         max_budget_usd=1.0,
@@ -927,6 +1087,8 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
                     # but log the error. Future improvement: per-row savepoint so valid items persist.
                     task_attempts[-1]["extraction_persist_error"] = f"{type(e).__name__}: {str(e)[:200]}"
 
+                _update_run(db, run_id, current_phase="challenge",
+                            progress_message=f"{candidate.external_id}: Opus challenging Sonnet's delivery")
                 # ------ PHASE C: cross-model challenge (Opus challenges Sonnet) ------
                 challenge_findings_ext = []
                 challenge_verdict = None
@@ -939,7 +1101,7 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
                         test_run_data=verification_report.get("tests"),
                         extracted_decisions=extraction.decisions,
                         extracted_findings=extraction.findings,
-                        invoke_fn=invoke_claude,
+                        invoke_fn=invoke_claude_with_key,
                         workspace_dir=workspace,
                         model=settings.claude_model_challenger,
                         max_budget_usd=2.0,
@@ -1021,19 +1183,119 @@ def orchestrate(slug: str, body: OrchestrateRequest | None = None, db: Session =
             candidate.fail_reason = f"Max retries ({max_retries}) reached. Last fix_hint: {fix_hint[:300]}"
             db.commit()
             results.append({"task": candidate.external_id, "status": "FAILED", "attempts": task_attempts})
+            _update_run(db, run_id,
+                        tasks_failed=sum(1 for r in results if r["status"] == "FAILED"),
+                        tasks_completed=sum(1 for r in results if r["status"] == "DONE"),
+                        total_cost_usd=round(total_cost, 4),
+                        progress_message=f"{candidate.external_id}: FAILED after {len(task_attempts)} attempts")
+            try:
+                from app.services.webhooks import dispatch_event as _dispatch
+                if proj.organization_id:
+                    _dispatch(db, proj.organization_id, "task.failed", {
+                        "project": slug, "task": candidate.external_id,
+                        "attempts": len(task_attempts),
+                    })
+            except Exception:
+                pass  # webhook failure shouldn't crash orchestrate
             if body.stop_on_failure:
                 break
             continue
 
         results.append({"task": candidate.external_id, "status": "DONE", "attempts": task_attempts})
+        _update_run(db, run_id,
+                    tasks_completed=sum(1 for r in results if r["status"] == "DONE"),
+                    tasks_failed=sum(1 for r in results if r["status"] == "FAILED"),
+                    total_cost_usd=round(total_cost, 4),
+                    progress_message=f"{candidate.external_id}: DONE")
+        try:
+            from app.services.webhooks import dispatch_event as _dispatch
+            if proj.organization_id:
+                _dispatch(db, proj.organization_id, "task.done", {
+                    "project": slug, "task": candidate.external_id,
+                    "cost_usd": total_cost,
+                })
+        except Exception:
+            pass
 
-    return {
+    final = {
         "tasks_run": len(results),
         "results": results,
         "total_cost_usd": round(total_cost, 4),
         "workspace": workspace,
         "workspace_infra": infra_info,
     }
+    _update_run(db, run_id, status="DONE", current_phase="done",
+                progress_message=f"Completed {len(results)} tasks ({sum(1 for r in results if r['status']=='DONE')} done)",
+                result=final, total_cost_usd=round(total_cost, 4),
+                finished_at=dt.datetime.now(dt.timezone.utc))
+    return final
+
+
+# ---------- Async orchestrate (background) ----------
+
+from fastapi import BackgroundTasks
+
+
+@router.post("/projects/{slug}/orchestrate-async")
+def orchestrate_async(
+    slug: str,
+    background_tasks: BackgroundTasks,
+    body: OrchestrateRequest | None = None,
+    db: Session = Depends(get_db),
+):
+    """Start orchestrate in background. Returns run_id immediately. Poll GET /orchestrate-runs/{id}."""
+    proj = _project(db, slug)
+    body = body or OrchestrateRequest()
+    run = OrchestrateRun(
+        project_id=proj.id,
+        params=body.model_dump(),
+        status="PENDING",
+        progress_message="Queued",
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    background_tasks.add_task(_run_orchestrate_background, slug, body.model_dump(), run.id)
+    return {"run_id": run.id, "status": "PENDING", "poll_url": f"/api/v1/orchestrate-runs/{run.id}"}
+
+
+@router.get("/orchestrate-runs/{run_id}")
+def orchestrate_run_status(run_id: int, db: Session = Depends(get_db)):
+    run = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    if not run:
+        raise HTTPException(404)
+    elapsed_sec = None
+    if run.started_at:
+        end = run.finished_at or dt.datetime.now(dt.timezone.utc)
+        elapsed_sec = int((end - run.started_at).total_seconds())
+    return {
+        "id": run.id, "project_id": run.project_id,
+        "status": run.status, "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "elapsed_sec": elapsed_sec,
+        "current_task_external_id": run.current_task_external_id,
+        "current_phase": run.current_phase,
+        "progress_message": run.progress_message,
+        "tasks_completed": run.tasks_completed,
+        "tasks_failed": run.tasks_failed,
+        "total_cost_usd": run.total_cost_usd,
+        "params": run.params,
+        "error": run.error,
+        "result": run.result,
+        "cancel_requested": run.cancel_requested,
+    }
+
+
+@router.post("/orchestrate-runs/{run_id}/cancel")
+def orchestrate_run_cancel(run_id: int, db: Session = Depends(get_db)):
+    run = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    if not run:
+        raise HTTPException(404)
+    if run.status in ("DONE", "FAILED", "CANCELLED", "BUDGET_EXCEEDED"):
+        raise HTTPException(409, "Run already finished")
+    run.cancel_requested = True
+    db.commit()
+    return {"cancel_requested": True, "status": run.status}
 
 
 # ---------- /projects/{slug}/tasks/{ext}/report — trustworthy DONE report ----------
@@ -1142,8 +1404,17 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
 
     # Verification report from latest exec
     verification = None
+    diff_data = None
     if latest_exec and latest_exec.validation_result:
         verification = latest_exec.validation_result.get("verification")
+        # Live git diff if we have head_before
+        gd_meta = (verification or {}).get("git_diff") or {}
+        head_before = gd_meta.get("head_before")
+        head_after = gd_meta.get("head_after")
+        if head_before and head_after:
+            from app.services.workspace_browser import git_diff as _git_diff
+            workspace = _workspace(slug)
+            diff_data = _git_diff(workspace, head_before, head_after)
 
     # Auto-extracted decisions + findings linked to task
     extracted_decisions = [
@@ -1229,6 +1500,7 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
         "auto_extracted_decisions": extracted_decisions,
         "auto_extracted_findings": extracted_findings,
         "challenge": challenge_summary,
+        "diff": diff_data,
         "not_executed_claims": not_executed,
         "attempts": len(all_execs),
         "cost_usd": round(total_cost, 4),

@@ -1,0 +1,30 @@
+{# Add-new-AC form. Appended at end of AC list. Expects: task_ext, project #}
+<li id="ac-add-{{task_ext}}" class="py-2 border-t">
+    <details>
+        <summary class="cursor-pointer text-sm text-blue-600">+ Dodaj AC</summary>
+        <form hx-post="/ui/projects/{{project}}/tasks/{{task_ext}}/ac"
+              hx-target="#ac-add-{{task_ext}}"
+              hx-swap="beforebegin"
+              hx-on::after-request="if(event.detail.successful) this.reset()"
+              class="mt-2 space-y-1 bg-slate-50 p-2 rounded">
+            <div class="flex gap-2">
+                <select name="scenario_type" class="border rounded px-2 py-0.5 text-xs">
+                    <option value="positive">positive</option>
+                    <option value="negative">negative</option>
+                    <option value="edge_case">edge_case</option>
+                    <option value="regression">regression</option>
+                </select>
+                <select name="verification" class="border rounded px-2 py-0.5 text-xs">
+                    <option value="manual">manual</option>
+                    <option value="test">test</option>
+                    <option value="command">command</option>
+                </select>
+            </div>
+            <textarea name="text" rows="2" required minlength="20" placeholder="AC text (min 20 chars)..."
+                      class="w-full border rounded px-2 py-1 text-sm"></textarea>
+            <input name="test_path" placeholder="tests/... (opcjonalne)" class="w-full border rounded px-2 py-1 text-xs mono">
+            <input name="command" placeholder="bash command (opcjonalne)" class="w-full border rounded px-2 py-1 text-xs mono">
+            <button type="submit" class="bg-green-600 text-white px-2 py-0.5 text-xs rounded hover:bg-green-700">Dodaj AC</button>
+        </form>
+    </details>
+</li>

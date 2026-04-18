@@ -1,0 +1,12 @@
+{
+  "p50": 13.86,
+  "p95": 19.02,
+  "p99": 19.91,
+  "rps": 706.33,
+  "timestamp": "2026-04-17T22:50:28.126992+00:00",
+  "total_requests": 200,
+  "concurrency": 10,
+  "endpoint": "GET /projects",
+  "server": "minimal FastAPI + JSONFileStorage (forge core)",
+  "note": "Excludes auth/ContractValidationMiddleware; understates full stack by ~1-3ms"
+}

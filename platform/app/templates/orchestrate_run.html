@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Orchestrate run #{{ run_id }} — Forge{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <a href="/ui/projects/{{ project }}?tab=tasks" class="text-sm text-blue-600 hover:underline">← project {{ project }}</a>
+</div>
+
+<div class="bg-white rounded shadow p-5"
+     hx-get="/ui/orchestrate-runs/{{ run_id }}/panel"
+     hx-trigger="load, every 2s"
+     hx-swap="innerHTML">
+    <div class="text-slate-500 text-sm">Loading orchestrate run #{{ run_id }}...</div>
+</div>
+{% endblock %}

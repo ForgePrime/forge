@@ -1,0 +1,23 @@
+{# Add-KR inline form inside objective card. Expects: o (dict with .id, external_id), project #}
+<details class="mt-2">
+    <summary class="cursor-pointer text-xs text-blue-600">+ Dodaj KR</summary>
+    <form hx-post="/ui/objectives/{{o.id}}/key-results?project={{project}}&obj_ext={{o.external_id}}"
+          hx-target="closest details"
+          hx-swap="afterend"
+          hx-on::after-request="if(event.detail.successful) this.reset()"
+          class="mt-2 space-y-1 bg-slate-50 p-2 rounded">
+        <div class="flex gap-2 items-center">
+            <select name="kr_type" class="border rounded px-2 py-0.5 text-xs">
+                <option value="descriptive">descriptive</option>
+                <option value="numeric">numeric</option>
+            </select>
+            <input name="target_value" type="number" step="0.01" placeholder="target (tylko numeric)"
+                   class="w-40 border rounded px-2 py-0.5 text-xs mono">
+        </div>
+        <input name="text" required minlength="5" placeholder="Treść KR (np. 'p95 < 200ms')"
+               class="w-full border rounded px-2 py-1 text-sm">
+        <input name="measurement_command" placeholder="bash command (tylko numeric)"
+               class="w-full border rounded px-2 py-1 text-xs mono">
+        <button type="submit" class="bg-green-600 text-white px-2 py-0.5 text-xs rounded hover:bg-green-700">Dodaj KR</button>
+    </form>
+</details>

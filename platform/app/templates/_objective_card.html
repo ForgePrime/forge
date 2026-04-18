@@ -1,0 +1,56 @@
+{# Single objective card — read OR edit mode. Swap target: #obj-{{o.external_id}} #}
+<div id="obj-{{o.external_id}}" class="bg-white rounded shadow p-4">
+{% if edit %}
+    <form hx-patch="/ui/projects/{{project}}/objectives/{{o.external_id}}"
+          hx-target="#obj-{{o.external_id}}"
+          hx-swap="outerHTML"
+          class="space-y-2">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="mono text-xs text-slate-500">{{o.external_id}}</span>
+            <select name="status" class="border rounded px-2 py-1 text-xs">
+                {% for s in ["DRAFT","ACTIVE","ACHIEVED","ABANDONED"] %}
+                <option value="{{s}}" {% if o.status == s %}selected{% endif %}>{{s}}</option>
+                {% endfor %}
+            </select>
+            <label class="text-xs text-slate-500">Priority
+                <input type="number" name="priority" min="1" max="5" value="{{o.priority}}" class="border rounded px-2 py-1 w-14 text-xs">
+            </label>
+        </div>
+        <input name="title" value="{{o.title}}" class="w-full border rounded px-2 py-1 font-semibold" required>
+        <textarea name="business_context" rows="4" class="w-full border rounded px-2 py-1 text-sm" required>{{o.business_context}}</textarea>
+        <input name="scopes" value="{{ (o.scopes or [])|join(',') }}"
+               placeholder="backend,frontend,database (comma-separated)"
+               class="w-full border rounded px-2 py-1 text-xs">
+        <div class="flex gap-2">
+            <button type="submit" class="bg-green-600 text-white px-3 py-1 text-sm rounded hover:bg-green-700">Zapisz</button>
+            <button type="button"
+                    hx-get="/ui/projects/{{project}}/objectives/{{o.external_id}}/card"
+                    hx-target="#obj-{{o.external_id}}"
+                    hx-swap="outerHTML"
+                    class="text-slate-500 px-3 py-1 text-sm hover:text-slate-800">Anuluj</button>
+        </div>
+    </form>
+{% else %}
+    <div class="flex items-center justify-between mb-1">
+        <div class="flex items-center gap-2">
+            <span class="mono text-xs text-slate-500">{{o.external_id}}</span>
+            <h3 class="font-semibold">{{o.title}}</h3>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="pill bg-slate-100 text-xs">{{o.status}} · P{{o.priority}}</span>
+            <button hx-get="/ui/projects/{{project}}/objectives/{{o.external_id}}/card?edit=1"
+                    hx-target="#obj-{{o.external_id}}"
+                    hx-swap="outerHTML"
+                    class="text-blue-600 hover:underline text-xs">Edit</button>
+        </div>
+    </div>
+    <p class="text-sm text-slate-600">{{ o.business_context[:400] }}</p>
+    {% if o.scopes %}<div class="text-xs text-slate-500 mt-1 mono">scopes: {{ o.scopes|join(', ') }}</div>{% endif %}
+    <ul class="text-sm mt-2 space-y-1">
+        {% for kr in o.key_results %}
+        {% include "_kr_row.html" %}
+        {% endfor %}
+    </ul>
+    {% include "_add_kr_form.html" %}
+{% endif %}
+</div>

@@ -1,0 +1,50 @@
+{# AC row — read or edit. Expects: ac (dict), task_ext, project #}
+<li id="ac-{{task_ext}}-{{ac.position}}" class="flex items-start gap-2 py-1 border-b last:border-b-0">
+{% if ac_edit is not none and ac_edit == ac.position %}
+    <form hx-patch="/ui/projects/{{project}}/tasks/{{task_ext}}/ac/{{ac.position}}"
+          hx-target="#ac-{{task_ext}}-{{ac.position}}"
+          hx-swap="outerHTML"
+          class="flex-1 space-y-1 bg-slate-50 p-2 rounded">
+        <div class="flex gap-2">
+            <select name="scenario_type" class="border rounded px-2 py-0.5 text-xs">
+                {% for s in ["positive","negative","edge_case","regression"] %}
+                <option value="{{s}}" {% if ac.scenario_type == s %}selected{% endif %}>{{s}}</option>
+                {% endfor %}
+            </select>
+            <select name="verification" class="border rounded px-2 py-0.5 text-xs">
+                {% for v in ["test","command","manual"] %}
+                <option value="{{v}}" {% if ac.verification == v %}selected{% endif %}>{{v}}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <textarea name="text" rows="2" required minlength="20" class="w-full border rounded px-2 py-1 text-sm">{{ac.text}}</textarea>
+        <input name="test_path" value="{{ac.test_path or ''}}" placeholder="tests/test_x.py::test_case" class="w-full border rounded px-2 py-1 text-xs mono">
+        <input name="command" value="{{ac.command or ''}}" placeholder="bash command (gdy verification=command)" class="w-full border rounded px-2 py-1 text-xs mono">
+        <div class="flex gap-2">
+            <button type="submit" class="bg-green-600 text-white px-2 py-0.5 text-xs rounded hover:bg-green-700">Zapisz</button>
+            <button type="button"
+                    hx-get="/ui/projects/{{project}}/tasks/{{task_ext}}/ac/{{ac.position}}/row"
+                    hx-target="#ac-{{task_ext}}-{{ac.position}}"
+                    hx-swap="outerHTML"
+                    class="text-slate-500 px-2 py-0.5 text-xs">Anuluj</button>
+            <button type="button"
+                    hx-delete="/ui/projects/{{project}}/tasks/{{task_ext}}/ac/{{ac.position}}"
+                    hx-target="#ac-{{task_ext}}-{{ac.position}}"
+                    hx-swap="delete"
+                    hx-confirm="Usunąć AC-{{ac.position}}?"
+                    class="ml-auto text-red-600 px-2 py-0.5 text-xs hover:underline">Usuń</button>
+        </div>
+    </form>
+{% else %}
+    <span class="pill text-xs bg-slate-100 mono">{{ac.scenario_type}}</span>
+    <span class="pill text-xs bg-slate-100 mono">{{ac.verification}}</span>
+    <span class="flex-1">AC-{{ac.position}}: {{ac.text}}
+        {% if ac.test_path %}<span class="block text-xs mono text-slate-400">→ {{ac.test_path}}</span>{% endif %}
+        {% if ac.command %}<span class="block text-xs mono text-slate-400">→ cmd: {{ac.command}}</span>{% endif %}
+    </span>
+    <button hx-get="/ui/projects/{{project}}/tasks/{{task_ext}}/ac/{{ac.position}}/row?edit=1"
+            hx-target="#ac-{{task_ext}}-{{ac.position}}"
+            hx-swap="outerHTML"
+            class="text-blue-600 hover:underline text-xs">Edit</button>
+{% endif %}
+</li>

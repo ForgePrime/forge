@@ -65,7 +65,7 @@
 </div>
 
 <div class="flex gap-2 border-b border-slate-300 mb-4">
-    {% for tab in ["objectives","tasks","llm-calls","findings","decisions","knowledge"] %}
+    {% for tab in ["objectives","tasks","files","llm-calls","findings","decisions","knowledge","guidelines"] %}
     <a href="?tab={{ tab }}" class="px-4 py-2 {% if active_tab == tab %}border-b-2 border-blue-600 font-semibold{% else %}text-slate-500 hover:text-slate-800{% endif %}">{{ tab }}</a>
     {% endfor %}
 </div>
@@ -73,24 +73,9 @@
 {% if active_tab == "objectives" %}
 <div class="space-y-3">
     {% for o in objectives %}
-    <div class="bg-white rounded shadow p-4">
-        <div class="flex items-center justify-between">
-            <h3 class="font-semibold">{{ o.external_id }} — {{ o.title }}</h3>
-            <span class="pill bg-slate-100 mono">{{ o.status }} · P{{ o.priority }}</span>
-        </div>
-        <p class="text-sm text-slate-600 mt-1">{{ o.business_context[:300] }}</p>
-        <ul class="text-sm mt-2 space-y-1">
-            {% for kr in o.key_results %}
-            <li class="flex items-start gap-2">
-                <span class="pill {% if kr.status == 'ACHIEVED' %}bg-green-100 text-green-700{% elif kr.status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700{% else %}bg-slate-100{% endif %}">{{ kr.status }}</span>
-                <span>KR{{ kr.position }}: {{ kr.text }}
-                    {% if kr.target_value is not none %}<span class="mono text-xs text-slate-500">[target={{ kr.target_value }} current={{ kr.current_value or '—' }}]</span>{% endif %}
-                </span>
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
+        {% include "_objective_card.html" %}
     {% endfor %}
+    {% include "_add_objective_form.html" %}
 </div>
 
 {% elif active_tab == "tasks" %}
@@ -102,20 +87,16 @@
     </tr></thead>
     <tbody>
     {% for t in tasks %}
-    <tr class="border-t hover:bg-slate-50">
-        <td class="px-3 py-2 mono"><a href="/ui/projects/{{ proj.slug }}/tasks/{{ t.external_id }}?_tid={{ t.id }}" class="text-blue-600 hover:underline">{{ t.external_id }}</a></td>
-        <td class="px-3 py-2">{{ t.name }}</td>
-        <td class="px-3 py-2 mono text-xs text-slate-500">{{ t.origin or '—' }}</td>
-        <td class="px-3 py-2">
-            <span class="pill {% if t.status == 'DONE' %}bg-green-100 text-green-700{% elif t.status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700{% elif t.status == 'FAILED' %}bg-red-100 text-red-700{% else %}bg-slate-100{% endif %}">{{ t.status }}</span>
-        </td>
-        <td class="px-3 py-2">{{ t.ac_count }}</td>
-        <td class="px-3 py-2 text-xs">{{ (t.requirement_refs or [])|length }}</td>
-        <td class="px-3 py-2 text-xs mono">{{ (t.completes_kr_ids or [])|join(',') or '—' }}</td>
-    </tr>
+        {% include "_task_row.html" %}
     {% endfor %}
     </tbody>
 </table>
+<div class="mt-3">
+    {% include "_add_task_form.html" %}
+</div>
+
+{% elif active_tab == "files" %}
+{% include "_files_tab.html" %}
 
 {% elif active_tab == "llm-calls" %}
 <table class="bg-white rounded shadow w-full text-sm">
@@ -143,18 +124,7 @@
 {% elif active_tab == "findings" %}
 <div class="space-y-2">
     {% for f in findings %}
-    <div class="bg-white rounded shadow p-4 border-l-4 {% if f.severity == 'HIGH' %}border-red-500{% elif f.severity == 'MEDIUM' %}border-amber-500{% else %}border-slate-300{% endif %}">
-        <div class="flex items-center gap-2 mb-1">
-            <span class="mono text-xs text-slate-500">{{ f.external_id }}</span>
-            <span class="pill bg-slate-100">{{ f.type }}</span>
-            <span class="pill {% if f.severity == 'HIGH' %}bg-red-100 text-red-700{% elif f.severity == 'MEDIUM' %}bg-amber-100 text-amber-700{% else %}bg-slate-100{% endif %}">{{ f.severity }}</span>
-            <span class="pill bg-slate-100 text-xs">{{ f.status }}</span>
-        </div>
-        <h4 class="font-semibold">{{ f.title }}</h4>
-        <p class="text-sm text-slate-600 mt-1">{{ f.description }}</p>
-        {% if f.suggested_action %}<p class="text-sm text-slate-500 mt-1 italic">→ {{ f.suggested_action }}</p>{% endif %}
-        {% if f.file_path %}<p class="text-xs mono text-slate-400 mt-1">{{ f.file_path }}</p>{% endif %}
-    </div>
+        {% include "_finding_card.html" %}
     {% endfor %}
 </div>
 
@@ -187,6 +157,14 @@
         <h4 class="font-semibold">{{ k.title }}</h4>
     </div>
     {% endfor %}
+</div>
+
+{% elif active_tab == "guidelines" %}
+<div class="space-y-2">
+    {% for g in guidelines %}
+        {% with g_edit=False %}{% include "_guideline_card.html" %}{% endwith %}
+    {% endfor %}
+    {% include "_add_guideline_form.html" %}
 </div>
 
 {% endif %}

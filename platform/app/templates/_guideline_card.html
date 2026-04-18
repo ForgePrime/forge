@@ -1,0 +1,52 @@
+{# Guideline card — read or edit. Expects: g (dict), project #}
+<div id="guideline-{{g.external_id}}" class="bg-white rounded shadow p-4 border-l-4
+    {% if g.weight == 'must' %}border-red-500{% elif g.weight == 'should' %}border-amber-500{% else %}border-slate-300{% endif %}">
+{% if g_edit %}
+    <form hx-patch="/ui/projects/{{project}}/guidelines/{{g.external_id}}"
+          hx-target="#guideline-{{g.external_id}}"
+          hx-swap="outerHTML"
+          class="space-y-2">
+        <div class="flex gap-2 items-center">
+            <span class="mono text-xs text-slate-500">{{g.external_id}}</span>
+            <select name="weight" class="border rounded px-2 py-1 text-xs">
+                {% for w in ["must","should","may"] %}
+                <option value="{{w}}" {% if g.weight == w %}selected{% endif %}>{{w}}</option>
+                {% endfor %}
+            </select>
+            <input name="scope" value="{{g.scope}}" placeholder="scope (np. backend)" class="w-32 border rounded px-2 py-1 text-xs">
+        </div>
+        <input name="title" value="{{g.title}}" required class="w-full border rounded px-2 py-1 font-semibold text-sm">
+        <textarea name="content" rows="3" required class="w-full border rounded px-2 py-1 text-sm">{{g.content}}</textarea>
+        <input name="rationale" value="{{g.rationale or ''}}" placeholder="rationale (opcjonalne)" class="w-full border rounded px-2 py-1 text-xs">
+        <div class="flex gap-2">
+            <button type="submit" class="bg-green-600 text-white px-3 py-1 text-xs rounded hover:bg-green-700">Zapisz</button>
+            <button type="button"
+                    hx-get="/ui/projects/{{project}}/guidelines/{{g.external_id}}/card"
+                    hx-target="#guideline-{{g.external_id}}"
+                    hx-swap="outerHTML"
+                    class="text-slate-500 px-3 py-1 text-xs">Anuluj</button>
+            <button type="button"
+                    hx-delete="/ui/projects/{{project}}/guidelines/{{g.external_id}}"
+                    hx-target="#guideline-{{g.external_id}}"
+                    hx-swap="delete"
+                    hx-confirm="Usunąć guideline {{g.external_id}}?"
+                    class="ml-auto text-red-600 px-3 py-1 text-xs hover:underline">Usuń</button>
+        </div>
+    </form>
+{% else %}
+    <div class="flex items-center gap-2 mb-1 flex-wrap">
+        <span class="mono text-xs text-slate-500">{{g.external_id}}</span>
+        <span class="pill text-xs {% if g.weight == 'must' %}bg-red-100 text-red-700{% elif g.weight == 'should' %}bg-amber-100 text-amber-700{% else %}bg-slate-100{% endif %}">{{g.weight}}</span>
+        {% if g.scope %}<span class="pill bg-slate-100 text-xs mono">scope:{{g.scope}}</span>{% endif %}
+    </div>
+    <h4 class="font-semibold">{{g.title}}</h4>
+    <p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{{g.content}}</p>
+    {% if g.rationale %}<p class="text-xs text-slate-500 italic mt-1">→ {{g.rationale}}</p>{% endif %}
+    <div class="mt-2">
+        <button hx-get="/ui/projects/{{project}}/guidelines/{{g.external_id}}/card?edit=1"
+                hx-target="#guideline-{{g.external_id}}"
+                hx-swap="outerHTML"
+                class="text-blue-600 hover:underline text-xs">Edit</button>
+    </div>
+{% endif %}
+</div>

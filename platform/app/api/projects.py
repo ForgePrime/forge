@@ -96,6 +96,61 @@ class ObjectiveCreate(BaseModel):
 class KRUpdate(BaseModel):
     status: str | None = Field(None, pattern="^(NOT_STARTED|IN_PROGRESS|ACHIEVED|MISSED)$")
     current_value: float | None = None
+    text: str | None = Field(None, min_length=5)
+    target_value: float | None = None
+    measurement_command: str | None = None
+
+
+class ObjectiveUpdate(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=300)
+    business_context: str | None = Field(None, min_length=10)
+    priority: int | None = Field(None, ge=1, le=5)
+    status: str | None = Field(None, pattern="^(DRAFT|ACTIVE|ACHIEVED|ABANDONED)$")
+    scopes: list[str] | None = None
+
+
+class TaskUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    instruction: str | None = None
+    description: str | None = None
+    scopes: list[str] | None = None
+    requirement_refs: list[str] | None = None
+    completes_kr_ids: list[str] | None = None
+
+
+class ACUpdate(BaseModel):
+    text: str | None = Field(None, min_length=20)
+    scenario_type: str | None = Field(None, pattern="^(positive|negative|edge_case|regression)$")
+    verification: str | None = Field(None, pattern="^(test|command|manual)$")
+    test_path: str | None = None
+    command: str | None = None
+
+
+class KRAdd(BaseModel):
+    text: str = Field(..., min_length=5)
+    kr_type: str = Field("descriptive", pattern="^(numeric|descriptive)$")
+    target_value: float | None = None
+    measurement_command: str | None = None
+
+
+class ObjectiveCreateSingle(BaseModel):
+    external_id: str | None = None  # auto-generated if null
+    title: str = Field(..., min_length=1, max_length=300)
+    business_context: str = Field(..., min_length=10)
+    scopes: list[str] = Field(default_factory=list)
+    priority: int = Field(3, ge=1, le=5)
+
+
+class TaskCreateSingle(BaseModel):
+    external_id: str | None = None
+    name: str = Field(..., min_length=1, max_length=200)
+    instruction: str | None = None
+    description: str | None = None
+    type: str = Field("feature", pattern="^(feature|bug|chore|investigation)$")
+    scopes: list[str] = Field(default_factory=list)
+    origin: str | None = None
+    requirement_refs: list[str] | None = None
+    completes_kr_ids: list[str] | None = None
 
 
 # --- Project endpoints ---
@@ -651,12 +706,66 @@ def update_kr(obj_id: int, kr_position: int, body: KRUpdate, db: Session = Depen
     ).first()
     if not kr:
         raise HTTPException(404)
-    if body.status:
+    if body.status is not None:
         kr.status = body.status
     if body.current_value is not None:
         kr.current_value = body.current_value
+    if body.text is not None:
+        kr.text = body.text
+    if body.target_value is not None:
+        kr.target_value = body.target_value
+    if body.measurement_command is not None:
+        kr.measurement_command = body.measurement_command
     db.commit()
-    return {"position": kr.position, "status": kr.status, "current_value": kr.current_value}
+    return {
+        "position": kr.position, "status": kr.status, "current_value": kr.current_value,
+        "text": kr.text, "target_value": kr.target_value, "measurement_command": kr.measurement_command,
+    }
+
+
+@router.patch("/projects/{slug}/objectives/{external_id}")
+def update_objective(slug: str, external_id: str, body: ObjectiveUpdate, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    obj = db.query(Objective).filter(
+        Objective.project_id == proj.id, Objective.external_id == external_id
+    ).first()
+    if not obj:
+        raise HTTPException(404)
+    for field in ("title", "business_context", "priority", "status", "scopes"):
+        val = getattr(body, field)
+        if val is not None:
+            setattr(obj, field, val)
+    db.commit()
+    return {
+        "external_id": obj.external_id, "title": obj.title,
+        "business_context": obj.business_context, "priority": obj.priority,
+        "status": obj.status, "scopes": obj.scopes,
+    }
+
+
+@router.patch("/projects/{slug}/tasks/{external_id}")
+def update_task(slug: str, external_id: str, body: TaskUpdate, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    task = db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == external_id
+    ).order_by(Task.id.desc()).first()
+    if not task:
+        raise HTTPException(404)
+    for field in ("name", "instruction", "description", "scopes", "requirement_refs", "completes_kr_ids"):
+        val = getattr(body, field)
+        if val is not None:
+            setattr(task, field, val)
+    db.commit()
+    return {
+        "external_id": task.external_id, "name": task.name,
+        "instruction": task.instruction, "description": task.description,
+        "scopes": task.scopes, "requirement_refs": task.requirement_refs,
+        "completes_kr_ids": task.completes_kr_ids,
+    }
 
 
 @router.get("/executions/{execution_id}/prompt")
@@ -666,3 +775,349 @@ def get_execution_prompt(execution_id: int, db: Session = Depends(get_db)):
     if not e:
         raise HTTPException(404)
     return {"prompt_text": e.prompt_text}
+
+
+# --- AC CRUD ---
+
+def _next_task_ac_position(db: Session, task_id: int) -> int:
+    """Next AC position for task (max existing + 1, or 0)."""
+    from sqlalchemy import func as _func
+    max_pos = db.query(_func.max(AcceptanceCriterion.position)).filter(
+        AcceptanceCriterion.task_id == task_id
+    ).scalar()
+    return (max_pos + 1) if max_pos is not None else 0
+
+
+@router.post("/projects/{slug}/tasks/{external_id}/ac")
+def add_ac(slug: str, external_id: str, body: ACCreate, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    task = db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == external_id
+    ).order_by(Task.id.desc()).first()
+    if not task:
+        raise HTTPException(404)
+    pos = _next_task_ac_position(db, task.id)
+    ac = AcceptanceCriterion(
+        task_id=task.id, position=pos,
+        text=body.text, scenario_type=body.scenario_type,
+        verification=body.verification, test_path=body.test_path, command=body.command,
+    )
+    db.add(ac)
+    db.commit()
+    return {"position": pos, "text": ac.text, "scenario_type": ac.scenario_type}
+
+
+@router.patch("/projects/{slug}/tasks/{external_id}/ac/{position}")
+def update_ac(slug: str, external_id: str, position: int, body: ACUpdate, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    task = db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == external_id
+    ).order_by(Task.id.desc()).first()
+    if not task:
+        raise HTTPException(404)
+    ac = db.query(AcceptanceCriterion).filter(
+        AcceptanceCriterion.task_id == task.id, AcceptanceCriterion.position == position
+    ).first()
+    if not ac:
+        raise HTTPException(404)
+    for field in ("text", "scenario_type", "verification", "test_path", "command"):
+        val = getattr(body, field)
+        if val is not None:
+            setattr(ac, field, val)
+    db.commit()
+    return {
+        "position": ac.position, "text": ac.text, "scenario_type": ac.scenario_type,
+        "verification": ac.verification, "test_path": ac.test_path, "command": ac.command,
+    }
+
+
+@router.delete("/projects/{slug}/tasks/{external_id}/ac/{position}")
+def delete_ac(slug: str, external_id: str, position: int, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    task = db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == external_id
+    ).order_by(Task.id.desc()).first()
+    if not task:
+        raise HTTPException(404)
+    ac = db.query(AcceptanceCriterion).filter(
+        AcceptanceCriterion.task_id == task.id, AcceptanceCriterion.position == position
+    ).first()
+    if not ac:
+        raise HTTPException(404)
+    db.delete(ac)
+    db.commit()
+    return {"deleted": True, "position": position}
+
+
+# --- Add manual Objective / KR / Task (single-entity, not batch planning) ---
+
+def _next_obj_external_id(db: Session, project_id: int) -> str:
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(Objective.external_id)).filter(
+        Objective.project_id == project_id,
+        Objective.external_id.like("O-%"),
+    ).scalar()
+    if not max_id:
+        return "O-001"
+    try:
+        num = int(max_id.split("-")[1]) + 1
+    except (IndexError, ValueError):
+        num = 1
+    return f"O-{num:03d}"
+
+
+def _next_task_external_id(db: Session, project_id: int) -> str:
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(Task.external_id)).filter(
+        Task.project_id == project_id,
+        Task.external_id.like("T-%"),
+    ).scalar()
+    if not max_id:
+        return "T-001"
+    try:
+        num = int(max_id.split("-")[1]) + 1
+    except (IndexError, ValueError):
+        num = 1
+    return f"T-{num:03d}"
+
+
+@router.post("/projects/{slug}/objectives/new")
+def add_objective_single(slug: str, body: ObjectiveCreateSingle, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    ext = body.external_id or _next_obj_external_id(db, proj.id)
+    if db.query(Objective).filter(
+        Objective.project_id == proj.id, Objective.external_id == ext
+    ).first():
+        raise HTTPException(409, f"Objective {ext} already exists")
+    obj = Objective(
+        project_id=proj.id, external_id=ext,
+        title=body.title, business_context=body.business_context,
+        scopes=body.scopes, priority=body.priority,
+    )
+    db.add(obj)
+    db.commit()
+    return {"id": obj.id, "external_id": obj.external_id}
+
+
+@router.post("/objectives/{obj_id}/key-results")
+def add_kr(obj_id: int, body: KRAdd, db: Session = Depends(get_db)):
+    obj = db.query(Objective).filter(Objective.id == obj_id).first()
+    if not obj:
+        raise HTTPException(404)
+    from sqlalchemy import func as _func
+    max_pos = db.query(_func.max(KeyResult.position)).filter(
+        KeyResult.objective_id == obj_id
+    ).scalar()
+    pos = (max_pos + 1) if max_pos is not None else 0
+    if body.kr_type == "numeric" and body.target_value is None:
+        raise HTTPException(422, "numeric KR requires target_value")
+    kr = KeyResult(
+        objective_id=obj_id, position=pos,
+        text=body.text, kr_type=body.kr_type,
+        target_value=body.target_value, measurement_command=body.measurement_command,
+    )
+    db.add(kr)
+    db.commit()
+    return {"position": pos, "text": kr.text, "kr_type": kr.kr_type}
+
+
+@router.delete("/objectives/{obj_id}/key-results/{position}")
+def delete_kr(obj_id: int, position: int, db: Session = Depends(get_db)):
+    kr = db.query(KeyResult).filter(
+        KeyResult.objective_id == obj_id, KeyResult.position == position
+    ).first()
+    if not kr:
+        raise HTTPException(404)
+    db.delete(kr)
+    db.commit()
+    return {"deleted": True}
+
+
+@router.post("/projects/{slug}/tasks/new")
+def add_task_single(slug: str, body: TaskCreateSingle, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    ext = body.external_id or _next_task_external_id(db, proj.id)
+    if db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == ext
+    ).first():
+        raise HTTPException(409, f"Task {ext} already exists")
+    if body.type in ("feature", "bug") and not body.instruction and not body.description:
+        raise HTTPException(422, f"feature/bug task requires instruction or description")
+    task = Task(
+        project_id=proj.id, external_id=ext,
+        name=body.name, instruction=body.instruction, description=body.description,
+        type=body.type, scopes=body.scopes, origin=body.origin,
+        requirement_refs=body.requirement_refs, completes_kr_ids=body.completes_kr_ids,
+    )
+    db.add(task)
+    db.commit()
+    return {"id": task.id, "external_id": task.external_id}
+
+
+@router.delete("/projects/{slug}/tasks/{external_id}")
+def delete_task(slug: str, external_id: str, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    task = db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == external_id
+    ).order_by(Task.id.desc()).first()
+    if not task:
+        raise HTTPException(404)
+    if task.status in ("IN_PROGRESS",):
+        raise HTTPException(409, "Cannot delete task while in progress")
+    db.delete(task)
+    db.commit()
+    return {"deleted": True}
+
+
+class GuidelineUpdate(BaseModel):
+    title: str | None = None
+    scope: str | None = None
+    content: str | None = Field(None, min_length=1)
+    rationale: str | None = None
+    weight: str | None = Field(None, pattern="^(must|should|may)$")
+
+
+@router.post("/projects/{slug}/guidelines/single")
+def add_guideline_single(slug: str, body: GuidelineCreate, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    if not body.external_id:
+        from sqlalchemy import func as _func
+        max_id = db.query(_func.max(Guideline.external_id)).filter(
+            Guideline.project_id == proj.id, Guideline.external_id.like("G-%")
+        ).scalar()
+        if max_id:
+            try:
+                num = int(max_id.split("-")[1]) + 1
+            except (IndexError, ValueError):
+                num = 1
+            body.external_id = f"G-{num:03d}"
+        else:
+            body.external_id = "G-001"
+    g = Guideline(
+        project_id=proj.id, external_id=body.external_id,
+        title=body.title, scope=body.scope, content=body.content,
+        rationale=body.rationale, weight=body.weight, examples=body.examples,
+    )
+    db.add(g)
+    db.commit()
+    return {"id": g.id, "external_id": g.external_id}
+
+
+@router.patch("/projects/{slug}/guidelines/{external_id}")
+def update_guideline(slug: str, external_id: str, body: GuidelineUpdate, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    g = db.query(Guideline).filter(
+        Guideline.project_id == proj.id, Guideline.external_id == external_id
+    ).first()
+    if not g:
+        raise HTTPException(404)
+    for f in ("title","scope","content","rationale","weight"):
+        v = getattr(body, f)
+        if v is not None:
+            setattr(g, f, v)
+    db.commit()
+    return {"external_id": g.external_id, "title": g.title, "scope": g.scope,
+            "weight": g.weight, "content": g.content}
+
+
+@router.delete("/projects/{slug}/guidelines/{external_id}")
+def delete_guideline(slug: str, external_id: str, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    g = db.query(Guideline).filter(
+        Guideline.project_id == proj.id, Guideline.external_id == external_id
+    ).first()
+    if not g:
+        raise HTTPException(404)
+    db.delete(g)
+    db.commit()
+    return {"deleted": True}
+
+
+class CommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+@router.post("/projects/{slug}/tasks/{external_id}/comments")
+def add_comment(slug: str, external_id: str, body: CommentCreate, db: Session = Depends(get_db)):
+    from app.models import TaskComment
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    task = db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == external_id
+    ).order_by(Task.id.desc()).first()
+    if not task:
+        raise HTTPException(404)
+    c = TaskComment(task_id=task.id, content=body.content)
+    db.add(c)
+    db.commit()
+    return {"id": c.id, "content": c.content}
+
+
+@router.get("/projects/{slug}/tasks/{external_id}/comments")
+def list_comments(slug: str, external_id: str, db: Session = Depends(get_db)):
+    from app.models import TaskComment
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    task = db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == external_id
+    ).order_by(Task.id.desc()).first()
+    if not task:
+        raise HTTPException(404)
+    cmts = db.query(TaskComment).filter(TaskComment.task_id == task.id).order_by(TaskComment.id).all()
+    return [{
+        "id": c.id, "content": c.content,
+        "user_email": c.user_email or "anonymous",
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    } for c in cmts]
+
+
+@router.delete("/projects/{slug}/tasks/{external_id}/comments/{comment_id}")
+def delete_comment(slug: str, external_id: str, comment_id: int, db: Session = Depends(get_db)):
+    from app.models import TaskComment
+    c = db.query(TaskComment).filter(TaskComment.id == comment_id).first()
+    if not c:
+        raise HTTPException(404)
+    db.delete(c)
+    db.commit()
+    return {"deleted": True}
+
+
+@router.delete("/projects/{slug}/objectives/{external_id}")
+def delete_objective(slug: str, external_id: str, db: Session = Depends(get_db)):
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    obj = db.query(Objective).filter(
+        Objective.project_id == proj.id, Objective.external_id == external_id
+    ).first()
+    if not obj:
+        raise HTTPException(404)
+    # Check for tasks with origin = this objective
+    n_tasks = db.query(Task).filter(
+        Task.project_id == proj.id, Task.origin == external_id
+    ).count()
+    if n_tasks > 0:
+        raise HTTPException(409, f"Cannot delete: {n_tasks} tasks still reference this objective as origin")
+    db.delete(obj)
+    db.commit()
+    return {"deleted": True}

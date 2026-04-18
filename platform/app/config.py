@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     orchestrator_max_retries_per_task: int = 3
     orchestrator_max_tasks: int = 50
 
+    # --- Auth + multi-tenant (Phase 1 W1) ---
+    jwt_secret_key: str = "dev-secret-change-in-production-via-FORGE_JWT_SECRET_KEY"
+    jwt_algorithm: str = "HS256"
+    jwt_access_ttl_minutes: int = 60 * 12  # 12h access token Phase 1 (Phase 2 will shorten + add refresh)
+    # AES-GCM 32-byte key, base64-encoded. Dev default below IS INSECURE — override via FORGE_ENCRYPTION_KEY.
+    # Generate prod key: python -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
+    encryption_key_b64: str = "ZGV2LWtleS0zMi1ieXRlcy1pbnNlY3VyZS1jaGFuZ2UtbWUh"  # "dev-key-32-bytes-insecure-change-me!" base64
+    default_org_slug: str = "default"
+    default_org_name: str = "Default Organization"
+
     model_config = {"env_prefix": "FORGE_", "env_file": ".env"}
 
 

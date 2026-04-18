@@ -43,11 +43,17 @@ def invoke_claude(
     timeout_sec: int = 900,
     allowed_tools: list[str] | None = None,
     extra_flags: list[str] | None = None,
+    api_key: str | None = None,
 ) -> CLIResult:
     """Invoke Claude CLI as subprocess with given prompt in workspace.
 
+    If api_key is given, it's injected as ANTHROPIC_API_KEY env to the subprocess
+    (overrides parent process env). If None — subprocess inherits parent env,
+    using whatever auth Claude CLI has configured globally (fallback for dev).
+
     Returns CLIResult with cost/duration/agent output + parsed delivery dict.
     """
+    import os as _os
     cmd = [
         "claude",
         "-p",
@@ -61,6 +67,10 @@ def invoke_claude(
     if extra_flags:
         cmd = cmd[:-1] + list(extra_flags) + [cmd[-1]]
 
+    subprocess_env = dict(_os.environ)
+    if api_key:
+        subprocess_env["ANTHROPIC_API_KEY"] = api_key
+
     start = time.monotonic()
     try:
         proc = subprocess.run(
@@ -70,6 +80,7 @@ def invoke_claude(
             text=True,
             encoding="utf-8",
             timeout=timeout_sec,
+            env=subprocess_env,
         )
         duration_ms = int((time.monotonic() - start) * 1000)
         return _parse_cli_output(proc.returncode, proc.stdout, proc.stderr, duration_ms)

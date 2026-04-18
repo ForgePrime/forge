@@ -1,0 +1,45 @@
+{# Expects: f (Finding ORM), project #}
+<div id="finding-{{f.external_id}}" class="bg-white rounded shadow p-4 border-l-4 {% if f.severity == 'HIGH' %}border-red-500{% elif f.severity == 'MEDIUM' %}border-amber-500{% else %}border-slate-300{% endif %}">
+    <div class="flex items-center gap-2 mb-1 flex-wrap">
+        <span class="mono text-xs text-slate-500">{{f.external_id}}</span>
+        <span class="pill bg-slate-100 text-xs">{{f.type}}</span>
+        <span class="pill text-xs {% if f.severity == 'HIGH' %}bg-red-100 text-red-700{% elif f.severity == 'MEDIUM' %}bg-amber-100 text-amber-700{% else %}bg-slate-100{% endif %}">{{f.severity}}</span>
+        <span class="pill text-xs {% if f.status == 'APPROVED' %}bg-green-100 text-green-700{% elif f.status == 'DEFERRED' %}bg-blue-100 text-blue-700{% elif f.status == 'REJECTED' %}bg-slate-200 text-slate-600{% else %}bg-amber-100 text-amber-700{% endif %}">{{f.status}}</span>
+    </div>
+    <h4 class="font-semibold">{{f.title}}</h4>
+    <p class="text-sm text-slate-600 mt-1">{{f.description}}</p>
+    {% if f.suggested_action %}<p class="text-sm text-slate-500 mt-1 italic">→ {{f.suggested_action}}</p>{% endif %}
+    {% if f.file_path %}<p class="text-xs mono text-slate-400 mt-1">{{f.file_path}}</p>{% endif %}
+    {% if f.status == 'OPEN' %}
+    <div class="flex gap-2 mt-3">
+        <form hx-post="/ui/findings/{{f.id}}/triage" hx-target="#finding-{{f.external_id}}" hx-swap="outerHTML" class="inline">
+            <input type="hidden" name="action" value="approve">
+            <button type="submit"
+                    class="bg-green-600 text-white px-3 py-1 text-xs rounded hover:bg-green-700"
+                    title="Utwórz task z tego findingu">
+                ✓ Approve → Task
+            </button>
+        </form>
+        <form hx-post="/ui/findings/{{f.id}}/triage" hx-target="#finding-{{f.external_id}}" hx-swap="outerHTML" class="inline">
+            <input type="hidden" name="action" value="defer">
+            <button type="submit"
+                    class="bg-blue-600 text-white px-3 py-1 text-xs rounded hover:bg-blue-700"
+                    title="Odsuń na później">
+                ⏸ Defer
+            </button>
+        </form>
+        <form hx-post="/ui/findings/{{f.id}}/triage" hx-target="#finding-{{f.external_id}}" hx-swap="outerHTML" class="inline">
+            <input type="hidden" name="action" value="reject">
+            <button type="submit"
+                    class="bg-slate-500 text-white px-3 py-1 text-xs rounded hover:bg-slate-600"
+                    title="Odrzuć — nie wymaga akcji">
+                ✗ Reject
+            </button>
+        </form>
+    </div>
+    {% elif f.status == 'APPROVED' and f.created_task_id %}
+    <div class="text-xs text-green-700 mt-2">✓ Created task (DB id: {{f.created_task_id}})</div>
+    {% elif f.triage_reason %}
+    <div class="text-xs text-slate-500 mt-2 italic">{{f.triage_reason}}</div>
+    {% endif %}
+</div>

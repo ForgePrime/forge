@@ -1,0 +1,34 @@
+{# Workspace files tree + viewer. Expects: project, files (list), dirs (list), truncated, current_file (None or dict with content) #}
+<div class="grid grid-cols-3 gap-4">
+    <div class="bg-white rounded shadow p-3 col-span-1">
+        <h3 class="text-sm font-semibold mb-2">Workspace files ({{ files|length }})</h3>
+        {% if truncated %}<div class="text-xs text-amber-600 mb-2">Lista skrócona — workspace ma więcej plików</div>{% endif %}
+        <ul class="text-xs space-y-0.5 max-h-[600px] overflow-y-auto">
+            {% for f in files %}
+            <li>
+                <a href="/ui/projects/{{project}}?tab=files&file={{ f.path|urlencode }}"
+                   class="block hover:bg-blue-50 rounded px-1 py-0.5 mono
+                          {% if current_file and current_file.path == f.path %}bg-blue-100 text-blue-800 font-semibold{% endif %}">
+                    {% set indent = '  ' * (f.depth - 1) %}{{ indent }}{{ f.path.split('/')[-1] }}
+                    <span class="text-slate-400">{{ f.size }}b</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="bg-white rounded shadow p-3 col-span-2">
+        {% if current_file %}
+            {% if current_file.error %}
+            <div class="text-red-600 text-sm">Error: {{ current_file.error }}</div>
+            {% else %}
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-mono text-sm font-semibold">{{ current_file.path }}</h3>
+                <span class="text-xs text-slate-500">{{ current_file.size }} bytes</span>
+            </div>
+            <pre class="text-xs mono bg-slate-900 text-slate-100 p-3 rounded overflow-auto max-h-[600px] whitespace-pre-wrap">{{ current_file.content }}</pre>
+            {% endif %}
+        {% else %}
+            <div class="text-slate-400 text-sm text-center py-12">Wybierz plik z listy →</div>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,62 @@
+{# Settings panel — Anthropic key + budget per org #}
+<div class="bg-white rounded shadow p-5 max-w-2xl">
+    <h2 class="font-semibold text-lg mb-3">Organization settings</h2>
+    <div class="text-sm text-slate-600 mb-4">
+        <span class="mono">{{ org.slug }}</span> · {{ org.name }} · plan: <span class="pill bg-slate-100">{{ org.plan }}</span>
+    </div>
+
+    <h3 class="font-semibold mt-4 mb-2">Anthropic API key</h3>
+    <p class="text-xs text-slate-500 mb-2">
+        BYO key — klient płaci Anthropic bezpośrednio, Forge używa twojego klucza do wywołań Claude CLI. Key jest szyfrowany AES-GCM.
+        {% if has_key %}
+        <span class="text-green-700">✓ Ustawiony (ukryty).</span>
+        {% else %}
+        <span class="text-amber-700">⚠ Nie ustawiony — Forge używa systemowej autoryzacji Claude CLI (dev fallback).</span>
+        {% endif %}
+    </p>
+    <form hx-post="/ui/org/settings/anthropic-key"
+          hx-target="#org-settings"
+          hx-swap="outerHTML"
+          class="flex gap-2">
+        <input type="password" name="api_key" placeholder="sk-ant-api03-..."
+               autocomplete="new-password"
+               class="flex-1 border rounded px-3 py-2 text-sm mono">
+        <button type="submit" class="bg-blue-600 text-white px-3 py-2 text-sm rounded hover:bg-blue-700">
+            {% if has_key %}Zmień{% else %}Zapisz{% endif %}
+        </button>
+        {% if has_key %}
+        <button type="button"
+                hx-delete="/ui/org/settings/anthropic-key"
+                hx-target="#org-settings"
+                hx-swap="outerHTML"
+                hx-confirm="Usunąć klucz API? Forge wróci do systemowej autoryzacji Claude CLI."
+                class="bg-slate-500 text-white px-3 py-2 text-sm rounded hover:bg-slate-600">
+            Usuń
+        </button>
+        {% endif %}
+    </form>
+
+    <h3 class="font-semibold mt-6 mb-2">Budżet miesięczny (USD)</h3>
+    <p class="text-xs text-slate-500 mb-2">
+        Hard stop przed każdym LLM call gdy suma current-month llm_calls cost &gt;= budget.
+        Email alert na 80%. (Enforcement kolejna sesja.)
+    </p>
+    <form hx-post="/ui/org/settings/budget"
+          hx-target="#org-settings"
+          hx-swap="outerHTML"
+          class="flex gap-2">
+        <input type="number" step="0.01" min="0" name="budget_usd_monthly"
+               value="{{ org.budget_usd_monthly or '' }}"
+               placeholder="np. 500"
+               class="flex-1 border rounded px-3 py-2 text-sm mono">
+        <button type="submit" class="bg-blue-600 text-white px-3 py-2 text-sm rounded hover:bg-blue-700">Zapisz</button>
+    </form>
+
+    <div class="mt-6 text-xs text-slate-500">
+        Obecny miesięczny spend: <span class="mono">${{ "%.2f"|format(current_month_spend) }}</span>
+        {% if org.budget_usd_monthly %}
+        / <span class="mono">${{ "%.2f"|format(org.budget_usd_monthly) }}</span>
+        ({{ (current_month_spend / org.budget_usd_monthly * 100)|round(0)|int if org.budget_usd_monthly else 0 }}%)
+        {% endif %}
+    </div>
+</div>

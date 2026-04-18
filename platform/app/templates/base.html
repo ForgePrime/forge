@@ -4,8 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Forge{% endblock %}</title>
+    <meta name="csrf-token" content="{{ request.state.csrf_token or '' }}">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script>
+      // Inject CSRF token into all HTMX requests (reads cookie "forge_csrf")
+      document.body && document.body.addEventListener('htmx:configRequest', function(e) {
+        const m = document.querySelector('meta[name="csrf-token"]');
+        const token = (m && m.getAttribute('content')) || '';
+        if (token) e.detail.headers['X-CSRF-Token'] = token;
+      });
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.addEventListener('htmx:configRequest', function(e) {
+          const m = document.querySelector('meta[name="csrf-token"]');
+          const token = (m && m.getAttribute('content')) || '';
+          if (token) e.detail.headers['X-CSRF-Token'] = token;
+        });
+      });
+    </script>
     <style>
         .pill { @apply inline-block px-2 py-0.5 rounded text-xs font-medium; }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
@@ -13,9 +29,20 @@
 </head>
 <body class="bg-slate-50 text-slate-800">
 <nav class="bg-slate-900 text-white px-6 py-3 flex items-center justify-between">
-    <a href="/ui/" class="font-semibold text-lg">⚒ Forge</a>
-    <div class="text-xs text-slate-400">
-        {% if project %}<a href="/ui/projects/{{ project }}" class="hover:text-white">project: {{ project }}</a>{% endif %}
+    <div class="flex items-center gap-6">
+        <a href="/ui/" class="font-semibold text-lg">⚒ Forge</a>
+        {% if project %}<a href="/ui/projects/{{ project }}" class="text-xs text-slate-400 hover:text-white">project: {{ project }}</a>{% endif %}
+    </div>
+    <div class="flex items-center gap-4 text-sm">
+        {% if request.state and request.state.user %}
+        {% if request.state.org %}<span class="text-slate-400 text-xs mono">{{ request.state.org.slug }}</span>{% endif %}
+        <span class="text-slate-300">{{ request.state.user.email }}</span>
+        <a href="/ui/org/settings" class="text-slate-400 hover:text-white text-xs" title="Organization settings">⚙</a>
+        <a href="/ui/logout" class="text-slate-400 hover:text-white text-xs">Wyloguj</a>
+        {% else %}
+        <a href="/ui/login" class="text-slate-300 hover:text-white">Zaloguj</a>
+        <a href="/ui/signup" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs">Utwórz konto</a>
+        {% endif %}
     </div>
 </nav>
 <main class="max-w-7xl mx-auto px-6 py-6">

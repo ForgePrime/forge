@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Login — Forge{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto mt-10">
+    <div class="bg-white rounded-lg shadow p-6">
+        <h1 class="text-2xl font-bold mb-4">Zaloguj się do Forge</h1>
+        {% if error %}
+        <div class="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded text-sm mb-4">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/ui/login" class="space-y-3">
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                <input type="email" name="email" required autofocus
+                       class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Hasło</label>
+                <input type="password" name="password" required
+                       class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-medium">
+                Zaloguj
+            </button>
+        </form>
+        <div class="mt-4 text-sm text-center text-slate-600">
+            Nie masz konta?
+            <a href="/ui/signup{% if next %}?next={{ next }}{% endif %}" class="text-blue-600 hover:underline">Zarejestruj się</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
