@@ -185,6 +185,51 @@ def ac_set_source(slug: str, external_id: str, position: int, body: ACSourceBody
             "source_ref": ac.source_ref, "is_unsourced": ac.source_ref is None}
 
 
+@router.get("/projects/{slug}/tasks/{external_id}/ac/{position}/source-snippet")
+def ac_source_snippet(slug: str, external_id: str, position: int,
+                      request: Request, db: Session = Depends(get_db)):
+    """Return a fragment of Knowledge.content addressed by AC.source_ref.
+
+    Uses progressive degradation: §section → line N → keyword → head.
+    Returns {snippet, source_id, selector, strategy, section_title, line_range,
+    truncated, total_chars, source_title, source_url}.
+    """
+    _user(request)
+    proj = _project(db, slug, request)
+    task = db.query(Task).filter(Task.project_id == proj.id, Task.external_id == external_id) \
+        .order_by(Task.id.desc()).first()
+    if not task:
+        raise HTTPException(404, f"task {external_id} not found")
+    ac = db.query(AcceptanceCriterion).filter(
+        AcceptanceCriterion.task_id == task.id, AcceptanceCriterion.position == position
+    ).first()
+    if not ac:
+        raise HTTPException(404, f"AC #{position} not found")
+
+    from app.services.snippet_extractor import extract_snippet
+    from app.models import Knowledge
+
+    if not ac.source_ref:
+        return {
+            "source_id": None, "selector": None, "strategy": "no-source",
+            "snippet": "(this AC has no source_ref — click the rose badge to attribute)",
+            "section_title": None, "line_range": None, "truncated": False,
+            "total_chars": 0, "source_title": None, "source_url": None,
+        }
+
+    src_id = ac.source_ref.split()[0].split("§")[0].strip()
+    k = db.query(Knowledge).filter(
+        Knowledge.project_id == proj.id, Knowledge.external_id == src_id,
+    ).first()
+    content = k.content if k else None
+    result = extract_snippet(content, ac.source_ref)
+    # Enrich with Knowledge metadata
+    result["source_title"] = k.title if k else None
+    result["source_url"] = f"/ui/projects/{slug}/knowledge/{k.external_id}" if k else None
+    result["source_category"] = k.category if k else None
+    return result
+
+
 # ===================================================================
 # D2 — re-open objective with notes
 # ===================================================================

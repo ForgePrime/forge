@@ -39,8 +39,38 @@
     <span class="pill text-xs bg-slate-100 mono">{{ac.scenario_type}}</span>
     <span class="pill text-xs bg-slate-100 mono">{{ac.verification}}</span>
     {% if ac.source_ref %}
-        {# B2 — sourced AC: visible attribution badge #}
-        <span class="pill text-xs bg-emerald-50 text-emerald-700 border border-emerald-200" title="source attribution provided">📎 {{ ac.source_ref[:40] }}{% if ac.source_ref|length > 40 %}…{% endif %}</span>
+        {# B2 + B5 — sourced AC: clickable badge reveals inline content snippet from the source doc #}
+        <button type="button"
+                class="pill text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                title="Click to preview the source fragment addressed by this reference"
+                data-ac-source-ref="{{ ac.source_ref }}"
+                onclick="(function(btn){
+                    const row = btn.closest('li');
+                    let box = row.querySelector('.ac-source-snippet');
+                    if (box && !box.classList.contains('hidden')) {
+                        box.classList.add('hidden'); return;
+                    }
+                    if (box) { box.classList.remove('hidden'); return; }
+                    box = document.createElement('div');
+                    box.className = 'ac-source-snippet basis-full mt-2 bg-emerald-50 border border-emerald-200 rounded p-2 text-xs';
+                    box.innerHTML = '<div class=\'text-slate-400\'>Loading snippet…</div>';
+                    row.appendChild(box);
+                    fetch('/api/v1/tier1/projects/{{project}}/tasks/{{task_ext}}/ac/{{ac.position}}/source-snippet')
+                        .then(r => r.json())
+                        .then(j => {
+                            const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                            const hdr = [];
+                            if (j.source_title) hdr.push('<b>'+esc(j.source_title)+'</b>');
+                            if (j.section_title) hdr.push('§ '+esc(j.section_title));
+                            if (j.line_range) hdr.push('lines '+j.line_range[0]+'–'+j.line_range[1]);
+                            hdr.push('<span class=\'text-slate-500 mono\'>strategy='+esc(j.strategy)+'</span>');
+                            const link = j.source_url ? '<a href=\''+j.source_url+'\' class=\'text-blue-600\' target=\'_blank\'>[open KB]</a>' : '';
+                            box.innerHTML =
+                                '<div class=\'flex items-center gap-2 mb-1 text-slate-700\'>📎 '+hdr.join(' · ')+' '+link+'</div>'+
+                                '<pre class=\'whitespace-pre-wrap text-slate-800 bg-white border border-emerald-100 rounded p-2 max-h-60 overflow-auto\'>'+esc(j.snippet)+'</pre>';
+                        })
+                        .catch(err => { box.innerHTML = '<div class=\'text-rose-600\'>Snippet fetch failed: '+err+'</div>'; });
+                })(this)">📎 {{ ac.source_ref[:40] }}{% if ac.source_ref|length > 40 %}…{% endif %}</button>
     {% else %}
         {# B2 — unsourced AC: explicit warning + click-to-attribute popup #}
         <span class="pill text-xs bg-rose-100 text-rose-700 border border-rose-300 cursor-pointer"
