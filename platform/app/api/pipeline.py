@@ -274,6 +274,9 @@ def analyze_documents(slug: str, db: Session = Depends(get_db)):
         src_text += f"\n## {d.external_id} — {d.title}\n\n{d.content}\n\n---\n"
 
     prompt = ANALYZE_PROMPT_TEMPLATE.format(source_docs=src_text)
+    # G3 — inject project's operational contract into the analyze prompt
+    from app.api.tier1 import build_contract_injection
+    prompt = build_contract_injection(proj) + prompt
     workspace = _workspace(slug)
     _enforce_budget(db, proj)
     anthropic_key = _resolve_anthropic_key(db, proj)
@@ -461,6 +464,9 @@ def plan_from_objective(slug: str, body: PlanRequest, db: Session = Depends(get_
         kr_list=kr_text,
         source_docs=src_bundle,
     )
+    # G3 — inject project's operational contract into the planning prompt
+    from app.api.tier1 import build_contract_injection
+    prompt = build_contract_injection(proj) + prompt
     workspace = _workspace(slug)
     _enforce_budget(db, proj)
     anthropic_key = _resolve_anthropic_key(db, proj)
@@ -827,6 +833,37 @@ def orchestrate(
                     "workspace_infra": infra_info,
                     "stopped_reason": "monthly_budget_exceeded",
                 }
+
+            # E1 — Crafted mode: if project.config['execution_mode'] == 'crafted',
+            # run a crafter LLM first to produce a detailed executor prompt.
+            exec_mode = "direct"
+            crafter_llm_id = None
+            if (proj.config or {}).get("execution_mode") == "crafted":
+                from app.services.crafter import craft_executor_prompt
+                _update_run(db, run_id,
+                            current_phase=f"crafter (attempt {attempt}/{max_retries})",
+                            progress_message=f"{candidate.external_id}: crafter writing detailed prompt...")
+                craft = craft_executor_prompt(
+                    seed_prompt=full_prompt, workspace_dir=workspace,
+                    model="opus", api_key=_resolve_anthropic_key(db, proj),
+                    max_budget_usd=2.0, timeout_sec=300,
+                )
+                # Record the crafter's LLM call
+                crafter_record = _record_llm_call(
+                    db, execution_id=execution.id, project_id=proj.id,
+                    purpose="craft", prompt=full_prompt, workspace_dir=workspace,
+                    cli_result=craft.crafter_call,
+                )
+                total_cost += craft.crafter_call.cost_usd or 0.0
+                crafter_llm_id = crafter_record.id
+                exec_mode = "crafted"
+                # Use the crafter's output as the executor prompt
+                full_prompt = craft.executor_prompt + "\n\n" + EXECUTE_SUFFIX
+                db.commit()
+
+            execution.mode = exec_mode
+            execution.crafter_call_id = crafter_llm_id
+            db.commit()
 
             cli = invoke_claude(
                 prompt=full_prompt,
@@ -1298,6 +1335,36 @@ def orchestrate_run_cancel(run_id: int, db: Session = Depends(get_db)):
     return {"cancel_requested": True, "status": run.status}
 
 
+@router.post("/projects/{slug}/tasks/{external_id}/retry")
+def task_retry(slug: str, external_id: str, db: Session = Depends(get_db)):
+    """Reset a FAILED/DONE task back to TODO so it can be re-executed in the next orchestrate run.
+
+    Does NOT revert git changes — user must decide whether to keep existing partial work.
+    """
+    proj = _project(db, slug)
+    t = db.query(Task).filter(
+        Task.project_id == proj.id,
+        Task.external_id == external_id,
+    ).first()
+    if not t:
+        raise HTTPException(404, f"Task {external_id} not found")
+    if t.status not in ("FAILED", "DONE", "SKIPPED"):
+        raise HTTPException(409, f"Task is {t.status}; only FAILED/DONE/SKIPPED can be retried")
+
+    previous_status = t.status
+    t.status = "TODO"
+    t.started_at = None
+    t.completed_at = None
+    t.agent = None
+    db.commit()
+    return {
+        "task": external_id,
+        "previous_status": previous_status,
+        "status": "TODO",
+        "message": "Task reset — trigger Orchestrate to re-execute.",
+    }
+
+
 # ---------- /projects/{slug}/tasks/{ext}/report — trustworthy DONE report ----------
 
 @router.get("/projects/{slug}/tasks/{external_id}/report")
@@ -1492,6 +1559,9 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
                 "position": ac.position, "text": ac.text,
                 "scenario_type": ac.scenario_type, "verification": ac.verification,
                 "test_path": ac.test_path, "command": ac.command,
+                "source_ref": ac.source_ref,  # B2 — surfaces "INVENTED BY LLM" badge
+                "last_executed_at": ac.last_executed_at.isoformat() if ac.last_executed_at else None,
+                "source_llm_call_id": ac.source_llm_call_id,  # B4 — "?" trace link
             }
             for ac in task.acceptance_criteria
         ],

@@ -1,0 +1,104 @@
+{# Pipeline stepper — renders workflow state with context-aware CTAs.
+
+Requires: pipeline_state dict (services/pipeline_state.py) and proj object.
+#}
+<div class="bg-white rounded-lg shadow mb-6 p-5">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide">Pipeline</h2>
+        {% if pipeline_state.next_step_key %}
+        <span class="text-xs text-slate-500">Next: <b>{{ pipeline_state.next_step_key }}</b></span>
+        {% else %}
+        <span class="text-xs text-emerald-600 font-semibold">All steps complete</span>
+        {% endif %}
+    </div>
+
+    <div class="space-y-3">
+    {% for step in pipeline_state.steps %}
+        {% set is_current = (step.status == "current") %}
+        {% set is_done = (step.status == "done") %}
+        {% set is_blocked = (step.status == "blocked") %}
+        <div class="flex items-start gap-3 {% if is_current %}bg-blue-50{% elif is_blocked %}opacity-60{% endif %} rounded-md p-3 border {% if is_current %}border-blue-200{% else %}border-transparent{% endif %}">
+            <div class="flex-shrink-0 mt-0.5">
+                {% if is_done %}
+                <div class="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold">✓</div>
+                {% elif is_current %}
+                <div class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold animate-pulse">●</div>
+                {% elif is_blocked %}
+                <div class="w-6 h-6 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center text-xs">○</div>
+                {% else %}
+                <div class="w-6 h-6 rounded-full bg-slate-300 text-white flex items-center justify-center text-xs">○</div>
+                {% endif %}
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="font-semibold text-slate-800 text-sm">{{ step.label }}</div>
+                    <div class="text-xs {% if is_done %}text-emerald-600{% elif is_current %}text-blue-600{% else %}text-slate-400{% endif %} font-medium">
+                        {{ step.summary }}
+                    </div>
+                </div>
+                <div class="text-xs text-slate-500 mt-0.5">{{ step.description }}</div>
+
+                {% if is_current or (is_done and step.key == "run" and step.is_running) %}
+                <div class="mt-2">
+                    {% if step.key == "ingest" %}
+                    <form hx-post="/ui/projects/{{ proj.slug }}/ingest" hx-encoding="multipart/form-data" hx-swap="none"
+                          hx-on:htmx:after-request="if (event.detail.successful) window.location.reload()"
+                          class="flex gap-2 items-center">
+                        <input type="file" name="files" multiple accept=".md,.txt,.pdf" class="text-xs" required>
+                        <button class="bg-blue-600 text-white px-3 py-1.5 text-xs rounded hover:bg-blue-700">{{ step.cta_label }} →</button>
+                    </form>
+
+                    {% elif step.key == "analyze" %}
+                    <button hx-post="/ui/projects/{{ proj.slug }}/analyze" hx-swap="none"
+                            hx-on:htmx:after-request="if (event.detail.successful) window.location.reload()"
+                            class="bg-blue-600 text-white px-3 py-1.5 text-xs rounded hover:bg-blue-700">
+                        {{ step.cta_label }} →
+                    </button>
+                    <span class="text-xs text-slate-500 ml-2">~30-90s, est. $0.05-0.15</span>
+
+                    {% elif step.key == "plan" %}
+                    {% if objectives %}
+                    <form hx-post="/ui/projects/{{ proj.slug }}/plan" hx-swap="none"
+                          hx-on:htmx:after-request="if (event.detail.successful) window.location.reload()"
+                          class="flex gap-2 items-center">
+                        <select name="objective_external_id" class="border rounded px-2 py-1 text-xs">
+                            {% for o in objectives %}
+                            <option value="{{ o.external_id }}">{{ o.external_id }} — {{ o.title[:50] }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="bg-blue-600 text-white px-3 py-1.5 text-xs rounded hover:bg-blue-700">{{ step.cta_label }} →</button>
+                    </form>
+                    {% else %}
+                    <span class="text-xs text-slate-400">Analyze first</span>
+                    {% endif %}
+
+                    {% elif step.key == "run" %}
+                    {% if step.is_running and step.run_id %}
+                    <a href="/ui/orchestrate-runs/{{ step.run_id }}?project={{ proj.slug }}"
+                       class="inline-block bg-blue-600 text-white px-3 py-1.5 text-xs rounded hover:bg-blue-700">
+                        View live panel →
+                    </a>
+                    {% else %}
+                    <form hx-post="/ui/projects/{{ proj.slug }}/orchestrate" hx-swap="none"
+                          hx-on:htmx:after-request="if (event.detail.successful) { const loc = event.detail.xhr.getResponseHeader('Location'); if (loc) window.location = loc; else window.location.reload(); }"
+                          class="flex gap-2 items-center flex-wrap">
+                        <label class="text-xs text-slate-600">Max tasks
+                            <input name="max_tasks" type="number" min="1" max="50" value="3" class="border rounded px-2 py-1 text-xs w-16 ml-1">
+                        </label>
+                        <label class="text-xs text-slate-600"><input name="skip_infra" type="checkbox" class="mr-1">skip infra</label>
+                        <button class="bg-blue-600 text-white px-3 py-1.5 text-xs rounded hover:bg-blue-700">{{ step.cta_label }} →</button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+                </div>
+                {% elif is_done and step.key == "run" and step.run_id %}
+                <div class="mt-2">
+                    <a href="/ui/orchestrate-runs/{{ step.run_id }}?project={{ proj.slug }}"
+                       class="text-xs text-blue-600 hover:underline">View last run →</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+</div>

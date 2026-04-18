@@ -1,4 +1,4 @@
-from sqlalchemy import String, Text, Integer, ForeignKey, CheckConstraint
+from sqlalchemy import String, Text, Integer, ForeignKey, CheckConstraint, Boolean
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,8 @@ class Objective(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="ACTIVE")
     scopes: Mapped[list[str]] = mapped_column(ARRAY(String), server_default="{}", nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
+    # I3 — watchlist opt-out: objective stays manual even at project autonomy L3+
+    autonomy_optout: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     key_results: Mapped[list["KeyResult"]] = relationship(
         back_populates="objective", cascade="all, delete-orphan", order_by="KeyResult.position"

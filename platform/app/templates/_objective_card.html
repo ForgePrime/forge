@@ -34,18 +34,100 @@
     <div class="flex items-center justify-between mb-1">
         <div class="flex items-center gap-2">
             <span class="mono text-xs text-slate-500">{{o.external_id}}</span>
-            <h3 class="font-semibold">{{o.title}}</h3>
+            <h3 class="font-semibold"><a href="/ui/projects/{{project}}/objectives/{{o.external_id}}" class="hover:text-blue-700 hover:underline">{{o.title}}</a></h3>
         </div>
         <div class="flex items-center gap-2">
             <span class="pill bg-slate-100 text-xs">{{o.status}} · P{{o.priority}}</span>
+            {% if o.status in ("ACHIEVED", "ABANDONED") %}
+            {# D2 — re-open with gap notes; status flips to ACTIVE, history preserved #}
+            <button onclick="document.getElementById('reopen-modal-{{o.external_id}}').classList.remove('hidden')"
+                    class="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 px-2 py-0.5 rounded text-xs font-semibold"
+                    title="Push this objective from {{o.status}} back to ACTIVE with gap notes — history preserved">↶ Re-open</button>
+            {% else %}
+            <form hx-post="/ui/projects/{{project}}/plan" hx-swap="none"
+                  hx-on:htmx:after-request="if (event.detail.successful) window.location.reload()"
+                  class="inline">
+                <input type="hidden" name="objective_external_id" value="{{o.external_id}}">
+                <button type="submit" class="bg-blue-600 text-white px-2 py-0.5 rounded text-xs hover:bg-blue-700" title="Decompose this objective into tasks">Plan →</button>
+            </form>
+            {% endif %}
             <button hx-get="/ui/projects/{{project}}/objectives/{{o.external_id}}/card?edit=1"
                     hx-target="#obj-{{o.external_id}}"
                     hx-swap="outerHTML"
                     class="text-blue-600 hover:underline text-xs">Edit</button>
         </div>
+
+        {% if o.status in ("ACHIEVED", "ABANDONED") %}
+        {# D2 — reopen modal hidden by default #}
+        <div id="reopen-modal-{{o.external_id}}" class="hidden fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-xl w-full overflow-hidden">
+                <div class="bg-amber-50 border-b border-amber-200 px-5 py-3 flex items-center justify-between">
+                    <h3 class="font-bold text-amber-900">↶ Re-open {{o.external_id}} with gap notes</h3>
+                    <button onclick="document.getElementById('reopen-modal-{{o.external_id}}').classList.add('hidden')"
+                            class="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+                </div>
+                <form hx-post="/api/v1/tier1/projects/{{project}}/objectives/{{o.external_id}}/reopen"
+                      hx-ext="json-enc" hx-swap="none"
+                      hx-on:htmx:after-request="if (event.detail.successful) { document.getElementById('reopen-modal-{{o.external_id}}').classList.add('hidden'); forgeToast('Objective re-opened. History preserved.', 'success'); setTimeout(() => window.location.reload(), 800); } else { forgeToast('Re-open failed — notes must be ≥20 chars.', 'error'); }">
+                    <div class="px-5 py-4 space-y-3">
+                        <p class="text-sm text-slate-700">Status will flip from <b>{{o.status}}</b> back to <b>ACTIVE</b>. Existing tasks and KR remain. Forge sees the prior state + your notes; future LLM calls know what was done and what to improve.</p>
+                        <div>
+                            <label class="text-xs font-semibold text-slate-700 block mb-1">What didn't work / what to improve <span class="text-rose-600">(min 20 chars)</span></label>
+                            <textarea name="gap_notes" rows="5" required minlength="20" maxlength="4000"
+                                      placeholder="e.g. The HIPAA audit log only captures writes; we also need to log read events. Add coverage and re-verify with a security skill."
+                                      class="w-full border border-slate-300 rounded p-2 text-sm"></textarea>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 px-5 py-3 flex items-center justify-end gap-2">
+                        <button type="button"
+                                onclick="document.getElementById('reopen-modal-{{o.external_id}}').classList.add('hidden')"
+                                class="text-slate-600 hover:text-slate-900 px-3 py-1.5 text-sm">Cancel</button>
+                        <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white font-semibold px-4 py-1.5 rounded text-sm">Re-open with notes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
     </div>
     <p class="text-sm text-slate-600">{{ o.business_context[:400] }}</p>
     {% if o.scopes %}<div class="text-xs text-slate-500 mt-1 mono">scopes: {{ o.scopes|join(', ') }}</div>{% endif %}
+
+    {# Per-objective mini-pipeline — 4 task-type lanes (analysis / planning / develop / documentation).
+       Shows how many tasks of each type live on this objective and their status roll-up. #}
+    {% if tasks %}
+    {% set obj_tasks = tasks|selectattr('origin', 'equalto', o.external_id)|list %}
+    {% if obj_tasks %}
+    <div class="mt-3 flex flex-wrap gap-2 text-xs">
+        <span class="text-slate-500 uppercase tracking-wide text-[10px] font-bold mr-1">Lifecycle:</span>
+        {% for ttype, color in [
+            ('analysis', 'blue'),
+            ('planning', 'purple'),
+            ('develop', 'emerald'),
+            ('documentation', 'slate'),
+            ('feature', 'emerald'),
+            ('bug', 'rose'),
+            ('chore', 'slate'),
+        ] %}
+        {% set by_type = obj_tasks|selectattr('type', 'equalto', ttype)|list %}
+        {% if by_type %}
+            {% set done = by_type|selectattr('status', 'equalto', 'DONE')|list|length %}
+            {% set failed = by_type|selectattr('status', 'equalto', 'FAILED')|list|length %}
+            <span class="pill bg-{{color}}-50 border border-{{color}}-200 text-{{color}}-800 text-xs">
+                <b>{{ ttype[:4] }}</b>
+                {{ done }}/{{ by_type|length }}
+                {% if failed %}<span class="text-rose-600 ml-1">· {{ failed }} ✗</span>{% endif %}
+            </span>
+        {% endif %}
+        {% endfor %}
+        <span class="text-slate-400 ml-auto">{{ obj_tasks|length }} task(s) on {{o.external_id}}</span>
+    </div>
+    {% else %}
+    <div class="mt-3 text-xs text-slate-500 italic">
+        No tasks yet on {{o.external_id}} — plan it, or add analysis/planning/develop/documentation tasks manually.
+    </div>
+    {% endif %}
+    {% endif %}
+
     <ul class="text-sm mt-2 space-y-1">
         {% for kr in o.key_results %}
         {% include "_kr_row.html" %}

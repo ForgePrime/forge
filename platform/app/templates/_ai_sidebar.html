@@ -1,0 +1,100 @@
+{# AI sidebar — persistent right-side panel; lives in flex shell so it pushes content rather than overlaying.
+   Width = 0 when closed; 440px when open. State persisted in localStorage.
+   Reads page context from <script id="forge-page-ctx"> JSON.
+#}
+<aside id="forge-ai-sidebar"
+       class="bg-white shadow-xl border-l border-slate-200 flex-shrink-0 overflow-hidden sticky top-0 self-start h-screen relative"
+       data-state="closed"
+       style="width: 0;">
+  {# Inner is right-anchored + fixed 440px so it never reflows during the parent's
+     width snap. Pure show/hide via parent overflow:hidden — no slide artefacts. #}
+  <div id="forge-ai-inner" class="absolute right-0 top-0 w-[440px] h-full flex flex-col bg-white">
+  <!-- Header -->
+  <div class="bg-indigo-600 text-white px-3 py-2.5 flex items-center justify-between gap-2">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
+      <b class="text-sm">AI sidebar</b>
+      <span class="text-[11px] text-indigo-200 mono truncate" id="forge-ai-tokens">0 tokens</span>
+    </div>
+    <div class="flex items-center gap-1.5 flex-shrink-0">
+      <button id="forge-ai-clear"
+              class="text-[11px] bg-white/10 hover:bg-white/20 px-2 py-1 rounded">
+        clear
+      </button>
+      <button id="forge-ai-close"
+              class="bg-white/10 hover:bg-rose-500 hover:text-white px-3 py-1 rounded font-semibold text-sm flex items-center gap-1.5"
+              title="Close sidebar (Ctrl+/)">
+        <span class="text-base leading-none">✕</span>
+        <span>Close</span>
+        <span class="text-[10px] text-indigo-200 mono">⌘/</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Context strip (collapsible) -->
+  <details class="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs" open>
+    <summary class="cursor-pointer font-semibold text-slate-700 flex items-center gap-2">
+      📋 Context on this page
+      <span class="text-slate-500 font-normal" id="forge-ai-page-id"></span>
+    </summary>
+    <div class="mt-2 space-y-1.5 text-slate-600">
+      <div><b>Page:</b> <span id="forge-ai-page-title"></span></div>
+      <div id="forge-ai-entity-row" class="hidden"><b>Entity:</b> <span class="mono" id="forge-ai-entity"></span></div>
+      <div id="forge-ai-visible-data" class="text-slate-500"></div>
+    </div>
+  </details>
+
+  <!-- Capability contract (collapsible) -->
+  <details class="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs">
+    <summary class="cursor-pointer font-semibold text-slate-700">⚖ Capability contract <span id="forge-ai-actions-count" class="text-slate-400"></span></summary>
+    <div class="mt-2 space-y-1" id="forge-ai-actions"></div>
+  </details>
+
+  <!-- Suggestion chips -->
+  <div class="px-3 py-2 border-b border-slate-100">
+    <div class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">💡 Suggestions</div>
+    <div class="flex flex-wrap gap-1.5" id="forge-ai-suggestions"></div>
+  </div>
+
+  <!-- Conversation -->
+  <div class="flex-1 overflow-y-auto px-3 py-3 space-y-3 text-sm" id="forge-ai-conversation">
+    <div class="text-xs text-slate-400 text-center py-4" id="forge-ai-empty">
+      No messages yet. Try a suggestion above or type a question.
+    </div>
+  </div>
+
+  <!-- Input area -->
+  <div class="border-t border-slate-200 p-3">
+    <div class="bg-slate-50 rounded border border-slate-300 p-2">
+      <div class="text-xs text-slate-500 mb-1">
+        💬 <span class="mono bg-slate-200 px-1 rounded">@entity</span> mention · <span class="mono bg-slate-200 px-1 rounded">/cmd</span> slash · <span class="mono bg-slate-200 px-1 rounded">Ctrl+Enter</span> send
+      </div>
+      <textarea id="forge-ai-input" rows="2"
+        placeholder="Ask anything · /find-ambiguity · /cost-drill · /reverse-trace ..."
+        class="w-full bg-transparent text-sm outline-none resize-none"></textarea>
+      <div class="flex items-center justify-between mt-1 text-xs">
+        <div class="flex gap-2">
+          <label class="flex items-center gap-1 text-slate-500">
+            <input type="checkbox" id="forge-ai-plan-first"> plan-first
+          </label>
+        </div>
+        <button id="forge-ai-send"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1 rounded">Send</button>
+      </div>
+    </div>
+    <!-- slash dropdown (shown dynamically) -->
+    <div id="forge-ai-slash" class="hidden mt-2 text-xs bg-white border border-slate-200 rounded shadow-lg max-h-48 overflow-y-auto"></div>
+    <!-- mention dropdown -->
+    <div id="forge-ai-mentions" class="hidden mt-2 text-xs bg-white border border-slate-200 rounded shadow-lg max-h-48 overflow-y-auto"></div>
+  </div>
+  </div>{# /#forge-ai-inner #}
+</aside>
+
+<!-- Drawer pull — vertical handle on right edge of viewport. Visible when sidebar is closed. -->
+<button id="forge-ai-toggle"
+        class="fixed top-1/2 right-0 z-30 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg flex flex-col items-center gap-1 px-2 py-4 font-semibold rounded-l-lg -translate-y-1/2 group"
+        title="Open AI sidebar (Ctrl+/)">
+  <span class="text-xl">🤖</span>
+  <span class="text-[10px] tracking-wider [writing-mode:vertical-rl] mt-1">OPEN  AI</span>
+  <span class="text-[9px] text-indigo-200 mono mt-1">⌘/</span>
+</button>

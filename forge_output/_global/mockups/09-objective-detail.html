@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>09. Objective detail — the heart of the system</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 60px; min-height: 1600px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="#" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <a href="03v2-objectives-dag.html" class="hover:text-white">Objectives</a>
+      <span class="mx-2">/</span>
+      <span class="text-white mono">O-002</span>
+    </div>
+  </div>
+  <div class="ctx"><span class="kbd">⌘K</span></div>
+</nav>
+
+<div class="max-w-[1280px] mx-auto px-8 py-6">
+
+  <!-- Header -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <div class="flex items-start justify-between mb-3">
+      <div class="flex-1">
+        <div class="flex items-center gap-2 mb-2 flex-wrap">
+          <span class="mono text-xs text-slate-400">O-002</span>
+          <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">⏸ BLOCKED</span>
+          <span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded">depends on O-001 ✓</span>
+          <span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded">blocks O-003, O-005</span>
+        </div>
+        <h1 class="text-2xl font-bold mb-1">Plan migration architecture</h1>
+        <p class="text-sm text-slate-600">Decide target stack, data model, integration patterns. Output: DAG of develop tasks for O-003.</p>
+      </div>
+      <div class="flex gap-2">
+        <button class="text-sm text-slate-500 hover:text-slate-900 px-3 py-1.5">Edit</button>
+        <button class="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 px-3 py-1.5 rounded text-sm font-semibold">↶ Re-open</button>
+      </div>
+    </div>
+
+    <!-- Status strip -->
+    <div class="grid grid-cols-4 gap-3 pt-3 border-t border-slate-100">
+      <div>
+        <div class="text-xs font-semibold text-slate-500 uppercase">Progress</div>
+        <div class="flex items-center gap-2 mt-1">
+          <div class="h-2 bg-slate-100 rounded-full flex-1 overflow-hidden"><div class="h-full bg-emerald-500" style="width: 40%"></div></div>
+          <span class="text-xs font-semibold">2/5 KR met</span>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-slate-500 uppercase">Tasks</div>
+        <div class="text-sm font-semibold mt-1">3 done · 1 running · 2 planned</div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-slate-500 uppercase">Ambiguities</div>
+        <div class="text-sm font-semibold mt-1 text-amber-700">2 open · 4 resolved</div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-slate-500 uppercase">Cost so far</div>
+        <div class="text-sm font-semibold mt-1">$1.24</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scrutiny debt strip -->
+  <div class="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-5">
+    <div class="flex items-center gap-4 mb-3">
+      <div class="text-3xl">🔎</div>
+      <div class="flex-1">
+        <div class="font-bold text-slate-900 mb-0.5">Scrutiny debt on O-002 — before resuming, review what you committed to</div>
+        <div class="text-sm text-slate-700">You resolved 4 ambiguities <b>3 min ago</b>. <b>3 of those 4</b> were pre-selected recommendations you accepted without editing. <b>2 ambiguities still open.</b> <b>AC-2 depends on unresolved Q-007.</b></div>
+      </div>
+    </div>
+    <div class="grid grid-cols-4 gap-2 text-xs">
+      <div class="bg-white rounded p-2 border border-amber-200"><b>4 recent answers</b> · 3 pre-selected, not edited · <a href="#" class="text-blue-600 hover:underline">review</a></div>
+      <div class="bg-white rounded p-2 border border-amber-200"><b>2 ambiguities open</b> · Q-007 HIGH, Q-008 MEDIUM · <a href="#" class="text-blue-600 hover:underline">answer</a></div>
+      <div class="bg-white rounded p-2 border border-amber-200"><b>1 AC unsourced</b> · invented by LLM · <a href="#" class="text-blue-600 hover:underline">verify or remove</a></div>
+      <div class="bg-white rounded p-2 border border-amber-200"><b>0 failure modes</b> captured vs 4 expected for migration task · <a href="#" class="text-blue-600 hover:underline">add</a></div>
+    </div>
+    <div class="flex gap-2 mt-3 justify-end">
+      <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-3 py-2 rounded">Acknowledge debt (log reason)</button>
+      <button class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold px-4 py-2 rounded">▶ Continue anyway (cost: Forge re-analyzes with my answers)</button>
+    </div>
+  </div>
+
+  <!-- 3 column main content -->
+  <div class="grid grid-cols-12 gap-5">
+
+    <!-- LEFT: KB references -->
+    <div class="col-span-3">
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">📚 KB sources</h3>
+          <button class="text-xs text-blue-600 hover:underline">Manage</button>
+        </div>
+        <div class="space-y-2">
+          <label class="flex items-start gap-2 p-2 bg-blue-50 rounded text-xs">
+            <input type="checkbox" checked class="mt-0.5">
+            <div class="flex-1">
+              <div class="font-semibold">SRC-001 ERP docs</div>
+              <div class="text-slate-500 text-xs">focus: data model, processes</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-2 p-2 bg-blue-50 rounded text-xs">
+            <input type="checkbox" checked class="mt-0.5">
+            <div class="flex-1">
+              <div class="font-semibold">SRC-002 SharePoint req</div>
+              <div class="text-slate-500 text-xs">primary source</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-2 p-2 bg-blue-50 rounded text-xs">
+            <input type="checkbox" checked class="mt-0.5">
+            <div class="flex-1">
+              <div class="font-semibold">SRC-003 legacy code</div>
+              <div class="text-slate-500 text-xs">implicit rules</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-2 p-2 bg-blue-50 rounded text-xs">
+            <input type="checkbox" checked class="mt-0.5">
+            <div class="flex-1">
+              <div class="font-semibold">SRC-004 client constraints</div>
+              <div class="text-slate-500 text-xs">hard constraints</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-2 p-2 bg-slate-50 rounded text-xs opacity-60">
+            <input type="checkbox" class="mt-0.5">
+            <div class="flex-1">
+              <div class="font-semibold">SRC-005 board deck</div>
+              <div class="text-slate-500 text-xs">excluded (conflicts)</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- DAG neighbors -->
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">🔗 Objective DAG</h3>
+        <div class="text-xs space-y-1.5">
+          <div>
+            <div class="text-slate-500 mb-1">Depends on:</div>
+            <a class="block p-2 bg-emerald-50 rounded border border-emerald-200" href="#">
+              <div class="font-semibold">O-001 Understand legacy</div>
+              <div class="text-emerald-700 text-xs">✓ ACHIEVED</div>
+            </a>
+          </div>
+          <div class="mt-3">
+            <div class="text-slate-500 mb-1">Blocks:</div>
+            <a class="block p-2 bg-slate-50 rounded border border-slate-200 mb-1" href="#">
+              <div class="font-semibold">O-003 Build tooling</div>
+              <div class="text-slate-500 text-xs">waiting</div>
+            </a>
+            <a class="block p-2 bg-slate-50 rounded border border-slate-200" href="#">
+              <div class="font-semibold">O-005 UAT</div>
+              <div class="text-slate-500 text-xs">waiting</div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIDDLE: content of objective (description, AC, scenarios, ambiguities) -->
+    <div class="col-span-6">
+
+      <!-- DESCRIPTION (editable mix of user + LLM) -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-sm">📝 Objective description</h3>
+          <div class="flex gap-2 text-xs">
+            <button class="text-blue-600 hover:underline">Edit</button>
+            <button class="text-blue-600 hover:underline">🪄 Ask LLM to expand</button>
+          </div>
+        </div>
+        <div class="prose prose-sm text-sm text-slate-700 space-y-2">
+          <p>
+            <b>Goal:</b> Produce a target architecture that minimizes migration risk. Must be compatible with on-prem deploy
+            <span class="bg-slate-100 text-xs px-1 mono rounded" title="from SRC-004 manual note">SRC-004</span>
+            and Python-based
+            <span class="bg-slate-100 text-xs px-1 mono rounded" title="from SRC-004">SRC-004</span>.
+          </p>
+          <p>
+            <b>Scope:</b> backend data layer, integration pattern with legacy, auth/authZ model. Frontend is a separate objective (O-004, not planned yet).
+          </p>
+          <p class="bg-amber-50 border-l-2 border-amber-400 pl-2 italic text-slate-700">
+            <b>User note (added by you):</b> Client prefers keeping PostgreSQL. Team has 4y Django experience — favor Django over FastAPI if otherwise equivalent.
+          </p>
+          <p class="text-xs text-slate-500">
+            Drafted by LLM from SRC-001, SRC-002, SRC-003, SRC-004 during analysis task AT-005 · edited by you 1h ago
+          </p>
+        </div>
+      </div>
+
+      <!-- AMBIGUITIES (at OBJECTIVE level, not project) -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-4 border-l-4 border-amber-500">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-sm flex items-center gap-2">
+            ⚠ Open ambiguities (2)
+            <span class="text-xs font-normal text-slate-500">from analysis task AT-005</span>
+          </h3>
+          <button class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-3 py-1.5 rounded">Resolve all →</button>
+        </div>
+
+        <div class="space-y-3">
+          <div class="border border-amber-200 rounded p-3 bg-amber-50/50">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="mono text-xs text-slate-400">Q-007</span>
+              <span class="bg-rose-100 text-rose-700 text-xs font-bold px-1.5 py-0.5 rounded">HIGH</span>
+              <span class="font-semibold text-sm">Data model — share with legacy DB or migrate separately?</span>
+            </div>
+            <p class="text-xs text-slate-600 mb-1"><b>Why it matters:</b> determines dual-write / CDC strategy. Big impact on task count.</p>
+            <p class="text-xs text-slate-500"><b>Ref:</b> SRC-001 §4.2 vs SRC-002 /migration-plan#db · conflicting guidance</p>
+            <button class="mt-2 text-xs text-blue-600 hover:underline font-semibold">Answer →</button>
+          </div>
+
+          <div class="border border-amber-200 rounded p-3 bg-amber-50/50">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="mono text-xs text-slate-400">Q-008</span>
+              <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MEDIUM</span>
+              <span class="font-semibold text-sm">Which integrations are must-have in Phase 1?</span>
+            </div>
+            <p class="text-xs text-slate-600 mb-1"><b>Why it matters:</b> 7 integrations in legacy, only 3 mentioned in SRC-002. Need priority from client.</p>
+            <p class="text-xs text-slate-500"><b>Ref:</b> SRC-003 has 7 endpoints, SRC-002 lists only 3 required.</p>
+            <button class="mt-2 text-xs text-blue-600 hover:underline font-semibold">Answer →</button>
+          </div>
+        </div>
+
+        <div class="mt-3 pt-3 border-t border-amber-200">
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">✓ Resolved (4)</div>
+          <div class="space-y-1 text-xs text-slate-500">
+            <div>Q-003 Cloud vs on-prem → <b class="text-emerald-700">on-prem</b> (from SRC-004 manual note)</div>
+            <div>Q-004 Python stack choice → <b class="text-emerald-700">Django 5 + DRF</b> (user answer)</div>
+            <div>Q-005 HIPAA scope → <b class="text-emerald-700">minimum session + audit</b> (user answer)</div>
+            <div>Q-006 DB engine → <b class="text-emerald-700">PostgreSQL 16</b> (user note)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AC (filled by analysis, refinable) -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-sm">✅ Acceptance criteria <span class="text-xs font-normal text-slate-500">(5)</span></h3>
+          <div class="flex gap-2 text-xs">
+            <button class="text-blue-600 hover:underline">🪄 Regenerate from sources</button>
+            <button class="text-blue-600 hover:underline">+ Add manually</button>
+          </div>
+        </div>
+        <div class="space-y-1.5 text-sm">
+          <div class="flex items-start gap-2 py-1.5 border-b border-slate-100">
+            <span class="mono text-xs text-slate-400 mt-0.5">AC-1</span>
+            <div class="flex-1">All 7 legacy integrations have a decision documented (implement / defer / drop).</div>
+            <span class="bg-slate-100 text-xs text-slate-500 px-1 mono rounded">SRC-003</span>
+          </div>
+          <div class="flex items-start gap-2 py-1.5 border-b border-slate-100">
+            <span class="mono text-xs text-slate-400 mt-0.5">AC-2</span>
+            <div class="flex-1">Data model defined with CDC strategy specified (per Q-007 resolution).</div>
+            <span class="bg-amber-100 text-xs text-amber-700 px-1 mono rounded" title="depends on Q-007">needs Q-007</span>
+          </div>
+          <div class="flex items-start gap-2 py-1.5 border-b border-slate-100">
+            <span class="mono text-xs text-slate-400 mt-0.5">AC-3</span>
+            <div class="flex-1">Auth model satisfies HIPAA minimum (session + audit per Q-005 resolution).</div>
+          </div>
+          <div class="flex items-start gap-2 py-1.5 border-b border-slate-100">
+            <span class="mono text-xs text-slate-400 mt-0.5">AC-4</span>
+            <div class="flex-1">All hard constraints from SRC-004 explicitly addressed in the plan.</div>
+            <span class="bg-slate-100 text-xs text-slate-500 px-1 mono rounded">SRC-004</span>
+          </div>
+          <div class="flex items-start gap-2 py-1.5">
+            <span class="mono text-xs text-slate-400 mt-0.5">AC-5</span>
+            <div class="flex-1">Plan output is DAG with &lt; 30 tasks; no task &gt; 5 AC.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TEST SCENARIOS (non-happy path, explicit) -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-sm">🧪 Test scenarios <span class="text-xs font-normal text-slate-500">— non-happy-path first</span></h3>
+          <button class="text-xs text-blue-600 hover:underline">+ Add scenario</button>
+        </div>
+        <p class="text-xs text-slate-500 mb-3 italic">Generated by analysis. Planning will refine them into task-level tests. These force the plan to handle edge cases, not just happy paths.</p>
+        <div class="space-y-2 text-sm">
+          <div class="p-2 bg-rose-50 rounded border border-rose-200">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="bg-rose-200 text-rose-800 text-xs font-bold px-1.5 py-0.5 rounded">EDGE CASE</span>
+              <b>Legacy DB row has NULL in critical field</b>
+            </div>
+            <div class="text-xs text-slate-600">Migration must handle this without crashing. Expected: log + skip with audit entry.</div>
+          </div>
+          <div class="p-2 bg-rose-50 rounded border border-rose-200">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="bg-rose-200 text-rose-800 text-xs font-bold px-1.5 py-0.5 rounded">EDGE CASE</span>
+              <b>CDC lags behind &gt; 30s during cutover</b>
+            </div>
+            <div class="text-xs text-slate-600">Cutover plan must detect + retry or pause. Expected: reconciliation script.</div>
+          </div>
+          <div class="p-2 bg-rose-50 rounded border border-rose-200">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="bg-rose-200 text-rose-800 text-xs font-bold px-1.5 py-0.5 rounded">FAILURE MODE</span>
+              <b>Auth outage during migration</b>
+            </div>
+            <div class="text-xs text-slate-600">Fallback to legacy auth, continue migration with read-only mode.</div>
+          </div>
+          <div class="p-2 bg-rose-50 rounded border border-rose-200">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="bg-rose-200 text-rose-800 text-xs font-bold px-1.5 py-0.5 rounded">SECURITY</span>
+              <b>User attempts access to record from another tenant</b>
+            </div>
+            <div class="text-xs text-slate-600">Expected: 403, audit log. Not 404 (enumeration risk).</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHALLENGER CONFIG -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+        <h3 class="font-bold text-sm mb-2">🤝 Challenger will verify</h3>
+        <p class="text-xs text-slate-500 mb-3">Defined during analysis. Applied to every develop task of this objective.</p>
+        <div class="space-y-1 text-sm">
+          <div class="flex items-center gap-2"><span class="text-slate-400">▸</span> Plan handles every scenario above (not skipped)</div>
+          <div class="flex items-center gap-2"><span class="text-slate-400">▸</span> Data model doesn't violate any SRC-004 constraint</div>
+          <div class="flex items-center gap-2"><span class="text-slate-400">▸</span> All 7 integrations have explicit decisions in the plan</div>
+          <div class="flex items-center gap-2"><span class="text-slate-400">▸</span> No implicit cloud dependency introduced (on-prem only)</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: tasks running on this objective -->
+    <div class="col-span-3">
+
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">🎯 Ask Forge to...</h3>
+        </div>
+        <div class="space-y-1.5">
+          <button class="w-full text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded px-2.5 py-2 text-xs">
+            <div class="font-semibold text-blue-900">+ Analysis task</div>
+            <div class="text-slate-600">Research KB, find ambiguities, write AC</div>
+          </button>
+          <button class="w-full text-left bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded px-2.5 py-2 text-xs">
+            <div class="font-semibold text-purple-900">+ Planning task</div>
+            <div class="text-slate-600">Decompose into develop tasks + DAG</div>
+          </button>
+          <button class="w-full text-left bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded px-2.5 py-2 text-xs">
+            <div class="font-semibold text-emerald-900">+ Develop task</div>
+            <div class="text-slate-600">Direct code/migration work</div>
+          </button>
+          <button class="w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-2.5 py-2 text-xs">
+            <div class="font-semibold text-slate-800">+ Documentation task</div>
+            <div class="text-slate-600">Write ADR, API docs, user guide</div>
+          </button>
+          <div class="text-xs text-slate-400 text-center pt-2 border-t border-slate-100 mt-2">↑ or describe &amp; let LLM pick type</div>
+        </div>
+      </div>
+
+      <!-- TASK LIST -->
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">Tasks on this objective (6)</h3>
+        <div class="space-y-2">
+
+          <div class="p-2 rounded border-l-3 border-blue-500 bg-blue-50/30">
+            <div class="flex items-center gap-2 mb-1 text-xs">
+              <span class="bg-blue-100 text-blue-700 text-xs font-bold px-1 rounded">ANALYSIS</span>
+              <span class="mono text-slate-500">AT-005</span>
+              <span class="ml-auto bg-emerald-100 text-emerald-700 px-1 rounded">DONE</span>
+            </div>
+            <div class="text-xs font-semibold">Research KB for architecture decisions</div>
+            <div class="text-xs text-slate-500 mt-0.5">Found 6 Q's, 4 resolved inline, 2 escalated</div>
+          </div>
+
+          <div class="p-2 rounded border-l-3 border-blue-500 bg-blue-50/30">
+            <div class="flex items-center gap-2 mb-1 text-xs">
+              <span class="bg-blue-100 text-blue-700 text-xs font-bold px-1 rounded">ANALYSIS</span>
+              <span class="mono text-slate-500">AT-006</span>
+              <span class="ml-auto bg-blue-100 text-blue-700 px-1 rounded animate-pulse">PENDING re-run</span>
+            </div>
+            <div class="text-xs font-semibold">Re-analyze with user answers (Q-003/4/5/6)</div>
+            <div class="text-xs text-slate-500 mt-0.5">Will start when you click "Continue with my answers"</div>
+          </div>
+
+          <div class="p-2 rounded border-l-3 border-purple-500 opacity-50">
+            <div class="flex items-center gap-2 mb-1 text-xs">
+              <span class="bg-purple-100 text-purple-700 text-xs font-bold px-1 rounded">PLANNING</span>
+              <span class="mono text-slate-500">PT-003</span>
+              <span class="ml-auto bg-slate-200 text-slate-600 px-1 rounded">BLOCKED</span>
+            </div>
+            <div class="text-xs font-semibold">Decompose architecture into develop tasks</div>
+            <div class="text-xs text-slate-500 mt-0.5">Needs: analysis complete + Q-007, Q-008</div>
+          </div>
+
+          <div class="p-2 rounded border-l-3 border-slate-400 opacity-50">
+            <div class="flex items-center gap-2 mb-1 text-xs">
+              <span class="bg-slate-200 text-slate-700 text-xs font-bold px-1 rounded">DOC</span>
+              <span class="mono text-slate-500">DOC-001</span>
+              <span class="ml-auto bg-slate-100 text-slate-600 px-1 rounded">IDEATED</span>
+            </div>
+            <div class="text-xs font-semibold">Write ADR for architecture decisions</div>
+            <div class="text-xs text-slate-500 mt-0.5">Runs after planning done</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Activity summary -->
+      <div class="bg-slate-100 rounded-lg p-3 mt-4 text-xs">
+        <div class="font-semibold text-slate-700 mb-1">Recent activity</div>
+        <div class="text-slate-600 space-y-0.5">
+          <div>3m ago — You answered Q-005, Q-006</div>
+          <div>12m ago — AT-005 DONE, 2 ambiguities escalated</div>
+          <div>25m ago — AT-005 started (crafted mode)</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ANNOTATIONS -->
+<div class="annot" style="top: 165px; left: 30px;">1</div>
+<div class="annot" style="top: 370px; left: 30px;">2</div>
+<div class="annot" style="top: 510px; left: 380px;">3</div>
+<div class="annot" style="top: 670px; left: 380px;">4</div>
+<div class="annot" style="top: 1170px; left: 380px;">5</div>
+<div class="annot" style="top: 520px; left: 1100px;">6</div>
+<div class="annot" style="top: 700px; left: 1100px;">7</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 260px;">
+  <h3>09. Objective detail — heart of system</h3>
+  <ol>
+    <li><strong>Objective-level status</strong> — depends-on / blocks badges. Shows DAG position inline. BLOCKED means ambiguity, not generic.</li>
+    <li><strong>Resume strip (confirmed by user).</strong> After answering ambiguities, Forge suggests next step. Manual trigger (not auto) — user controls cost.</li>
+    <li><strong>Description = user + LLM hybrid.</strong> LLM draft quoted with source attribution (SRC-004 pill). User notes in amber italic. "🪄 Expand with LLM" reads KB again.</li>
+    <li><strong>Ambiguities at objective level</strong> — not project. Each Q linked to source conflict. HIGH/MEDIUM severity. "Answer →" per question. Resolved list preserved for audit.</li>
+    <li><strong>Test scenarios first-class, non-happy-path.</strong> Edge cases / failure modes / security. Forces plan to handle them. Planning refines, develop implements.</li>
+    <li><strong>"Ask Forge to..."</strong> panel — 4 task types as buttons. Plus "describe &amp; let LLM pick type". Clear invocation, not hidden.</li>
+    <li><strong>Tasks-on-objective list.</strong> 4 types color-coded. Re-run pending (AT-006) shown. DOC task ideated. Visible pipeline per-objective.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Key:</strong> This is where work happens. Projects and DAGs are navigation — <em>objectives are where user thinks</em>.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

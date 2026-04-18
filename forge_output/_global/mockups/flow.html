@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Forge UX — user flow (clean swimlane)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { background: #f1f5f9; margin: 0; }
+
+  .diagram-wrap {
+    position: relative;
+    width: 1600px;
+    height: 1100px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  }
+
+  .lane-label {
+    position: absolute;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    text-transform: uppercase;
+  }
+
+  .node {
+    position: absolute;
+    width: 160px;
+    height: 78px;
+    padding: 10px 12px;
+    background: #fff;
+    border: 2px solid #cbd5e1;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    font-size: 11px;
+    line-height: 1.35;
+    cursor: pointer;
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+    text-decoration: none;
+    color: inherit;
+  }
+  .node:hover { border-color: #2563eb; box-shadow: 0 4px 16px rgba(37,99,235,0.2); }
+  .node .ttl { font-weight: 700; font-size: 12px; color: #0f172a; margin-bottom: 3px; }
+  .node .sub { color: #64748b; font-size: 10px; }
+
+  .node.setup      { border-left: 4px solid #64748b; }
+  .node.object     { border: 2px solid #f59e0b; background: #fef3c7; }
+  .node.analysis   { border-left: 4px solid #2563eb; background: #eff6ff; }
+  .node.planning   { border-left: 4px solid #9333ea; background: #faf5ff; }
+  .node.develop    { border-left: 4px solid #059669; background: #ecfdf5; }
+  .node.doc        { border-left: 4px solid #64748b; background: #f8fafc; }
+  .node.achieved   { border: 2px solid #059669; background: #d1fae5; }
+  .node.user-action { border: 2px dashed #ca8a04; background: #fefce8; }
+  .node.loop-label {
+    background: #fff1f2;
+    border: 1px dashed #fb7185;
+    color: #be123c;
+    width: auto;
+    height: auto;
+    padding: 6px 10px;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="px-8 py-5 bg-white border-b border-slate-200 flex items-center justify-between sticky top-0 z-20">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Forge — per-objective iterative flow</h1>
+    <p class="text-sm text-slate-600">Main spine (center): Project → Objective → Analysis → Planning → Develop → Docs → Achieved. Loops: ambiguity (above), failure (below), re-open (wrap). AI sidebar + page/project context (right-side persistent layer).</p>
+  </div>
+  <a href="index.html" class="text-sm text-blue-600 hover:underline font-semibold">← Back to canvas</a>
+</div>
+
+<!-- Context layer banner -->
+<div class="max-w-[1600px] mx-auto px-8 py-5">
+  <div class="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-300 rounded-xl p-4 flex items-start gap-4">
+    <div class="text-2xl">🧠</div>
+    <div class="flex-1">
+      <div class="font-bold text-indigo-900 mb-1">Persistent context layers (active on every screen)</div>
+      <div class="grid grid-cols-3 gap-3 text-xs text-slate-700">
+        <div class="bg-white rounded p-2 border border-indigo-200">
+          <b>Project context</b> — operational contract · active skills · recent actions · autonomy level · budget trajectory. Injected into every LLM call (~420–1400 tokens).
+        </div>
+        <div class="bg-white rounded p-2 border border-indigo-200">
+          <b>Page context</b> — each screen self-describes (page id, entity in focus, visible data, available actions). LLM starts cold-free.
+        </div>
+        <div class="bg-white rounded p-2 border border-indigo-200">
+          <b>AI sidebar</b> — chat, slash commands, suggestion chips, tool-call stream, skill picker, impact alerts. Persistent right-side overlay.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="py-6">
+<div class="diagram-wrap">
+
+<!-- Lane labels on the left -->
+<div class="lane-label" style="top: 140px; left: 20px;">⚡ Ambiguity loop</div>
+<div class="lane-label" style="top: 480px; left: 20px;">📍 Main path (happy)</div>
+<div class="lane-label" style="top: 780px; left: 20px;">🔄 Failure / Re-open loops</div>
+
+<!-- Section dividers -->
+<div style="position: absolute; top: 340px; left: 180px; right: 20px; height: 1px; background: linear-gradient(to right, transparent, #cbd5e1, transparent);"></div>
+<div style="position: absolute; top: 660px; left: 180px; right: 20px; height: 1px; background: linear-gradient(to right, transparent, #cbd5e1, transparent);"></div>
+
+<!-- ============ SVG arrows ============ -->
+<svg style="position: absolute; inset: 0; pointer-events: none; z-index: 1;" width="1600" height="1100">
+  <defs>
+    <marker id="g-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#059669"/></marker>
+    <marker id="b-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/></marker>
+    <marker id="a-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d97706"/></marker>
+    <marker id="r-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626"/></marker>
+  </defs>
+
+  <!-- ============ MAIN SPINE (horizontal, y=520 = node center) ============ -->
+  <!-- Project → KB -->
+  <line x1="380" y1="520" x2="420" y2="520" stroke="#059669" stroke-width="2.5" marker-end="url(#g-arr)"/>
+  <!-- KB → Objective -->
+  <line x1="600" y1="520" x2="640" y2="520" stroke="#059669" stroke-width="2.5" marker-end="url(#g-arr)"/>
+  <!-- Objective → Analysis -->
+  <line x1="820" y1="520" x2="860" y2="520" stroke="#059669" stroke-width="2.5" marker-end="url(#g-arr)"/>
+  <!-- Analysis → Planning -->
+  <line x1="1040" y1="520" x2="1080" y2="520" stroke="#059669" stroke-width="2.5" marker-end="url(#g-arr)"/>
+  <!-- Planning → Develop -->
+  <line x1="1260" y1="520" x2="1300" y2="520" stroke="#059669" stroke-width="2.5" marker-end="url(#g-arr)"/>
+  <!-- Develop → Docs (drops to second row) -->
+  <path d="M 1480 520 L 1530 520 L 1530 620" stroke="#059669" stroke-width="2.5" fill="none" marker-end="url(#g-arr)"/>
+
+  <!-- Second spine row (Docs → Achieved) at y = 680 -->
+  <!-- Auto-docs → DOC task -->
+  <line x1="1255" y1="680" x2="1215" y2="680" stroke="#059669" stroke-width="2.5" marker-end="url(#g-arr)"/>
+  <!-- DOC task → Achieved -->
+  <line x1="1035" y1="680" x2="995" y2="680" stroke="#059669" stroke-width="2.5" marker-end="url(#g-arr)"/>
+
+  <!-- ============ AMBIGUITY LOOP (above spine, y = 100-320) ============ -->
+  <!-- Analysis (950, 560) → ambiguity pool (up) -->
+  <path d="M 950 480 L 950 320" stroke="#d97706" stroke-width="2" fill="none" marker-end="url(#a-arr)"/>
+  <!-- ambiguity pool → user resolves (horizontal, right) -->
+  <path d="M 1040 280 L 1170 280" stroke="#d97706" stroke-width="2" fill="none" marker-end="url(#a-arr)"/>
+  <!-- user resolves → [manual] Continue bar (horizontal, left) -->
+  <path d="M 1160 340 L 1040 340" stroke="#dc2626" stroke-width="2" fill="none" stroke-dasharray="5 3" marker-end="url(#r-arr)"/>
+  <!-- [manual] continue bar → back to Analysis (down) -->
+  <path d="M 860 340 L 770 340 L 770 480" stroke="#dc2626" stroke-width="2" fill="none" stroke-dasharray="5 3" marker-end="url(#r-arr)"/>
+
+  <!-- ============ FAILURE LOOP (below spine, y = 720-900) ============ -->
+  <!-- Develop → failure split point -->
+  <path d="M 1390 560 L 1390 740" stroke="#dc2626" stroke-width="2" fill="none" stroke-dasharray="4 3"/>
+  <!-- → self-fix loop (right side) -->
+  <path d="M 1390 780 L 1510 780 L 1510 720 C 1510 620, 1510 620, 1480 580" stroke="#dc2626" stroke-width="2" fill="none" stroke-dasharray="4 3" marker-end="url(#r-arr)"/>
+  <!-- → user-decision (left side) -->
+  <path d="M 1390 780 L 1200 780" stroke="#dc2626" stroke-width="2" fill="none" stroke-dasharray="4 3" marker-end="url(#r-arr)"/>
+  <!-- user-decision → back to Objective as new ambiguity (wraps up over objective) -->
+  <path d="M 1020 780 L 720 780 L 720 300 L 740 300" stroke="#dc2626" stroke-width="2" fill="none" stroke-dasharray="4 3" marker-end="url(#r-arr)"/>
+
+  <!-- ============ RE-OPEN WRAP (from Achieved back to Objective) ============ -->
+  <path d="M 900 720 L 900 900 L 300 900 L 300 540 L 420 540" stroke="#d97706" stroke-width="2" fill="none" stroke-dasharray="6 4" marker-end="url(#a-arr)"/>
+</svg>
+
+<!-- ============ NODES ============ -->
+
+<!-- ROW 1: ambiguity lane (y ~= 240) -->
+<div class="node" style="top: 240px; left: 860px;">
+  <div class="ttl">⚠ Ambiguity surfaced</div>
+  <div class="sub">Q's logged against the objective<br/>(analysis output, not monolithic)</div>
+</div>
+
+<a class="node user-action" style="top: 240px; left: 1170px;" href="03-project-post-analyze.html">
+  <div class="ttl">✋ User answers Q's</div>
+  <div class="sub">per-Q radio + custom<br/>writes answer into objective</div>
+</a>
+
+<div class="node loop-label" style="top: 340px; left: 870px; width: 160px; height: 60px;">
+  <div class="ttl">[manual] "Continue with my answers"</div>
+  <div class="sub">no auto-trigger · user chooses</div>
+</div>
+
+<!-- ROW 2: main spine (y ~= 480) -->
+<a class="node setup" style="top: 480px; left: 220px;" href="01-dashboard.html">
+  <div class="ttl">📁 Project</div>
+  <div class="sub">created as initiative<br/>(not SOW-driven)</div>
+</a>
+
+<a class="node setup" style="top: 480px; left: 440px;" href="02v2-project-kb.html">
+  <div class="ttl">📚 Knowledge Base</div>
+  <div class="sub">docs · URLs · folders · notes<br/>with descriptions</div>
+</a>
+
+<a class="node object" style="top: 480px; left: 660px;" href="09-objective-detail.html">
+  <div class="ttl">🎯 Objective</div>
+  <div class="sub">user writes OR LLM drafts<br/>DAG with other objectives</div>
+</a>
+
+<a class="node analysis" style="top: 480px; left: 880px;" href="07-mode-selector.html">
+  <div class="ttl">🔍 ANALYSIS task</div>
+  <div class="sub">reads KB+code · AC · scenarios<br/>flags ambiguities</div>
+</a>
+
+<a class="node planning" style="top: 480px; left: 1100px;" href="07-mode-selector.html">
+  <div class="ttl">📐 PLANNING task</div>
+  <div class="sub">decomposes into<br/>develop task DAG</div>
+</a>
+
+<a class="node develop" style="top: 480px; left: 1320px;" href="04-orchestrate-live.html">
+  <div class="ttl">⚡ DEVELOP task</div>
+  <div class="sub">Phase A code+tests · B findings<br/>C challenger</div>
+</a>
+
+<!-- ROW 2b: wrap — Docs + Achieved (y ~= 640, going right-to-left) -->
+<a class="node doc" style="top: 640px; left: 1300px;" href="10-post-exec-docs.html">
+  <div class="ttl">📄 Auto-drafted docs</div>
+  <div class="sub">deterministic from code<br/>live · zero LLM cost</div>
+</a>
+
+<a class="node doc" style="top: 640px; left: 1050px;" href="10-post-exec-docs.html">
+  <div class="ttl">📝 DOCUMENTATION task</div>
+  <div class="sub">4th type · ADR · guide<br/>LLM-polished on objective</div>
+</a>
+
+<a class="node achieved" style="top: 640px; left: 830px;" href="09-objective-detail.html">
+  <div class="ttl">🏆 Objective ACHIEVED</div>
+  <div class="sub">all KR met · deliverable<br/>+ docs ready (re-openable)</div>
+</a>
+
+<!-- ROW 3: failure lane (y ~= 750) -->
+<div class="node loop-label" style="top: 750px; left: 1440px; width: 140px; height: 56px;">
+  <div class="ttl">LLM self-fix</div>
+  <div class="sub">retries with findings</div>
+</div>
+
+<div class="node user-action" style="top: 750px; left: 1020px;">
+  <div class="ttl">✋ User-decision blocker</div>
+  <div class="sub">back to objective<br/>as new ambiguity (Q)</div>
+</div>
+
+<!-- ROW 4: Re-open label (y ~= 880) -->
+<div class="node loop-label" style="top: 880px; left: 500px; width: 250px; height: 40px;">
+  <div class="ttl">↶ User re-opens ACHIEVED with gap notes</div>
+  <div class="sub" style="font-size: 9px;">history preserved · LLM knows what's already built</div>
+</div>
+
+</div>
+</div>
+
+<!-- LEGEND -->
+<div class="max-w-[1600px] mx-auto px-8 pb-8">
+  <div class="grid grid-cols-2 gap-5 mt-2">
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <h3 class="font-bold text-sm mb-3">Arrow legend</h3>
+      <div class="space-y-1.5 text-xs text-slate-700">
+        <div class="flex items-center gap-2"><div class="w-10 h-0.5 bg-emerald-600"></div><span><b>Green solid</b> — main happy path (stages progress forward)</span></div>
+        <div class="flex items-center gap-2"><div class="w-10 h-0.5 bg-amber-600"></div><span><b>Amber solid</b> — user action (answer / re-open)</span></div>
+        <div class="flex items-center gap-2"><div class="w-10 border-t border-dashed border-rose-600"></div><span><b>Rose dashed</b> — loop-back (ambiguity resume / failure / re-open)</span></div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <h3 class="font-bold text-sm mb-3">Node legend</h3>
+      <div class="space-y-1.5 text-xs text-slate-700">
+        <div class="flex items-center gap-2"><div class="w-4 h-4 rounded border-l-4 border-slate-500 bg-white"></div><span>Setup (project, KB)</span></div>
+        <div class="flex items-center gap-2"><div class="w-4 h-4 rounded border-2 border-amber-400 bg-amber-100"></div><span>Objective container</span></div>
+        <div class="flex items-center gap-2"><div class="w-4 h-4 rounded border-l-4 border-blue-500 bg-blue-50"></div><span>ANALYSIS task</span></div>
+        <div class="flex items-center gap-2"><div class="w-4 h-4 rounded border-l-4 border-purple-500 bg-purple-50"></div><span>PLANNING task</span></div>
+        <div class="flex items-center gap-2"><div class="w-4 h-4 rounded border-l-4 border-emerald-500 bg-emerald-50"></div><span>DEVELOP task</span></div>
+        <div class="flex items-center gap-2"><div class="w-4 h-4 rounded border-l-4 border-slate-500 bg-slate-50"></div><span>DOCUMENTATION task (4th type)</span></div>
+        <div class="flex items-center gap-2"><div class="w-4 h-4 rounded border-2 border-yellow-500 bg-yellow-50 border-dashed"></div><span>User action</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl p-5 shadow-sm mt-4">
+    <h3 class="font-bold text-sm mb-3">Invariants enforced by this flow</h3>
+    <ol class="list-decimal pl-5 space-y-1.5 text-sm text-slate-700">
+      <li><b>Project ≠ SOW.</b> Project is an initiative. KB is built over time.</li>
+      <li><b>Objectives are where work lives.</b> Analysis, planning, develop, docs all happen <em>on</em> an objective — not globally.</li>
+      <li><b>Ambiguity at any stage bubbles up to its objective.</b> Analysis flags it · planning can flag new ones · develop can too.</li>
+      <li><b>Re-analysis is manual.</b> After user resolves ambiguities, Forge waits for explicit "Continue with my answers" — no auto-trigger.</li>
+      <li><b>Failure splits two ways:</b> LLM self-fixable (retry) OR needs user decision (back to objective as new Q).</li>
+      <li><b>Docs have two layers:</b> auto-draft (deterministic, free) + DOCUMENTATION task (LLM-polished).</li>
+      <li><b>ACHIEVED is reversible.</b> User adds gap notes → objective re-opens → history preserved → only what's needed re-runs.</li>
+    </ol>
+  </div>
+</div>
+
+</body>
+</html>

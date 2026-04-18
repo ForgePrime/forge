@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>03v2. Objectives DAG — 3 task types + ambiguity</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs"><a href="01-dashboard.html" class="hover:text-white">Projects</a> <span class="mx-2">/</span> <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a> <span class="mx-2">/</span> <span class="text-white">Objectives</span></div>
+  </div>
+  <div class="ctx"><span class="kbd">⌘K</span></div>
+</nav>
+
+<div class="max-w-[1280px] mx-auto px-8 py-6">
+
+  <!-- Tabs -->
+  <div class="flex gap-1 border-b border-slate-200 mb-5">
+    <a href="02v2-project-kb.html" class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">📚 Knowledge Base · 7</a>
+    <a class="px-4 py-2.5 border-b-2 border-blue-600 font-semibold text-sm text-blue-700">🎯 Objectives · 3</a>
+    <a class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">✅ Tasks · 14</a>
+    <a class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">📡 Activity</a>
+    <a class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">📄 Reports</a>
+  </div>
+
+  <!-- Toolbar: view switcher + ambiguity banner -->
+  <div class="flex items-center justify-between mb-4">
+    <div class="flex gap-1 bg-slate-100 rounded-lg p-1">
+      <button class="px-3 py-1.5 bg-white rounded shadow-sm text-sm font-semibold">DAG</button>
+      <button class="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">List</button>
+      <button class="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Kanban</button>
+      <button class="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Timeline</button>
+    </div>
+    <div class="flex gap-2">
+      <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold px-3 py-1.5 rounded-lg">+ Analysis task</button>
+      <button class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 py-1.5 rounded-lg">+ Objective</button>
+    </div>
+  </div>
+
+  <!-- Ambiguity strip -->
+  <div class="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-4 flex items-center gap-3 text-sm">
+    <div class="w-7 h-7 bg-amber-500 text-white rounded-full flex items-center justify-center font-bold">!</div>
+    <div class="flex-1">
+      <b>3 ambiguities</b> block objective planning — surfaced by analysis tasks AT-001 and AT-002.
+    </div>
+    <a href="03-project-post-analyze.html" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-3 py-1.5 rounded">Resolve all →</a>
+  </div>
+
+  <!-- DAG CANVAS -->
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-5" style="position: relative; height: 640px; overflow: hidden;">
+
+    <!-- Legend -->
+    <div class="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-lg shadow-sm border border-slate-200 p-3 z-10 text-xs">
+      <div class="font-bold mb-2 text-slate-700">Legend — 4 task types</div>
+      <div class="flex items-center gap-2 mb-1"><div class="w-3 h-3 rounded-sm bg-blue-500"></div><span>Analysis (research + ambiguity detection)</span></div>
+      <div class="flex items-center gap-2 mb-1"><div class="w-3 h-3 rounded-sm bg-purple-500"></div><span>Planning (objective → tasks)</span></div>
+      <div class="flex items-center gap-2 mb-1"><div class="w-3 h-3 rounded-sm bg-emerald-500"></div><span>Develop (write code)</span></div>
+      <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm bg-slate-500"></div><span>Documentation (write docs, ADR, user guide)</span></div>
+      <div class="mt-2 pt-2 border-t border-slate-200">
+        <div class="flex items-center gap-2 mb-1"><span class="text-slate-500">solid ▸</span><span>blocks (hard dependency)</span></div>
+        <div class="flex items-center gap-2"><span class="text-slate-500">dashed ⇢</span><span>informs (soft dependency)</span></div>
+      </div>
+    </div>
+
+    <!-- SVG Arrows -->
+    <svg width="1200" height="580" style="position: absolute; top: 30px; left: 40px; z-index: 1; pointer-events: none;">
+      <defs>
+        <marker id="a-solid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+        </marker>
+        <marker id="a-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#d97706"/>
+        </marker>
+      </defs>
+
+      <!-- O-001 -> O-002 (solid) -->
+      <path d="M 270 150 C 360 150, 360 150, 440 150" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#a-solid)"/>
+      <!-- O-001 -> O-003 (solid) -->
+      <path d="M 270 170 C 360 210, 360 320, 440 350" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#a-solid)"/>
+      <!-- O-002 -> O-003 (amber, blocked by ambiguity) -->
+      <path d="M 620 200 C 620 280, 620 280, 620 300" stroke="#d97706" stroke-width="2" fill="none" marker-end="url(#a-amber)" stroke-dasharray="5 3"/>
+      <text x="630" y="260" fill="#d97706" font-size="10" font-weight="700">blocked: 2 ambiguities</text>
+    </svg>
+
+    <!-- NODES -->
+    <!-- O-001 ANALYSIS (DONE) -->
+    <div class="absolute bg-white border-l-4 border-blue-500 rounded-lg shadow-md" style="top: 85px; left: 40px; width: 230px; z-index: 2;">
+      <div class="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
+        <span class="bg-blue-100 text-blue-700 text-xs font-bold px-1.5 py-0.5 rounded">ANALYSIS</span>
+        <span class="mono text-xs text-slate-400">O-001</span>
+        <span class="ml-auto bg-emerald-100 text-emerald-700 text-xs font-bold px-1.5 py-0.5 rounded">ACHIEVED</span>
+      </div>
+      <div class="px-3 py-2">
+        <div class="font-semibold text-sm mb-1">Understand legacy system</div>
+        <div class="text-xs text-slate-500 mb-2">Map current processes, data, pain points from KB</div>
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <span>✅ 4/4 tasks DONE</span>
+          <span>·</span>
+          <span>2 KR met</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- O-002 PLANNING (BLOCKED by ambiguity) -->
+    <div class="absolute bg-white border-l-4 border-purple-500 rounded-lg shadow-md" style="top: 85px; left: 440px; width: 230px; z-index: 2;">
+      <div class="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
+        <span class="bg-purple-100 text-purple-700 text-xs font-bold px-1.5 py-0.5 rounded">PLANNING</span>
+        <span class="mono text-xs text-slate-400">O-002</span>
+        <span class="ml-auto bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">⏸ BLOCKED</span>
+      </div>
+      <div class="px-3 py-2">
+        <div class="font-semibold text-sm mb-1">Plan migration architecture</div>
+        <div class="text-xs text-slate-500 mb-2">Decide target stack, data model, integration patterns</div>
+        <div class="bg-amber-50 rounded px-2 py-1.5 text-xs text-amber-900 mb-2">
+          ⚠ 2 ambiguities: cloud vs on-prem · DB choice
+        </div>
+        <div class="flex gap-1">
+          <button class="text-xs text-blue-600 hover:underline font-semibold">→ Resolve</button>
+          <button class="text-xs text-slate-500 hover:underline">+ Planning task</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- O-003 DEVELOP (PENDING deps) -->
+    <div class="absolute bg-white border-l-4 border-emerald-500 rounded-lg shadow-md opacity-60" style="top: 290px; left: 440px; width: 230px; z-index: 2;">
+      <div class="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
+        <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-1.5 py-0.5 rounded">DEVELOP</span>
+        <span class="mono text-xs text-slate-400">O-003</span>
+        <span class="ml-auto bg-slate-200 text-slate-600 text-xs font-bold px-1.5 py-0.5 rounded">WAITING</span>
+      </div>
+      <div class="px-3 py-2">
+        <div class="font-semibold text-sm mb-1">Build migration tooling</div>
+        <div class="text-xs text-slate-500 mb-2">Data extraction + transform + load scripts</div>
+        <div class="text-xs text-slate-500">Needs O-002 planned first</div>
+      </div>
+    </div>
+
+    <!-- O-004 (dotted, idea — not yet activated) -->
+    <div class="absolute bg-slate-50 border-l-4 border-slate-300 rounded-lg shadow-sm border-dashed" style="top: 290px; left: 810px; width: 230px; z-index: 2;">
+      <div class="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
+        <span class="bg-slate-200 text-slate-600 text-xs font-bold px-1.5 py-0.5 rounded">DRAFT</span>
+        <span class="mono text-xs text-slate-400">O-004</span>
+      </div>
+      <div class="px-3 py-2">
+        <div class="font-semibold text-sm mb-1 text-slate-600">User acceptance testing</div>
+        <div class="text-xs text-slate-500">Ideated but not started</div>
+      </div>
+    </div>
+
+    <!-- Tasks mini-view inside O-001 (expanded below to illustrate) -->
+    <div class="absolute bg-blue-50 rounded-lg border border-blue-200 p-3" style="top: 480px; left: 40px; width: 1160px; z-index: 2;">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-xs font-bold text-blue-900 uppercase tracking-wide">📋 O-001 sub-tasks (expand on click)</div>
+        <button class="text-xs text-blue-600 hover:underline">Show all</button>
+      </div>
+      <div class="grid grid-cols-4 gap-2 text-xs">
+        <div class="bg-white rounded p-2 border border-blue-100">
+          <div class="font-semibold">AT-001</div>
+          <div class="text-slate-500">Read ERP docs for business rules</div>
+          <div class="mt-1 flex items-center gap-1"><span class="bg-emerald-100 text-emerald-700 px-1 rounded">DONE</span><span class="text-slate-400 mono">✓ 3 ACs</span></div>
+        </div>
+        <div class="bg-white rounded p-2 border border-blue-100">
+          <div class="font-semibold">AT-002</div>
+          <div class="text-slate-500">Mine legacy code for implicit rules</div>
+          <div class="mt-1 flex items-center gap-1"><span class="bg-emerald-100 text-emerald-700 px-1 rounded">DONE</span><span class="text-slate-400 mono">✓ 5 ACs</span></div>
+        </div>
+        <div class="bg-white rounded p-2 border border-blue-100">
+          <div class="font-semibold">AT-003</div>
+          <div class="text-slate-500">Cross-check SharePoint req vs docs</div>
+          <div class="mt-1 flex items-center gap-1"><span class="bg-emerald-100 text-emerald-700 px-1 rounded">DONE</span><span class="text-slate-400 mono">⚠ 3 ambiguities raised</span></div>
+        </div>
+        <div class="bg-white rounded p-2 border border-blue-100">
+          <div class="font-semibold">AT-004</div>
+          <div class="text-slate-500">Synthesize findings into KR</div>
+          <div class="mt-1 flex items-center gap-1"><span class="bg-emerald-100 text-emerald-700 px-1 rounded">DONE</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 3 task types strip (educational) -->
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+    <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Task types explained — 4 types, same structure</h3>
+    <div class="grid grid-cols-4 gap-4">
+      <div class="border-l-4 border-blue-500 pl-4">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">ANALYSIS</span>
+          <span class="font-semibold text-sm">Business analyst role</span>
+        </div>
+        <p class="text-xs text-slate-600 mb-2">Reads KB sources, answers questions, finds ambiguities, writes objectives and KR definitions. Output: objectives + decisions.</p>
+        <div class="text-xs text-slate-500">
+          <b>AC examples:</b> "Every business rule from SRC-001 has been mapped to a KR" · "All unresolvable questions are logged as OPEN decisions"
+        </div>
+      </div>
+      <div class="border-l-4 border-purple-500 pl-4">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">PLANNING</span>
+          <span class="font-semibold text-sm">Tech lead role</span>
+        </div>
+        <p class="text-xs text-slate-600 mb-2">Takes an objective + KR, decomposes into executable develop tasks with AC and dependencies. Output: task DAG.</p>
+        <div class="text-xs text-slate-500">
+          <b>AC examples:</b> "Every KR has ≥1 task that measurably achieves it" · "No task has &gt;5 ACs" · "Task DAG is acyclic"
+        </div>
+      </div>
+      <div class="border-l-4 border-emerald-500 pl-4">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">DEVELOP</span>
+          <span class="font-semibold text-sm">Engineer role</span>
+        </div>
+        <p class="text-xs text-slate-600 mb-2">Writes code, migrations, tests. Runs Phase A/B/C verification. Output: merged diff + passing tests + findings.</p>
+        <div class="text-xs text-slate-500">
+          <b>AC examples:</b> "pytest tests/test_x.py::test_y passes" · "migration upgrades + downgrades run cleanly"
+        </div>
+      </div>
+      <div class="border-l-4 border-slate-500 pl-4">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="bg-slate-200 text-slate-700 text-xs font-bold px-2 py-0.5 rounded">DOC</span>
+          <span class="font-semibold text-sm">Tech writer role</span>
+        </div>
+        <p class="text-xs text-slate-600 mb-2">Writes architecture decision records, API reference, user guide, runbook. Uses deliverables + code as source. Output: .md files.</p>
+        <div class="text-xs text-slate-500">
+          <b>AC examples:</b> "Every public endpoint has API docs" · "ADR captures the on-prem rationale" · "User guide covers 5 primary workflows"
+        </div>
+      </div>
+    </div>
+    <div class="mt-4 pt-4 border-t border-slate-200 text-xs text-slate-600">
+      <b>All 4 types share:</b> acceptance criteria · gates · test scenarios · challenger review · re-openable status · DAG dependency · Direct / Prompt-crafted mode
+    </div>
+  </div>
+
+</div>
+
+<!-- ANNOTATIONS -->
+<div class="annot" style="top: 280px; left: 30px;">1</div>
+<div class="annot" style="top: 470px; left: 470px;">2</div>
+<div class="annot" style="top: 670px; left: 540px;">3</div>
+<div class="annot" style="top: 870px; left: 30px;">4</div>
+<div class="annot" style="top: 1040px; left: 30px;">5</div>
+
+<div class="annot-panel" style="top: 100px; right: 20px; width: 300px;">
+  <h3>03v2. Objectives DAG — annotations</h3>
+  <ol>
+    <li><strong>Ambiguity banner global.</strong> Hard count of blockers across all objectives. Surfaces before user scans the DAG.</li>
+    <li><strong>Objective types color-coded.</strong> Analysis (blue) / Planning (purple) / Develop (green). Same color runs all the way to sub-tasks — user reads the pipeline visually.</li>
+    <li><strong>Ambiguity blocks planning, not all work.</strong> O-002 BLOCKED, but O-001 (analysis) is DONE. Graph shows the choke point precisely. Inline "→ Resolve" link jumps to modal.</li>
+    <li><strong>Sub-tasks summary under each objective.</strong> User sees 4 analysis tasks did their job — including AT-003 "raised 3 ambiguities" (honest reporting of the 'problem' as a successful outcome of analysis).</li>
+    <li><strong>3 types explained inline.</strong> Not hidden in docs — teaching moment visible on the screen. Same schema (AC, gates, scenarios, challenger) across types = consistency.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Paradigm shift:</strong> Planning is not a button anymore — it's a task (PLANNING type). So "planning" becomes visible, reviewable, testable, retryable. Same for analysis.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

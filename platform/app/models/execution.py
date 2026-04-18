@@ -23,6 +23,10 @@ class Execution(Base, TimestampMixin):
     agent: Mapped[str] = mapped_column(String(100), nullable=False, server_default="default")
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="PROMPT_ASSEMBLED")
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    # E1 — execution mode: 'direct' (parser→LLM) or 'crafted' (parser→crafter→executor)
+    mode: Mapped[str | None] = mapped_column(String(16))  # direct | crafted
+    # For crafted mode: which LLMCall produced the detailed prompt
+    crafter_call_id: Mapped[int | None] = mapped_column(ForeignKey("llm_calls.id"))
 
     # Prompt (what AI received)
     prompt_text: Mapped[str | None] = mapped_column(Text)

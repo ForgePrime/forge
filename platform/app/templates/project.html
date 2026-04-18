@@ -1,84 +1,214 @@
 {% extends "base.html" %}
 {% block title %}{{ proj.slug }} — Forge{% endblock %}
 {% block content %}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold">{{ proj.name }}</h1>
-    <div class="text-sm text-slate-500 mono">{{ proj.slug }}</div>
-    {% if proj.goal %}<p class="text-slate-700 mt-2">{{ proj.goal }}</p>{% endif %}
-</div>
+{# Project page aligned with v2 mockups: Initiative (not SOW-driven), KB tab default,
+   per-objective lifecycle. Old linear stepper removed — it encoded the wrong model. #}
 
-<div class="grid grid-cols-4 gap-4 mb-6">
-    <div class="bg-white p-4 rounded shadow">
-        <div class="text-xs text-slate-500">Tasks</div>
-        <div class="text-2xl font-bold">{{ stats.total_tasks or 0 }}</div>
-        <div class="text-xs text-slate-500">
-            {{ stats.tasks.DONE or 0 }} done · {{ stats.tasks.TODO or 0 }} todo · {{ stats.tasks.FAILED or 0 }} failed
+<div class="mb-5">
+    <div class="flex items-start justify-between gap-4">
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-2 flex-wrap">
+                <span class="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold uppercase tracking-wide">Initiative</span>
+                <span class="text-xs text-slate-500 mono">{{ proj.slug }}</span>
+                {% if proj.autonomy_level %}
+                <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-semibold">autonomy · {{ proj.autonomy_level }}</span>
+                {% endif %}
+            </div>
+            <h1 class="text-2xl font-bold">{{ proj.name }}</h1>
+            {% if proj.goal %}<p class="text-slate-600 text-sm mt-1 max-w-3xl">{{ proj.goal }}</p>{% endif %}
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-500 flex-shrink-0 whitespace-nowrap">
+            <span>📚 {{ pipeline_state.source_docs }} sources</span>
+            <span>·</span>
+            <span>🎯 {{ pipeline_state.objectives_total }} objectives</span>
+            <span>·</span>
+            <span>✅ {{ pipeline_state.tasks_done }}/{{ pipeline_state.tasks_total }} tasks</span>
+            <span>·</span>
+            <span class="mono">${{ '%.2f' % total_cost }}</span>
         </div>
     </div>
-    <div class="bg-white p-4 rounded shadow">
-        <div class="text-xs text-slate-500">Objectives</div>
-        <div class="text-2xl font-bold">{{ objectives|length }}</div>
+
+    {# Contextual next-action banner (replaces the SOW-linear stepper).
+       Guidance adapts to the current project state. No implied linear order. #}
+    {% if pipeline_state.source_docs == 0 %}
+    <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm flex items-center gap-3">
+        <span class="text-xl">📚</span>
+        <div class="flex-1 text-slate-700">
+            <b>Start by adding knowledge sources.</b> This is an initiative, not a single-SOW project —
+            add docs, URLs (SharePoint/Confluence), folder paths, or verbal notes in the <b>Knowledge Base</b> tab. Analysis runs on sources; objectives live on top of analysis findings.
+        </div>
+        <a href="?tab=knowledge" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded">Open KB →</a>
     </div>
-    <div class="bg-white p-4 rounded shadow">
-        <div class="text-xs text-slate-500">LLM cost</div>
-        <div class="text-2xl font-bold">${{ '%.2f' % total_cost }}</div>
-        <div class="text-xs text-slate-500 mono">
-            {% for p, c in cost_by_purpose.items() %}{{ p }} ${{ '%.2f' % c }} · {% endfor %}
+    {% elif pipeline_state.objectives_total == 0 %}
+    <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm flex items-center gap-3">
+        <span class="text-xl">🎯</span>
+        <div class="flex-1 text-slate-700">
+            <b>{{ pipeline_state.source_docs }} sources registered.</b> Create objectives — by hand, or ask an ANALYSIS task to derive them from your KB sources. Each objective lives its own lifecycle (analysis → planning → develop → documentation).
+        </div>
+        <a href="?tab=objectives" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded">Objectives →</a>
+    </div>
+    {% elif pipeline_state.tasks_failed > 0 %}
+    <div class="mt-4 bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm flex items-center gap-3">
+        <span class="text-xl">⚠</span>
+        <div class="flex-1 text-slate-700">
+            <b>{{ pipeline_state.tasks_failed }} task(s) FAILED.</b> Review them, then retry or re-open the owning objective with gap notes. Failures reported here are per-task; project state is not blocked.
+        </div>
+        <a href="?tab=tasks" class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold px-3 py-1.5 rounded">See failures →</a>
+    </div>
+    {% elif pipeline_state.tasks_total > 0 and pipeline_state.tasks_done < pipeline_state.tasks_total %}
+    <div class="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm flex items-center gap-3">
+        <span class="text-xl">▶</span>
+        <div class="flex-1 text-slate-700">
+            <b>{{ pipeline_state.tasks_done }}/{{ pipeline_state.tasks_total }} tasks done.</b> Per-objective lifecycle active. Open the <b>Objectives</b> tab to see which objective holds what stage, or <b>Tasks</b> for the flat list.
         </div>
     </div>
-    <div class="bg-white p-4 rounded shadow">
-        <div class="text-xs text-slate-500">Findings · Decisions</div>
-        <div class="text-2xl font-bold">{{ findings_count }} · {{ decisions_count }}</div>
-    </div>
+    {% endif %}
 </div>
 
-<div class="bg-white rounded shadow mb-6 p-4">
-    <div class="flex gap-2 flex-wrap">
-        <form hx-post="/ui/projects/{{ proj.slug }}/ingest" hx-encoding="multipart/form-data" hx-swap="none"
-              hx-on:htmx:after-request="if (event.detail.successful) window.location.reload()"
-              class="flex gap-2 items-center">
-            <input type="file" name="files" multiple accept=".md,.txt" class="text-sm">
-            <button class="bg-indigo-600 text-white px-3 py-1.5 text-sm rounded hover:bg-indigo-700">Ingest</button>
-        </form>
-        <button hx-post="/ui/projects/{{ proj.slug }}/analyze" hx-swap="none"
-                hx-on:htmx:after-request="if (event.detail.successful) window.location.reload()"
-                class="bg-amber-600 text-white px-3 py-1.5 text-sm rounded hover:bg-amber-700">Analyze</button>
-        <form hx-post="/ui/projects/{{ proj.slug }}/plan" hx-swap="none"
-              hx-on:htmx:after-request="if (event.detail.successful) window.location.reload()"
-              class="flex gap-2 items-center">
-            <select name="objective_external_id" class="border rounded px-2 py-1 text-sm">
-                {% for o in objectives %}
-                <option value="{{ o.external_id }}">{{ o.external_id }} — {{ o.title[:60] }}</option>
-                {% endfor %}
-            </select>
-            <button class="bg-purple-600 text-white px-3 py-1.5 text-sm rounded hover:bg-purple-700">Plan</button>
-        </form>
-        <form hx-post="/ui/projects/{{ proj.slug }}/orchestrate" hx-swap="none"
-              hx-on:htmx:after-request="if (event.detail.successful) alert('Orchestrate triggered — check back in a few minutes')"
-              class="flex gap-2 items-center">
-            <input name="max_tasks" type="number" min="1" max="50" value="3" class="border rounded px-2 py-1 text-sm w-16">
-            <label class="text-xs text-slate-500"><input name="enable_redis" type="checkbox" class="mr-1">redis</label>
-            <label class="text-xs text-slate-500"><input name="skip_infra" type="checkbox" class="mr-1">skip infra</label>
-            <button class="bg-emerald-600 text-white px-3 py-1.5 text-sm rounded hover:bg-emerald-700">Orchestrate</button>
-        </form>
-    </div>
-</div>
-
-<div class="flex gap-2 border-b border-slate-300 mb-4">
-    {% for tab in ["objectives","tasks","files","llm-calls","findings","decisions","knowledge","guidelines"] %}
-    <a href="?tab={{ tab }}" class="px-4 py-2 {% if active_tab == tab %}border-b-2 border-blue-600 font-semibold{% else %}text-slate-500 hover:text-slate-800{% endif %}">{{ tab }}</a>
+<div class="flex gap-1 border-b border-slate-300 mb-4 overflow-x-auto">
+    {# Tab order mirrors mockup 02v2: KB first (sources are prerequisite to objectives).
+       Admin tabs (contract, skills, llm-calls, guidelines, decisions) at the end. #}
+    {% set tab_labels = {
+        "knowledge": "📚 Knowledge Base",
+        "objectives": "🎯 Objectives",
+        "tasks": "✅ Tasks",
+        "findings": "🔍 Findings",
+        "files": "📂 Workspace files",
+        "docs": "📄 Documentation",
+        "contract": "📜 Contract",
+        "skills": "🧩 Skills",
+        "guidelines": "⚖ Guidelines",
+        "decisions": "⚖ Decisions",
+        "llm-calls": "🤖 LLM calls",
+    } %}
+    {% for tab in ["knowledge","objectives","tasks","findings","files","docs","contract","skills","guidelines","decisions","llm-calls"] %}
+    <a href="?tab={{ tab }}" class="px-3 py-2 text-sm whitespace-nowrap {% if active_tab == tab %}border-b-2 border-blue-600 font-semibold text-blue-700{% else %}text-slate-500 hover:text-slate-800{% endif %}">{{ tab_labels.get(tab, tab) }}</a>
     {% endfor %}
 </div>
 
 {% if active_tab == "objectives" %}
+{# View toggle: List vs DAG (simple SVG canvas). #}
+<div class="flex items-center justify-between mb-3">
+    <div class="flex gap-1 bg-slate-100 rounded-lg p-1 text-xs">
+        <button onclick="document.getElementById('obj-list').classList.remove('hidden'); document.getElementById('obj-dag').classList.add('hidden'); this.classList.add('bg-white','shadow'); this.nextElementSibling.classList.remove('bg-white','shadow')"
+                class="px-3 py-1.5 bg-white shadow rounded font-semibold">List</button>
+        <button onclick="document.getElementById('obj-dag').classList.remove('hidden'); document.getElementById('obj-list').classList.add('hidden'); this.classList.add('bg-white','shadow'); this.previousElementSibling.classList.remove('bg-white','shadow')"
+                class="px-3 py-1.5 rounded text-slate-600">🔀 DAG</button>
+    </div>
+    <span class="text-xs text-slate-500">{{ objectives|length }} objective(s)</span>
+</div>
+
+{# DAG view — SVG nodes sized by task count, colored by status, edges by task.depends_on #}
+<div id="obj-dag" class="hidden bg-white rounded-lg shadow p-4 mb-4 overflow-auto">
+    {% if objectives %}
+    {% set cols = 3 %}
+    <svg width="1100" height="{{ ((objectives|length + cols - 1) // cols) * 180 + 40 }}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="arrhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+            </marker>
+        </defs>
+        {# Layout: simple grid, 3 per row. #}
+        {% for o in objectives %}
+        {% set row = loop.index0 // cols %}
+        {% set col = loop.index0 % cols %}
+        {% set cx = 180 + col * 320 %}
+        {% set cy = 60 + row * 180 %}
+        {% set obj_tasks = tasks|selectattr('origin', 'equalto', o.external_id)|list %}
+        {% set done = obj_tasks|selectattr('status', 'equalto', 'DONE')|list|length %}
+        {% set total = obj_tasks|length %}
+        <a href="/ui/projects/{{ project }}/objectives/{{ o.external_id }}">
+            <rect x="{{ cx - 130 }}" y="{{ cy - 50 }}" width="260" height="110" rx="10"
+                  fill="{% if o.status == 'ACHIEVED' %}#d1fae5{% elif o.status == 'ACTIVE' %}#dbeafe{% elif o.status == 'ABANDONED' %}#fee2e2{% else %}#f1f5f9{% endif %}"
+                  stroke="{% if o.status == 'ACHIEVED' %}#059669{% elif o.status == 'ACTIVE' %}#2563eb{% else %}#94a3b8{% endif %}"
+                  stroke-width="2"/>
+            <text x="{{ cx - 120 }}" y="{{ cy - 28 }}" font-size="11" font-family="monospace" fill="#475569">{{ o.external_id }}</text>
+            <text x="{{ cx - 120 }}" y="{{ cy - 10 }}" font-size="13" font-weight="bold" fill="#0f172a">
+                {{ o.title[:30] }}{% if o.title|length > 30 %}…{% endif %}
+            </text>
+            <text x="{{ cx - 120 }}" y="{{ cy + 8 }}" font-size="10" fill="#64748b">{{ o.status }} · P{{ o.priority }}</text>
+            {% if total %}
+            <text x="{{ cx - 120 }}" y="{{ cy + 28 }}" font-size="10" fill="#475569">{{ done }}/{{ total }} tasks done</text>
+            <rect x="{{ cx - 120 }}" y="{{ cy + 34 }}" width="240" height="6" fill="#e2e8f0" rx="3"/>
+            <rect x="{{ cx - 120 }}" y="{{ cy + 34 }}" width="{{ (240 * done / total)|int if total else 0 }}" height="6" fill="#10b981" rx="3"/>
+            {% else %}
+            <text x="{{ cx - 120 }}" y="{{ cy + 28 }}" font-size="10" fill="#94a3b8">no tasks</text>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </svg>
+    <div class="text-xs text-slate-500 mt-2 italic">Graph layout is 3×N grid. Edges between objectives not yet rendered (Objective.depends_on not modeled).</div>
+    {% else %}
+    <div class="text-slate-400 italic">No objectives yet.</div>
+    {% endif %}
+</div>
+
+<div id="obj-list">
+{# Decisions blocker banner — surfaces open decisions that block planning #}
+{% if decisions %}
+{% set open_decisions_count = decisions|selectattr('status', 'equalto', 'OPEN')|list|length %}
+{% if open_decisions_count > 0 %}
+<div class="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-4">
+    <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-amber-500 text-white rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0">!</div>
+        <div class="flex-1">
+            <div class="font-bold text-amber-900 mb-0.5">{{ open_decisions_count }} open decision(s) block planning</div>
+            <div class="text-sm text-amber-800">Claude detected ambiguities or open architectural questions. Wrong assumptions now → wrong code later.</div>
+        </div>
+        <a href="?tab=decisions" class="bg-amber-600 hover:bg-amber-700 text-white font-semibold px-4 py-2 rounded text-sm">Resolve now →</a>
+    </div>
+    <details class="mt-2 text-sm">
+        <summary class="cursor-pointer text-amber-700 hover:text-amber-900">Preview open decisions</summary>
+        <ul class="mt-2 space-y-1 pl-4">
+            {% for d in decisions %}{% if d.status == 'OPEN' %}
+            <li class="text-slate-700 text-xs">
+                <span class="mono text-slate-400">{{ d.external_id }}</span>
+                {% if d.severity %}<span class="pill bg-rose-100 text-rose-700 text-xs uppercase ml-1">{{ d.severity }}</span>{% endif %}
+                <b class="ml-1">{{ d.issue or d.type }}</b>
+                {% if d.recommendation %}<span class="text-slate-500">· {{ d.recommendation[:200] }}</span>{% endif %}
+            </li>
+            {% endif %}{% endfor %}
+        </ul>
+    </details>
+</div>
+{% endif %}
+{% endif %}
+
 <div class="space-y-3">
+    {% if not objectives %}
+    <div class="bg-white rounded-lg shadow p-8 text-center">
+        <div class="text-4xl mb-3">🎯</div>
+        <div class="font-semibold text-slate-800 mb-1">No objectives yet</div>
+        <div class="text-sm text-slate-500 mb-4">
+            {% if pipeline_state.source_docs > 0 %}
+                Run <b>Analyze</b> above to extract objectives from your SOW.
+            {% else %}
+                Upload a SOW first (step 1 above), then run Analyze.
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
     {% for o in objectives %}
         {% include "_objective_card.html" %}
     {% endfor %}
     {% include "_add_objective_form.html" %}
 </div>
+</div>{# /#obj-list #}
 
 {% elif active_tab == "tasks" %}
+{% if not tasks %}
+<div class="bg-white rounded-lg shadow p-8 text-center mb-4">
+    <div class="text-4xl mb-3">✅</div>
+    <div class="font-semibold text-slate-800 mb-1">No tasks yet</div>
+    <div class="text-sm text-slate-500 mb-4">
+        {% if pipeline_state.objectives_total > 0 %}
+            Pick an objective in the <b>Objectives</b> tab and click <b>Plan →</b> to decompose it into tasks.
+        {% else %}
+            Create an objective first, then plan tasks.
+        {% endif %}
+    </div>
+</div>
+{% else %}
 <table class="bg-white rounded shadow w-full text-sm">
     <thead class="bg-slate-100 text-left"><tr>
         <th class="px-3 py-2">ID</th><th class="px-3 py-2">Name</th>
@@ -91,6 +221,7 @@
     {% endfor %}
     </tbody>
 </table>
+{% endif %}
 <div class="mt-3">
     {% include "_add_task_form.html" %}
 </div>
@@ -123,6 +254,15 @@
 
 {% elif active_tab == "findings" %}
 <div class="space-y-2">
+    {% if not findings %}
+    <div class="bg-white rounded-lg shadow p-8 text-center">
+        <div class="text-4xl mb-3">🔍</div>
+        <div class="font-semibold text-slate-800 mb-1">No findings yet</div>
+        <div class="text-sm text-slate-500">
+            Findings appear after Claude executes tasks (Phase B: delivery extraction, Phase C: cross-model challenge).
+        </div>
+    </div>
+    {% endif %}
     {% for f in findings %}
         {% include "_finding_card.html" %}
     {% endfor %}
@@ -130,6 +270,15 @@
 
 {% elif active_tab == "decisions" %}
 <div class="space-y-2">
+    {% if not decisions %}
+    <div class="bg-white rounded-lg shadow p-8 text-center">
+        <div class="text-4xl mb-3">⚖️</div>
+        <div class="font-semibold text-slate-800 mb-1">No decisions yet</div>
+        <div class="text-sm text-slate-500">
+            Decisions are created by /analyze when SOW has conflicts, or recorded during task execution.
+        </div>
+    </div>
+    {% endif %}
     {% for d in decisions %}
     <div class="bg-white rounded shadow p-4">
         <div class="flex items-center gap-2 mb-1">
@@ -146,17 +295,94 @@
 </div>
 
 {% elif active_tab == "knowledge" %}
+{# C1+C2 — KB tab v0: 4 source types (file via upload above, URL/folder/note via inline forms). #}
+<div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm text-slate-700">
+    📚 <b>Knowledge Base</b> = sources Forge reads. 4 intake types: <b>file</b> (use the SOW uploader at top of page) · <b>URL</b> · <b>folder path</b> · <b>manual note</b>. Add a description so Claude knows what to focus on.
+</div>
+
+<div class="grid grid-cols-3 gap-3 mb-5">
+    {# URL #}
+    <details class="bg-white rounded-lg shadow border border-dashed border-blue-300 p-4">
+        <summary class="cursor-pointer text-center">
+            <div class="text-2xl">🔗</div>
+            <div class="font-semibold text-sm mt-1">+ URL / web page</div>
+            <div class="text-xs text-slate-500">SharePoint, Confluence, public docs</div>
+        </summary>
+        <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/kb/url"
+              hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('URL registered.', 'success'); setTimeout(() => location.reload(), 600); } else { forgeToast('Add failed.', 'error'); }"
+              class="mt-3 space-y-2">
+            <input name="title" required placeholder="Short title (e.g. Acme migration requirements)" class="w-full border rounded px-2 py-1 text-sm">
+            <input name="target_url" required placeholder="https://..." class="w-full border rounded px-2 py-1 text-sm mono">
+            <textarea name="description" rows="2" placeholder="What this source contains, why it matters" class="w-full border rounded px-2 py-1 text-xs"></textarea>
+            <textarea name="focus_hint" rows="2" placeholder="Focus on / ignore (helps the LLM)" class="w-full border rounded px-2 py-1 text-xs"></textarea>
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1 rounded">Add URL</button>
+            <div class="text-xs text-amber-700">⚠ Crawler not yet implemented — link is recorded with a placeholder.</div>
+        </form>
+    </details>
+    {# Folder #}
+    <details class="bg-white rounded-lg shadow border border-dashed border-purple-300 p-4">
+        <summary class="cursor-pointer text-center">
+            <div class="text-2xl">📁</div>
+            <div class="font-semibold text-sm mt-1">+ Folder path</div>
+            <div class="text-xs text-slate-500">Local or mounted (recursive scan)</div>
+        </summary>
+        <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/kb/folder"
+              hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('Folder registered.', 'success'); setTimeout(() => location.reload(), 600); } else { forgeToast('Add failed.', 'error'); }"
+              class="mt-3 space-y-2">
+            <input name="title" required placeholder="Short title (e.g. Legacy ERP code)" class="w-full border rounded px-2 py-1 text-sm">
+            <input name="target_path" required placeholder="/mnt/legacy/erp-src" class="w-full border rounded px-2 py-1 text-sm mono">
+            <textarea name="description" rows="2" placeholder="What lives in this folder" class="w-full border rounded px-2 py-1 text-xs"></textarea>
+            <textarea name="focus_hint" rows="2" placeholder="Focus on (e.g. models/) / ignore (e.g. vendor/)" class="w-full border rounded px-2 py-1 text-xs"></textarea>
+            <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-3 py-1 rounded">Add folder</button>
+            <div class="text-xs text-amber-700">⚠ Scanner not yet implemented.</div>
+        </form>
+    </details>
+    {# Manual note #}
+    <details class="bg-white rounded-lg shadow border border-dashed border-amber-300 p-4">
+        <summary class="cursor-pointer text-center">
+            <div class="text-2xl">✏️</div>
+            <div class="font-semibold text-sm mt-1">+ Manual note</div>
+            <div class="text-xs text-slate-500">Type or paste free-form knowledge</div>
+        </summary>
+        <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/kb/note"
+              hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('Note saved.', 'success'); setTimeout(() => location.reload(), 600); } else { forgeToast('Save failed.', 'error'); }"
+              class="mt-3 space-y-2">
+            <input name="title" required placeholder="Short title (e.g. Client meeting 2026-04-15)" class="w-full border rounded px-2 py-1 text-sm">
+            <textarea name="content" required rows="4" placeholder="Verbal constraint / decision / rationale..." class="w-full border rounded px-2 py-1 text-sm"></textarea>
+            <textarea name="description" rows="2" placeholder="Context: when, why, by whom" class="w-full border rounded px-2 py-1 text-xs"></textarea>
+            <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-3 py-1 rounded">Save note</button>
+        </form>
+    </details>
+</div>
+
 <div class="space-y-2">
     {% for k in knowledge %}
-    <div class="bg-white rounded shadow p-4">
-        <div class="flex items-center gap-2 mb-1">
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
             <span class="mono text-xs text-slate-500">{{ k.external_id }}</span>
-            <span class="pill bg-slate-100">{{ k.category }}</span>
-            <span class="text-xs text-slate-400">{{ k.content|length }}ch</span>
+            {% set st = k.source_type or 'file' %}
+            {% set st_styles = {
+                'file': 'bg-blue-100 text-blue-700',
+                'url': 'bg-emerald-100 text-emerald-700',
+                'folder': 'bg-purple-100 text-purple-700',
+                'manual': 'bg-amber-100 text-amber-700',
+            } %}
+            <span class="pill text-xs {{ st_styles.get(st, 'bg-slate-100') }} font-semibold uppercase">{{ st }}</span>
+            <span class="pill bg-slate-100 text-xs">{{ k.category }}</span>
+            <span class="text-xs text-slate-400">{{ k.content|length }} ch</span>
+            <h4 class="font-semibold flex-1">{{ k.title }}</h4>
         </div>
-        <h4 class="font-semibold">{{ k.title }}</h4>
+        {% if k.target_url %}<div class="text-xs text-slate-500 mono mb-1 truncate">{{ k.target_url }}</div>{% endif %}
+        {% if k.description %}<p class="text-sm text-slate-700 mb-1"><b>Describes:</b> {{ k.description }}</p>{% endif %}
+        {% if k.focus_hint %}<p class="text-xs text-slate-600"><b>Focus hint:</b> {{ k.focus_hint }}</p>{% endif %}
     </div>
     {% endfor %}
+    {% if not knowledge %}
+    <div class="bg-white rounded-lg shadow p-8 text-center text-slate-500 text-sm">No KB sources yet — add one above (URL / folder / note) or upload a file via SOW upload at top of page.</div>
+    {% endif %}
 </div>
 
 {% elif active_tab == "guidelines" %}
@@ -165,6 +391,282 @@
         {% with g_edit=False %}{% include "_guideline_card.html" %}{% endwith %}
     {% endfor %}
     {% include "_add_guideline_form.html" %}
+</div>
+
+{% elif active_tab == "contract" %}
+{# E1 — Execution mode selector (Direct vs Crafted) #}
+<div class="bg-white rounded-lg shadow p-5 mb-4">
+    <h2 class="font-bold text-lg mb-3">⚡ Execution mode</h2>
+    <p class="text-xs text-slate-500 mb-4">Direct = parser → LLM in one pass. Crafted = crafter LLM first writes a detailed prompt, then executor LLM runs it. Higher cost, better quality for complex tasks.</p>
+    <div class="grid grid-cols-2 gap-4" id="mode-picker"
+         hx-get="/api/v1/tier1/projects/{{ proj.slug }}/execution-mode"
+         hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-slate-400 text-sm col-span-2">loading mode…</div>
+    </div>
+</div>
+
+{# I1-I5 Autonomy radar #}
+<div class="bg-white rounded-lg shadow p-5 mb-4">
+    <div class="flex items-center justify-between mb-3">
+        <div>
+            <h2 class="font-bold text-lg">🤖 Autonomy level</h2>
+            <p class="text-xs text-slate-500">L1 assistant → L5 autonomous. Earned via clean runs + contract depth + stability.</p>
+        </div>
+    </div>
+    <div id="autonomy-radar"
+         hx-get="/api/v1/tier1/projects/{{ proj.slug }}/autonomy"
+         hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-slate-400 text-sm">loading autonomy status…</div>
+    </div>
+</div>
+
+<script>
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    const slug = "{{ proj.slug }}";
+    const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+    if (e.target && e.target.id === 'mode-picker') {
+        try {
+            const j = JSON.parse(e.target.textContent);
+            const cur = j.execution_mode;
+            const card = (id, name, desc, cost, eta, active) =>
+                '<label class="border-2 ' + (active ? 'border-blue-500 bg-blue-50/30' : 'border-slate-200 hover:border-blue-300') + ' rounded-xl p-4 cursor-pointer">' +
+                '<div class="flex items-center gap-2 mb-2">' +
+                '<input type="radio" name="mode" value="' + id + '" ' + (active ? 'checked' : '') + ' onchange="setMode(this.value)">' +
+                '<b>' + name + '</b>' + (active ? ' <span class="text-xs text-blue-700">(current)</span>' : '') +
+                '</div>' +
+                '<p class="text-xs text-slate-700">' + desc + '</p>' +
+                '<div class="mt-2 text-xs flex gap-3"><span class="text-emerald-700">cost: ' + cost + '</span><span class="text-slate-500">time: ' + eta + '</span></div>' +
+                '</label>';
+            e.target.innerHTML =
+                card('direct', '⚡ Direct', 'Parser builds enriched prompt → LLM executes in one call. Cheap + fast. Best for repetitive, well-defined tasks.', '$0.08–0.15', '45–90s', cur === 'direct') +
+                card('crafted', '🎯 Prompt-crafted', 'Crafter LLM inspects code+KB, writes a detailed executor prompt. Executor runs it. Higher quality on complex / multi-file tasks.', '$0.35–0.80', '3–8 min', cur === 'crafted');
+        } catch(_) {}
+    }
+    if (e.target && e.target.id === 'autonomy-radar') {
+        try {
+            const j = JSON.parse(e.target.textContent);
+            const cur = j.current_level;
+            const levels = j.levels || [];
+            const descriptions = {
+                L1: 'Assistant — user drives every decision',
+                L2: 'Suggests — LLM drafts, user approves',
+                L3: 'Auto within phase — analysis→planning unattended',
+                L4: 'Auto-resolve — auto-answers ambiguities from contract',
+                L5: 'Autonomous — full end-to-end, user only audits',
+            };
+            const curIdx = levels.findIndex(l => l.id === cur);
+            let html = '<div class="grid grid-cols-5 gap-3 mb-4">';
+            levels.forEach((l, i) => {
+                const at = l.id === cur;
+                const below = i < curIdx;
+                const cls = at ? 'border-emerald-500 bg-emerald-50' :
+                             below ? 'border-slate-300 bg-slate-50 opacity-70' :
+                             'border-slate-200 bg-white';
+                html += '<div class="rounded-lg border-2 ' + cls + ' p-3 text-center">' +
+                    '<div class="font-bold text-sm">' + l.id + '</div>' +
+                    '<div class="text-xs text-slate-600 mt-1">' + (descriptions[l.id] || '') + '</div>' +
+                    (at ? '<div class="text-xs text-emerald-700 font-semibold mt-1">CURRENT</div>' : '') +
+                    (below ? '<div class="text-xs text-slate-400 mt-1">earned</div>' : '') +
+                    '</div>';
+            });
+            html += '</div>';
+            if (j.next) {
+                if (j.next.eligible) {
+                    html += '<div class="bg-emerald-50 border border-emerald-300 rounded p-3 text-sm flex items-center justify-between"><div>✓ <b>Eligible to promote to ' + j.next.level + '</b></div>' +
+                        '<button onclick="promoteAutonomy(\'' + j.next.level + '\')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded text-sm">Promote →</button></div>';
+                } else {
+                    html += '<div class="bg-amber-50 border border-amber-300 rounded p-3 text-sm">' +
+                        '<b>Cannot promote to ' + j.next.level + ' yet — blockers:</b><ul class="list-disc pl-5 mt-1">' +
+                        (j.next.blockers || []).map(b => '<li>' + b + '</li>').join('') + '</ul></div>';
+                }
+            } else {
+                html += '<div class="text-xs text-slate-500 italic">L5 reached — you are fully autonomous.</div>';
+            }
+            e.target.innerHTML = html;
+        } catch(_) {}
+    }
+});
+
+function setMode(mode) {
+    const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/execution-mode',
+        {method: 'PUT', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+         body: JSON.stringify({execution_mode: mode})})
+        .then(r => { if (r.ok) forgeToast('Execution mode: ' + mode, 'success'); else forgeToast('Save failed.', 'error'); });
+}
+function promoteAutonomy(target) {
+    const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/autonomy/promote',
+        {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+         body: JSON.stringify({target: target})})
+        .then(r => { if (r.ok) { forgeToast('Promoted to ' + target, 'success'); location.reload(); } else r.json().then(j => forgeToast(j.detail || 'failed', 'error')); });
+}
+</script>
+
+<div class="bg-white rounded-lg shadow p-5">
+    <div class="flex items-center justify-between mb-3">
+        <div>
+            <h2 class="font-bold text-lg">📜 Operational contract</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Markdown injected into <b>every</b> Forge LLM call on this project (analyze · plan · execute · documentation · AI sidebar). Truncated to ~2000 tokens.</p>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+            <span class="mono">{{ proj.contract_md|length if proj.contract_md else 0 }} chars</span>
+            <span>·</span>
+            <span class="mono">~{{ ((proj.contract_md|length if proj.contract_md else 0) / 4) | round | int }} tokens</span>
+        </div>
+    </div>
+    <form id="contract-form" hx-put="/api/v1/tier1/projects/{{ proj.slug }}/contract"
+          hx-ext="json-enc" hx-swap="none"
+          hx-on:htmx:after-request="if (event.detail.successful) forgeToast('Contract saved — applies to all future LLM calls.', 'success'); else forgeToast('Save failed.', 'error');"
+          class="space-y-3">
+        <textarea name="contract_md" rows="22"
+                  class="w-full font-mono text-sm border border-slate-300 rounded p-3 leading-relaxed"
+                  placeholder="## Hard constraints (override defaults)&#10;- on-prem deploy only&#10;- python stack&#10;...">{{ proj.contract_md or "" }}</textarea>
+        <div class="flex items-center justify-between">
+            <div class="text-xs text-slate-500">⚠ Changes apply to all <b>future</b> LLM calls. Past calls keep their original prompt — audit trail preserved in <span class="mono">ai_interactions</span> + <span class="mono">llm_calls</span>.</div>
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded">Save contract</button>
+        </div>
+    </form>
+</div>
+<script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
+
+{% elif active_tab == "skills" %}
+<div class="bg-white rounded-lg shadow p-5">
+    <div class="flex items-center justify-between mb-3">
+        <div>
+            <h2 class="font-bold text-lg">🧩 Skills library</h2>
+            <p class="text-xs text-slate-500 mt-0.5">SKILL · MICRO · OPINION. Each adds context to LLM prompts → cost. Default skills run if nothing else is picked.</p>
+        </div>
+        <a href="/api/v1/skills" target="_blank" class="text-xs text-blue-600 hover:underline">JSON catalog →</a>
+    </div>
+    <div id="skills-attached" class="mb-4"
+         hx-get="/api/v1/skills/projects/{{ proj.slug }}" hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-slate-400 text-sm">loading attached skills…</div>
+    </div>
+    <div class="flex items-center justify-between mt-5 mb-2">
+        <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Available skills</h3>
+        <div class="flex gap-2 text-xs">
+            <select id="skills-filter-category" onchange="reloadCatalog()" class="border border-slate-300 rounded px-2 py-1">
+                <option value="">All categories</option>
+                <option value="SKILL">SKILL</option>
+                <option value="MICRO">MICRO</option>
+                <option value="OPINION">OPINION</option>
+            </select>
+            <select id="skills-filter-phase" onchange="reloadCatalog()" class="border border-slate-300 rounded px-2 py-1">
+                <option value="">All phases</option>
+                <option value="analysis">analysis</option>
+                <option value="planning">planning</option>
+                <option value="develop">develop</option>
+                <option value="documentation">documentation</option>
+                <option value="challenger">challenger</option>
+            </select>
+        </div>
+    </div>
+    <div id="skills-catalog"
+         hx-get="/api/v1/skills" hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-slate-400 text-sm">loading catalog…</div>
+    </div>
+</div>
+<script>
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    const target = e.target;
+    const slug = "{{ proj.slug }}";
+    const csrfToken = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+    if (target && target.id === 'skills-attached') {
+        try {
+            const j = JSON.parse(target.textContent);
+            if (!j.attached || j.attached.length === 0) {
+                target.innerHTML = '<div class="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-slate-700">No skills attached yet — phase defaults will be used. Pick from catalog below.</div>';
+                return;
+            }
+            const rows = j.attached.map(s => {
+                const catColors = {SKILL:'bg-blue-100 text-blue-700', MICRO:'bg-amber-100 text-amber-700', OPINION:'bg-purple-100 text-purple-700'};
+                return '<div class="flex items-center gap-2 py-2 border-b border-slate-100"><span class="pill text-xs font-bold ' + (catColors[s.category]||'bg-slate-100') + '">' + s.category + '</span>' +
+                    '<span class="font-semibold text-sm">' + s.name + '</span>' +
+                    '<span class="mono text-xs text-slate-400">' + s.external_id + '</span>' +
+                    '<span class="text-xs text-slate-500">phases: ' + (s.applies_to_phases||[]).join(',') + '</span>' +
+                    '<span class="text-xs text-slate-500">~$' + (s.cost_impact_usd||0).toFixed(2) + '/call</span>' +
+                    '<span class="ml-auto text-xs text-slate-400">' + s.attach_mode + '</span>' +
+                    '<button onclick="detachSkill(\'' + s.external_id + '\')" class="text-rose-600 hover:underline text-xs">Detach</button></div>';
+            }).join('');
+            target.innerHTML = '<div class="bg-slate-50 rounded p-3"><div class="font-semibold text-sm mb-2">Attached to this project (' + j.attached.length + ')</div>' + rows + '</div>';
+        } catch(_) {}
+    }
+    if (target && target.id === 'skills-catalog') {
+        try {
+            const j = JSON.parse(target.textContent);
+            const cats = {SKILL: [], MICRO: [], OPINION: []};
+            (j.skills||[]).forEach(s => { (cats[s.category]||[]).push(s); });
+            const html = Object.entries(cats).map(([cat, list]) => {
+                const catColors = {SKILL:'border-blue-300 bg-blue-50', MICRO:'border-amber-300 bg-amber-50', OPINION:'border-purple-300 bg-purple-50'};
+                if (!list.length) return '';
+                const items = list.map(s =>
+                    '<div class="bg-white rounded p-3 border ' + (catColors[cat]||'border-slate-200') + '">' +
+                    '<div class="font-semibold text-sm">' + s.name + '</div>' +
+                    '<div class="mono text-xs text-slate-400">' + s.external_id + '</div>' +
+                    '<div class="text-xs text-slate-600 mt-1">' + (s.description||'') + '</div>' +
+                    '<div class="flex items-center justify-between mt-2 text-xs">' +
+                    '<span class="text-slate-500">~$' + (s.cost_impact_usd||0).toFixed(2) + '/call · phases: ' + (s.applies_to_phases||[]).join(',') + '</span>' +
+                    '<button onclick="attachSkill(\'' + s.external_id + '\')" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded">+ Attach</button>' +
+                    '</div></div>'
+                ).join('');
+                return '<div class="mb-4"><div class="font-bold text-sm uppercase tracking-wide text-slate-700 mb-2">' + cat + ' (' + list.length + ')</div><div class="grid grid-cols-2 gap-2">' + items + '</div></div>';
+            }).join('');
+            target.innerHTML = html || '<div class="text-slate-400">no skills available</div>';
+        } catch(_) {}
+    }
+});
+function attachSkill(extId) {
+    const csrfToken = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+    fetch('/api/v1/skills/projects/{{ proj.slug }}/attach',
+        {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+         body: JSON.stringify({skill_external_id: extId, attach_mode: 'manual'})})
+        .then(r => { if (r.ok) { forgeToast('Attached.', 'success'); location.reload(); } else forgeToast('Attach failed.', 'error'); });
+}
+function detachSkill(extId) {
+    const csrfToken = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+    fetch('/api/v1/skills/projects/{{ proj.slug }}/attach/' + extId,
+        {method: 'DELETE', headers: {'X-CSRF-Token': csrfToken}})
+        .then(r => { if (r.ok) { forgeToast('Detached.', 'success'); location.reload(); } else forgeToast('Detach failed.', 'error'); });
+}
+function reloadCatalog() {
+    const cat = document.getElementById('skills-filter-category').value;
+    const phase = document.getElementById('skills-filter-phase').value;
+    const qs = [];
+    if (cat) qs.push('category=' + encodeURIComponent(cat));
+    if (phase) qs.push('phase=' + encodeURIComponent(phase));
+    const url = '/api/v1/skills' + (qs.length ? '?' + qs.join('&') : '');
+    fetch(url, {credentials: 'same-origin'})
+      .then(r => r.text())
+      .then(txt => {
+        const el = document.getElementById('skills-catalog');
+        el.textContent = txt;
+        el.dispatchEvent(new Event('htmx:afterSwap', {bubbles: true}));
+        // Manually trigger render:
+        const ev = new Event('htmx:afterSwap', {bubbles: true});
+        Object.defineProperty(ev, 'target', {value: el});
+        document.body.dispatchEvent(ev);
+      });
+}
+</script>
+
+{% elif active_tab == "docs" %}
+<div class="bg-white rounded-lg shadow p-5">
+    <div class="flex items-center justify-between mb-3">
+        <div>
+            <h2 class="font-bold text-lg">📄 Documentation (auto-generated)</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Deterministic snapshot from project state — no LLM call. Re-rebuilds on every visit.</p>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="navigator.clipboard.writeText(document.getElementById('docs-md').textContent); forgeToast('Markdown copied.', 'success')"
+                    class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-3 py-1.5 rounded">📋 Copy md</button>
+            <a href="/api/v1/tier1/projects/{{ proj.slug }}/docs/auto" target="_blank"
+               class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-3 py-1.5 rounded">View JSON</a>
+        </div>
+    </div>
+    <div class="border border-slate-200 rounded-lg p-4 bg-slate-50 font-mono text-xs overflow-auto max-h-[80vh]">
+        <pre id="docs-md" class="whitespace-pre-wrap">{{ docs_md or "_loading…_" }}</pre>
+    </div>
 </div>
 
 {% endif %}

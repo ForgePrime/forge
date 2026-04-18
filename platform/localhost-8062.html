@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Forge UX — design canvas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="canvas-root">
+
+<div class="max-w-[1400px] mx-auto">
+  <div class="mb-6 flex items-start justify-between">
+    <div>
+      <h1 class="text-3xl font-bold text-slate-900 mb-1">Forge UX — design canvas</h1>
+      <p class="text-slate-600 text-sm max-w-3xl">
+        Initiative + KB · 4 task types (Analysis / Planning / Develop / <b>Documentation</b>) · per-objective iterative flow with ambiguity loops · re-openable objectives · Direct vs Prompt-Crafted modes · <b>skeptical-frame UI</b>.
+      </p>
+      <p class="text-xs text-slate-500 mt-2">
+        Source: <a href="../FORGE_UX_DECONSTRUCTION.md" class="underline font-semibold">FORGE_UX_DECONSTRUCTION.md</a>
+      </p>
+    </div>
+    <div class="flex flex-col items-end gap-2">
+      <a href="flow.html" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold text-sm hover:bg-blue-700">→ User flow diagram</a>
+      <a href="walkthrough.md" class="text-sm text-slate-600 hover:text-slate-900 underline">Skeptical walkthrough →</a>
+    </div>
+  </div>
+
+  <!-- Design contract -->
+  <div class="bg-rose-50 border-l-4 border-rose-500 rounded-lg p-5 mb-8">
+    <div class="font-bold text-rose-900 mb-2">⚠ Design contract — Forge UX is skeptical, not reassuring</div>
+    <div class="text-sm text-slate-800 space-y-1.5">
+      <p>Forge does <b>not</b> build confidence toward quick approval. Every screen surfaces <b>what wasn't done</b>, <b>what wasn't checked</b>, and <b>what assumption was made silently</b>.</p>
+      <p class="text-sm text-slate-700">Green metrics are starting points for the next question. "Approve" is tertiary; primary actions are "Ask challenger to verify X", "Add scenario I realized is missing", "Re-open with gap note".</p>
+      <p class="text-xs text-rose-700 font-semibold">If you see a "trustworthy"/"looks good"/"approve" framing in any mockup, that is a contract violation — flag it.</p>
+    </div>
+  </div>
+
+  <!-- REVISED (v2) mockups -->
+  <h2 class="text-lg font-bold text-slate-900 mb-3">🆕 Revised model (post-feedback)</h2>
+  <p class="text-sm text-slate-600 mb-5">These reflect: initiative + KB, 3 task types, DAG, modes, detailed deliverable.</p>
+
+  <div class="canvas-grid mb-12">
+
+    <a href="02v2-project-kb.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="02v2-project-kb.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step">02v2</span><span class="text-xs text-slate-400 mono">initiative + KB</span></div>
+        <h3>Project = Initiative + Knowledge Base</h3>
+        <p>4 source types: file, URL (SharePoint), folder, manual note. Descriptions per source. Ambiguity on conflicting sources.</p>
+      </div>
+    </a>
+
+    <a href="03v2-objectives-dag.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="03v2-objectives-dag.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step">03v2</span><span class="text-xs text-slate-400 mono">DAG + task types</span></div>
+        <h3>Objectives DAG — 3 task types</h3>
+        <p>Analysis / Planning / Develop with dependencies. Ambiguity blocks planning. Sub-tasks visible inline.</p>
+      </div>
+    </a>
+
+    <a href="07-mode-selector.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="07-mode-selector.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step">07</span><span class="text-xs text-slate-400 mono">meta-prompting</span></div>
+        <h3>Mode selector · Direct vs Prompt-Crafted</h3>
+        <p>Side-by-side comparison. Forge recommends per task. Flow diagram explains crafter→executor two-step.</p>
+      </div>
+    </a>
+
+    <a href="05v2-task-deliverable.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="05v2-task-deliverable.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step">05v2</span><span class="text-xs text-slate-400 mono">deliverable + re-open</span></div>
+        <h3>Task deliverable · scenarios · re-open</h3>
+        <p>Full test bodies. User-added AC (not-run amber). Challenger detail with recommendation. Re-open with notes.</p>
+      </div>
+    </a>
+
+    <a href="09-objective-detail.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="09-objective-detail.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step">09</span><span class="text-xs text-slate-400 mono">heart of system</span></div>
+        <h3>Objective detail — 3-col</h3>
+        <p>KB refs · description (user+LLM, attributed) · AC · non-happy-path scenarios · ambiguities · 4 task types invocation · scrutiny debt strip.</p>
+      </div>
+    </a>
+
+    <a href="10-post-exec-docs.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="10-post-exec-docs.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step">10</span><span class="text-xs text-slate-400 mono">deliverable</span></div>
+        <h3>Post-execution documentation</h3>
+        <p>Two layers: auto-draft (deterministic, live) + DOC task (LLM-polished). ADR, API ref, changelog, per-objective rollup. Client share link.</p>
+      </div>
+    </a>
+
+    <a href="flow.html" class="canvas-tile" target="_blank">
+      <div class="thumb" style="background: #f1f5f9;"><iframe src="flow.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step">flow</span><span class="text-xs text-slate-400 mono">per-objective iterative</span></div>
+        <h3>User flow diagram v2</h3>
+        <p>Project → KB → Objectives → per-objective lifecycle (analysis ⇄ ambiguity ⇄ planning → develop → docs → achieved → re-open).</p>
+      </div>
+    </a>
+
+  </div>
+
+  <!-- OLD (v1) mockups for comparison -->
+  <h2 class="text-lg font-bold text-slate-900 mb-3">⚠ Superseded v1 (kept for comparison)</h2>
+  <p class="text-sm text-slate-600 mb-5">Early pass — doesn't reflect KB / 3 task types / modes / DAG / re-open.</p>
+
+  <div class="canvas-grid opacity-70">
+
+    <a href="01-dashboard.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="01-dashboard.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step" style="background: #94a3b8;">01</span><span class="text-xs text-slate-400">v1</span></div>
+        <h3>Dashboard (v1 — missing running-task inline)</h3>
+        <p>Good starting point; needs per-project "currently running" surface.</p>
+      </div>
+    </a>
+
+    <a href="02-project-empty.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="02-project-empty.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step" style="background: #94a3b8;">02</span><span class="text-xs text-slate-400">v1 — SUPERSEDED</span></div>
+        <h3>Project empty (v1)</h3>
+        <p>SOW-centric. Wrong model: project is initiative, not one SOW drop.</p>
+      </div>
+    </a>
+
+    <a href="03-project-post-analyze.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="03-project-post-analyze.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step" style="background: #94a3b8;">03</span><span class="text-xs text-slate-400">v1 — partial</span></div>
+        <h3>Decisions modal (v1)</h3>
+        <p>Modal concept OK but doesn't show that ambiguities come from analysis tasks, not from a monolithic /analyze call.</p>
+      </div>
+    </a>
+
+    <a href="04-orchestrate-live.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="04-orchestrate-live.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step" style="background: #94a3b8;">04</span><span class="text-xs text-slate-400">v1 — missing DAG</span></div>
+        <h3>Orchestrate live (v1)</h3>
+        <p>Console + phases good. Missing: DAG view, cross-objective pending/running, run analysis/planning inline.</p>
+      </div>
+    </a>
+
+    <a href="05-task-deliverable.html" class="canvas-tile" target="_blank">
+      <div class="thumb"><iframe src="05-task-deliverable.html" scrolling="no"></iframe></div>
+      <div class="meta">
+        <div class="mb-1"><span class="step" style="background: #94a3b8;">05</span><span class="text-xs text-slate-400">v1 — superseded by 05v2</span></div>
+        <h3>Task deliverable (v1)</h3>
+        <p>Narrative good; missing user-added AC, full scenario bodies, re-open flow.</p>
+      </div>
+    </a>
+
+  </div>
+
+  <!-- Paradigm shift table -->
+  <div class="mt-12 bg-white rounded-xl p-6 shadow-sm">
+    <h2 class="text-lg font-bold mb-3">Paradigm shifts — from v1 to v2</h2>
+    <table class="w-full text-sm">
+      <thead class="text-xs uppercase tracking-wide text-slate-500 border-b">
+        <tr><th class="text-left py-2">Aspect</th><th class="text-left py-2">v1 mental model</th><th class="text-left py-2">v2 mental model (correct)</th></tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr><td class="py-3 font-semibold">Project origin</td><td class="py-3 text-slate-600">SOW-driven (one doc)</td><td class="py-3 text-emerald-700"><b>Initiative</b> — sources added as KB over time</td></tr>
+        <tr><td class="py-3 font-semibold">Knowledge input</td><td class="py-3 text-slate-600">File upload only</td><td class="py-3 text-emerald-700"><b>4 types:</b> file, URL, folder, manual note — each with description + focus hints</td></tr>
+        <tr><td class="py-3 font-semibold">Analysis / Planning</td><td class="py-3 text-slate-600">Monolithic buttons</td><td class="py-3 text-emerald-700"><b>Task types</b> (ANALYSIS / PLANNING / DEVELOP) with AC, gates, scenarios, challenger</td></tr>
+        <tr><td class="py-3 font-semibold">Objectives relation</td><td class="py-3 text-slate-600">Flat list</td><td class="py-3 text-emerald-700"><b>DAG</b> — objectives can depend on each other</td></tr>
+        <tr><td class="py-3 font-semibold">Tasks relation</td><td class="py-3 text-slate-600">Sequential list</td><td class="py-3 text-emerald-700"><b>DAG per objective + cross-objective</b> dependencies</td></tr>
+        <tr><td class="py-3 font-semibold">Execution model</td><td class="py-3 text-slate-600">Single — parser → LLM</td><td class="py-3 text-emerald-700"><b>2 modes:</b> Direct OR Prompt-Crafted (crafter → executor, crafter inspects KB + code)</td></tr>
+        <tr><td class="py-3 font-semibold">Ambiguity</td><td class="py-3 text-slate-600">Only at analyze step</td><td class="py-3 text-emerald-700"><b>Any stage</b> — bubbles back to owning objective as a "finish this" task</td></tr>
+        <tr><td class="py-3 font-semibold">Objective DONE</td><td class="py-3 text-slate-600">Terminal</td><td class="py-3 text-emerald-700"><b>Re-openable</b> — user adds notes; Forge knows what's already built</td></tr>
+        <tr><td class="py-3 font-semibold">Acceptance criteria</td><td class="py-3 text-slate-600">Fixed at planning</td><td class="py-3 text-emerald-700">User can <b>add AC / scenarios</b> post-hoc. Forge auto-generates test if possible, else flags for manual review</td></tr>
+        <tr><td class="py-3 font-semibold">Challenger</td><td class="py-3 text-slate-600">Pass/fail verdict</td><td class="py-3 text-emerald-700">Per-claim verification + concerns + <b>explicit recommendation</b> ("close + create 2 follow-ups")</td></tr>
+        <tr><td class="py-3 font-semibold">Test scenarios</td><td class="py-3 text-slate-600">Hidden</td><td class="py-3 text-emerald-700">First-class — <b>pytest / command / LLM review / manual</b>, bodies visible, re-runnable</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+</body>
+</html>

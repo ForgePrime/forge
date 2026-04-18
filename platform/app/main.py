@@ -9,6 +9,9 @@ from app.api.pipeline import router as pipeline_router
 from app.api.ui import router as ui_router
 from app.api.auth import router as auth_router
 from app.api.webhooks_api import router as webhooks_router
+from app.api.ai import router as ai_router
+from app.api.tier1 import router as tier1_router
+from app.api.skills import router as skills_router
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 
@@ -38,6 +41,9 @@ async def lifespan(app: FastAPI):
     # Create tables on startup (MVP — use Alembic in production)
     import app.models  # noqa: ensure all models registered
     Base.metadata.create_all(bind=engine)
+    # Add new columns to existing tables (idempotent ALTER ... IF NOT EXISTS)
+    from app.services.schema_migrations import apply as _apply_alters
+    _apply_alters(engine)
     # Bootstrap default org + assign existing projects (Phase 1 migration)
     _bootstrap_default_org()
     yield
@@ -51,6 +57,7 @@ app = FastAPI(
 
 from app.middleware.auth_mw import AuthMiddleware
 from app.middleware.role_mw import RoleMiddleware
+from app.middleware.page_ctx_mw import PageContextMiddleware
 from app.services.csrf import CSRFMiddleware
 
 app.add_middleware(
@@ -61,8 +68,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 # Order: middleware added later runs FIRST on request, LAST on response.
-# Pipeline desired: Auth (loads user/org/role) → CSRF (validates token) → Role (enforces RBAC) → handler
-# So add: Role first (runs LAST on request), CSRF second, Auth last (runs FIRST).
+# Pipeline desired: Auth → CSRF → Role → PageContext → handler
+# add order is reverse of execution.
+app.add_middleware(PageContextMiddleware)
 app.add_middleware(RoleMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(AuthMiddleware)
@@ -72,6 +80,9 @@ app.include_router(execute_router)
 app.include_router(projects_router)
 app.include_router(pipeline_router)
 app.include_router(webhooks_router)
+app.include_router(ai_router)
+app.include_router(tier1_router)
+app.include_router(skills_router)
 app.include_router(ui_router)
 from app.api.ui import share_router
 app.include_router(share_router)

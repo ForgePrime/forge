@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>03. Project post-analyze — decisions modal blocks planning</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <span class="text-white">appointmentbooking</span>
+    </div>
+  </div>
+  <div class="ctx">
+    <span class="kbd">⌘K</span>
+    <span class="text-slate-400">org: acme</span>
+    <span>hergati@gmail.com ▾</span>
+  </div>
+</nav>
+
+<!-- MODAL OVERLAY -->
+<div class="fixed inset-0 bg-black/50 z-40" style="position: absolute; top: 57px; bottom: 0; left: 0; right: 0;"></div>
+
+<!-- BASE PAGE (dimmed behind) -->
+<div class="max-w-[1280px] mx-auto px-8 py-8" style="filter: blur(1px); opacity: .4;">
+  <h1 class="text-2xl font-bold mb-4">appointmentbooking</h1>
+  <div class="grid grid-cols-4 gap-4">
+    <div class="bg-white rounded-lg shadow p-4"><div class="text-xs text-slate-500">Objectives</div><div class="text-2xl font-bold">3</div></div>
+    <div class="bg-white rounded-lg shadow p-4"><div class="text-xs text-slate-500">Tasks</div><div class="text-2xl font-bold text-slate-400">—</div></div>
+    <div class="bg-white rounded-lg shadow p-4"><div class="text-xs text-slate-500">Open decisions</div><div class="text-2xl font-bold text-amber-600">2</div></div>
+    <div class="bg-white rounded-lg shadow p-4"><div class="text-xs text-slate-500">Cost</div><div class="text-2xl font-bold">$0.24</div></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="absolute z-50" style="top: 110px; left: 50%; transform: translateX(-50%); width: 720px;">
+  <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
+
+    <!-- Header -->
+    <div class="bg-amber-50 border-b border-amber-200 px-6 py-4">
+      <div class="flex items-center justify-between mb-1">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-amber-500 text-white rounded-full flex items-center justify-center font-bold">!</div>
+          <h2 class="text-xl font-bold text-amber-900">2 decisions need your input</h2>
+        </div>
+        <button class="text-slate-400 hover:text-slate-600 text-2xl">×</button>
+      </div>
+      <p class="text-sm text-amber-800 ml-11">
+        Claude detected ambiguity in your SOW. Resolve these before planning tasks — wrong assumptions now = wrong code later.
+      </p>
+    </div>
+
+    <!-- D-001 -->
+    <div class="px-6 py-5 border-b border-slate-200">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="mono text-xs text-slate-400">D-001</span>
+        <span class="bg-rose-100 text-rose-700 text-xs font-bold px-2 py-0.5 rounded">HIGH IMPACT</span>
+        <span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded">affects O-001, O-002</span>
+      </div>
+      <h3 class="font-bold text-base mb-2">Authentication strategy</h3>
+      <div class="bg-slate-50 rounded-lg p-3 mb-3 text-sm text-slate-700">
+        <span class="font-semibold text-slate-800">SOW says:</span> "Doctors log in with email/password, optionally with Google SSO. System must be HIPAA compliant."
+        <div class="text-xs text-slate-500 mt-2">📄 from <span class="mono">SRC-002 §2.3</span></div>
+      </div>
+      <p class="text-sm text-slate-600 mb-3"><b>Ambiguity:</b> SSO is "optional" — implement from day 1 or defer? HIPAA compliance likely forces specific session handling.</p>
+
+      <div class="space-y-2">
+        <label class="flex items-start gap-3 p-3 border-2 border-blue-500 bg-blue-50 rounded-lg cursor-pointer">
+          <input type="radio" name="d001" checked class="mt-1">
+          <div class="flex-1">
+            <div class="font-semibold text-sm text-slate-800">Email/password with HIPAA-grade sessions (HttpOnly cookies + CSRF + audit log)</div>
+            <div class="text-xs text-slate-600 mt-1">SSO deferred to Phase 2. Faster to MVP. <span class="text-blue-700 font-semibold">Recommended by Claude.</span></div>
+          </div>
+        </label>
+        <label class="flex items-start gap-3 p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-300">
+          <input type="radio" name="d001" class="mt-1">
+          <div class="flex-1">
+            <div class="font-semibold text-sm text-slate-800">Email/password + Google SSO + HIPAA sessions</div>
+            <div class="text-xs text-slate-600 mt-1">Full scope from day 1. ~3-4 extra tasks. Higher cost.</div>
+          </div>
+        </label>
+        <label class="flex items-start gap-3 p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-300">
+          <input type="radio" name="d001" class="mt-1">
+          <div class="flex-1">
+            <div class="font-semibold text-sm text-slate-800">Custom:</div>
+            <input type="text" class="mt-1 w-full text-sm border border-slate-300 rounded px-2 py-1" placeholder="Type your resolution...">
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- D-002 -->
+    <div class="px-6 py-5 border-b border-slate-200">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="mono text-xs text-slate-400">D-002</span>
+        <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MEDIUM IMPACT</span>
+        <span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded">affects O-003</span>
+      </div>
+      <h3 class="font-bold text-base mb-2">Payment gateway</h3>
+      <div class="bg-slate-50 rounded-lg p-3 mb-3 text-sm text-slate-700">
+        <span class="font-semibold text-slate-800">SOW says:</span> "Patients pay the fee online."
+        <div class="text-xs text-slate-500 mt-2">📄 from <span class="mono">SRC-001 §5</span></div>
+      </div>
+      <p class="text-sm text-slate-600 mb-3"><b>Ambiguity:</b> no gateway specified. Stripe is common but regional (EU customers may prefer Przelewy24/Adyen).</p>
+
+      <div class="space-y-2">
+        <label class="flex items-start gap-3 p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-300">
+          <input type="radio" name="d002" class="mt-1">
+          <div class="flex-1">
+            <div class="font-semibold text-sm text-slate-800">Stripe (US/EU, simple integration)</div>
+            <div class="text-xs text-slate-600 mt-1"><span class="text-blue-700 font-semibold">Recommended by Claude.</span></div>
+          </div>
+        </label>
+        <label class="flex items-start gap-3 p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-300">
+          <input type="radio" name="d002" class="mt-1">
+          <div class="flex-1"><div class="font-semibold text-sm">Adyen (EU-strong, complex)</div></div>
+        </label>
+        <label class="flex items-start gap-3 p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-300">
+          <input type="radio" name="d002" class="mt-1">
+          <div class="flex-1"><div class="font-semibold text-sm">Custom:</div>
+          <input type="text" class="mt-1 w-full text-sm border border-slate-300 rounded px-2 py-1" placeholder="Type your resolution..."></div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="bg-slate-50 px-6 py-4 flex items-center justify-between">
+      <div class="text-xs text-slate-500">
+        Resolving will unlock planning. You can edit these later in Decisions tab.
+      </div>
+      <div class="flex gap-2">
+        <button class="text-sm text-slate-600 hover:text-slate-900 px-4 py-2">Defer (block planning)</button>
+        <button class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2 rounded-lg text-sm">
+          Resolve & start planning →
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ANNOTATIONS (over modal) -->
+<div class="annot" style="top: 200px; left: 370px;">1</div>
+<div class="annot" style="top: 340px; left: 370px;">2</div>
+<div class="annot" style="top: 470px; left: 340px;">3</div>
+<div class="annot" style="top: 690px; left: 560px;">4</div>
+<div class="annot" style="top: 855px; left: 900px;">5</div>
+
+<div class="annot-panel" style="top: 100px; right: 20px; width: 280px;">
+  <h3>03. Decisions modal — annotations</h3>
+  <ol>
+    <li><strong>Modal = blocker.</strong> Can't plan while open decisions exist. Not a tab buried somewhere — forced to front.</li>
+    <li><strong>Impact badge.</strong> HIGH/MEDIUM/LOW + "affects O-001, O-002" — user knows what's at stake before deciding.</li>
+    <li><strong>SOW citation.</strong> Every decision shows the exact SOW snippet + source doc reference. Traceability — user verifies Claude read it right.</li>
+    <li><strong>Pre-selected recommendation.</strong> Claude picks a sensible default + explains why. User can accept with one click or override.</li>
+    <li><strong>"Defer" is explicit</strong> — not hidden. User knows cost of skipping (planning blocked).</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Rejected:</strong> decisions-as-tab (buried, ignored); auto-resolve silently (user loses control); blocking toast (no details).
+  </div>
+</div>
+
+</div>
+</body>
+</html>

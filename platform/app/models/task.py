@@ -24,7 +24,10 @@ class Task(Base, TimestampMixin):
             name="task_has_content",
         ),
         CheckConstraint(
-            "type IN ('feature', 'bug', 'chore', 'investigation')",
+            # Original 4 types kept for backwards compat with existing rows.
+            # New 4 (D1) describe the task's role in the per-objective lifecycle.
+            "type IN ('feature', 'bug', 'chore', 'investigation', "
+            "'analysis', 'planning', 'develop', 'documentation')",
             name="valid_task_type",
         ),
         CheckConstraint(
@@ -92,5 +95,11 @@ class AcceptanceCriterion(Base):
     verification: Mapped[str] = mapped_column(String(20), nullable=False, server_default="manual")
     test_path: Mapped[str | None] = mapped_column(String(300))
     command: Mapped[str | None] = mapped_column(Text)
+    # B2 — source attribution: SRC-XXX or objective ref. NULL → "INVENTED BY LLM" badge.
+    source_ref: Mapped[str | None] = mapped_column(Text)
+    # B1 — last execution timestamp (for "manual unrun" trust-debt counter).
+    last_executed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # B4 — reasoning trace: which LLM call produced this AC (NULL = user-added).
+    source_llm_call_id: Mapped[int | None] = mapped_column(ForeignKey("llm_calls.id"))
 
     task: Mapped["Task"] = relationship(back_populates="acceptance_criteria")

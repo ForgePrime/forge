@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>01. Dashboard — Forge UX mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">Projects</div>
+  </div>
+  <div class="ctx">
+    <div class="text-xs text-slate-400">org: <span class="text-white mono">acme</span></div>
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-slate-400">Budget</span>
+      <div class="w-32 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+        <div class="h-full bg-emerald-400" style="width: 42%"></div>
+      </div>
+      <span class="text-xs mono text-slate-300">$8.45 / $20</span>
+    </div>
+    <span class="kbd">⌘K</span>
+    <span>hergati@gmail.com ▾</span>
+  </div>
+</nav>
+
+<div class="max-w-[1280px] mx-auto px-8 py-8">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">Your projects</h1>
+      <p class="text-sm text-slate-500 mt-1">4 projects · 2 active · 1 needs your attention</p>
+    </div>
+    <div class="flex gap-2">
+      <input type="text" placeholder="🔍 Search projects, tasks, findings... (⌘K)" class="w-80 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+      <button class="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold text-sm hover:bg-blue-700">+ New project</button>
+    </div>
+  </div>
+
+  <!-- Trust-debt counters -->
+  <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <div class="font-bold text-slate-800 flex items-center gap-2">📊 Your audit queue <span class="text-xs text-slate-500 font-normal">— what needs scrutiny, not progress</span></div>
+      <a href="#" class="text-xs text-blue-600 hover:underline">How these are calculated →</a>
+    </div>
+    <div class="grid grid-cols-4 gap-3">
+      <a href="#" class="bg-rose-50 border border-rose-200 rounded-lg p-3 hover:bg-rose-100 transition">
+        <div class="text-xs text-rose-700 uppercase tracking-wide font-semibold">Unaudited approvals</div>
+        <div class="text-2xl font-bold text-rose-700 mt-1">3</div>
+        <div class="text-xs text-slate-600 mt-1">tasks closed without re-review of deliverable</div>
+      </a>
+      <a href="#" class="bg-amber-50 border border-amber-200 rounded-lg p-3 hover:bg-amber-100 transition">
+        <div class="text-xs text-amber-800 uppercase tracking-wide font-semibold">Manual scenarios unrun</div>
+        <div class="text-2xl font-bold text-amber-700 mt-1">8</div>
+        <div class="text-xs text-slate-600 mt-1">user-added AC never executed against code</div>
+      </a>
+      <a href="#" class="bg-amber-50 border border-amber-200 rounded-lg p-3 hover:bg-amber-100 transition">
+        <div class="text-xs text-amber-800 uppercase tracking-wide font-semibold">Findings dismissed without reason</div>
+        <div class="text-2xl font-bold text-amber-700 mt-1">5</div>
+        <div class="text-xs text-slate-600 mt-1">challenger concerns closed without rationale</div>
+      </a>
+      <a href="#" class="bg-slate-100 border border-slate-200 rounded-lg p-3 hover:bg-slate-200 transition">
+        <div class="text-xs text-slate-700 uppercase tracking-wide font-semibold">Stale analyses</div>
+        <div class="text-2xl font-bold text-slate-700 mt-1">2</div>
+        <div class="text-xs text-slate-600 mt-1">objectives analyzed &gt;7d ago; KB changed since</div>
+      </a>
+    </div>
+    <div class="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-600">
+      ⚠ <b>2 decisions block <b>appointmentbooking</b> from planning</b> — Claude found conflicts in KB that need your ruling. <a href="#" class="text-blue-600 hover:underline font-semibold">Resolve →</a>
+    </div>
+  </div>
+
+  <!-- Project tiles -->
+  <div class="grid grid-cols-3 gap-5">
+
+    <!-- RUNNING -->
+    <a href="03-project-post-analyze.html" class="bg-white rounded-xl shadow-sm hover:shadow-md transition border-l-4 border-blue-500 overflow-hidden">
+      <div class="p-5">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              <h3 class="font-bold text-base">warehouseflow</h3>
+            </div>
+            <p class="text-xs text-slate-500">Warehouse operations system</p>
+          </div>
+          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-semibold">RUNNING</span>
+        </div>
+
+        <div class="space-y-2 mb-3">
+          <div>
+            <div class="flex justify-between text-xs text-slate-600 mb-1">
+              <span>Tasks</span> <span class="font-semibold">8 / 15</span>
+            </div>
+            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-blue-500" style="width: 53%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs text-slate-600 mb-1">
+              <span>Key Results</span> <span class="font-semibold">3 / 4 met</span>
+            </div>
+            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-500" style="width: 75%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span>💰 $4.20 / $10</span>
+          <span>⚠ 1 failed</span>
+          <span class="ml-auto">2m ago</span>
+        </div>
+      </div>
+      <div class="bg-slate-50 px-5 py-2 text-xs text-slate-600 border-t border-slate-100">
+        Current: <span class="mono font-semibold text-blue-600">T-009</span> Add user profile edit
+      </div>
+    </a>
+
+    <!-- ATTENTION (decisions blocked) -->
+    <a href="03-project-post-analyze.html" class="bg-white rounded-xl shadow-sm hover:shadow-md transition border-l-4 border-amber-500 overflow-hidden">
+      <div class="p-5">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <h3 class="font-bold text-base mb-1">appointmentbooking</h3>
+            <p class="text-xs text-slate-500">Doctor appointment scheduler</p>
+          </div>
+          <span class="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded font-semibold">NEEDS YOU</span>
+        </div>
+
+        <div class="bg-amber-50 rounded p-2.5 mb-3">
+          <div class="text-xs font-semibold text-amber-900 mb-1">⏸ Blocked on 2 decisions</div>
+          <div class="text-xs text-amber-800">Payment gateway · Auth strategy</div>
+        </div>
+
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span>💰 $0.24 / $15</span>
+          <span>📋 3 objectives extracted</span>
+          <span class="ml-auto">1h ago</span>
+        </div>
+      </div>
+      <div class="bg-amber-50 px-5 py-2 text-xs text-amber-800 border-t border-amber-100 font-semibold">
+        → Click to resolve
+      </div>
+    </a>
+
+    <!-- DONE -->
+    <a href="#" class="bg-white rounded-xl shadow-sm hover:shadow-md transition border-l-4 border-emerald-500 overflow-hidden">
+      <div class="p-5">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <h3 class="font-bold text-base mb-1">todo-cli</h3>
+            <p class="text-xs text-slate-500">Minimal CLI task tracker</p>
+          </div>
+          <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-semibold">DONE</span>
+        </div>
+
+        <div class="space-y-2 mb-3">
+          <div>
+            <div class="flex justify-between text-xs text-slate-600 mb-1">
+              <span>Tasks</span> <span class="font-semibold">7 / 7</span>
+            </div>
+            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-500" style="width: 100%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs text-slate-600 mb-1">
+              <span>Key Results</span> <span class="font-semibold">4 / 4 met</span>
+            </div>
+            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-500" style="width: 100%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span>💰 $1.12 total</span>
+          <span>📄 Report ready</span>
+          <span class="ml-auto">3d ago</span>
+        </div>
+      </div>
+      <div class="bg-emerald-50 px-5 py-2 text-xs text-emerald-800 border-t border-emerald-100 flex gap-3">
+        <a href="#" class="font-semibold hover:underline">📄 View report</a>
+        <a href="#" class="hover:underline">🔗 Share link</a>
+      </div>
+    </a>
+
+    <!-- EMPTY (just created) -->
+    <a href="02-project-empty.html" class="bg-white rounded-xl shadow-sm hover:shadow-md transition border-l-4 border-slate-300 overflow-hidden">
+      <div class="p-5">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <h3 class="font-bold text-base mb-1">demo-saas</h3>
+            <p class="text-xs text-slate-500">Just created — no SOW yet</p>
+          </div>
+          <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded font-semibold">EMPTY</span>
+        </div>
+
+        <div class="bg-slate-50 rounded p-3 text-center text-xs text-slate-500 mb-2">
+          📄 Upload SOW to begin
+        </div>
+
+        <div class="text-xs text-slate-400 text-right">created 10m ago</div>
+      </div>
+      <div class="bg-slate-50 px-5 py-2 text-xs text-blue-600 border-t border-slate-100 font-semibold">
+        → Start here
+      </div>
+    </a>
+
+    <!-- NEW PROJECT CTA -->
+    <a href="#" class="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center text-slate-500 hover:border-blue-400 hover:text-blue-600 transition min-h-[240px]">
+      <div class="text-4xl mb-2">+</div>
+      <div class="font-semibold">New project</div>
+      <div class="text-xs mt-1 text-center">Start from SOW or from scratch</div>
+    </a>
+
+  </div>
+
+  <!-- Bottom activity feed -->
+  <div class="mt-10">
+    <h2 class="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Recent activity across all projects</h2>
+    <div class="bg-white rounded-lg shadow-sm divide-y divide-slate-100">
+      <div class="px-5 py-3 flex items-center gap-3 text-sm">
+        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+        <span class="text-xs text-slate-400 mono w-12">2m</span>
+        <span><b>warehouseflow</b> · Task <span class="mono text-blue-600">T-009</span> started execution</span>
+      </div>
+      <div class="px-5 py-3 flex items-center gap-3 text-sm">
+        <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+        <span class="text-xs text-slate-400 mono w-12">5m</span>
+        <span><b>warehouseflow</b> · Task <span class="mono text-rose-600">T-007</span> failed — <a href="#" class="text-blue-600 hover:underline">Retry</a></span>
+      </div>
+      <div class="px-5 py-3 flex items-center gap-3 text-sm">
+        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+        <span class="text-xs text-slate-400 mono w-12">1h</span>
+        <span><b>appointmentbooking</b> · Analyze completed — 3 objectives, <b class="text-amber-700">2 decisions blocking</b></span>
+      </div>
+      <div class="px-5 py-3 flex items-center gap-3 text-sm">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span class="text-xs text-slate-400 mono w-12">3d</span>
+        <span><b>todo-cli</b> · All objectives ACHIEVED — <a href="#" class="text-blue-600 hover:underline">Run report</a></span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ANNOTATIONS -->
+<div class="annot" style="top: 96px; left: 660px;">1</div>
+<div class="annot" style="top: 144px; left: 60px;">2</div>
+<div class="annot" style="top: 420px; left: 260px;">3</div>
+<div class="annot" style="top: 330px; left: 900px;">4</div>
+<div class="annot" style="top: 420px; left: 580px;">5</div>
+<div class="annot" style="top: 830px; left: 60px;">6</div>
+
+<div class="annot-panel" style="top: 100px; right: 32px; width: 340px;">
+  <h3>01. Dashboard — annotations</h3>
+  <ol>
+    <li><strong>Needs-you banner</strong> — surfaces decisions/failures that block progress. Not buried in a tab. Disappears when resolved.</li>
+    <li><strong>Global search ⌘K</strong> — user finds anything (project, task, finding) in 2 keystrokes. Replaces navigation trees.</li>
+    <li><strong>Status border + badge</strong> — 3 signals (color, pill, icon-per-status). Accessible + scannable. RUNNING pulses.</li>
+    <li><strong>KR progress bar</strong> — business-level progress, not just task count. User sees "3/4 KR met" = deliverable visible.</li>
+    <li><strong>Blocked state visual</strong> — amber border, prominent "NEEDS YOU" badge, listed blockers as chips. No click needed to diagnose.</li>
+    <li><strong>Activity feed</strong> — cross-project event log. Replaces per-project polling. User sees org-wide what's up. Dot color = event severity.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>What was rejected:</strong> spreadsheet-style project table (cold); single big chart (not actionable); collapsed nav tree (hides issues).
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,4 +1,6 @@
-from sqlalchemy import String, Text, Integer, ForeignKey, text
+import datetime as dt
+
+from sqlalchemy import String, Text, Integer, ForeignKey, text, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,6 +17,11 @@ class Project(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     goal: Mapped[str | None] = mapped_column(Text)
     config: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
+    # G1 — operational contract markdown, injected into all LLM prompts on this project.
+    contract_md: Mapped[str | None] = mapped_column(Text)
+    # I1 — autonomy level: L1 (assistant) → L5 (fully autonomous)
+    autonomy_level: Mapped[str | None] = mapped_column(String(8))   # L1..L5
+    autonomy_promoted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     organization: Mapped["Organization | None"] = relationship(back_populates="projects")
     tasks: Mapped[list["Task"]] = relationship(back_populates="project", cascade="all, delete-orphan")

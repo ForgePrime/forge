@@ -19,6 +19,10 @@ from app.models.test_run import TestRun
 from app.models.orchestrate_run import OrchestrateRun
 from app.models.comment import TaskComment
 from app.models.webhook import Webhook, ShareLink
+from app.models.ai_interaction import AIInteraction
+from app.models.objective_reopen import ObjectiveReopen
+from app.models.skill import Skill, ProjectSkill
+from app.models.project_hook import ProjectHook
 
 __all__ = [
     "Organization",
@@ -47,4 +51,9 @@ __all__ = [
     "TestRun",
     "OrchestrateRun",
     "TaskComment",
+    "AIInteraction",
+    "ObjectiveReopen",
+    "Skill",
+    "ProjectSkill",
+    "ProjectHook",
 ]

@@ -38,10 +38,32 @@
 {% else %}
     <span class="pill text-xs bg-slate-100 mono">{{ac.scenario_type}}</span>
     <span class="pill text-xs bg-slate-100 mono">{{ac.verification}}</span>
+    {% if ac.source_ref %}
+        {# B2 — sourced AC: visible attribution badge #}
+        <span class="pill text-xs bg-emerald-50 text-emerald-700 border border-emerald-200" title="source attribution provided">📎 {{ ac.source_ref[:40] }}{% if ac.source_ref|length > 40 %}…{% endif %}</span>
+    {% else %}
+        {# B2 — unsourced AC: explicit warning + click-to-attribute popup #}
+        <span class="pill text-xs bg-rose-100 text-rose-700 border border-rose-300 cursor-pointer"
+              title="Click to provide source attribution"
+              onclick="(function(){
+                  const ref = prompt('Source attribution for AC-{{ac.position}} (e.g. SRC-001 §4.2 or O-002 or DEC-007). Empty = clear.');
+                  if (ref === null) return;
+                  fetch('/api/v1/tier1/projects/{{project}}/tasks/{{task_ext}}/ac/{{ac.position}}/source',
+                      {method: 'PUT', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1]},
+                       body: JSON.stringify({source_ref: ref || null})})
+                      .then(r => { if (r.ok) location.reload(); else forgeToast('Save failed.', 'error'); });
+              })()">⚠ INVENTED BY LLM · no source</span>
+    {% endif %}
     <span class="flex-1">AC-{{ac.position}}: {{ac.text}}
         {% if ac.test_path %}<span class="block text-xs mono text-slate-400">→ {{ac.test_path}}</span>{% endif %}
         {% if ac.command %}<span class="block text-xs mono text-slate-400">→ cmd: {{ac.command}}</span>{% endif %}
     </span>
+    {% if ac.source_llm_call_id %}
+    {# B4 — reasoning trace: jump to the LLM call that produced this AC #}
+    <a href="/ui/llm-calls/{{ ac.source_llm_call_id }}" target="_blank"
+       class="text-slate-400 hover:text-slate-700 text-xs"
+       title="Why was this written? View the LLM call (prompt + response) that produced this AC.">?</a>
+    {% endif %}
     <button hx-get="/ui/projects/{{project}}/tasks/{{task_ext}}/ac/{{ac.position}}/row?edit=1"
             hx-target="#ac-{{task_ext}}-{{ac.position}}"
             hx-swap="outerHTML"

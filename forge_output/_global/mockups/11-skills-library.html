@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>11. Skills library — SKILLS, MICRO-SKILLS, OPINIONS</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px; min-height: 1500px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a> <span class="mx-2">/</span>
+      <a href="#" class="hover:text-white">acme-erp-migration</a> <span class="mx-2">/</span>
+      <span class="text-white">Skills library</span>
+    </div>
+  </div>
+  <div class="ctx"><span class="kbd">⌘K</span></div>
+</nav>
+
+<div class="max-w-[1280px] mx-auto px-8 py-6">
+
+  <!-- Header -->
+  <div class="flex items-start justify-between mb-5">
+    <div>
+      <h1 class="text-2xl font-bold">Skills library</h1>
+      <p class="text-sm text-slate-600 max-w-3xl mt-1">Reusable LLM capabilities and persona-based prompts that Forge attaches to tasks. <b>Skills</b> = broad capabilities · <b>Micro-skills</b> = narrow helpers · <b>Opinions</b> = "act as role X and produce best-in-class work" prompts.</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="12-project-config.html" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold px-3 py-2 rounded-lg">⚙ Project config</a>
+      <button class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 py-2 rounded-lg">+ Create new skill</button>
+    </div>
+  </div>
+
+  <!-- Contract-style guidance -->
+  <div class="bg-rose-50 border-l-4 border-rose-500 rounded-lg p-4 mb-5 text-sm text-slate-800">
+    <div class="font-bold text-rose-900 mb-1">⚠ Skills are not decoration — they change output quality AND cost.</div>
+    Every attached skill adds context size, which affects every LLM call. Watch the "📊 cost impact" column. More skills ≠ better. Default set for a phase exists so user doesn't drown in configuration — override intentionally, not habitually.
+  </div>
+
+  <!-- Categories + counts -->
+  <div class="grid grid-cols-3 gap-4 mb-5">
+    <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-500">
+      <div class="text-xs font-semibold text-blue-600 uppercase tracking-wide">SKILLS</div>
+      <div class="text-3xl font-bold text-slate-800 mt-1">24</div>
+      <div class="text-xs text-slate-500">broad capabilities (e.g., "security review", "test scenario generator")</div>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-amber-500">
+      <div class="text-xs font-semibold text-amber-600 uppercase tracking-wide">MICRO-SKILLS</div>
+      <div class="text-3xl font-bold text-slate-800 mt-1">41</div>
+      <div class="text-xs text-slate-500">narrow deterministic helpers (e.g., "detect SQL injection patterns")</div>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm p-4 border-l-4 border-purple-500">
+      <div class="text-xs font-semibold text-purple-600 uppercase tracking-wide">OPINIONS</div>
+      <div class="text-3xl font-bold text-slate-800 mt-1">18</div>
+      <div class="text-xs text-slate-500">personas: "act as X and produce best-in-class work"</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-white rounded-xl shadow-sm p-4 mb-5">
+    <div class="flex items-center gap-2 mb-3">
+      <input type="text" placeholder="🔍 search by name / tag..." class="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+      <select class="px-2 py-2 text-sm border border-slate-300 rounded-lg">
+        <option>All phases</option><option>Analysis</option><option>Planning</option><option>Develop</option><option>Documentation</option>
+      </select>
+      <select class="px-2 py-2 text-sm border border-slate-300 rounded-lg">
+        <option>All categories</option><option>Skills only</option><option>Micro-skills only</option><option>Opinions only</option>
+      </select>
+      <select class="px-2 py-2 text-sm border border-slate-300 rounded-lg">
+        <option>Sort: most used</option><option>Sort: newest</option><option>Sort: cost impact</option><option>Sort: success lift</option>
+      </select>
+    </div>
+    <div class="flex gap-1 text-xs">
+      <button class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded font-semibold">All · 83</button>
+      <button class="px-3 py-1.5 hover:bg-slate-100 rounded">Installed for this project · 12</button>
+      <button class="px-3 py-1.5 hover:bg-slate-100 rounded">Auto-attached · 5</button>
+      <button class="px-3 py-1.5 hover:bg-slate-100 rounded">Marketplace (org-shared) · 41</button>
+      <button class="px-3 py-1.5 hover:bg-slate-100 rounded">My custom · 9</button>
+    </div>
+  </div>
+
+  <!-- Skill cards -->
+  <div class="grid grid-cols-2 gap-4">
+
+    <!-- SKILL — security review (installed, auto-attach) -->
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-blue-500 p-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span>
+            <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">INSTALLED · auto-attach</span>
+            <span class="mono text-xs text-slate-400">SK-security-owasp</span>
+          </div>
+          <h3 class="font-bold">Security review — OWASP top 10 sweep</h3>
+          <p class="text-xs text-slate-600 mt-1">Scans diff for SQL injection, XSS, broken auth, insecure deserialization, SSRF, broken access control, misconfig. Flags issues as findings with severity.</p>
+        </div>
+        <button class="text-xs text-slate-500 hover:text-slate-900">⋯</button>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">develop</span>
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">analysis</span>
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">challenger</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-slate-100">
+        <div><div class="text-slate-500">📈 success lift</div><div class="font-bold text-emerald-700">+31% findings caught</div></div>
+        <div><div class="text-slate-500">📊 cost impact</div><div class="font-bold text-amber-700">+$0.08/call</div></div>
+        <div><div class="text-slate-500">🔄 auto-attach rule</div><div class="font-semibold">if diff touches auth/API</div></div>
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button class="text-xs text-blue-600 hover:underline font-semibold">View source</button>
+        <button class="text-xs text-blue-600 hover:underline">Edit auto-attach rule</button>
+        <button class="text-xs text-rose-600 hover:underline">Detach from project</button>
+      </div>
+    </div>
+
+    <!-- OPINION — best senior dev -->
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-purple-500 p-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">OPINION</span>
+            <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">INSTALLED · manual</span>
+            <span class="mono text-xs text-slate-400">OP-best-dev-django</span>
+          </div>
+          <h3 class="font-bold">"Best senior Django developer" — write your magnum opus</h3>
+          <p class="text-xs text-slate-600 mt-1 italic">"Imagine you are the single most respected Django developer and this code is your magnum opus — the one you'll be judged by. What do you write?"</p>
+        </div>
+        <button class="text-xs text-slate-500 hover:text-slate-900">⋯</button>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">develop</span>
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">critical changes</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-slate-100">
+        <div><div class="text-slate-500">📈 challenger agreement</div><div class="font-bold text-emerald-700">+18% CONSISTENT rate</div></div>
+        <div><div class="text-slate-500">📊 cost impact</div><div class="font-bold text-amber-700">+$0.12/call</div></div>
+        <div><div class="text-slate-500">🔄 attach</div><div class="font-semibold">manual only</div></div>
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button class="text-xs text-blue-600 hover:underline font-semibold">View prompt</button>
+        <button class="text-xs text-blue-600 hover:underline">Clone &amp; customize</button>
+      </div>
+    </div>
+
+    <!-- MICRO-SKILL — pytest parametrize helper -->
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-amber-500 p-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MICRO</span>
+            <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">INSTALLED · auto-attach</span>
+            <span class="mono text-xs text-slate-400">MS-pytest-parametrize</span>
+          </div>
+          <h3 class="font-bold">pytest parametrize — dense edge case coverage</h3>
+          <p class="text-xs text-slate-600 mt-1">For every AC with multiple inputs, writes parametrized test. Forces test author to enumerate edge cases (None, empty, boundary, malformed) instead of a single happy path.</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">develop</span>
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">python</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-slate-100">
+        <div><div class="text-slate-500">📈 avg ACs per test</div><div class="font-bold text-emerald-700">3.2 → 7.1</div></div>
+        <div><div class="text-slate-500">📊 cost impact</div><div class="font-bold text-slate-600">+$0.02/call</div></div>
+        <div><div class="text-slate-500">🔄 auto</div><div class="font-semibold">if Python + pytest</div></div>
+      </div>
+    </div>
+
+    <!-- SKILL — test scenario generator (non-happy-path) -->
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-blue-500 p-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span>
+            <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">INSTALLED · default for analysis</span>
+            <span class="mono text-xs text-slate-400">SK-scenario-gen-nonhappy</span>
+          </div>
+          <h3 class="font-bold">Non-happy-path test scenario generator</h3>
+          <p class="text-xs text-slate-600 mt-1">For each objective AC, generates 3-5 failure modes / edge cases. Challenger uses these to verify plan coverage. Installed as DEFAULT for every ANALYSIS task if no alternatives picked.</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">analysis</span>
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">planning</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-slate-100">
+        <div><div class="text-slate-500">📈 missed edge cases</div><div class="font-bold text-emerald-700">−67% (vs happy-only)</div></div>
+        <div><div class="text-slate-500">📊 cost impact</div><div class="font-bold text-amber-700">+$0.15/task</div></div>
+        <div><div class="text-slate-500">🔄 role</div><div class="font-semibold text-purple-700">default · analysis phase</div></div>
+      </div>
+    </div>
+
+    <!-- OPINION — HIPAA auditor -->
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-purple-500 p-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">OPINION</span>
+            <span class="bg-slate-100 text-slate-700 text-xs font-bold px-2 py-0.5 rounded">marketplace</span>
+            <span class="mono text-xs text-slate-400">OP-hipaa-auditor</span>
+          </div>
+          <h3 class="font-bold">HIPAA compliance auditor perspective</h3>
+          <p class="text-xs text-slate-600 mt-1 italic">"You are a HIPAA compliance auditor reviewing this code for the client's annual audit. What do you flag? What passes?"</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">challenger</span>
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">develop (healthcare)</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-slate-100">
+        <div><div class="text-slate-500">📈 compliance findings</div><div class="font-bold text-emerald-700">+4.2 avg per task</div></div>
+        <div><div class="text-slate-500">📊 cost impact</div><div class="font-bold text-amber-700">+$0.18/call</div></div>
+        <div><div class="text-slate-500">🔄 used by</div><div class="font-semibold">healthcare/fintech projects</div></div>
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1 rounded">+ Install for this project</button>
+        <button class="text-xs text-slate-600 hover:text-slate-900">View prompt</button>
+      </div>
+    </div>
+
+    <!-- SKILL — risk-weighted verification -->
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-blue-500 p-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span>
+            <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">INSTALLED · default for risk</span>
+            <span class="mono text-xs text-slate-400">SK-risk-weighted-verify</span>
+          </div>
+          <h3 class="font-bold">Risk-weighted verification</h3>
+          <p class="text-xs text-slate-600 mt-1">Classifies diff by blast-radius (DB migration, auth, billing, core domain). Applies stricter verification (more challenger claims, more scenarios) to high-risk changes. Default for DEEP-VERIFY phase.</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">challenger</span>
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">risk</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-slate-100">
+        <div><div class="text-slate-500">📈 critical bugs caught</div><div class="font-bold text-emerald-700">+52% in high-risk</div></div>
+        <div><div class="text-slate-500">📊 cost impact</div><div class="font-bold text-amber-700">+0-40% per task (scales)</div></div>
+        <div><div class="text-slate-500">🔄 role</div><div class="font-semibold text-purple-700">default · risk phase</div></div>
+      </div>
+    </div>
+
+    <!-- MICRO-SKILL — ADR extractor -->
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-amber-500 p-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MICRO</span>
+            <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">INSTALLED · auto</span>
+            <span class="mono text-xs text-slate-400">MS-adr-sections</span>
+          </div>
+          <h3 class="font-bold">ADR section extractor (Context · Decision · Alternatives · Consequences)</h3>
+          <p class="text-xs text-slate-600 mt-1">Given a resolved decision, produces a Michael Nygard-style ADR. Deterministic template; no free-form LLM output allowed. Triggers automatically when DOC task generates "architecture decisions" section.</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">documentation</span>
+      </div>
+    </div>
+
+    <!-- OPINION — Cloud architect -->
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-purple-500 p-4 opacity-70">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">OPINION</span>
+            <span class="bg-slate-100 text-slate-700 text-xs font-bold px-2 py-0.5 rounded">marketplace · not installed</span>
+          </div>
+          <h3 class="font-bold">Cloud architect — "production-grade on day 1"</h3>
+          <p class="text-xs text-slate-600 mt-1 italic">Persona that pushes for multi-AZ, IaC, observability day-1. Explicit <b>conflict</b> with this project's on-prem constraint (SRC-004) — Forge warns before install.</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <span class="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-semibold">⚠ may conflict with SRC-004</span>
+      </div>
+      <button class="text-xs text-amber-600 hover:text-amber-800 font-semibold">+ Install anyway (with warning)</button>
+    </div>
+
+  </div>
+
+  <!-- Phase-default summary -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mt-5">
+    <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Default skills per phase — what runs if nothing else picked</h3>
+    <div class="grid grid-cols-4 gap-3 text-sm">
+      <div class="bg-blue-50 rounded p-3">
+        <div class="font-semibold text-blue-900 mb-2">ANALYSIS</div>
+        <ul class="text-xs space-y-0.5 text-slate-700">
+          <li>✓ Non-happy-path scenario gen</li>
+          <li>✓ Ambiguity detection</li>
+          <li>✓ Source attribution enforcer</li>
+          <li><a href="12-project-config.html" class="text-blue-600 hover:underline">edit for this project</a></li>
+        </ul>
+      </div>
+      <div class="bg-purple-50 rounded p-3">
+        <div class="font-semibold text-purple-900 mb-2">PLANNING</div>
+        <ul class="text-xs space-y-0.5 text-slate-700">
+          <li>✓ DAG acyclic check</li>
+          <li>✓ AC coverage gate</li>
+          <li>✓ Task-size cap (≤5 AC)</li>
+          <li><a href="12-project-config.html" class="text-blue-600 hover:underline">edit for this project</a></li>
+        </ul>
+      </div>
+      <div class="bg-emerald-50 rounded p-3">
+        <div class="font-semibold text-emerald-900 mb-2">DEVELOP</div>
+        <ul class="text-xs space-y-0.5 text-slate-700">
+          <li>✓ Security OWASP sweep (if auth/API)</li>
+          <li>✓ pytest parametrize helper</li>
+          <li>✓ Challenger claims checker</li>
+          <li><a href="12-project-config.html" class="text-blue-600 hover:underline">edit for this project</a></li>
+        </ul>
+      </div>
+      <div class="bg-slate-50 rounded p-3">
+        <div class="font-semibold text-slate-800 mb-2">DEEP-VERIFY / RISK</div>
+        <ul class="text-xs space-y-0.5 text-slate-700">
+          <li>✓ Risk-weighted verification</li>
+          <li>✓ Scope-limit disclosure</li>
+          <li>✓ Cross-claim verifier</li>
+          <li><a href="12-project-config.html" class="text-blue-600 hover:underline">edit for this project</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ANNOTATIONS -->
+<div class="annot" style="top: 160px; left: 30px;">1</div>
+<div class="annot" style="top: 310px; left: 30px;">2</div>
+<div class="annot" style="top: 540px; left: 30px;">3</div>
+<div class="annot" style="top: 820px; left: 540px;">4</div>
+<div class="annot" style="top: 1380px; left: 30px;">5</div>
+
+<div class="annot-panel" style="top: 100px; right: 20px; width: 280px;">
+  <h3>11. Skills library — annotations</h3>
+  <ol>
+    <li><strong>Three categories, not one.</strong> SKILL (broad) / MICRO (narrow, deterministic) / OPINION (persona-based). Each has distinct mental model — don't collapse.</li>
+    <li><strong>Cost impact surfaced up-front.</strong> Skills add context → cost. The list is not "more is better" — it's a budget tradeoff.</li>
+    <li><strong>Auto-attach rules.</strong> LLM decides for broad skills (e.g., "if diff touches auth → attach security skill"). User can edit rule. Default set runs if nothing picked.</li>
+    <li><strong>Conflict warnings.</strong> "Cloud architect" opinion vs SRC-004 on-prem constraint → flag before install. Skills should not silently undermine decided constraints.</li>
+    <li><strong>Default skills per phase.</strong> If user picks nothing, these run. Editable at project level (→ next mockup 12). Prevents "blank slate" paralysis.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>End goal:</strong> Forge autonomous. User only edits skill set during onboarding; LLM composes skills per task automatically after that.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

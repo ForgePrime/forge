@@ -7,11 +7,19 @@
           class="mt-3 space-y-2">
         <div class="flex gap-2">
             <input name="external_id" placeholder="T-NNN (auto)" class="w-32 border rounded px-2 py-1 text-xs mono">
-            <select name="type" class="border rounded px-2 py-1 text-xs">
-                <option value="feature">feature</option>
-                <option value="bug">bug</option>
-                <option value="chore">chore</option>
-                <option value="investigation">investigation</option>
+            <select name="type" class="border rounded px-2 py-1 text-xs" title="Type sets execution lane and default skills (D1)">
+                <optgroup label="iterative-flow types">
+                    <option value="develop" selected>develop · write code</option>
+                    <option value="analysis">analysis · gather + find ambiguity</option>
+                    <option value="planning">planning · objective → task DAG</option>
+                    <option value="documentation">documentation · ADR / guides</option>
+                </optgroup>
+                <optgroup label="legacy types">
+                    <option value="feature">feature</option>
+                    <option value="bug">bug</option>
+                    <option value="chore">chore</option>
+                    <option value="investigation">investigation</option>
+                </optgroup>
             </select>
             <select name="origin" class="border rounded px-2 py-1 text-xs">
                 <option value="">(no objective)</option>

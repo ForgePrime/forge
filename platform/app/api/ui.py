@@ -204,15 +204,53 @@ def index(request: Request, db: Session = Depends(get_db)):
         od = db.query(Decision).filter(Decision.project_id == p.id, Decision.status == "OPEN").count()
         of = db.query(Finding).filter(Finding.project_id == p.id, Finding.status == "OPEN").count()
         cost = db.query(sqlfunc.sum(LLMCall.cost_usd)).filter(LLMCall.project_id == p.id).scalar() or 0.0
+        # Currently-running: active orchestrate run + current task
+        from app.models.orchestrate_run import OrchestrateRun
+        active_run = db.query(OrchestrateRun).filter(
+            OrchestrateRun.project_id == p.id,
+            OrchestrateRun.status.in_(["RUNNING", "PENDING"]),
+        ).order_by(OrchestrateRun.id.desc()).first()
+        # Objective KR progress (simple: count KRs with status=ACHIEVED / total)
+        from app.models import KeyResult, Objective
+        obj_rows = db.query(Objective).filter(Objective.project_id == p.id).all()
+        kr_total = 0; kr_done = 0
+        for o in obj_rows:
+            for kr in o.key_results:
+                kr_total += 1
+                if kr.status == "ACHIEVED":
+                    kr_done += 1
+        # Budget cap (from config)
+        budget_cap = (p.config or {}).get("budget_usd_monthly") or (p.config or {}).get("budget_usd_per_run") or 0
         projects.append({
             "slug": p.slug, "name": p.name, "goal": p.goal,
             "stats": {
                 "total_tasks": len(tasks), "tasks": by_status,
                 "open_decisions": od, "open_findings": of,
+                "kr_total": kr_total, "kr_done": kr_done,
+                "objectives_total": len(obj_rows),
             },
-            "cost": cost,
+            "cost": cost, "budget_cap": float(budget_cap or 0),
+            "active_run": ({
+                "id": active_run.id,
+                "current_task": active_run.current_task_external_id,
+                "phase": active_run.current_phase,
+                "tasks_completed": active_run.tasks_completed,
+                "tasks_failed": active_run.tasks_failed,
+            } if active_run else None),
+            "autonomy_level": p.autonomy_level or "L1",
         })
-    return templates.TemplateResponse(request, "index.html", {"projects": projects, "project": None})
+    # B1 — org-wide trust-debt counters for the dashboard.
+    trust_debt = None
+    try:
+        from app.api.tier1 import _compute_trust_debt
+        if org_id is not None:
+            project_ids = [p.id for p in q.all()]
+            trust_debt = _compute_trust_debt(db, project_id_in=project_ids)
+    except Exception:
+        trust_debt = None
+    return templates.TemplateResponse(request, "index.html", {
+        "projects": projects, "project": None, "trust_debt": trust_debt,
+    })
 
 
 @router.post("/projects")
@@ -222,21 +260,14 @@ def ui_create_project(
     db: Session = Depends(get_db),
 ):
     body = ProjectCreate(slug=slug, name=name, goal=goal or None)
-    result = api_create_project(body, db)
-    # Assign to current org (Phase 1 — projekt tworzony przez user dostaje jego org)
-    org_id = _current_org_id(request)
-    if org_id:
-        proj = db.query(Project).filter(Project.slug == slug).first()
-        if proj and proj.organization_id is None:
-            proj.organization_id = org_id
-            db.commit()
+    api_create_project(body, request, db)
     return RedirectResponse(url=f"/ui/projects/{slug}", status_code=303)
 
 
 @router.get("/projects/{slug}", response_class=HTMLResponse)
 def project_view(
     slug: str, request: Request,
-    tab: str = Query("objectives"),
+    tab: str = Query("knowledge"),  # KB-first per v2 mockup; objectives require sources
     file: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
@@ -289,6 +320,28 @@ def project_view(
         cost_by_purpose.setdefault(c.purpose, 0)
         cost_by_purpose[c.purpose] += c.cost_usd or 0
 
+    from app.services.pipeline_state import get_pipeline_state
+    pipeline_state = get_pipeline_state(db, proj)
+
+    # Override default page_ctx with richer visible_data for AI sidebar.
+    from app.services.page_context import build_page_context as _bpc
+    request.state.page_ctx = _bpc(
+        request,
+        entity_type="project", entity_id=slug,
+        visible_data={
+            "source_docs": pipeline_state.get("source_docs", 0),
+            "objectives_total": pipeline_state.get("objectives_total", 0),
+            "tasks_total": pipeline_state.get("tasks_total", 0),
+            "tasks_done": pipeline_state.get("tasks_done", 0),
+            "tasks_failed": pipeline_state.get("tasks_failed", 0),
+            "findings_open": len(findings),
+            "decisions_open": len(decisions),
+            "active_tab": tab,
+            "project_name": proj.name,
+            "project_goal": proj.goal,
+        },
+    )
+
     # Workspace files tab — lazy load only when active
     files_data = {"files": [], "dirs": [], "truncated": False}
     current_file = None
@@ -299,6 +352,15 @@ def project_view(
         files_data = list_workspace_tree(ws)
         if file:
             current_file = read_file(ws, file)
+
+    # L1 — auto-draft docs (lazy load only when tab=docs)
+    docs_md = None
+    if tab == "docs":
+        from app.api.tier1 import docs_auto_draft as _docs
+        try:
+            docs_md = _docs(slug, request, db)["content_md"]
+        except Exception as e:
+            docs_md = f"_error generating docs: {e}_"
 
     return templates.TemplateResponse(request, "project.html", {
         "project": slug, "proj": proj,
@@ -313,6 +375,8 @@ def project_view(
         "truncated": files_data.get("truncated"),
         "current_file": current_file,
         "guidelines": guidelines,
+        "pipeline_state": pipeline_state,
+        "docs_md": docs_md,
     })
 
 
@@ -339,14 +403,308 @@ def public_share_view(token: str, request: Request, db: Session = Depends(get_db
             "project": proj.slug, "r": report,
             "shared_view": True,  # template can hide edit buttons if it checks
         })
-    # Project-scope share — minimal view
-    return HTMLResponse(content=f"<h1>Project: {proj.name}</h1><p>Shared read-only view (project scope).</p>")
+    # L4 — Project-scope share: business view (strip internals).
+    # Show: project name + goal + objectives list with KR + task counts.
+    # Hide: code, raw findings, prompts, costs, internal IDs beyond external_id.
+    from app.models import Objective, Task
+    objectives = db.query(Objective).filter(Objective.project_id == proj.id).order_by(Objective.id).all()
+    task_counts = {}
+    for t in db.query(Task).filter(Task.project_id == proj.id).all():
+        task_counts[t.status] = task_counts.get(t.status, 0) + 1
+    rows_html = []
+    for o in objectives:
+        kr_summary = []
+        for kr in o.key_results[:5]:
+            kr_summary.append(
+                f'<li><span class="text-slate-500 text-xs">KR-{kr.position}</span> '
+                f'<span>{_esc(kr.text[:140])}</span> '
+                f'<span class="pill {"bg-emerald-100 text-emerald-700" if kr.status=="ACHIEVED" else "bg-slate-100"} text-xs ml-2">{kr.status}</span></li>'
+            )
+        status_pill = "bg-emerald-100 text-emerald-700" if o.status == "ACHIEVED" else "bg-slate-100"
+        kr_body = "".join(kr_summary) or '<li class="text-slate-400">No KR defined</li>'
+        rows_html.append(
+            f'<div class="bg-white rounded-lg border border-slate-200 p-4 mb-3">'
+            f'  <div class="flex items-center justify-between mb-2">'
+            f'    <div class="font-bold">{_esc(o.title)}</div>'
+            f'    <span class="pill {status_pill} text-xs">{o.status}</span>'
+            f'  </div>'
+            f'  <p class="text-sm text-slate-600">{_esc((o.business_context or "")[:300])}</p>'
+            f'  <ul class="mt-2 space-y-1 text-sm">{kr_body}</ul>'
+            f'</div>'
+        )
+    body = f"""<!DOCTYPE html>
+<html><head>
+  <meta charset="UTF-8"><title>{_esc(proj.name)} — shared</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>.pill {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 500; }}</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+<div class="max-w-3xl mx-auto p-8">
+  <div class="mb-6">
+    <div class="text-xs uppercase tracking-wide text-slate-400 mb-1">Shared project summary (read-only)</div>
+    <h1 class="text-3xl font-bold">{_esc(proj.name)}</h1>
+    <p class="text-slate-600 mt-2">{_esc(proj.goal or 'No goal set.')}</p>
+  </div>
+  <div class="grid grid-cols-4 gap-3 mb-6 text-center">
+    <div class="bg-white rounded-lg p-3 border border-slate-200"><div class="text-xs text-slate-500">Objectives</div><div class="text-2xl font-bold">{len(objectives)}</div></div>
+    <div class="bg-white rounded-lg p-3 border border-slate-200"><div class="text-xs text-slate-500">Tasks done</div><div class="text-2xl font-bold text-emerald-700">{task_counts.get('DONE', 0)}</div></div>
+    <div class="bg-white rounded-lg p-3 border border-slate-200"><div class="text-xs text-slate-500">Tasks failed</div><div class="text-2xl font-bold text-rose-700">{task_counts.get('FAILED', 0)}</div></div>
+    <div class="bg-white rounded-lg p-3 border border-slate-200"><div class="text-xs text-slate-500">Tasks total</div><div class="text-2xl font-bold">{sum(task_counts.values())}</div></div>
+  </div>
+  <h2 class="text-lg font-bold mb-3">Objectives &amp; Key Results</h2>
+  {''.join(rows_html) or '<div class="text-slate-400">No objectives yet.</div>'}
+  <footer class="mt-10 text-xs text-slate-400 text-center">
+    This is a business summary view. Code, logs, internal costs and findings are hidden.
+    Share link expires {('at ' + sl.expires_at.strftime('%Y-%m-%d')) if sl.expires_at else 'never'}.
+  </footer>
+</div></body></html>"""
+    return HTMLResponse(content=body)
+
+
+def _esc(s) -> str:
+    if s is None:
+        return ""
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+@router.get("/projects/{slug}/objectives/{external_id}", response_class=HTMLResponse)
+def objective_detail_view(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
+    """Dedicated objective detail page (mockup 09)."""
+    proj = _assert_project_in_current_org(db, slug, request)
+    obj = db.query(Objective).filter(
+        Objective.project_id == proj.id, Objective.external_id == external_id
+    ).first()
+    if not obj:
+        raise HTTPException(404, f"objective {external_id} not found")
+
+    # Gather all tasks on this objective
+    obj_tasks = db.query(Task).filter(
+        Task.project_id == proj.id, Task.origin == external_id
+    ).order_by(Task.id).all()
+    task_ids = [t.id for t in obj_tasks]
+    obj_tasks_view = [{
+        "external_id": t.external_id, "name": t.name,
+        "type": t.type, "status": t.status,
+    } for t in obj_tasks]
+
+    # All AC across all tasks of this objective
+    all_ac_rows = []
+    if task_ids:
+        acs = db.query(AcceptanceCriterion).filter(
+            AcceptanceCriterion.task_id.in_(task_ids)
+        ).order_by(AcceptanceCriterion.task_id, AcceptanceCriterion.position).all()
+        id_to_ext = {t.id: t.external_id for t in obj_tasks}
+        for ac in acs:
+            all_ac_rows.append({
+                "task_ext": id_to_ext.get(ac.task_id, "?"),
+                "position": ac.position,
+                "text": ac.text,
+                "source_ref": ac.source_ref,
+                "verification": ac.verification,
+                "last_executed_at": ac.last_executed_at,
+            })
+    all_ac_unsourced = sum(1 for a in all_ac_rows if not a["source_ref"])
+    ac_manual_never_run = sum(1 for a in all_ac_rows
+                               if (a["verification"] or "manual") == "manual"
+                               and not a["last_executed_at"])
+
+    # Referenced sources (from task requirement_refs)
+    src_ids: set[str] = set()
+    for t in obj_tasks:
+        for ref in (t.requirement_refs or []):
+            src_ids.add(ref.split()[0].split("§")[0].strip())
+    referenced_sources = []
+    if src_ids:
+        referenced_sources = db.query(Knowledge).filter(
+            Knowledge.project_id == proj.id, Knowledge.external_id.in_(src_ids),
+        ).all()
+    referenced_sources_view = [{
+        "external_id": s.external_id, "title": s.title, "description": s.description,
+        "source_type": s.source_type,
+    } for s in referenced_sources]
+
+    # Open decisions linked to this objective (via Decision.objective_id if field exists, else filter none)
+    open_decisions = []
+    try:
+        open_decisions = db.query(Decision).filter(
+            Decision.project_id == proj.id, Decision.status == "OPEN"
+        ).limit(20).all()
+    except Exception:
+        open_decisions = []
+
+    # Reopen history count
+    from app.models import ObjectiveReopen
+    reopen_count = db.query(ObjectiveReopen).filter(
+        ObjectiveReopen.objective_id == obj.id
+    ).count()
+
+    scrutiny = {
+        "ac_unsourced": all_ac_unsourced,
+        "ac_manual_never_run": ac_manual_never_run,
+        "open_ambiguities": len(open_decisions),
+        "reopen_count": reopen_count,
+    }
+
+    # Update page_ctx for sidebar
+    from app.services.page_context import PageContext, CapabilityAction, Suggestion
+    request.state.page_ctx = PageContext(
+        page_id="objective-detail",
+        title=f"Objective: {external_id} in {slug}",
+        description="Objective-level lifecycle view with AC/scenarios/ambiguities and tasks.",
+        route=request.url.path,
+        entity_type="objective", entity_id=external_id,
+        visible_data={
+            "status": obj.status, "priority": obj.priority,
+            "tasks_count": len(obj_tasks),
+            "ac_unsourced": all_ac_unsourced,
+            "reopen_count": reopen_count,
+        },
+        actions=[
+            CapabilityAction(
+                id="plan_objective", label="Plan this objective",
+                description="Decompose into develop tasks.",
+                method="POST", endpoint=f"/ui/projects/{slug}/plan",
+                params=["objective_external_id*"], requires_role="editor",
+            ),
+            CapabilityAction(
+                id="reopen_objective", label="Re-open with notes",
+                description="Push ACHIEVED/ABANDONED back to ACTIVE with gap notes.",
+                method="POST",
+                endpoint=f"/api/v1/tier1/projects/{slug}/objectives/{external_id}/reopen",
+                params=["gap_notes*"], requires_role="editor",
+                available=obj.status in ("ACHIEVED", "ABANDONED"),
+            ),
+            CapabilityAction(
+                id="autonomy_optout", label="Toggle autonomy opt-out",
+                description="Keep this objective manual even at project L3+.",
+                method="PUT",
+                endpoint=f"/api/v1/tier1/projects/{slug}/objectives/{external_id}/autonomy-optout",
+                params=["autonomy_optout*"], requires_role="editor",
+            ),
+            CapabilityAction(
+                id="add_task", label="Add task on objective",
+                description="Create analysis/planning/develop/documentation task scoped to this objective.",
+                method="POST", endpoint=f"/ui/projects/{slug}/tasks/new",
+                params=["name*", "type", "instruction", "origin"], requires_role="editor",
+            ),
+        ],
+        suggestions=[
+            Suggestion("od-summarize", f"Summarise what this objective is missing."),
+            Suggestion("od-ambig", f"Which ambiguities on {external_id} are unresolved?"),
+            Suggestion("od-unsourced", "Which AC have no source attribution?"),
+            Suggestion("od-scenarios", "Generate 3 non-happy-path scenarios.",
+                       slash_command="/generate-scenarios @" + external_id),
+            Suggestion("od-trace", f"Reverse-trace each task of {external_id}.",
+                       slash_command="/reverse-trace @" + external_id),
+        ],
+    )
+
+    return templates.TemplateResponse(request, "objective_detail.html", {
+        "project": slug, "proj": proj, "o": obj,
+        "obj_tasks": obj_tasks_view,
+        "all_ac": all_ac_rows,
+        "all_ac_unsourced": all_ac_unsourced,
+        "referenced_sources": referenced_sources_view,
+        "open_decisions": open_decisions,
+        "scrutiny": scrutiny,
+        "deps_on": None,  # TODO: objective DAG not yet modeled
+        "blocks": None,
+    })
 
 
 @router.get("/projects/{slug}/tasks/{external_id}", response_class=HTMLResponse)
 def task_view(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
     # Reuse existing task_report API — returns full dict
     report = api_task_report(slug, external_id, db)
+
+    # Populate page_ctx.visible_data so the AI sidebar can read what's on screen.
+    tests = report.get("tests_executed_by_forge") or {}
+    diff = report.get("diff") or {}
+    challenge = report.get("challenge") or {}
+    findings = report.get("auto_extracted_findings") or []
+    decisions = report.get("auto_extracted_decisions") or []
+    ac = report.get("acceptance_criteria") or []
+    reqs = report.get("requirements_covered") or []
+    obj = report.get("objective") or {}
+
+    by_sev: dict[str, int] = {}
+    for f in findings:
+        s = (f.get("severity") or "").lower() or "n/a"
+        by_sev[s] = by_sev.get(s, 0) + 1
+
+    ac_unsourced = sum(1 for a in ac if not a.get("scenario_type") and not a.get("test_path"))
+    ac_manual_count = sum(1 for a in ac if (a.get("verification") or "manual") == "manual")
+
+    visible = {
+        "deliverable": {
+            "task_status": report.get("task", {}).get("status"),
+            "task_type": report.get("task", {}).get("type"),
+            "ceremony_level": report.get("task", {}).get("ceremony_level"),
+            "started_at": report.get("task", {}).get("started_at"),
+            "completed_at": report.get("task", {}).get("completed_at"),
+            "attempts": report.get("attempts"),
+        },
+        "tests": {
+            "language": tests.get("language"),
+            "collected": tests.get("collected"),
+            "passed": tests.get("passed"),
+            "failed": tests.get("failed"),
+            "all_pass": tests.get("all_pass"),
+            "duration_ms": tests.get("duration_ms"),
+            "per_ac_count": len(tests.get("per_ac") or []),
+        },
+        "requirements_covered": {
+            "count": len(reqs),
+            "ids": [r.get("ref") for r in reqs[:10]],
+        },
+        "objective": {
+            "external_id": obj.get("external_id"),
+            "title": (obj.get("title") or "")[:120],
+            "status": obj.get("status"),
+        },
+        "challenger": {
+            "verdict": challenge.get("verdict"),
+            "claims_verified": challenge.get("claims_verified"),
+            "claims_refuted": challenge.get("claims_refuted"),
+            "model_used": challenge.get("model_used"),
+            "summary": (challenge.get("summary") or "")[:200],
+        },
+        "findings_extracted": {
+            "total": len(findings),
+            "by_severity": by_sev,
+            "ids": [f.get("external_id") for f in findings[:10]],
+        },
+        "decisions_extracted": {
+            "total": len(decisions),
+            "ids": [d.get("external_id") for d in decisions[:10]],
+        },
+        "acceptance_criteria": {
+            "total": len(ac),
+            "manual_count": ac_manual_count,
+            "unsourced_count": ac_unsourced,
+        },
+        "diff": {
+            "from_sha": (diff.get("from_sha") or "")[:8] if diff.get("from_sha") else None,
+            "to_sha": (diff.get("to_sha") or "")[:8] if diff.get("to_sha") else None,
+            "files_changed": len(diff.get("files") or []) if diff.get("files") else 0,
+            "lines_added": diff.get("lines_added"),
+            "lines_removed": diff.get("lines_removed"),
+        },
+        "cost": {
+            "total_usd": report.get("cost_usd"),
+            "by_purpose": report.get("cost_by_purpose"),
+        },
+        "not_executed_claims_count": len(report.get("not_executed_claims") or []),
+    }
+
+    from app.services.page_context import build_page_context as _bpc
+    request.state.page_ctx = _bpc(
+        request,
+        entity_type="task", entity_id=external_id,
+        visible_data=visible,
+    )
+
     return templates.TemplateResponse(request, "task_report.html", {
         "project": slug, "r": report,
     })
@@ -758,7 +1116,7 @@ def ui_add_objective(
         title=title, business_context=business_context,
         priority=priority,
         scopes=[s.strip() for s in scopes.split(",") if s.strip()],
-    ), db)
+    ), request, db)
     return RedirectResponse(url=f"/ui/projects/{slug}?tab=objectives", status_code=303)
 
 
@@ -784,7 +1142,7 @@ def ui_add_task(
         scopes=[s.strip() for s in scopes.split(",") if s.strip()],
         completes_kr_ids=[s.strip() for s in completes_kr_ids.split(",") if s.strip()] or None,
         requirement_refs=[s.strip() for s in requirement_refs.split(";") if s.strip()] or None,
-    ), db)
+    ), request, db)
     return RedirectResponse(url=f"/ui/projects/{slug}?tab=tasks", status_code=303)
 
 
@@ -864,7 +1222,7 @@ def ui_ac_add(
     result = api_add_ac(slug, external_id, ACCreate(
         text=text, scenario_type=scenario_type, verification=verification,
         test_path=test_path or None, command=command or None,
-    ), db)
+    ), request, db)
     # Render newly created AC row (read mode)
     return templates.TemplateResponse(request, "_ac_row.html", {
         "ac": {
@@ -891,7 +1249,7 @@ def ui_ac_patch(
     api_update_ac(slug, external_id, position, ACUpdate(
         text=text, scenario_type=scenario_type, verification=verification,
         test_path=test_path or None, command=command or None,
-    ), db)
+    ), request, db)
     return templates.TemplateResponse(request, "_ac_row.html", {
         "ac": {
             "position": position, "text": text,
@@ -909,7 +1267,7 @@ def ui_ac_delete(
 ):
     _assert_project_in_current_org(db, slug, request)
     from app.api.projects import delete_ac as api_delete_ac
-    api_delete_ac(slug, external_id, position, db)
+    api_delete_ac(slug, external_id, position, request, db)
     return HTMLResponse(content="", status_code=200)  # HTMX hx-swap="delete" removes element
 
 
@@ -928,7 +1286,7 @@ def ui_add_guideline(
     add_guideline_single(slug, GuidelineCreate(
         external_id="", title=title, scope=scope or "general",
         content=content, rationale=rationale or None, weight=weight,
-    ), db)
+    ), request, db)
     return HTMLResponse(content="ok", status_code=200)
 
 
@@ -966,7 +1324,7 @@ def ui_guideline_patch(
     from app.api.projects import update_guideline, GuidelineUpdate
     update_guideline(slug, external_id, GuidelineUpdate(
         title=title, content=content, weight=weight, scope=scope, rationale=rationale or None,
-    ), db)
+    ), request, db)
     from app.models import Guideline
     proj = db.query(Project).filter(Project.slug == slug).first()
     g = db.query(Guideline).filter(
@@ -986,7 +1344,7 @@ def ui_guideline_patch(
 def ui_guideline_delete(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
     _assert_project_in_current_org(db, slug, request)
     from app.api.projects import delete_guideline as api_del
-    api_del(slug, external_id, db)
+    api_del(slug, external_id, request, db)
     return HTMLResponse(content="", status_code=200)
 
 
@@ -994,7 +1352,7 @@ def ui_guideline_delete(slug: str, external_id: str, request: Request, db: Sessi
 def ui_list_comments(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
     _assert_project_in_current_org(db, slug, request)
     from app.api.projects import list_comments
-    cmts = list_comments(slug, external_id, db)
+    cmts = list_comments(slug, external_id, request, db)
     if not cmts:
         return HTMLResponse(content='<li class="text-slate-400 italic">Brak komentarzy</li>')
     html = ""

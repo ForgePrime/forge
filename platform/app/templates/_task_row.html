@@ -29,7 +29,22 @@
     </form>
 </td>
 {% else %}
-    <td class="px-3 py-2 mono"><a href="/ui/projects/{{project}}/tasks/{{t.external_id}}" class="text-blue-600 hover:underline">{{t.external_id}}</a></td>
+    <td class="px-3 py-2 mono">
+        {# D1 — type badge color-codes the iterative-flow lane #}
+        {% set t_type = t.type or 'develop' %}
+        {% set type_styles = {
+            'analysis':      'bg-blue-100 text-blue-700',
+            'planning':      'bg-purple-100 text-purple-700',
+            'develop':       'bg-emerald-100 text-emerald-700',
+            'documentation': 'bg-slate-200 text-slate-800',
+            'feature':       'bg-emerald-100 text-emerald-700',
+            'bug':           'bg-rose-100 text-rose-700',
+            'chore':         'bg-slate-100 text-slate-600',
+            'investigation': 'bg-amber-100 text-amber-700',
+        } %}
+        <span class="pill {{ type_styles.get(t_type, 'bg-slate-100') }} text-xs mr-1" title="task type">{{ t_type[:4] }}</span>
+        <a href="/ui/projects/{{project}}/tasks/{{t.external_id}}" class="text-blue-600 hover:underline">{{t.external_id}}</a>
+    </td>
     <td class="px-3 py-2">{{t.name}}</td>
     <td class="px-3 py-2 mono text-xs text-slate-500">{{t.origin or '—'}}</td>
     <td class="px-3 py-2">

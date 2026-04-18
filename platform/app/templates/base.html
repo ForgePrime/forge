@@ -8,18 +8,85 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script>
-      // Inject CSRF token into all HTMX requests (reads cookie "forge_csrf")
-      document.body && document.body.addEventListener('htmx:configRequest', function(e) {
-        const m = document.querySelector('meta[name="csrf-token"]');
-        const token = (m && m.getAttribute('content')) || '';
-        if (token) e.detail.headers['X-CSRF-Token'] = token;
-      });
+      function forgeToast(msg, kind) {
+        kind = kind || 'info';
+        const c = document.getElementById('forge-toasts');
+        if (!c) return;
+        const colors = {
+          error:   'bg-rose-600',
+          success: 'bg-emerald-600',
+          warning: 'bg-amber-600',
+          info:    'bg-slate-800',
+        };
+        const el = document.createElement('div');
+        el.className = 'rounded shadow-lg px-4 py-3 text-sm text-white mb-2 ' + (colors[kind] || colors.info);
+        el.style.maxWidth = '480px';
+        el.textContent = msg;
+        c.appendChild(el);
+        setTimeout(function(){ el.style.transition = 'opacity .3s'; el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 400); }, 5000);
+      }
       document.addEventListener('DOMContentLoaded', function() {
         document.body.addEventListener('htmx:configRequest', function(e) {
           const m = document.querySelector('meta[name="csrf-token"]');
           const token = (m && m.getAttribute('content')) || '';
           if (token) e.detail.headers['X-CSRF-Token'] = token;
         });
+        document.body.addEventListener('htmx:responseError', function(e) {
+          const xhr = e.detail.xhr;
+          let msg = 'Request failed (' + xhr.status + ')';
+          try {
+            const body = JSON.parse(xhr.responseText || '{}');
+            if (body.detail) msg = body.detail;
+          } catch(_) {
+            if (xhr.responseText && xhr.responseText.length < 200) msg = xhr.responseText;
+          }
+          forgeToast(msg, 'error');
+        });
+        document.body.addEventListener('htmx:sendError', function() {
+          forgeToast('Network error — is the server running?', 'error');
+        });
+
+        // Global loading overlay for LLM-driven long operations (analyze, plan)
+        const overlay = document.createElement('div');
+        overlay.id = 'forge-loading';
+        overlay.className = 'fixed inset-0 bg-black/40 z-40 items-center justify-center hidden';
+        overlay.style.display = 'none';
+        overlay.innerHTML = '<div class="bg-white rounded-lg shadow-xl p-6 max-w-md text-center">' +
+          '<div class="inline-block w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>' +
+          '<div id="forge-loading-msg" class="font-semibold text-slate-800">Working...</div>' +
+          '<div id="forge-loading-sub" class="text-xs text-slate-500 mt-1">This may take 30-90 seconds.</div>' +
+          '<div id="forge-loading-timer" class="text-xs text-slate-400 mt-2 mono">0s</div>' +
+          '</div>';
+        document.body.appendChild(overlay);
+
+        let timerHandle = null;
+        function showLoading(msg, sub) {
+          document.getElementById('forge-loading-msg').textContent = msg || 'Working...';
+          document.getElementById('forge-loading-sub').textContent = sub || 'This may take 30-90 seconds.';
+          const t0 = Date.now();
+          document.getElementById('forge-loading-timer').textContent = '0s';
+          if (timerHandle) clearInterval(timerHandle);
+          timerHandle = setInterval(function(){
+            document.getElementById('forge-loading-timer').textContent =
+              Math.round((Date.now()-t0)/1000) + 's';
+          }, 500);
+          overlay.style.display = 'flex';
+        }
+        function hideLoading() {
+          overlay.style.display = 'none';
+          if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+        }
+
+        // Match slow-endpoint requests and show loading overlay
+        document.body.addEventListener('htmx:beforeRequest', function(e) {
+          const url = (e.detail.requestConfig && e.detail.requestConfig.path) || '';
+          if (/\/analyze$/.test(url)) showLoading('Analyzing SOW...', 'Claude is extracting objectives and KRs. Typically 30-90s.');
+          else if (/\/plan$/.test(url)) showLoading('Planning tasks...', 'Claude is decomposing the objective into tasks. Typically 30-90s.');
+          else if (/\/ingest$/.test(url)) showLoading('Uploading...', 'Registering documents.');
+        });
+        document.body.addEventListener('htmx:afterRequest', hideLoading);
+        document.body.addEventListener('htmx:responseError', hideLoading);
+        document.body.addEventListener('htmx:sendError', hideLoading);
       });
     </script>
     <style>
@@ -28,6 +95,18 @@
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
+<div id="forge-toasts" class="fixed top-4 right-4 z-50 flex flex-col items-end"></div>
+<div id="forge-shell" class="flex min-h-screen w-screen">
+<div id="forge-main-col" class="flex-1 min-w-0">
+
+{# Page context injected for AI sidebar.  Empty on anonymous pages. #}
+{% if request.state and request.state.page_ctx %}
+<script id="forge-page-ctx" type="application/json">{{ request.state.page_ctx.to_dict() | tojson | safe }}</script>
+{% else %}
+<script id="forge-page-ctx" type="application/json">{"page_id":"unknown","title":"Forge","route":"{{ request.url.path }}","entity_type":null,"entity_id":null,"visible_data":{},"actions":[],"suggestions":[]}</script>
+{% endif %}
+
+{# AI sidebar is included inside #forge-shell at the end (after main col) so it sits in flex layout. #}
 <nav class="bg-slate-900 text-white px-6 py-3 flex items-center justify-between">
     <div class="flex items-center gap-6">
         <a href="/ui/" class="font-semibold text-lg">⚒ Forge</a>
@@ -48,5 +127,251 @@
 <main class="max-w-7xl mx-auto px-6 py-6">
     {% block content %}{% endblock %}
 </main>
+</div>{# /#forge-main-col #}
+{% if request.state and request.state.user %}
+{% include "_ai_sidebar.html" %}
+{% endif %}
+</div>{# /#forge-shell #}
+
+<script>
+/* ============== Forge AI sidebar controller ============== */
+(function(){
+  const ctxEl = document.getElementById('forge-page-ctx');
+  if (!ctxEl) return;
+  let pageCtx;
+  try { pageCtx = JSON.parse(ctxEl.textContent || '{}'); } catch(_) { pageCtx = {}; }
+  window.forgePageCtx = pageCtx;
+
+  const sidebar = document.getElementById('forge-ai-sidebar');
+  const toggle  = document.getElementById('forge-ai-toggle');
+  if (!sidebar || !toggle) return;
+
+  const $ = (id) => document.getElementById(id);
+  const qs = (sel, root) => (root || document).querySelector(sel);
+
+  // Populate context strip
+  function renderContext() {
+    $('forge-ai-page-id').textContent = '· ' + (pageCtx.page_id || 'unknown');
+    $('forge-ai-page-title').textContent = pageCtx.title || '';
+    if (pageCtx.entity_id) {
+      $('forge-ai-entity-row').classList.remove('hidden');
+      $('forge-ai-entity').textContent = (pageCtx.entity_type || '?') + ': ' + pageCtx.entity_id;
+    }
+    const vd = pageCtx.visible_data || {};
+    const pairs = Object.keys(vd).map(k => k + ': ' + JSON.stringify(vd[k]));
+    $('forge-ai-visible-data').textContent = pairs.length ? pairs.join(' · ') : '(no visible data)';
+
+    const actions = pageCtx.actions || [];
+    $('forge-ai-actions-count').textContent = '(' + actions.length + ')';
+    const actBox = $('forge-ai-actions');
+    actBox.innerHTML = '';
+    actions.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'flex items-start gap-2 py-1 ' + (a.available ? '' : 'opacity-50');
+      const icon = a.available ? '<span class="text-emerald-600">✓</span>' : '<span class="text-rose-600">✗</span>';
+      row.innerHTML = icon + '<div class="flex-1"><b>' + escapeHtml(a.label) + '</b> · <span class="mono text-slate-500">' + escapeHtml(a.method) + ' ' + escapeHtml(a.endpoint) + '</span><div class="text-slate-500">' + escapeHtml(a.description) + (a.unavailable_reason ? ' <span class="text-rose-600">· ' + escapeHtml(a.unavailable_reason) + '</span>' : '') + '</div></div>';
+      actBox.appendChild(row);
+    });
+
+    const sugg = pageCtx.suggestions || [];
+    const sBox = $('forge-ai-suggestions');
+    sBox.innerHTML = '';
+    sugg.forEach(s => {
+      const b = document.createElement('button');
+      b.className = 'bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-xs px-2.5 py-1.5 rounded';
+      b.textContent = s.label;
+      b.addEventListener('click', () => {
+        const input = $('forge-ai-input');
+        input.value = s.slash_command || s.label;
+        input.focus();
+      });
+      sBox.appendChild(b);
+    });
+    if (!sugg.length) sBox.innerHTML = '<span class="text-xs text-slate-400">No suggestions for this page yet.</span>';
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Open/close + persist + push content (no overlay)
+  const STATE_KEY = 'forge-ai-sidebar-state';
+  const mainCol = document.getElementById('forge-main-col');
+  function setOpen(isOpen, focus) {
+    if (isOpen) {
+      sidebar.style.width = '440px';
+      sidebar.dataset.state = 'open';
+      toggle.style.display = 'none';
+      try { localStorage.setItem(STATE_KEY, 'open'); } catch(_) {}
+      if (focus) $('forge-ai-input').focus();
+    } else {
+      sidebar.style.width = '0';
+      sidebar.dataset.state = 'closed';
+      toggle.style.display = '';
+      try { localStorage.setItem(STATE_KEY, 'closed'); } catch(_) {}
+    }
+    // Force layout reflow so the inner <main class="max-w-7xl mx-auto"> recenters NOW,
+    // not on the next click. Dispatch resize so any responsive code (chart libs, htmx)
+    // also re-measures.
+    requestAnimationFrame(() => {
+      void (mainCol && mainCol.offsetHeight);
+      window.dispatchEvent(new Event('resize'));
+    });
+  }
+  function open() { setOpen(true, true); }
+  function close() { setOpen(false); }
+  toggle.addEventListener('click', open);
+  $('forge-ai-close').addEventListener('click', close);
+
+  // Restore state from localStorage on every page load (sidebar persists across nav).
+  try {
+    const saved = localStorage.getItem(STATE_KEY);
+    if (saved === 'open') setOpen(true);
+    else setOpen(false);
+  } catch(_) { setOpen(false); }
+
+  // Ctrl+/ or Cmd+/ to toggle
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+      e.preventDefault();
+      const isOpen = sidebar.dataset.state === 'open';
+      if (isOpen) close(); else open();
+    }
+  });
+
+  // Clear
+  $('forge-ai-clear').addEventListener('click', () => {
+    $('forge-ai-conversation').innerHTML = '<div class="text-xs text-slate-400 text-center py-4" id="forge-ai-empty">No messages yet. Try a suggestion above or type a question.</div>';
+  });
+
+  // Slash command catalogue (client-side for dropdown; backend validates)
+  const SLASH_COMMANDS = [
+    { cmd: '/help', desc: 'List available slash commands.' },
+    { cmd: '/find-ambiguity', desc: 'Scan KB + current entity for ambiguities.' },
+    { cmd: '/generate-scenarios', desc: 'Create non-happy-path test scenarios.' },
+    { cmd: '/reverse-trace', desc: '@entity — trace decision provenance.' },
+    { cmd: '/cost-drill', desc: '@task — cost forensic breakdown.' },
+    { cmd: '/list-not-executed', desc: 'Show AC/scenarios marked not-executed.' },
+  ];
+
+  // Input behaviour: slash + @mention dropdowns
+  const input = $('forge-ai-input');
+  const slashBox = $('forge-ai-slash');
+  const mentionBox = $('forge-ai-mentions');
+  function hideDropdowns(){ slashBox.classList.add('hidden'); mentionBox.classList.add('hidden'); }
+
+  input.addEventListener('input', () => {
+    const val = input.value;
+    if (val.startsWith('/')) {
+      const q = val.slice(1).toLowerCase();
+      const matches = SLASH_COMMANDS.filter(c => c.cmd.slice(1).startsWith(q));
+      slashBox.innerHTML = matches.map(c => '<div class="p-2 hover:bg-slate-100 cursor-pointer" data-cmd="' + escapeHtml(c.cmd) + '"><span class="mono text-indigo-600">' + escapeHtml(c.cmd) + '</span> <span class="text-slate-500">' + escapeHtml(c.desc) + '</span></div>').join('') || '<div class="p-2 text-slate-400">no matching commands</div>';
+      slashBox.classList.remove('hidden');
+      mentionBox.classList.add('hidden');
+    } else if (/@\S*$/.test(val)) {
+      const match = val.match(/@(\S*)$/);
+      const q = (match && match[1]) || '';
+      fetch('/api/v1/ai/mentions?q=' + encodeURIComponent(q) + '&project=' + encodeURIComponent(pageCtx.entity_type === 'project' ? pageCtx.entity_id : ''), { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : { items: [] })
+        .then(data => {
+          const items = data.items || [];
+          mentionBox.innerHTML = items.map(it => '<div class="p-2 hover:bg-slate-100 cursor-pointer" data-mention="' + escapeHtml(it.mention) + '"><b>' + escapeHtml(it.mention) + '</b> <span class="text-slate-500">· ' + escapeHtml(it.label) + '</span></div>').join('') || '<div class="p-2 text-slate-400">no matching entities</div>';
+          mentionBox.classList.remove('hidden');
+          slashBox.classList.add('hidden');
+        })
+        .catch(() => hideDropdowns());
+    } else {
+      hideDropdowns();
+    }
+  });
+  slashBox.addEventListener('click', e => {
+    const t = e.target.closest('[data-cmd]'); if (!t) return;
+    input.value = t.dataset.cmd + ' ';
+    hideDropdowns(); input.focus();
+  });
+  mentionBox.addEventListener('click', e => {
+    const t = e.target.closest('[data-mention]'); if (!t) return;
+    input.value = input.value.replace(/@\S*$/, t.dataset.mention + ' ');
+    hideDropdowns(); input.focus();
+  });
+
+  // Send message
+  async function sendMessage() {
+    const msg = input.value.trim();
+    if (!msg) return;
+    const empty = $('forge-ai-empty'); if (empty) empty.remove();
+    appendMessage('user', msg);
+    input.value = ''; hideDropdowns();
+    const thinking = appendMessage('ai', '<em class="text-slate-500">…thinking…</em>');
+    const csrf = getCookie('forge_csrf') || '';
+    try {
+      const r = await fetch('/api/v1/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          message: msg,
+          page_ctx: pageCtx,
+          plan_first: $('forge-ai-plan-first').checked,
+        }),
+      });
+      const data = await r.json().catch(() => ({ error: 'Invalid JSON from server' }));
+      thinking.remove();
+      if (!r.ok) {
+        appendMessage('ai', '<span class="text-rose-600"><b>Error ' + r.status + ':</b> ' + escapeHtml(data.detail || data.error || 'Request failed') + '</span>');
+        return;
+      }
+      renderAIResponse(data);
+      if (typeof data.tokens_injected === 'number') {
+        $('forge-ai-tokens').textContent = data.tokens_injected + ' tokens';
+      }
+    } catch (e) {
+      thinking.remove();
+      appendMessage('ai', '<span class="text-rose-600">Network error: ' + escapeHtml(String(e)) + '</span>');
+    }
+  }
+  $('forge-ai-send').addEventListener('click', sendMessage);
+  input.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); sendMessage(); }
+  });
+
+  function appendMessage(role, html) {
+    const conv = $('forge-ai-conversation');
+    const wrap = document.createElement('div');
+    wrap.className = 'flex ' + (role === 'user' ? 'justify-end' : 'justify-start');
+    wrap.innerHTML = '<div class="' + (role === 'user' ? 'bg-indigo-50 border border-indigo-200' : 'bg-white border border-slate-200') + ' rounded-lg px-3 py-2 max-w-[92%]"><div class="text-xs text-slate-500 mb-1">' + (role === 'user' ? 'you' : '🤖 forge') + '</div><div>' + html + '</div></div>';
+    conv.appendChild(wrap);
+    conv.scrollTop = conv.scrollHeight;
+    return wrap;
+  }
+
+  function renderAIResponse(data) {
+    const parts = [];
+    if (data.answer) parts.push('<div class="prose prose-sm text-sm mb-2">' + escapeHtml(data.answer).replace(/\n/g, '<br>') + '</div>');
+    if (data.tool_calls && data.tool_calls.length) {
+      const tc = data.tool_calls.map(c => '<details class="text-xs bg-slate-50 rounded p-2 mb-1"><summary class="cursor-pointer font-semibold">🔧 ' + escapeHtml(c.name) + '</summary><pre class="mono text-slate-600 mt-1 whitespace-pre-wrap">' + escapeHtml(JSON.stringify(c.result || c.args, null, 2)) + '</pre></details>').join('');
+      parts.push(tc);
+    }
+    if (data.not_checked && data.not_checked.length) {
+      parts.push('<div class="mt-2 bg-rose-50 border-l-2 border-rose-400 rounded p-2 text-xs text-slate-700"><div class="font-bold text-rose-800 mb-1">⚠ What I did NOT check:</div><ul class="list-disc pl-4 space-y-0.5">' + data.not_checked.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul></div>');
+    } else {
+      parts.push('<div class="mt-2 text-xs text-amber-700">⚠ scope-limit disclosure missing from response</div>');
+    }
+    if (typeof data.cost_usd === 'number') {
+      parts.push('<div class="text-xs text-slate-500 mt-2">cost $' + data.cost_usd.toFixed(4) + ' · ' + (data.duration_ms || 0) + 'ms</div>');
+    }
+    appendMessage('ai', parts.join('')) ;
+  }
+
+  function getCookie(name) {
+    const v = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return v ? v[2] : '';
+  }
+
+  renderContext();
+})();
+</script>
+
 </body>
 </html>

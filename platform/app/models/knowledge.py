@@ -40,3 +40,8 @@ class Knowledge(Base, TimestampMixin):
     source_type: Mapped[str | None] = mapped_column(String(30))
     source_ref: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str] = mapped_column(String(50), nullable=False, server_default="system")
+    # C1 — user-written context that helps Claude know what to focus on / ignore
+    description: Mapped[str | None] = mapped_column(Text)
+    focus_hint: Mapped[str | None] = mapped_column(Text)
+    # C1 — for source_type='url': original URL; for 'folder': absolute path
+    target_url: Mapped[str | None] = mapped_column(Text)

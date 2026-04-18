@@ -1,11 +1,12 @@
 """Project & Task CRUD — minimum endpoints to make MVP usable."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.database import get_db
 from app.models import Project, Task, AcceptanceCriterion, Guideline, Decision, Finding, AuditLog, Knowledge, Objective, KeyResult
+from app.services.tenant import assert_project_in_org, current_org_id
 
 router = APIRouter(prefix="/api/v1", tags=["projects"])
 
@@ -31,7 +32,11 @@ class TaskCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
     instruction: str | None = None
-    type: str = Field("feature", pattern="^(feature|bug|chore|investigation)$")
+    type: str = Field(
+        "feature",
+        # D1 — accept the four iterative-flow types in addition to the legacy four.
+        pattern="^(feature|bug|chore|investigation|analysis|planning|develop|documentation)$",
+    )
     scopes: list[str] = Field(default_factory=list)
     origin: str | None = None
     produces: dict | None = None
@@ -146,7 +151,11 @@ class TaskCreateSingle(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     instruction: str | None = None
     description: str | None = None
-    type: str = Field("feature", pattern="^(feature|bug|chore|investigation)$")
+    type: str = Field(
+        "feature",
+        # D1 — accept the four iterative-flow types in addition to the legacy four.
+        pattern="^(feature|bug|chore|investigation|analysis|planning|develop|documentation)$",
+    )
     scopes: list[str] = Field(default_factory=list)
     origin: str | None = None
     requirement_refs: list[str] | None = None
@@ -156,11 +165,15 @@ class TaskCreateSingle(BaseModel):
 # --- Project endpoints ---
 
 @router.post("/projects")
-def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
+def create_project(body: ProjectCreate, request: Request, db: Session = Depends(get_db)):
+    org_id = current_org_id(request)
+    if org_id is None:
+        raise HTTPException(403, "No organization context")
+    # Slugs are globally unique (DB constraint) — reject if taken in ANY org
     existing = db.query(Project).filter(Project.slug == body.slug).first()
     if existing:
         raise HTTPException(409, f"Project '{body.slug}' already exists")
-    proj = Project(slug=body.slug, name=body.name, goal=body.goal)
+    proj = Project(slug=body.slug, name=body.name, goal=body.goal, organization_id=org_id)
     db.add(proj)
     db.commit()
     db.refresh(proj)
@@ -168,16 +181,17 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/projects")
-def list_projects(db: Session = Depends(get_db)):
-    projects = db.query(Project).all()
+def list_projects(request: Request, db: Session = Depends(get_db)):
+    org_id = current_org_id(request)
+    if org_id is None:
+        return []
+    projects = db.query(Project).filter(Project.organization_id == org_id).all()
     return [{"id": p.id, "slug": p.slug, "name": p.name, "goal": p.goal} for p in projects]
 
 
 @router.get("/projects/{slug}/status")
-def project_status(slug: str, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404, f"Project '{slug}' not found")
+def project_status(slug: str, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
 
     tasks = db.query(Task).filter(Task.project_id == proj.id).all()
     by_status = {}
@@ -204,10 +218,8 @@ def project_status(slug: str, db: Session = Depends(get_db)):
 # --- Task endpoints ---
 
 @router.post("/projects/{slug}/tasks")
-def create_tasks(slug: str, tasks: list[TaskCreate], db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404, f"Project '{slug}' not found")
+def create_tasks(slug: str, tasks: list[TaskCreate], request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
 
     created = []
     for t_data in tasks:
@@ -267,10 +279,8 @@ def create_tasks(slug: str, tasks: list[TaskCreate], db: Session = Depends(get_d
 
 
 @router.get("/projects/{slug}/tasks")
-def list_tasks(slug: str, status: str | None = None, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def list_tasks(slug: str, request: Request, status: str | None = None, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     q = db.query(Task).filter(Task.project_id == proj.id)
     if status:
         q = q.filter(Task.status == status)
@@ -291,10 +301,8 @@ def list_tasks(slug: str, status: str | None = None, db: Session = Depends(get_d
 
 
 @router.get("/projects/{slug}/tasks/{external_id}")
-def get_task(slug: str, external_id: str, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def get_task(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(Task.project_id == proj.id, Task.external_id == external_id).first()
     if not task:
         raise HTTPException(404)
@@ -337,10 +345,8 @@ def get_task(slug: str, external_id: str, db: Session = Depends(get_db)):
 # --- Guideline endpoints ---
 
 @router.post("/projects/{slug}/guidelines")
-def create_guidelines(slug: str, guidelines: list[GuidelineCreate], db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def create_guidelines(slug: str, guidelines: list[GuidelineCreate], request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     created = []
     for g in guidelines:
         db.add(Guideline(
@@ -359,10 +365,8 @@ def create_guidelines(slug: str, guidelines: list[GuidelineCreate], db: Session 
 
 
 @router.get("/projects/{slug}/guidelines")
-def list_guidelines(slug: str, weight: str | None = None, scope: str | None = None, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def list_guidelines(slug: str, request: Request, weight: str | None = None, scope: str | None = None, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     q = db.query(Guideline).filter(
         (Guideline.project_id == proj.id) | (Guideline.project_id.is_(None)),
         Guideline.status == "ACTIVE",
@@ -389,10 +393,8 @@ def list_guidelines(slug: str, weight: str | None = None, scope: str | None = No
 # --- Knowledge endpoints ---
 
 @router.post("/projects/{slug}/knowledge")
-def create_knowledge(slug: str, items: list[KnowledgeCreate], db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def create_knowledge(slug: str, items: list[KnowledgeCreate], request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     created = []
     for k in items:
         db.add(Knowledge(
@@ -406,11 +408,9 @@ def create_knowledge(slug: str, items: list[KnowledgeCreate], db: Session = Depe
 
 
 @router.get("/projects/{slug}/knowledge")
-def list_knowledge(slug: str, category: str | None = None, status: str | None = None,
+def list_knowledge(slug: str, request: Request, category: str | None = None, status: str | None = None,
                    db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+    proj = assert_project_in_org(db, slug, request)
     q = db.query(Knowledge).filter(Knowledge.project_id == proj.id)
     if category:
         q = q.filter(Knowledge.category == category)
@@ -427,10 +427,8 @@ def list_knowledge(slug: str, category: str | None = None, status: str | None = 
 # --- Decision endpoints ---
 
 @router.post("/projects/{slug}/decisions")
-def create_decisions(slug: str, decisions: list[DecisionCreate], db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def create_decisions(slug: str, decisions: list[DecisionCreate], request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     created = []
     for d in decisions:
         db.add(Decision(
@@ -450,10 +448,8 @@ def create_decisions(slug: str, decisions: list[DecisionCreate], db: Session = D
 
 
 @router.get("/projects/{slug}/decisions")
-def list_decisions(slug: str, status: str | None = None, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def list_decisions(slug: str, request: Request, status: str | None = None, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     q = db.query(Decision).filter(Decision.project_id == proj.id)
     if status:
         q = q.filter(Decision.status == status)
@@ -485,10 +481,8 @@ def resolve_decision(decision_id: int, body: dict, db: Session = Depends(get_db)
 # --- Finding triage ---
 
 @router.get("/projects/{slug}/findings")
-def list_findings(slug: str, status: str | None = None, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def list_findings(slug: str, request: Request, status: str | None = None, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     q = db.query(Finding).filter(Finding.project_id == proj.id)
     if status:
         q = q.filter(Finding.status == status)
@@ -554,10 +548,8 @@ def triage_finding(finding_id: int, body: FindingTriageRequest, db: Session = De
 # --- Execution detail (read) ---
 
 @router.get("/projects/{slug}/executions")
-def list_executions(slug: str, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def list_executions(slug: str, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     from app.models import Execution
     execs = db.query(Execution).join(Task).filter(Task.project_id == proj.id).order_by(Execution.id.desc()).all()
     return [
@@ -612,10 +604,8 @@ def get_execution(execution_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/projects/{slug}/objectives")
-def create_objectives(slug: str, objectives: list[ObjectiveCreate], db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def create_objectives(slug: str, objectives: list[ObjectiveCreate], request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     created = []
     for o in objectives:
         if not o.key_results:
@@ -647,10 +637,8 @@ def create_objectives(slug: str, objectives: list[ObjectiveCreate], db: Session 
 
 
 @router.get("/projects/{slug}/objectives")
-def list_objectives(slug: str, status: str | None = None, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def list_objectives(slug: str, request: Request, status: str | None = None, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     q = db.query(Objective).filter(Objective.project_id == proj.id)
     if status:
         q = q.filter(Objective.status == status)
@@ -681,11 +669,9 @@ def list_objectives(slug: str, status: str | None = None, db: Session = Depends(
 
 
 @router.post("/projects/{slug}/tasks/{external_id}/generate-scenarios")
-def generate_test_scenarios(slug: str, external_id: str, db: Session = Depends(get_db)):
+def generate_test_scenarios(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
     from app.services.scenario_generator import generate_scenarios
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == external_id
     ).first()
@@ -724,10 +710,8 @@ def update_kr(obj_id: int, kr_position: int, body: KRUpdate, db: Session = Depen
 
 
 @router.patch("/projects/{slug}/objectives/{external_id}")
-def update_objective(slug: str, external_id: str, body: ObjectiveUpdate, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def update_objective(slug: str, external_id: str, body: ObjectiveUpdate, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     obj = db.query(Objective).filter(
         Objective.project_id == proj.id, Objective.external_id == external_id
     ).first()
@@ -746,10 +730,8 @@ def update_objective(slug: str, external_id: str, body: ObjectiveUpdate, db: Ses
 
 
 @router.patch("/projects/{slug}/tasks/{external_id}")
-def update_task(slug: str, external_id: str, body: TaskUpdate, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def update_task(slug: str, external_id: str, body: TaskUpdate, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == external_id
     ).order_by(Task.id.desc()).first()
@@ -789,10 +771,8 @@ def _next_task_ac_position(db: Session, task_id: int) -> int:
 
 
 @router.post("/projects/{slug}/tasks/{external_id}/ac")
-def add_ac(slug: str, external_id: str, body: ACCreate, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def add_ac(slug: str, external_id: str, body: ACCreate, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == external_id
     ).order_by(Task.id.desc()).first()
@@ -810,10 +790,8 @@ def add_ac(slug: str, external_id: str, body: ACCreate, db: Session = Depends(ge
 
 
 @router.patch("/projects/{slug}/tasks/{external_id}/ac/{position}")
-def update_ac(slug: str, external_id: str, position: int, body: ACUpdate, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def update_ac(slug: str, external_id: str, position: int, body: ACUpdate, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == external_id
     ).order_by(Task.id.desc()).first()
@@ -836,10 +814,8 @@ def update_ac(slug: str, external_id: str, position: int, body: ACUpdate, db: Se
 
 
 @router.delete("/projects/{slug}/tasks/{external_id}/ac/{position}")
-def delete_ac(slug: str, external_id: str, position: int, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def delete_ac(slug: str, external_id: str, position: int, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == external_id
     ).order_by(Task.id.desc()).first()
@@ -888,10 +864,8 @@ def _next_task_external_id(db: Session, project_id: int) -> str:
 
 
 @router.post("/projects/{slug}/objectives/new")
-def add_objective_single(slug: str, body: ObjectiveCreateSingle, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def add_objective_single(slug: str, body: ObjectiveCreateSingle, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     ext = body.external_id or _next_obj_external_id(db, proj.id)
     if db.query(Objective).filter(
         Objective.project_id == proj.id, Objective.external_id == ext
@@ -942,10 +916,8 @@ def delete_kr(obj_id: int, position: int, db: Session = Depends(get_db)):
 
 
 @router.post("/projects/{slug}/tasks/new")
-def add_task_single(slug: str, body: TaskCreateSingle, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def add_task_single(slug: str, body: TaskCreateSingle, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     ext = body.external_id or _next_task_external_id(db, proj.id)
     if db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == ext
@@ -965,10 +937,8 @@ def add_task_single(slug: str, body: TaskCreateSingle, db: Session = Depends(get
 
 
 @router.delete("/projects/{slug}/tasks/{external_id}")
-def delete_task(slug: str, external_id: str, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def delete_task(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == external_id
     ).order_by(Task.id.desc()).first()
@@ -990,10 +960,8 @@ class GuidelineUpdate(BaseModel):
 
 
 @router.post("/projects/{slug}/guidelines/single")
-def add_guideline_single(slug: str, body: GuidelineCreate, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def add_guideline_single(slug: str, body: GuidelineCreate, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     if not body.external_id:
         from sqlalchemy import func as _func
         max_id = db.query(_func.max(Guideline.external_id)).filter(
@@ -1018,10 +986,8 @@ def add_guideline_single(slug: str, body: GuidelineCreate, db: Session = Depends
 
 
 @router.patch("/projects/{slug}/guidelines/{external_id}")
-def update_guideline(slug: str, external_id: str, body: GuidelineUpdate, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def update_guideline(slug: str, external_id: str, body: GuidelineUpdate, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     g = db.query(Guideline).filter(
         Guideline.project_id == proj.id, Guideline.external_id == external_id
     ).first()
@@ -1037,10 +1003,8 @@ def update_guideline(slug: str, external_id: str, body: GuidelineUpdate, db: Ses
 
 
 @router.delete("/projects/{slug}/guidelines/{external_id}")
-def delete_guideline(slug: str, external_id: str, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def delete_guideline(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     g = db.query(Guideline).filter(
         Guideline.project_id == proj.id, Guideline.external_id == external_id
     ).first()
@@ -1056,11 +1020,9 @@ class CommentCreate(BaseModel):
 
 
 @router.post("/projects/{slug}/tasks/{external_id}/comments")
-def add_comment(slug: str, external_id: str, body: CommentCreate, db: Session = Depends(get_db)):
+def add_comment(slug: str, external_id: str, body: CommentCreate, request: Request, db: Session = Depends(get_db)):
     from app.models import TaskComment
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == external_id
     ).order_by(Task.id.desc()).first()
@@ -1073,11 +1035,9 @@ def add_comment(slug: str, external_id: str, body: CommentCreate, db: Session = 
 
 
 @router.get("/projects/{slug}/tasks/{external_id}/comments")
-def list_comments(slug: str, external_id: str, db: Session = Depends(get_db)):
+def list_comments(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
     from app.models import TaskComment
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+    proj = assert_project_in_org(db, slug, request)
     task = db.query(Task).filter(
         Task.project_id == proj.id, Task.external_id == external_id
     ).order_by(Task.id.desc()).first()
@@ -1103,10 +1063,8 @@ def delete_comment(slug: str, external_id: str, comment_id: int, db: Session = D
 
 
 @router.delete("/projects/{slug}/objectives/{external_id}")
-def delete_objective(slug: str, external_id: str, db: Session = Depends(get_db)):
-    proj = db.query(Project).filter(Project.slug == slug).first()
-    if not proj:
-        raise HTTPException(404)
+def delete_objective(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
+    proj = assert_project_in_org(db, slug, request)
     obj = db.query(Objective).filter(
         Objective.project_id == proj.id, Objective.external_id == external_id
     ).first()

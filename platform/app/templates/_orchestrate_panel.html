@@ -31,6 +31,34 @@
         <button type="submit" class="text-xs text-red-600 hover:underline">⏹ Cancel</button>
     </form>
 </div>
+
+{# J2 — trajectory forecast (auto-fetched + auto-refreshed by polling parent) #}
+<div id="forge-forecast" class="bg-white border border-slate-200 rounded p-3 mb-3 text-xs"
+     hx-get="/api/v1/tier1/orchestrate-runs/{{ r.id }}/forecast"
+     hx-trigger="load, every 5s"
+     hx-swap="innerHTML">
+    <div class="text-slate-400">📈 forecast loading…</div>
+</div>
+<script>
+// Render forecast on load + after each fetch
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.target && e.target.id === 'forge-forecast') {
+        try {
+            const j = JSON.parse(e.target.textContent);
+            const over = j.over_budget_projected;
+            e.target.innerHTML =
+                '<div class="flex items-center gap-3 flex-wrap">' +
+                '<b>📈 Trajectory forecast</b>' +
+                '<span>spent <span class="mono">$' + j.spent_usd + '</span></span>' +
+                '<span>· avg/task <span class="mono">$' + j.avg_per_task_usd + '</span></span>' +
+                '<span>· projected total <span class="mono ' + (over ? 'text-rose-700 font-bold' : '') + '">$' + j.projected_total_usd + '</span>' +
+                (j.cap_usd ? ' / $' + j.cap_usd + ' cap' : '') + '</span>' +
+                (j.warning ? '<span class="bg-rose-100 text-rose-800 px-2 py-0.5 rounded">⚠ ' + j.warning + '</span>' : '') +
+                '</div>';
+        } catch(_) { /* leave loading text */ }
+    }
+});
+</script>
 {% elif r.status == 'CANCELLED' %}
 <div class="bg-amber-50 border border-amber-200 rounded p-3 mb-3 text-sm">
     Cancelled: {{ r.progress_message }}

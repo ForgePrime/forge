@@ -429,6 +429,22 @@ def assemble_prompt(
         reason="recency_bias_compensation",
     )
 
+    # --- G3: per-project operational contract (G1) injected BEFORE the global one ---
+    try:
+        proj = task.project   # backref via SQLAlchemy
+        contract_md = (proj.contract_md or "").strip() if proj else ""
+        if contract_md:
+            if len(contract_md) > 8000:
+                contract_md = contract_md[:8000] + "\n[truncated to 8000 chars]"
+            _add_section(
+                "project_operational_contract", 97,
+                f"## Project operational contract (this project's overrides)\n{contract_md}",
+                source_table="projects", source_ext=str(proj.id),
+                reason="project_specific_contract",
+            )
+    except Exception:  # pragma: no cover - defensive
+        pass
+
     # --- P_LAST: Operational Contract (ALWAYS LAST, NEVER EXCLUDED) ---
     _add_section(
         "operational_contract", 99, OPERATIONAL_CONTRACT,
