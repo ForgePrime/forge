@@ -718,6 +718,16 @@ def llm_call_view(call_id: int, request: Request, db: Session = Depends(get_db))
     return templates.TemplateResponse(request, "llm_call.html", {"c": c, "project": None})
 
 
+@router.get("/projects/{slug}/tasks/{external_id}/cost-forensic", response_class=HTMLResponse)
+def ui_cost_forensic(slug: str, external_id: str, request: Request, db: Session = Depends(get_db)):
+    """R4 UI — rendered cost-forensic view (wraps tier1 JSON endpoint)."""
+    from app.api.tier1 import cost_forensic as api_cost_forensic
+    d = api_cost_forensic(slug, external_id, request, db)
+    return templates.TemplateResponse(request, "cost_forensic.html", {
+        "project": slug, "task_ext": external_id, "d": d,
+    })
+
+
 # --- HTMX action triggers ---
 
 @router.post("/projects/{slug}/ingest")

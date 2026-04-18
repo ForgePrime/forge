@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ task_ext }} cost forensic — Forge{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <a href="/ui/projects/{{ project }}/tasks/{{ task_ext }}/report" class="text-sm text-blue-600 hover:underline">← task {{ task_ext }}</a>
+</div>
+
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h1 class="text-2xl font-bold mb-1">💰 Cost forensic — {{ task_ext }}</h1>
+    <p class="text-sm text-slate-500">Per-purpose breakdown + context growth analysis. Use to diagnose cost drift — usually retry loops that grow the prompt.</p>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <div class="bg-white rounded shadow p-4">
+        <div class="text-xs text-slate-500 uppercase">Total cost</div>
+        <div class="text-2xl font-bold text-emerald-700 mono">${{ '%.4f' % (d.total_cost_usd or 0) }}</div>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <div class="text-xs text-slate-500 uppercase">LLM calls</div>
+        <div class="text-2xl font-bold text-slate-700 mono">{{ d.calls_count or 0 }}</div>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <div class="text-xs text-slate-500 uppercase">Executions</div>
+        <div class="text-2xl font-bold text-slate-700 mono">{{ d.executions_count or 0 }}</div>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <div class="text-xs text-slate-500 uppercase">Attempts</div>
+        <div class="text-2xl font-bold {% if (d.attempts_count or 0) > 3 %}text-rose-700{% else %}text-slate-700{% endif %} mono">
+            {{ d.attempts_count or 0 }}
+            {% if (d.attempts_count or 0) > 3 %}<span class="text-xs font-normal">retry-heavy</span>{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold text-lg mb-3">📊 Cost by purpose</h2>
+    {% if d.by_purpose %}
+    <div class="space-y-2">
+        {% for purpose, meta in d.by_purpose.items() | sort(attribute='1.cost_usd', reverse=true) %}
+        <div>
+            <div class="flex items-baseline justify-between text-sm mb-1">
+                <div class="mono font-semibold">{{ purpose }}</div>
+                <div class="text-xs text-slate-600 mono">
+                    ${{ '%.4f' % meta.cost_usd }} · {{ meta.calls }} call{% if meta.calls != 1 %}s{% endif %} ·
+                    in {{ '{:,}'.format(meta.input_tokens) }}t / out {{ '{:,}'.format(meta.output_tokens) }}t ·
+                    <span class="font-bold">{{ meta.pct }}%</span>
+                </div>
+            </div>
+            <div class="h-2 bg-slate-100 rounded overflow-hidden">
+                <div class="h-full bg-indigo-400" style="width: {{ meta.pct }}%"></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-slate-400">No LLM calls recorded for this task.</p>
+    {% endif %}
+</div>
+
+<div class="bg-white rounded shadow p-5 mb-4">
+    <h2 class="font-semibold text-lg mb-3">📈 Context growth timeline</h2>
+    <p class="text-xs text-slate-500 mb-3">Each row is one LLM call. <b>Delta</b> is input-token change vs the previous call — a large positive delta usually means a retry with a grown prompt (accumulated fix hints, longer context).</p>
+    {% if d.context_growth %}
+    <table class="w-full text-sm">
+        <thead class="text-xs uppercase text-slate-500 border-b">
+            <tr>
+                <th class="text-left py-1">#</th>
+                <th class="text-left py-1">Call</th>
+                <th class="text-left py-1">Purpose</th>
+                <th class="text-right py-1">Input tokens</th>
+                <th class="text-right py-1">Δ vs prev</th>
+                <th class="text-right py-1">Cost</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for g in d.context_growth %}
+            <tr class="border-t">
+                <td class="py-1 text-slate-400">{{ loop.index }}</td>
+                <td class="py-1"><a href="/ui/llm-calls/{{ g.call_id }}" class="text-blue-600 mono text-xs">#{{ g.call_id }}</a></td>
+                <td class="py-1 mono text-xs">{{ g.purpose }}</td>
+                <td class="py-1 text-right mono">{{ '{:,}'.format(g.input_tokens) }}</td>
+                <td class="py-1 text-right mono {% if g.delta > 1000 %}text-rose-700 font-bold{% elif g.delta > 0 %}text-amber-700{% else %}text-slate-400{% endif %}">
+                    {% if g.delta > 0 %}+{% endif %}{{ '{:,}'.format(g.delta) }}
+                </td>
+                <td class="py-1 text-right mono">${{ '%.4f' % g.cost_usd }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-sm text-slate-400">No LLM calls to analyze.</p>
+    {% endif %}
+</div>
+
+<div class="bg-indigo-50 border-l-4 border-indigo-400 rounded p-4 mb-4">
+    <h3 class="font-semibold text-indigo-900 mb-1">🎯 Root-cause hint</h3>
+    <p class="text-sm text-slate-700">{{ d.root_cause_hint }}</p>
+    <div class="text-xs text-slate-600 italic mt-2">
+        Tip: recurring high deltas on the same purpose suggest a fix-hint loop (validator keeps rejecting, next prompt grows). Investigate the contract_validator or AC wording.
+    </div>
+</div>
+
+{% endblock %}

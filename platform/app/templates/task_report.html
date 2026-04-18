@@ -58,9 +58,8 @@
             {% if r.diff and r.diff.files %}
             <a href="#diff-section" class="bg-slate-600 text-white px-3 py-1.5 text-xs rounded hover:bg-slate-700">View diff</a>
             {% endif %}
-            {# J1 — cost forensic drill-down #}
-            <a href="/api/v1/tier1/projects/{{ project }}/tasks/{{ r.task.external_id }}/cost-forensic"
-               target="_blank"
+            {# J1 — cost forensic drill-down (R4 rendered view) #}
+            <a href="/ui/projects/{{ project }}/tasks/{{ r.task.external_id }}/cost-forensic"
                class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 text-xs rounded"
                title="J1 — per-purpose cost breakdown + retry growth + root-cause hint">💰 Cost forensic</a>
             {# J3 — reverse-trace #}
