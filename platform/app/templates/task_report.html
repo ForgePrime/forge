@@ -138,18 +138,114 @@
         {% endif %}
     </div>
 
-    {# Challenger refused-to-verify — makes scope limits explicit so user audits gaps, not accepts green badge #}
-    {% if r.challenge %}
+    {# Scrutiny strip — data-driven "what was NOT checked" per this task #}
+    {# Replaces hardcoded list with real per-claim challenger verdicts + not_executed AC + unsourced flags #}
+    {% set refuted_claims = (r.challenge.per_claim_verdicts or []) | rejectattr('verified', 'equalto', true) | list if r.challenge else [] %}
+    {% set unverified_claims = refuted_claims | rejectattr('verified', 'equalto', false) | list %}
+    {% set disagreed_claims = refuted_claims | selectattr('verified', 'equalto', false) | list %}
+    {% set invented_acs = r.acceptance_criteria | rejectattr('source_ref') | selectattr('source_llm_call_id') | list %}
+    {% set any_scrutiny_signal = refuted_claims or invented_acs or r.not_executed_claims or not r.challenge %}
+    {% if any_scrutiny_signal %}
     <div class="mt-3 bg-rose-50 border-l-4 border-rose-400 rounded p-3">
-        <div class="font-bold text-rose-800 text-sm mb-2">What the challenger REFUSED to verify</div>
-        <ul class="text-xs text-slate-700 space-y-1 list-disc pl-5">
-            <li><b>Security posture (OWASP top 10)</b> — not scanned unless skill OP-security-review attached</li>
-            <li><b>KB alignment beyond cited refs</b> — challenger reads diff + claims, not source docs directly</li>
-            <li><b>Long-term maintainability</b> (coupling, architecture fit) — outside task scope</li>
-            <li><b>Performance under load</b> — not simulated unless explicit scenario provided</li>
-            <li><b>Compliance (HIPAA/GDPR/PCI)</b> — requires dedicated OPINION skill</li>
-        </ul>
-        <div class="text-xs text-slate-600 italic mt-2">→ Before closing this task, explicitly ask for any of these as a skill invocation via the AI sidebar.</div>
+        <div class="font-bold text-rose-800 text-sm mb-2">🔍 Scrutiny strip — what was NOT checked / NOT sourced</div>
+
+        {% if not r.challenge %}
+        <div class="text-xs text-rose-700 mb-2">
+            ⚠ <b>Challenger did not run</b> — no independent verification of this delivery.
+            All claims below come from the executor itself.
+        </div>
+        {% endif %}
+
+        {% if disagreed_claims %}
+        <div class="text-xs text-slate-700 mb-2">
+            <b>Challenger DISAGREED on {{ disagreed_claims|length }} claim(s):</b>
+            <ul class="list-disc pl-5 mt-1 space-y-0.5">
+                {% for c in disagreed_claims[:5] %}
+                <li>{{ (c.claim or c.text or c.description or '(no text)')[:200] }}
+                    {% if c.reason %}<span class="text-slate-500">— {{ c.reason[:200] }}</span>{% endif %}
+                </li>
+                {% endfor %}
+                {% if disagreed_claims|length > 5 %}<li class="text-slate-500">+{{ disagreed_claims|length - 5 }} more</li>{% endif %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if unverified_claims %}
+        <div class="text-xs text-slate-700 mb-2">
+            <b>Challenger could NOT verify {{ unverified_claims|length }} claim(s)</b> (out of scope / missing evidence):
+            <ul class="list-disc pl-5 mt-1 space-y-0.5">
+                {% for c in unverified_claims[:5] %}
+                <li>{{ (c.claim or c.text or c.description or '(no text)')[:200] }}
+                    {% if c.reason %}<span class="text-slate-500">— {{ c.reason[:200] }}</span>{% endif %}
+                </li>
+                {% endfor %}
+                {% if unverified_claims|length > 5 %}<li class="text-slate-500">+{{ unverified_claims|length - 5 }} more</li>{% endif %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if invented_acs %}
+        <div class="text-xs text-slate-700 mb-2">
+            <b>{{ invented_acs|length }} AC invented by LLM (no source_ref):</b>
+            <ul class="list-disc pl-5 mt-1 space-y-0.5">
+                {% for ac in invented_acs[:5] %}
+                <li>AC-{{ ac.position }} ({{ ac.scenario_type }}): {{ ac.text[:160] }}
+                    {% if ac.source_llm_call_id %}<a href="/ui/llm-calls/{{ ac.source_llm_call_id }}" class="text-blue-600 text-[10px]">[trace]</a>{% endif %}
+                </li>
+                {% endfor %}
+                {% if invented_acs|length > 5 %}<li class="text-slate-500">+{{ invented_acs|length - 5 }} more</li>{% endif %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if r.not_executed_claims %}
+        <div class="text-xs text-slate-700 mb-2">
+            <b>{{ r.not_executed_claims|length }} action(s) marked NOT_EXECUTED by executor:</b>
+            <ul class="list-disc pl-5 mt-1 space-y-0.5">
+                {% for ne in r.not_executed_claims[:5] %}
+                <li>{{ ne.action[:140] if ne.action else '(no action)' }}
+                    {% if ne.reason %}<span class="text-slate-500">— {{ ne.reason[:140] }}</span>{% endif %}
+                </li>
+                {% endfor %}
+                {% if r.not_executed_claims|length > 5 %}<li class="text-slate-500">+{{ r.not_executed_claims|length - 5 }} more</li>{% endif %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="text-xs text-slate-600 italic mt-2 border-t border-rose-200 pt-2">
+            → Before closing this task, audit each item above. Open an ambiguity/decision for disagreements, invoke a skill for unverified scope, or re-open the task to cover NOT_EXECUTED actions.
+        </div>
+    </div>
+    {% endif %}
+
+    {# Coverage-of-source-terms — retroactive-replay pilot gap closer (F2/F3).
+       Flags source doc terms that never appear in ANY AC text — likely under-coverage. #}
+    {% if r.coverage and r.coverage.gap_terms %}
+    <div class="mt-3 bg-amber-50 border-l-4 border-amber-400 rounded p-3">
+        <div class="flex items-baseline justify-between mb-2">
+            <div class="font-bold text-amber-800 text-sm">📉 Source terms NOT covered in AC</div>
+            <div class="text-xs text-slate-600 mono">
+                coverage {{ r.coverage.coverage_pct }}% ·
+                {{ r.coverage.covered_count }}/{{ r.coverage.total_unique_terms }} terms hit ·
+                {{ r.coverage.gap_count }} gaps
+            </div>
+        </div>
+        <div class="text-xs text-slate-700 mb-2">
+            These terms appear in the source docs linked to this task but are absent from every AC text.
+            Frequent gap terms often mark a missed requirement (e.g. pilot F2 "rezerwacja" / F3 "below zero").
+        </div>
+        <div class="flex flex-wrap gap-1">
+            {% for gt in r.coverage.gap_terms %}
+            <span class="pill text-xs bg-amber-100 text-amber-800 border border-amber-300 mono"
+                  title="mentioned {{ gt.src_count }}× across: {{ gt.src_ids|join(', ') }}">
+                {{ gt.term }}<span class="text-amber-600"> ×{{ gt.src_count }}</span>
+            </span>
+            {% endfor %}
+        </div>
+        <div class="text-xs text-slate-600 italic mt-2">
+            → For each term: confirm it's intentionally out-of-scope (document as deferred)
+            OR add an AC that references it. Then re-open the task.
+        </div>
     </div>
     {% endif %}
 </div>

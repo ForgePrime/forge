@@ -1408,6 +1408,7 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
     # Requirements
     req_refs = task.requirement_refs or []
     req_details = []
+    known: dict = {}
     if req_refs:
         # Try to match against Knowledge external_id (e.g. "SRC-001")
         src_ids = {r.split()[0].split("§")[0].strip() for r in req_refs}
@@ -1426,6 +1427,18 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
                 "source_title": k.title if k else None,
                 "source_known": k is not None,
             })
+
+    # Coverage-of-source-terms — retroactive-replay: catches pilot F2/F3
+    # (terms mentioned in source docs but absent from all AC texts)
+    coverage_report = None
+    if known and task.acceptance_criteria:
+        from app.services.coverage_analyzer import analyze_coverage
+        source_texts = {
+            src_id: k.content for src_id, k in known.items() if k.content
+        }
+        ac_texts = [ac.text for ac in task.acceptance_criteria if ac.text]
+        if source_texts and ac_texts:
+            coverage_report = analyze_coverage(source_texts, ac_texts, max_gap_terms=15)
 
     # Objective + KRs
     obj_info = None
@@ -1562,6 +1575,7 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
             "produces": task.produces,
         },
         "requirements_covered": req_details,
+        "coverage": coverage_report,
         "objective": obj_info,
         "acceptance_criteria": [
             {
