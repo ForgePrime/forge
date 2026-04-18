@@ -226,6 +226,18 @@ def create_tasks(slug: str, tasks: list[TaskCreate], request: Request, db: Sessi
         # Validate AC for feature/bug
         if t_data.type in ("feature", "bug") and len(t_data.acceptance_criteria) < 1:
             raise HTTPException(422, f"Task {t_data.external_id}: feature/bug requires at least 1 AC")
+        if t_data.type in ("feature", "bug"):
+            has_testable = any(
+                ac.verification in ("test", "command") and (ac.test_path or ac.command)
+                for ac in t_data.acceptance_criteria
+            )
+            if not has_testable:
+                raise HTTPException(
+                    422,
+                    f"Task {t_data.external_id}: feature/bug requires at least 1 AC with "
+                    "verification='test'|'command' and test_path/command set — "
+                    "manual-only AC cannot gate execution.",
+                )
 
         # Check instruction or description
         if not t_data.instruction and not t_data.description:

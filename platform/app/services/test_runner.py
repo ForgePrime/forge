@@ -348,8 +348,12 @@ def verify_ac_tests(
     workspace_dir: str,
     acceptance_criteria: list,
     env_extra: dict[str, str] | None = None,
+    task_type: str | None = None,
 ) -> dict:
     """Run pytest for each AC that has verification in (test, command) and test_path.
+
+    task_type: when 'feature' or 'bug', a task with zero test-verifiable AC fails
+    the gate instead of silently passing (BUG-A fix — feature/bug MUST be testable).
 
     Returns: {
       'all_pass': bool,
@@ -369,6 +373,18 @@ def verify_ac_tests(
             test_paths.append(tp)
 
     if not test_paths:
+        if task_type in ("feature", "bug"):
+            return {
+                "all_pass": False,
+                "ac_results": [],
+                "run": None,
+                "error": (
+                    f"feature/bug task has no test-verifiable AC — "
+                    "at least 1 AC must use verification='test'|'command' with test_path set. "
+                    "Manual-only AC cannot gate a feature/bug task."
+                ),
+                "language": detect_language(workspace_dir),
+            }
         return {"all_pass": True, "ac_results": [], "run": None, "skipped": "no test-verifiable AC", "language": detect_language(workspace_dir)}
 
     lang = detect_language(workspace_dir)

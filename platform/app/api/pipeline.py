@@ -931,7 +931,12 @@ def orchestrate(
                 # 2. Test execution — Forge runs AC tests itself
                 lang = detect_language(workspace)
                 verification_report["language"] = lang
-                test_verify = verify_ac_tests(workspace, candidate.acceptance_criteria, env_extra=infra_env or None)
+                test_verify = verify_ac_tests(
+                    workspace,
+                    candidate.acceptance_criteria,
+                    env_extra=infra_env or None,
+                    task_type=candidate.type,
+                )
                 verification_report["tests"] = {
                     "language": test_verify.get("language"),
                     "all_pass": test_verify.get("all_pass"),
@@ -966,11 +971,15 @@ def orchestrate(
                     db.add(tr)
                     db.flush()
                 if not test_verify.get("all_pass", True):
+                    gate_error = test_verify.get("error")
                     failing = [a for a in (test_verify.get("ac_results") or []) if not a.get("passed")]
-                    verification_issues.append(
-                        f"tests_failed: {len(failing)} AC(s) have failing/missing tests: "
-                        + ", ".join(f"AC-{a['ac_index']}({a.get('tests_failed',0)}F/{a.get('tests_matched',0)})" for a in failing)
-                    )
+                    if gate_error and not failing:
+                        verification_issues.append(f"tests_gate: {gate_error}")
+                    else:
+                        verification_issues.append(
+                            f"tests_failed: {len(failing)} AC(s) have failing/missing tests: "
+                            + ", ".join(f"AC-{a['ac_index']}({a.get('tests_failed',0)}F/{a.get('tests_matched',0)})" for a in failing)
+                        )
 
                 # 3. KR measurement — for KRs linked to this task's objective with measurement_command
                 kr_measurements: list[dict] = []
