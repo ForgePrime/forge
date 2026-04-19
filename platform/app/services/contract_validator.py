@@ -307,7 +307,11 @@ def validate_delivery(delivery: dict, contract: dict, task_type: str, prev_attem
 
     # Check: files in impact_analysis.files_changed should match changes
     if impact and changes:
-        impact_files = set(impact.get("files_changed", []))
+        # Defensive: LLM sometimes emits int (count) or str instead of list[str]
+        # here. Accept list, silently coerce anything else to empty set rather
+        # than raising TypeError inside the validator.
+        raw_impact = impact.get("files_changed", [])
+        impact_files = set(raw_impact) if isinstance(raw_impact, list) else set()
         change_files = {c.get("file_path", "") for c in changes}
         in_impact_not_changes = impact_files - change_files
         in_changes_not_impact = change_files - impact_files

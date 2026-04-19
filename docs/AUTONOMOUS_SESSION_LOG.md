@@ -174,4 +174,32 @@ without use case. Better to reflect reality.
 
 Full regression: 466/466 pass.
 
+### Step 7 — Contract validator trust-gate coverage + bug fix — DONE
+
+Added `tests/test_contract_validator_gates.py` — 15 direct unit tests
+against the 3 trust-gates that weren't explicitly asserted before:
+1. Confabulation tag gate (`[EXECUTED]/[INFERRED]/[ASSUMED]` must be
+   present in reasoning for feature/bug).
+2. AC composition gate (feature/bug must have at least one PASS on
+   negative or edge_case — positive-only fails).
+3. Operational contract gate (feature/bug must carry `assumptions` and
+   `impact_analysis` in delivery).
+
+**Bug discovered during test authoring:** `contract_validator.py:366`
+crashed with `TypeError: 'int' object is not iterable` when LLM
+emitted `impact_analysis.files_changed` as an integer (count) rather
+than list of paths. Fixed with defensive type coercion — malformed
+values become empty set; validation still completes.
+
+**Decision D-09:** Defensive coercion (return empty set) rather than
+strict type check (raise validation error). **Rationale:** the
+validator's job is to validate AI output, not its own inputs. An LLM
+emitting the wrong type should trigger a downstream warning
+("impact files don't match changes"), not crash the validator itself.
+Fail-open on structural malformation is correct for a best-effort
+enforcement layer.
+
+Full regression: 482 passed / 2 flaky `test_p5_hook_timeout` (pass
+isolated, fail when suite state is populated — preexisting issue).
+
 
