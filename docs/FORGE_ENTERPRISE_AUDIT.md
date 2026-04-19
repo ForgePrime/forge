@@ -21,12 +21,12 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | 12-factor app | 12 | 6 | 3 | 3 | **AMBER** |
 | Security | 10 | 5 | 3 | 2 | **AMBER** |
 | Observability | 6 | 3 | 1 | 2 | **AMBER** |
-| CI/CD | 5 | 0 | 4 | 1 | **AMBER** |
+| CI/CD | 5 | 0 | 5 | 0 | **AMBER** |
 | Scale & performance | 6 | 2 | 2 | 2 | **AMBER** |
 | Compliance (GDPR/audit) | 6 | 2 | 3 | 1 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 3 | 0 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **20** | **22** | **12** | **AMBER overall** |
+| **TOTAL (54 attr.)** | **54** | **20** | **23** | **11** | **AMBER overall** |
 
 **Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
 CGAID delivery-governance is strong (93% per prior audit), and the baseline
@@ -100,7 +100,7 @@ Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
 | CI config file present | AMBER | v1.7: `.github/workflows/ci.yml` ships as starter — pytest against real postgres+redis services, py3.13 matrix, concurrency cancellation. Still starter: security/lint jobs use `continue-on-error: true` until baselines are clean. | Activate on GH org + turn off continue-on-error once baselines clean. |
 | Automated test on PR | AMBER | v1.7: `on: [push, pull_request]` trigger in ci.yml. Requires activation on GitHub side. | Same as above |
 | Automated security scan | AMBER | v1.7: pip-audit + bandit in ci.yml + weekly `.github/workflows/security.yml` with artifact upload. Non-blocking until baseline clean. | Fix initial findings, flip continue-on-error to false |
-| Deploy pipeline | RED | Deploy is manual (docker compose on host). ci.yml has no deploy stage. | Add IaC + staging→prod promotion (Roadmap Phase 3 week 9) |
+| Deploy pipeline | AMBER | v1.13: `platform/Dockerfile` (multi-stage, non-root user, healthcheck) + `platform/docker-compose.prod.yml` (healthchecks, mandatory secrets via `${VAR:?err}`, resource limits, log rotation, persistent volumes, depends_on healthy). Deploy is still host-side docker compose up; cloud IaC (Terraform) remains Roadmap Phase 3. | Add CI deploy stage once staging target chosen. Add Terraform for cloud. |
 | Release versioning | AMBER | v1.7: `CHANGELOG.md` ships at repo root with "Unreleased" section + session summary. Git tags still TODO. | Tag first semver release `v0.1.0`; wire `changelog` to tags. |
 
 **Category verdict:** RED. Every production deployment today is artisanal.
@@ -201,3 +201,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.10 (2026-04-19, autonomous session)** — SLO definitions row AMBER→GREEN. `docs/SLO.md` ships with 7 SLOs (UI availability, API correctness, orchestrate p95, cost per task, contract violation disclosure — the CGAID trust SLO — DR RPO/RTO, CI green rate). Every target has metric source + breach action + rationale. Honest header disclaimer: aspirational pending load test baseline. Observability category: 2G/2A/2R → 3G/1A/2R. Overall: 18G/23A/13R → 19G/22A/13R.
 - **v1.11 (2026-04-19, autonomous session)** — Load test baseline row RED→AMBER. `platform/scripts/loadtest.js` k6 starter ships — VUs/duration via env, ramp-up plan, thresholds encoded (p95 100ms/300ms/<1% errors). docs/DEPLOY.md updated with k6 invocation examples. Scale category: 1G/2A/3R → 1G/3A/2R. Overall: 19G/22A/13R → 19G/23A/12R. Still AMBER overall — running in staging + capturing baseline is a user-operated step, not code.
 - **v1.12 (2026-04-19, autonomous session)** — Connection pooling row AMBER→GREEN. `app/database.py` configures `pool_size=10`, `max_overflow=20`, `pool_recycle=1800s`, `pool_timeout=30s`, `pool_pre_ping=True`. All overridable via `FORGE_DB_POOL_*` env vars. Scale category: 1G/3A/2R → 2G/2A/2R. Overall: 19G/23A/12R → 20G/22A/12R.
+- **v1.13 (2026-04-19, autonomous session)** — Deploy pipeline row RED→AMBER. `platform/Dockerfile` (multi-stage, non-root user, healthcheck) + `platform/docker-compose.prod.yml` (mandatory secrets via `${VAR:?err}`, resource limits, log rotation, healthchecks, persistent volumes) ship. CI/CD category: 0G/4A/1R → 0G/5A/0R (AMBER overall, was RED pre-v1.7). Overall: 20G/22A/12R → 20G/23A/11R.

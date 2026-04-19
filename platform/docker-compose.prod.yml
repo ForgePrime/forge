@@ -1,0 +1,124 @@
+# Forge Platform — production docker-compose (starter, tune before use)
+#
+# Differences from the dev docker-compose.yml:
+#   - Builds platform image from ./Dockerfile (dev compose only has DB)
+#   - Required env vars declared via ${VAR:?err} so compose fails fast
+#     if secrets are missing
+#   - restart: unless-stopped on every service
+#   - resource limits (deploy.resources) declared — tune for your host
+#   - Healthchecks on every service; app waits for DB healthy before start
+#   - Log driver configured with rotation (prevents disk fill)
+#   - Persistent volumes for DB + workspace artifacts
+#
+# Sanity check before deploy:
+#   docker compose -f docker-compose.prod.yml config >/dev/null   # validate
+#   docker compose -f docker-compose.prod.yml up -d
+#   curl http://localhost:8000/ready
+#
+# TLS termination: NOT handled here. Front with nginx/Caddy/Traefik.
+# See docs/DEPLOY.md section "TLS termination".
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-forge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-forge_platform}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts:/scripts:ro  # backup.sh / restore.sh mount
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  forge-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: forge-platform:latest
+    environment:
+      # Mandatory secrets — fail fast if missing
+      FORGE_JWT_SECRET: ${FORGE_JWT_SECRET:?FORGE_JWT_SECRET required; generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"}
+      FORGE_ENCRYPTION_KEY: ${FORGE_ENCRYPTION_KEY:?FORGE_ENCRYPTION_KEY required; Fernet key via python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"}
+      # DB + Redis wiring
+      FORGE_DATABASE_URL: postgresql://${POSTGRES_USER:-forge}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forge_platform}
+      FORGE_REDIS_URL: redis://redis:6379
+      # Observability
+      FORGE_LOG_JSON: "true"
+      FORGE_LOG_LEVEL: ${FORGE_LOG_LEVEL:-INFO}
+      # DB pool tuning (override via .env for your workload)
+      FORGE_DB_POOL_SIZE: ${FORGE_DB_POOL_SIZE:-10}
+      FORGE_DB_MAX_OVERFLOW: ${FORGE_DB_MAX_OVERFLOW:-20}
+      # Default workspace root inside container
+      FORGE_WORKSPACE_ROOT: /var/forge/workspaces
+    ports:
+      - "${FORGE_PORT:-8000}:8000"
+    volumes:
+      - workspaces:/var/forge/workspaces
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Readiness (DB + Redis round-trip) — LB pool membership
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "10"
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
+
+volumes:
+  pgdata:
+  workspaces:
