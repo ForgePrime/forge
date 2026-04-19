@@ -8,14 +8,38 @@
 <div class="bg-white rounded shadow p-5 mb-4">
     <div class="flex items-center justify-between mb-2">
         <h1 class="text-2xl font-bold">{{ r.task.external_id }} — {{ r.task.name }}</h1>
-        <span class="pill {% if r.task.status == 'DONE' %}bg-green-100 text-green-700{% elif r.task.status == 'FAILED' %}bg-red-100 text-red-700{% else %}bg-slate-100{% endif %} text-base px-3 py-1">{{ r.task.status }}</span>
+        <div class="flex items-center gap-2">
+            {# P1.4 — Execution.mode badge: direct|crafted|shadow|plan #}
+            {% if r.latest_execution and r.latest_execution.mode %}
+                {% set m = r.latest_execution.mode %}
+                {% set mcolor = {'direct':'bg-indigo-100 text-indigo-700 border-indigo-300',
+                                 'crafted':'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-300',
+                                 'shadow':'bg-slate-200 text-slate-700 border-slate-300',
+                                 'plan':'bg-sky-100 text-sky-700 border-sky-300'}.get(m, 'bg-slate-100 text-slate-700 border-slate-300') %}
+                <span class="pill border text-xs px-2 py-0.5 {{ mcolor }}"
+                      title="Execution mode — whether code was actually written (direct/crafted) or only planned (plan/shadow).">mode: {{ m }}</span>
+            {% endif %}
+            <span class="pill {% if r.task.status == 'DONE' %}bg-green-100 text-green-700{% elif r.task.status == 'FAILED' %}bg-red-100 text-red-700{% else %}bg-slate-100{% endif %} text-base px-3 py-1">{{ r.task.status }}</span>
+        </div>
     </div>
     <div class="flex gap-4 text-sm text-slate-500 mono">
         <span>type: {{ r.task.type }}</span>
         <span>ceremony: {{ r.task.ceremony_level or '—' }}</span>
         <span>attempts: {{ r.attempts }}</span>
         <span>cost: ${{ r.cost_usd }}</span>
+        {% if r.latest_execution and r.latest_execution.crafter_call_id %}
+            <a href="/ui/llm-calls/{{ r.latest_execution.crafter_call_id }}" class="text-blue-600 hover:underline">crafter call #{{ r.latest_execution.crafter_call_id }}</a>
+        {% endif %}
     </div>
+    {# P2.1 — origin finding chip (only when task auto-created from a finding) #}
+    {% if r.origin_finding %}
+    <div class="mt-2 text-xs">
+        <span class="pill bg-amber-100 text-amber-800 border border-amber-300">from finding</span>
+        <a href="#finding-{{ r.origin_finding.external_id }}" class="mono text-blue-600 hover:underline ml-1">{{ r.origin_finding.external_id }}</a>
+        <span class="text-slate-500 ml-1">— {{ r.origin_finding.title[:120] }}</span>
+        <span class="pill text-xs ml-1 {% if r.origin_finding.severity in ['HIGH','CRITICAL','high','critical'] %}bg-rose-100 text-rose-700{% elif r.origin_finding.severity in ['MEDIUM','medium'] %}bg-amber-100 text-amber-700{% else %}bg-slate-100{% endif %}">{{ r.origin_finding.severity }}</span>
+    </div>
+    {% endif %}
     <div class="text-xs text-slate-500 mono mt-1">
         {% for p, c in r.cost_by_purpose.items() %}{{ p }}=${{ '%.3f' % c }} · {% endfor %}
     </div>
@@ -373,6 +397,33 @@
 
 <!-- FINDINGS -->
 {% if r.auto_extracted_findings %}
+<script>
+// P2.1 — finding → task: POSTs and disables the button, shows the new task id.
+function findingToTask(findingExt, btn) {
+    const statusEl = btn.nextElementSibling;
+    btn.disabled = true; btn.textContent = '…';
+    const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['', ''])[1];
+    fetch('/api/v1/tier1/projects/{{ project }}/findings/' + findingExt + '/create-task',
+          {method: 'POST', headers: {'X-CSRF-Token': csrf}})
+      .then(r => r.json().then(j => ({ok: r.ok, j})))
+      .then(({ok, j}) => {
+          if (!ok) {
+              statusEl.textContent = '× ' + (j.detail || 'failed');
+              statusEl.className = 'finding-convert-status text-xs text-rose-600';
+              btn.disabled = false; btn.textContent = '→ Task';
+              return;
+          }
+          btn.textContent = j.created ? '✓ created' : '✓ exists';
+          btn.className = 'bg-slate-100 text-slate-600 text-xs font-semibold px-2 py-1 rounded cursor-default';
+          statusEl.innerHTML = ' → <a class="text-blue-600 hover:underline mono" href="/ui/projects/{{ project }}/tasks/' + j.task_external_id + '">' + j.task_external_id + '</a>';
+      })
+      .catch(e => {
+          statusEl.textContent = '× ' + e.message;
+          statusEl.className = 'finding-convert-status text-xs text-rose-600';
+          btn.disabled = false; btn.textContent = '→ Task';
+      });
+}
+</script>
 <div class="bg-white rounded shadow p-5 mb-4">
     <h2 class="font-semibold text-lg mb-2">🔍 Findings auto-extracted ({{ r.auto_extracted_findings|length }})</h2>
     <div class="space-y-2">
@@ -388,6 +439,16 @@
             <p class="text-sm text-slate-600 mt-1">{{ f.description }}</p>
             {% if f.suggested_action %}<p class="text-xs text-slate-500 mt-1">→ {{ f.suggested_action }}</p>{% endif %}
             {% if f.file_path %}<p class="text-xs mono text-slate-400">{{ f.file_path }}</p>{% endif %}
+            {# P2.1 — one-click convert finding → chore task #}
+            {% if not shared_view %}
+            <div class="mt-2 flex items-center gap-2">
+                <button type="button"
+                        onclick="findingToTask('{{ f.external_id }}', this)"
+                        class="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 text-xs font-semibold px-2 py-1 rounded"
+                        title="Create a chore task to fix this finding">→ Task</button>
+                <span class="finding-convert-status text-xs text-slate-500"></span>
+            </div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -430,15 +491,68 @@
         {% endfor %}
     </ul>
     {% endif %}
-    <details>
-        <summary class="cursor-pointer text-sm text-blue-600">Pokaż diff ({{ r.diff.diff|length }} bytes{% if r.diff.truncated %}, truncated{% endif %})</summary>
-        <pre class="text-xs mono bg-slate-900 p-3 rounded mt-2 overflow-auto max-h-[600px]"><code>{% for line in r.diff.diff.split('\n') %}{% if line.startswith('+') and not line.startswith('+++') %}<span class="text-green-400">{{ line }}</span>
+    {# P2.3 — view toggle: unified (default) vs side-by-side #}
+    <div class="flex items-center gap-3 mb-2 text-xs">
+        <span class="text-slate-500">View:</span>
+        <button type="button" id="diff-view-unified" class="pill bg-slate-200 text-slate-700 border border-slate-300 px-2 py-0.5 font-semibold">unified</button>
+        <button type="button" id="diff-view-split" class="pill bg-white text-slate-500 border border-slate-300 px-2 py-0.5 hover:bg-slate-100">split</button>
+        <span class="text-slate-400">· {{ r.diff.diff|length }} bytes{% if r.diff.truncated %}, truncated{% endif %}</span>
+    </div>
+    <div id="diff-unified">
+        <pre class="text-xs mono bg-slate-900 p-3 rounded overflow-auto max-h-[600px]"><code>{% for line in r.diff.diff.split('\n') %}{% if line.startswith('+') and not line.startswith('+++') %}<span class="text-green-400">{{ line }}</span>
 {% elif line.startswith('-') and not line.startswith('---') %}<span class="text-red-400">{{ line }}</span>
 {% elif line.startswith('@@') %}<span class="text-cyan-400">{{ line }}</span>
 {% elif line.startswith('diff --git') or line.startswith('+++') or line.startswith('---') %}<span class="text-yellow-400">{{ line }}</span>
 {% else %}<span class="text-slate-300">{{ line }}</span>
 {% endif %}{% endfor %}</code></pre>
-    </details>
+    </div>
+    {% if r.diff.split_rows %}
+    <div id="diff-split" class="hidden border border-slate-200 rounded overflow-auto max-h-[600px]">
+        <table class="split-diff w-full text-xs mono border-collapse">
+            <tbody>
+                {% for row in r.diff.split_rows %}
+                {% if row.kind == 'file_header' %}
+                <tr class="bg-slate-800 text-yellow-300"><td colspan="4" class="px-2 py-1">📄 {{ row.path }}</td></tr>
+                {% elif row.kind == 'hunk_header' %}
+                <tr class="bg-cyan-900 text-cyan-200"><td colspan="4" class="px-2 py-0.5">{{ row.header }}</td></tr>
+                {% else %}
+                    {% set same = row.left is not none and row.right is not none and row.left == row.right %}
+                    {% set lbg = 'bg-slate-50' if same else ('bg-rose-50' if row.left is not none else 'bg-slate-100') %}
+                    {% set rbg = 'bg-slate-50' if same else ('bg-emerald-50' if row.right is not none else 'bg-slate-100') %}
+                <tr>
+                    <td class="text-slate-400 text-right pr-1 border-r border-slate-200 w-10 select-none">{{ row.left_lineno or '' }}</td>
+                    <td class="td-old px-2 whitespace-pre {{ lbg }}">{% if row.left is not none %}{% if not same %}<span class="text-rose-700">- </span>{% endif %}{{ row.left }}{% endif %}</td>
+                    <td class="text-slate-400 text-right pr-1 border-r border-l border-slate-200 w-10 select-none">{{ row.right_lineno or '' }}</td>
+                    <td class="td-new px-2 whitespace-pre {{ rbg }}">{% if row.right is not none %}{% if not same %}<span class="text-emerald-700">+ </span>{% endif %}{{ row.right }}{% endif %}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    <script>
+    (function() {
+        const btnU = document.getElementById('diff-view-unified');
+        const btnS = document.getElementById('diff-view-split');
+        const viewU = document.getElementById('diff-unified');
+        const viewS = document.getElementById('diff-split');
+        if (!btnU || !btnS || !viewU) return;
+        function show(mode) {
+            viewU.classList.toggle('hidden', mode !== 'unified');
+            if (viewS) viewS.classList.toggle('hidden', mode !== 'split');
+            btnU.classList.toggle('bg-slate-200', mode === 'unified');
+            btnU.classList.toggle('bg-white', mode !== 'unified');
+            btnS.classList.toggle('bg-slate-200', mode === 'split');
+            btnS.classList.toggle('bg-white', mode !== 'split');
+        }
+        btnU.addEventListener('click', () => show('unified'));
+        btnS.addEventListener('click', () => {
+            if (!viewS) { alert('Split view unavailable (no diff rows).'); return; }
+            show('split');
+        });
+    })();
+    </script>
 </div>
 {% endif %}
 

@@ -1,0 +1,117 @@
+[
+  {
+    "id": "_1",
+    "name": "Scaffold minimal platform workspace",
+    "description": "Create the project directory structure and install dependencies needed to run the FastAPI platform service.",
+    "instruction": "Set up the workspace: create platform/ package with app/__init__.py, install fastapi, uvicorn, sqlalchemy, alembic, psycopg2-binary, pytest, httpx into platform/requirements.txt. Create platform/app/main.py with a FastAPI app and health endpoint GET /health → 200 {status: ok}. Create alembic.ini and alembic/env.py wired to DATABASE_URL env var. Create tests/ directory with conftest.py. Verify the test file can be collected.",
+    "type": "chore",
+    "acceptance_criteria": [
+      {"text": "pytest --collect-only succeeds without import errors on platform/tests/", "verification": "manual"}
+    ]
+  },
+  {
+    "id": "_2",
+    "name": "Add OrchestrateRun model and pause fields",
+    "description": "Define the OrchestrateRun SQLAlchemy model with pause_requested and paused_at fields, run the migration.",
+    "instruction": "In platform/app/models.py create OrchestrateRun with columns: id (UUID PK), status (String, default 'RUNNING'), pause_requested (Boolean, default False, non-nullable), paused_at (DateTime, nullable), created_at, updated_at. Generate and run alembic migration. Expose a get_db() dependency in platform/app/database.py using TEST_DATABASE_URL env var for tests.",
+    "type": "feature",
+    "depends_on": ["_1"],
+    "produces": {"model": "OrchestrateRun with pause_requested:bool=False, paused_at:datetime|null"},
+    "acceptance_criteria": [
+      {
+        "text": "OrchestrateRun row can be created with pause_requested=False and queried back",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_orchestrate_run_model_pause_fields"
+      }
+    ]
+  },
+  {
+    "id": "_3",
+    "name": "Add _check_pause() cooperative gate in executor loop",
+    "description": "Implement the pause check inside the orchestration executor so the loop halts when pause_requested is set.",
+    "instruction": "In platform/app/executor.py implement _check_pause(db, run_id) -> bool: re-fetches OrchestrateRun from DB, returns True if pause_requested=True, else False. Implement run_orchestration(run_id, db): loops, calls _check_pause — if True sets run.status='PAUSED', run.paused_at=utcnow(), commits, returns. This cooperative gate is the core fix: the loop now checks the flag on each iteration.",
+    "type": "feature",
+    "depends_on": ["_2"],
+    "produces": {"function": "_check_pause(db, run_id) → True when pause_requested=True (fresh DB read)"},
+    "acceptance_criteria": [
+      {
+        "text": "_check_pause returns True when pause_requested=True in DB (fresh read, detects concurrent update)",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_check_pause_helper_detects_flag"
+      },
+      {
+        "text": "run_orchestration sets status=PAUSED and paused_at when pause flag is set",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_run_orchestration_halts_on_pause"
+      }
+    ]
+  },
+  {
+    "id": "_4",
+    "name": "Add POST /orchestrate-runs/{id}/pause endpoint",
+    "description": "Expose an API endpoint that sets pause_requested=True on the target run.",
+    "instruction": "In platform/app/routers/orchestrate.py add POST /orchestrate-runs/{id}/pause: fetch OrchestrateRun by id (404 if not found, 409 if status is terminal DONE/FAILED/CANCELLED), set pause_requested=True, commit, return 200 {id, pause_requested: true, status}. Wire the router into platform/app/main.py.",
+    "type": "feature",
+    "depends_on": ["_2"],
+    "produces": {"endpoint": "POST /orchestrate-runs/{id}/pause → 200 {id, pause_requested: true, status}"},
+    "acceptance_criteria": [
+      {
+        "text": "POST /pause returns 200 and sets pause_requested=True for RUNNING run",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_pause_endpoint_sets_flag_for_running"
+      },
+      {
+        "text": "POST /pause returns 409 for terminal-state runs",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_pause_endpoint_rejects_terminal_runs"
+      },
+      {
+        "text": "POST /pause returns 404 for non-existent run id",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_pause_endpoint_404_unknown"
+      }
+    ]
+  },
+  {
+    "id": "_5",
+    "name": "Add POST /orchestrate-runs/{id}/resume endpoint",
+    "description": "Expose an API endpoint that clears pause_requested and paused_at, allowing the run to continue.",
+    "instruction": "In platform/app/routers/orchestrate.py add POST /orchestrate-runs/{id}/resume: fetch run (404 if not found, 409 if not in PAUSED status), set pause_requested=False, paused_at=None, status='RUNNING', commit, return 200 {id, pause_requested: false, status: RUNNING}.",
+    "type": "feature",
+    "depends_on": ["_4"],
+    "produces": {"endpoint": "POST /orchestrate-runs/{id}/resume → 200 {id, pause_requested: false, status: RUNNING}"},
+    "acceptance_criteria": [
+      {
+        "text": "POST /resume clears pause_requested and paused_at for PAUSED run, returns status=RUNNING",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_resume_endpoint_clears_pause_fields"
+      },
+      {
+        "text": "POST /resume returns 409 when run is not in PAUSED state",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_resume_endpoint_rejects_non_paused"
+      }
+    ]
+  },
+  {
+    "id": "_6",
+    "name": "Expose pause fields in run status endpoint",
+    "description": "Return pause_requested and paused_at in GET /orchestrate-runs/{id}/status so the UI can reflect pause state.",
+    "instruction": "In platform/app/routers/orchestrate.py add GET /orchestrate-runs/{id}/status: fetch run (404 if not found), return 200 {id, status, pause_requested, paused_at}. Add Pydantic response schema RunStatusResponse with these fields. This closes the UI feedback loop.",
+    "type": "feature",
+    "depends_on": ["_5"],
+    "produces": {"endpoint": "GET /orchestrate-runs/{id}/status → 200 {id, status, pause_requested, paused_at}"},
+    "acceptance_criteria": [
+      {
+        "text": "GET /status returns pause_requested=True and non-null paused_at for a paused run",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_status_endpoint_reflects_pause_state"
+      },
+      {
+        "text": "GET /status returns pause_requested=False and paused_at=null for a running run",
+        "verification": "test",
+        "test_path": "platform/tests/test_p1_pause.py::test_status_endpoint_reflects_running_state"
+      }
+    ]
+  }
+]

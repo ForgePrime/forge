@@ -14,8 +14,11 @@ from dataclasses import dataclass, field
 
 
 REJECT_PATTERNS_REASONING = [
-    "verified manually", "done", "looks good", "works as expected",
+    "verified manually", "looks good", "works as expected",
     "all good", "completed successfully", "everything works",
+    # P5.9 — removed bare "done" — substring match was rejecting legitimate
+    # reasoning containing "is done", "well-done", "task done", etc. The other
+    # phrases are full self-report idioms; "done" alone was a false-positive trap.
 ]
 
 REJECT_PATTERNS_EVIDENCE = [
@@ -26,6 +29,25 @@ WHY_KEYWORDS = ["because", "since", "due to", "in order to", "so that", "poniewa
 
 FILE_PATTERN = re.compile(r"[\w\-./]+\.(py|ts|tsx|js|jsx|sql|md|yaml|yml|json|toml|cfg|ini|env)")
 TEST_PATTERN = re.compile(r"tests?/[\w\-./]+::\w+|pytest\s|test_\w+")
+# P5.5 — accept evidence for verification='command' ACs that name a known CLI
+# tool OR contain shell-output markers ($, >>>, INFO/OK/ERROR markers, exit codes).
+COMMAND_PATTERN = re.compile(
+    r"\b(alembic|pytest|npm|yarn|pnpm|poetry|pip|python|node|npx|"
+    r"docker|docker-compose|kubectl|helm|terraform|ansible|"
+    r"curl|wget|httpie|http|"
+    r"ab|wrk|locust|k6|hey|"
+    r"git|make|cmake|cargo|go|java|mvn|gradle|"
+    r"psql|redis-cli|mongosh|sqlite3|"
+    r"bash|sh|zsh)\b|"
+    # Or shell prompt / output markers:
+    #   $ cmd     (shell prompt)
+    #   >>> cmd   (python REPL)
+    #   > cmd     (generic prompt)
+    r"^\s*(?:\$|>+)\s*\S|"
+    r"\bexit\s+code\s*[:=]?\s*\d+\b|"
+    r"\b(stdout|stderr|return\s*code|rc=)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 @dataclass
@@ -42,8 +64,20 @@ class ValidationResult:
     fix_instructions: str = ""
 
 
-def validate_delivery(delivery: dict, contract: dict, task_type: str, prev_attempt: dict | None = None) -> ValidationResult:
-    """Validate a delivery against the output contract."""
+def validate_delivery(
+    delivery: dict, contract: dict, task_type: str,
+    prev_attempt: dict | None = None,
+    ac_verifications: dict | None = None,
+) -> ValidationResult:
+    """Validate a delivery against the output contract.
+
+    Args:
+        ac_verifications: optional {ac_index: verification} mapping (e.g. {0: 'test', 1: 'command'}).
+            P5.5 — when provided, the file/test reference rule swaps to a command/output rule
+            for ACs with verification='command', and is skipped entirely for verification='manual'.
+            Without this map, all ACs default to the strict file/test rule (legacy behavior).
+    """
+    ac_verifications = ac_verifications or {}
     checks: list[CheckResult] = []
     all_pass = True
     fix_parts = []
@@ -112,12 +146,37 @@ def validate_delivery(delivery: dict, contract: dict, task_type: str, prev_attem
                 checks.append(CheckResult("PASS", f"ac_evidence[{idx}].length"))
 
             if ac_contract.get("must_reference_file_or_test"):
-                if FILE_PATTERN.search(evidence) or TEST_PATTERN.search(evidence):
-                    checks.append(CheckResult("PASS", f"ac_evidence[{idx}].ref"))
-                else:
-                    checks.append(CheckResult("FAIL", f"ac_evidence[{idx}].ref", "no file/test reference"))
-                    fix_parts.append(f"AC evidence [{idx}] must reference file path or test name")
-                    all_pass = False
+                # P5.5 — per-AC reference rule based on verification mode.
+                verif_mode = ac_verifications.get(idx, "test")
+                if verif_mode == "manual":
+                    # Manual ACs rely on user judgment — skip the structural check.
+                    checks.append(CheckResult("PASS", f"ac_evidence[{idx}].ref",
+                                              "skipped (verification='manual')"))
+                elif verif_mode == "command":
+                    if (COMMAND_PATTERN.search(evidence) or FILE_PATTERN.search(evidence)
+                            or TEST_PATTERN.search(evidence)):
+                        checks.append(CheckResult("PASS", f"ac_evidence[{idx}].ref",
+                                                  "command/output marker matched"))
+                    else:
+                        checks.append(CheckResult("FAIL", f"ac_evidence[{idx}].ref",
+                                                  "no command/output marker"))
+                        fix_parts.append(
+                            f"AC evidence [{idx}] (verification='command') must mention the "
+                            f"command name (e.g. alembic, pytest, npm), a shell prompt ($/>>>), "
+                            f"OR an exit-code/stdout marker. Pure 'verified manually' wording is rejected."
+                        )
+                        all_pass = False
+                else:  # 'test' (default)
+                    if FILE_PATTERN.search(evidence) or TEST_PATTERN.search(evidence):
+                        checks.append(CheckResult("PASS", f"ac_evidence[{idx}].ref"))
+                    else:
+                        checks.append(CheckResult("FAIL", f"ac_evidence[{idx}].ref",
+                                                  "no file/test reference"))
+                        fix_parts.append(
+                            f"AC evidence [{idx}] (verification='test') must reference a "
+                            f"file path (e.g. tests/test_x.py) or test node id (e.g. test_y::test_z)."
+                        )
+                        all_pass = False
 
             if verdict == "FAIL" and ac_contract.get("fail_blocks", True):
                 checks.append(CheckResult("FAIL", f"ac_evidence[{idx}].verdict", "FAIL verdict"))

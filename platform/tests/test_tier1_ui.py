@@ -125,7 +125,10 @@ def test_t6_reopen_button_only_on_achieved_objective(session_and_slug):
     # ACTIVE: re-open button absent
     active_block = html.split('id="obj-O-T6A"')[1].split('id="obj-O-T6B"')[0]
     assert "↶ Re-open" not in active_block, "ACTIVE objective should not show re-open button"
-    assert "Plan →" in active_block, "ACTIVE objective should show Plan button"
+    # Mockup 03v2 paradigm shift: "Plan" is not a button, it's a PLANNING task.
+    # Active objective should link to detail page with "+ Planning task" CTA.
+    assert "+ Planning task" in active_block or "Planning task" in active_block, \
+        "ACTIVE objective should surface the 'create planning task' CTA"
     # ACHIEVED: re-open button present + modal exists
     achieved_block = html.split('id="obj-O-T6B"')[1]
     assert "↶ Re-open" in achieved_block, "ACHIEVED objective must show re-open button"

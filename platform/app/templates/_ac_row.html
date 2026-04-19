@@ -85,7 +85,44 @@
               })()">⚠ INVENTED BY LLM · no source</span>
     {% endif %}
     <span class="flex-1">AC-{{ac.position}}: {{ac.text}}
-        {% if ac.test_path %}<span class="block text-xs mono text-slate-400">→ {{ac.test_path}}</span>{% endif %}
+        {% if ac.test_path %}
+        <span class="block text-xs mono text-slate-400">
+            → {{ac.test_path}}
+            {# P2.2 — expand the referenced test code inline #}
+            <button type="button" class="ml-2 text-blue-600 hover:underline"
+                    title="Show the test code referenced by this AC"
+                    onclick="(function(btn){
+                        const row = btn.closest('li');
+                        let box = row.querySelector('.ac-test-code');
+                        if (box && !box.classList.contains('hidden')) {
+                            box.classList.add('hidden'); btn.textContent = '▸ code'; return;
+                        }
+                        if (box) { box.classList.remove('hidden'); btn.textContent = '▾ code'; return; }
+                        btn.textContent = '…';
+                        box = document.createElement('div');
+                        box.className = 'ac-test-code basis-full mt-2 bg-slate-900 text-slate-100 rounded p-2 text-xs';
+                        box.innerHTML = '<div class=\'text-slate-400\'>Loading test source…</div>';
+                        row.appendChild(box);
+                        fetch('/api/v1/tier1/projects/{{project}}/tasks/{{task_ext}}/ac/{{ac.position}}/test-code')
+                            .then(r => r.json())
+                            .then(j => {
+                                const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                                if (!j.exists) {
+                                    box.innerHTML = '<div class=\'text-amber-400\'>⚠ '+esc(j.note||'file missing')+': '+esc(j.file||'')+'</div>';
+                                    btn.textContent = '▾ code';
+                                    return;
+                                }
+                                const sym = j.symbol ? ' :: <b>'+esc(j.symbol)+'</b>' : '';
+                                const lines = j.line_range ? 'L'+j.line_range[0]+'–'+j.line_range[1] : '';
+                                const trunc = j.truncated ? '<span class=\'text-amber-400\'>(truncated to 400 lines)</span>' : '';
+                                box.innerHTML = '<div class=\'flex items-center gap-2 mb-1 text-slate-300\'><span class=\'mono\'>'+esc(j.file)+'</span>'+sym+' <span class=\'text-slate-500\'>'+lines+'</span> '+trunc+'</div>'+
+                                    '<pre class=\'whitespace-pre-wrap overflow-auto max-h-96\'>'+esc(j.source||'')+'</pre>';
+                                btn.textContent = '▾ code';
+                            })
+                            .catch(err => { box.innerHTML = '<div class=\'text-rose-400\'>Fetch failed: '+err+'</div>'; btn.textContent = '▸ code'; });
+                    })(this)">▸ code</button>
+        </span>
+        {% endif %}
         {% if ac.command %}<span class="block text-xs mono text-slate-400">→ cmd: {{ac.command}}</span>{% endif %}
     </span>
     {% if ac.source_llm_call_id %}

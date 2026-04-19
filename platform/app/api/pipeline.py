@@ -493,6 +493,26 @@ def plan_from_objective(slug: str, body: PlanRequest, db: Session = Depends(get_
     if not tasks_data:
         raise HTTPException(500, {"error": "no tasks in response", "llm_call_id": llm_call.id})
 
+    # P5.3 — block plan that doesn't trace tasks back to source docs.
+    # Determined by: does the project hold any source-doc Knowledge entries?
+    # If yes, every feature/bug/develop task in this plan MUST declare requirement_refs.
+    has_sources = bool(docs)  # `docs` was loaded above for the prompt
+    from app.services.plan_gate import validate_plan_requirement_refs
+    ref_violations = validate_plan_requirement_refs(
+        tasks_data, project_has_source_docs=has_sources,
+    )
+    if ref_violations:
+        raise HTTPException(400, {
+            "error": "plan_traceability_gate: tasks missing requirement_refs",
+            "violations": ref_violations,
+            "llm_call_id": llm_call.id,
+            "hint": (
+                "The project has ingested source documents — every feature/bug/develop "
+                "task must reference back to at least one SRC-NNN fragment so the user "
+                "can audit which requirement each task actually implements."
+            ),
+        })
+
     # Create tasks — remap Claude's planning-scoped IDs to unique project-wide IDs
     # (Claude generates T-001..T-0NN per plan call; collides if earlier objectives already used those)
     existing_ids = {t.external_id for t in db.query(Task).filter(Task.project_id == proj.id).all()}
@@ -636,9 +656,13 @@ def _run_orchestrate_background(slug: str, params: dict, run_id: int):
 
 
 def _update_run(db: Session, run_id: int | None, **fields):
-    """Helper — update orchestrate_runs row inline (best-effort, ignore if no run_id)."""
+    """Helper — update orchestrate_runs row inline (best-effort, ignore if no run_id).
+    P5.7: always bump `updated_at` so orphan-recovery can distinguish an active worker
+    (row mutating) from a dead one (row frozen). Bulk-update doesn't fire `onupdate`
+    hooks, so we set it explicitly."""
     if not run_id:
         return
+    fields.setdefault("updated_at", dt.datetime.now(dt.timezone.utc))
     db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).update(fields)
     db.commit()
 
@@ -648,6 +672,15 @@ def _check_cancel(db: Session, run_id: int | None) -> bool:
         return False
     row = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
     return bool(row and row.cancel_requested)
+
+
+def _check_pause(db: Session, run_id: int | None) -> bool:
+    """P1.1 — cooperative pause. Fresh read so executor reacts to recent UI click."""
+    if not run_id:
+        return False
+    db.expire_all()
+    row = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    return bool(row and row.pause_requested)
 
 
 @router.post("/projects/{slug}/orchestrate")
@@ -701,6 +734,39 @@ def orchestrate(
         if infra.started:
             infra_env = dict(infra.env)
 
+        # P5.1 — install workspace Python deps so pytest doesn't ImportError
+        # on packages Claude listed in requirements.txt (e.g. locust, factory_boy).
+        from app.services.workspace_infra import install_workspace_deps
+        deps = install_workspace_deps(workspace)
+        infra_info["deps"] = {
+            "attempted": deps.attempted,
+            "installed": deps.installed,
+            "duration_sec": round(deps.duration_sec, 1),
+            "return_code": deps.return_code,
+            "error": deps.error,
+            "stderr_tail": deps.stderr_tail[-400:] if deps.stderr_tail else "",
+        }
+        # If pip failed, surface as a finding-equivalent so the user notices —
+        # but don't abort the whole orchestrate (some tasks may not need the deps).
+        if deps.attempted and not deps.installed:
+            try:
+                ext_id = _next_external_id(db, proj.id, Finding, "F")
+                db.add(Finding(
+                    project_id=proj.id, external_id=ext_id,
+                    type="risk", severity="HIGH",
+                    title=f"Workspace deps install failed (rc={deps.return_code})",
+                    description=(
+                        f"`pip install -r {deps.file_path}` failed during orchestrate setup. "
+                        f"Tests that depend on these packages will ImportError and fail the gate. "
+                        f"stderr tail: {(deps.stderr_tail or '')[:500]}"
+                    ),
+                    suggested_action="Check requirements.txt for typos / missing pins; re-run orchestrate.",
+                    evidence=f"forge/workspace_infra.install_workspace_deps return_code={deps.return_code}",
+                ))
+                db.commit()
+            except Exception:
+                db.rollback()  # finding logging shouldn't crash orchestrate
+
     for _iter in range(max_tasks):
         # Find next TODO with deps met
         todo_tasks = db.query(Task).filter(
@@ -732,6 +798,19 @@ def orchestrate(
                     "total_cost_usd": round(total_cost, 4),
                     "workspace": workspace, "workspace_infra": infra_info,
                     "stopped_reason": "cancelled"}
+
+        # P1.1 — cooperative pause check BEFORE claiming the next task.
+        # On pause: current task stays TODO (we haven't claimed yet); resume picks up here.
+        # finished_at stays NULL so the run is distinguishable from DONE/CANCELLED.
+        if _check_pause(db, run_id):
+            _update_run(db, run_id, status="PAUSED",
+                        paused_at=dt.datetime.now(dt.timezone.utc),
+                        current_phase="paused",
+                        progress_message=f"Paused after {len(results)} task(s); POST /resume to continue")
+            return {"tasks_run": len(results), "results": results,
+                    "total_cost_usd": round(total_cost, 4),
+                    "workspace": workspace, "workspace_infra": infra_info,
+                    "stopped_reason": "paused"}
 
         # Claim
         candidate.status = "IN_PROGRESS"
@@ -797,7 +876,39 @@ def orchestrate(
             _update_run(db, run_id,
                         current_phase=f"execute (attempt {attempt}/{max_retries})",
                         progress_message=f"{candidate.external_id}: Claude CLI executing... (attempt {attempt})")
-            full_prompt = asm.prompt_text + EXECUTE_SUFFIX
+            # Auto-attach skills based on task context (F6)
+            try:
+                from app.services.skill_attach import TaskContext as _SkillCtx, resolve_skills, record_invocations
+                _ctx = _SkillCtx(
+                    project_id=proj.id,
+                    task_type=candidate.type,
+                    phase="execute",
+                    files_touched=None,
+                    language=None,
+                )
+                _attached = resolve_skills(db, _ctx)
+                _skill_block = ""
+                if _attached:
+                    _parts = ["\n\n## Attached skills (auto-evaluated):\n"]
+                    for sk in _attached[:6]:  # cap to 6
+                        _parts.append(f"### [{sk.category}] {sk.name}\n{sk.prompt_text[:600]}\n")
+                    _skill_block = "".join(_parts)
+                    record_invocations(db, proj.id, _attached)
+            except Exception:
+                _skill_block = ""
+            full_prompt = asm.prompt_text + _skill_block + EXECUTE_SUFFIX
+            # DOC task execution path — prepend a tech-writer persona + output contract
+            # aligned with mockup 10 (ADR / API ref / runbook)
+            if candidate.type == "documentation":
+                doc_directive = (
+                    "\n\n## DOCUMENTATION TASK DIRECTIVE\n"
+                    "You are a technical writer. Do NOT write code. Instead produce markdown documentation.\n"
+                    "Use Michael-Nygard ADR format when the task asks for decision records:\n"
+                    "  ## Status · ## Context · ## Decision · ## Alternatives · ## Consequences\n"
+                    "Cite SRC-XXX where appropriate. For API reference, list endpoints with "
+                    "method + path + request/response shape. End with NOT_CHECKED: listing assumptions.\n"
+                )
+                full_prompt = asm.prompt_text + _skill_block + doc_directive + EXECUTE_SUFFIX
             if fix_hint:
                 full_prompt += (
                     f"\n\n---\n\nPOPRZEDNIA PRÓBA BYŁA ODRZUCONA.\n"
@@ -887,7 +998,11 @@ def orchestrate(
                 continue
 
             delivery = cli.delivery
-            val = validate_delivery(delivery, contract_def, candidate.type, None)
+            # P5.5 — pass per-AC verification map so the validator stops demanding
+            # file/test refs for command/manual ACs.
+            ac_verif_map = {ac.position: ac.verification for ac in candidate.acceptance_criteria}
+            val = validate_delivery(delivery, contract_def, candidate.type, None,
+                                    ac_verifications=ac_verif_map)
             execution.delivery = delivery
             execution.validation_result = {
                 "all_pass": val.all_pass,
@@ -1047,6 +1162,46 @@ def orchestrate(
                                     kr.status = "ACHIEVED"
                                 elif kr.status == "NOT_STARTED":
                                     kr.status = "IN_PROGRESS"
+
+                            # P5.2 — silent-fail surfacing: when the measurement command
+                            # crashed (timeout/rc!=0) OR ran cleanly but emitted no parseable
+                            # number, leave a Finding so the user notices instead of seeing
+                            # current_value=null forever.
+                            failure_reason: str | None = None
+                            if m.error:
+                                failure_reason = (
+                                    f"measurement command failed ({m.error})"
+                                )
+                            elif m.measured_value is None:
+                                failure_reason = (
+                                    "measurement command exited 0 but stdout contained "
+                                    "no parseable number"
+                                )
+                            if failure_reason:
+                                try:
+                                    ext_id = _next_external_id(db, proj.id, Finding, "F")
+                                    db.add(Finding(
+                                        project_id=proj.id, execution_id=execution.id,
+                                        external_id=ext_id,
+                                        type="gap", severity="MEDIUM",
+                                        title=f"KR measurement failed: KR-{kr.position} on {obj.external_id}",
+                                        description=(
+                                            f"{failure_reason}. KR text: {kr.text[:200]}. "
+                                            f"Command: `{kr.measurement_command[:200]}`. "
+                                            f"stderr tail: {(m.stderr_tail or '')[:300]}"
+                                        ),
+                                        suggested_action=(
+                                            "Verify the measurement_command exists in the workspace "
+                                            "(install missing tooling) and emits a numeric metric on stdout."
+                                        ),
+                                        evidence=(
+                                            f"forge/kr_measurer rc={m.return_code} "
+                                            f"measured={m.measured_value}"
+                                        ),
+                                    ))
+                                    db.flush()
+                                except Exception:
+                                    db.rollback()
                 verification_report["kr_measurements"] = kr_measurements
 
                 # Decide accept/reject based on verification
@@ -1167,6 +1322,10 @@ def orchestrate(
                 challenge_verdict = None
                 challenge_error = None
                 try:
+                    # P1.3 — resolve challenger_checks from the origin objective (and its
+                    # dependency chain) so the Opus prompt actually honors user-configured checks.
+                    from app.services.challenger import resolve_challenger_checks_for_task
+                    extra_checks = resolve_challenger_checks_for_task(db, candidate)
                     chal = run_challenge(
                         task=candidate,
                         delivery=delivery,
@@ -1179,6 +1338,7 @@ def orchestrate(
                         model=settings.claude_model_challenger,
                         max_budget_usd=2.0,
                         timeout_sec=600,
+                        extra_checks=extra_checks,
                     )
                 except Exception as e:
                     db.rollback()
@@ -1205,6 +1365,9 @@ def orchestrate(
                                 "summary": chal.summary,
                                 "per_claim_verdicts": chal.per_claim_verdicts,
                                 "new_findings_count": len(chal.new_findings),
+                                # P1.3 — audit trail for challenger_checks injection
+                                "injected_checks_count": chal.llm_call_meta.get("injected_checks_count", 0),
+                                "injected_checks": chal.llm_call_meta.get("injected_checks", []),
                             },
                         )
                         db.add(llm_ch)
@@ -1290,6 +1453,17 @@ def orchestrate(
         except Exception:
             pass
 
+        # P1.2 — fire post-stage hooks (isolated try/except: a hook failure
+        # MUST NOT abort the orchestrate loop).
+        try:
+            from app.services.hooks_runner import fire_hooks_for_task
+            fire_hooks_for_task(
+                db, proj, candidate,
+                workspace_dir=workspace, api_key=anthropic_key_orchestrate,
+            )
+        except Exception:
+            pass
+
     final = {
         "tasks_run": len(results),
         "results": results,
@@ -1297,8 +1471,25 @@ def orchestrate(
         "workspace": workspace,
         "workspace_infra": infra_info,
     }
-    _update_run(db, run_id, status="DONE", current_phase="done",
-                progress_message=f"Completed {len(results)} tasks ({sum(1 for r in results if r['status']=='DONE')} done)",
+    # P5.6 — pick the right terminal status + non-misleading message.
+    # "DONE" used to apply even when every task failed — the user got "Completed 1 tasks (0 done)".
+    done_count = sum(1 for r in results if r["status"] == "DONE")
+    failed_count = sum(1 for r in results if r["status"] == "FAILED")
+    if failed_count == 0 and done_count > 0:
+        final_status = "DONE"
+        summary_msg = f"Completed {len(results)} task(s), all DONE."
+    elif done_count > 0 and failed_count > 0:
+        final_status = "PARTIAL_FAIL"
+        summary_msg = f"Partial: {done_count} DONE, {failed_count} FAILED out of {len(results)}."
+    elif done_count == 0 and failed_count > 0:
+        final_status = "PARTIAL_FAIL"
+        summary_msg = f"No tasks completed: {failed_count} FAILED out of {len(results)}."
+    else:
+        # No results at all (max_tasks=0 edge / loop bailed) — treat as DONE w/ zero work.
+        final_status = "DONE"
+        summary_msg = "Loop finished with no candidate tasks."
+    _update_run(db, run_id, status=final_status, current_phase="done",
+                progress_message=summary_msg,
                 result=final, total_cost_usd=round(total_cost, 4),
                 finished_at=dt.datetime.now(dt.timezone.utc))
     return final
@@ -1356,6 +1547,9 @@ def orchestrate_run_status(run_id: int, db: Session = Depends(get_db)):
         "error": run.error,
         "result": run.result,
         "cancel_requested": run.cancel_requested,
+        "pause_requested": run.pause_requested,
+        "paused_at": run.paused_at.isoformat() if run.paused_at else None,
+        "resumed_at": run.resumed_at.isoformat() if run.resumed_at else None,
     }
 
 
@@ -1531,6 +1725,13 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
             from app.services.workspace_browser import git_diff as _git_diff
             workspace = _workspace(slug)
             diff_data = _git_diff(workspace, head_before, head_after)
+            # P2.3 — also compute split-view rows for the side-by-side toggle.
+            if diff_data and isinstance(diff_data, dict) and diff_data.get("diff") and not diff_data.get("error"):
+                try:
+                    from app.services.diff_renderer import build_split_diff_rows
+                    diff_data["split_rows"] = build_split_diff_rows(diff_data["diff"])
+                except Exception:
+                    diff_data["split_rows"] = []
 
     # Auto-extracted decisions + findings linked to task
     extracted_decisions = [
@@ -1590,6 +1791,32 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
         for ne in cc.get("not_executed", []):
             not_executed.append({"action": ne.get("action"), "reason": ne.get("reason"), "impact": ne.get("impact")})
 
+    # P2.1 — surface origin_finding link so the task page can show a chip.
+    origin_finding_info = None
+    if getattr(task, "origin_finding_id", None):
+        of = db.query(Finding).filter(Finding.id == task.origin_finding_id).first()
+        if of:
+            origin_finding_info = {
+                "external_id": of.external_id,
+                "title": of.title,
+                "severity": of.severity,
+                "status": of.status,
+            }
+
+    # P1.4 — expose Execution.mode so task_report.html can render the
+    # direct|crafted|shadow|plan badge. Previously stored but never surfaced.
+    latest_exec_info = None
+    if latest_exec:
+        started = getattr(latest_exec, "created_at", None)
+        latest_exec_info = {
+            "id": latest_exec.id,
+            "status": latest_exec.status,
+            "mode": latest_exec.mode or "direct",
+            "crafter_call_id": latest_exec.crafter_call_id,
+            "started_at": started.isoformat() if started else None,
+            "completed_at": latest_exec.completed_at.isoformat() if latest_exec.completed_at else None,
+        }
+
     return {
         "task": {
             "external_id": task.external_id, "name": task.name,
@@ -1601,6 +1828,8 @@ def task_report(slug: str, external_id: str, db: Session = Depends(get_db)):
             "completes_kr_ids": task.completes_kr_ids,
             "produces": task.produces,
         },
+        "latest_execution": latest_exec_info,
+        "origin_finding": origin_finding_info,
         "requirements_covered": req_details,
         "coverage": coverage_report,
         "objective": obj_info,

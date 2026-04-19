@@ -54,6 +54,11 @@ PENDING_COLUMNS: list[tuple[str, str, str]] = [
     ("objectives", "kb_focus_ids", "INTEGER[]"),
     # P3.5 — per-source "last consulted" timestamp (audit + pruning hint)
     ("knowledge", "last_read_at", "TIMESTAMP WITH TIME ZONE"),
+    # P5.7 — orphan-run detection. OrchestrateRun didn't have TimestampMixin; adding now.
+    # created_at already set via server_default on existing rows — this adds updated_at.
+    ("orchestrate_runs", "updated_at", "TIMESTAMP WITH TIME ZONE"),
+    # P5.8 — per-skill timeout override for hook invocations.
+    ("skills", "recommended_timeout_sec", "INTEGER"),
     # CGAID Artifact #4 Handoff — explicit risks list per task
     # Shape: list[{risk: str, mitigation: str, severity: "LOW|MEDIUM|HIGH", owner: str|null}]
     ("tasks", "risks", "JSONB"),
@@ -103,9 +108,10 @@ def apply(engine) -> None:
         )
         # P1.1 — include PAUSED. P5.6 — include PARTIAL_FAIL (run completed its
         # task pool but at least one task FAILED, so DONE would be misleading).
+        # P5.7 — include INTERRUPTED (worker thread killed mid-run, e.g. server restart).
         _replace_check_constraint(
             conn, "orchestrate_runs", "valid_orchestrate_run_status",
-            "status IN ('PENDING','RUNNING','PAUSED','DONE','FAILED','CANCELLED','BUDGET_EXCEEDED','PARTIAL_FAIL')",
+            "status IN ('PENDING','RUNNING','PAUSED','DONE','FAILED','CANCELLED','BUDGET_EXCEEDED','PARTIAL_FAIL','INTERRUPTED')",
         )
         try:
             conn.execute(text('ALTER TABLE findings ALTER COLUMN execution_id DROP NOT NULL'))

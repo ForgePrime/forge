@@ -16,6 +16,26 @@ Findings with severity HIGH → create Finding rows, optionally flip task state 
 
 import json
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    from sqlalchemy.orm import Session
+
+
+EXTRA_CHECKS_TEMPLATE = """
+
+---
+
+EXTRA CHALLENGER RULES — z objectives powiązanych z tym taskiem (P1.3).
+
+To są rzeczy na które MUSISZ zwrócić uwagę dodatkowo. Dla każdego punktu, oceń
+czy delivery przeszło sprawdzian. Jeśli coś nie jest możliwe do zweryfikowania
+z samego delivery — napisz "NIE ZWERYFIKOWANE" w evidence (nie zgaduj PASS).
+
+{checks_bullet_list}
+
+---
+"""
 
 
 CHALLENGE_PROMPT_TEMPLATE = """Jesteś Challenger-Agent — niezależny weryfikator, inny model niż executor.
@@ -87,6 +107,59 @@ FAIL = claims niespójne z kodem, task powinien wrócić do TODO
 """
 
 
+def _normalize_check(raw) -> str | None:
+    """Accept either a plain string or a dict with 'text'/'description' keys."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        txt = raw.strip()
+        return txt or None
+    if isinstance(raw, dict):
+        txt = (raw.get("text") or raw.get("description") or raw.get("check") or "").strip()
+        return txt or None
+    return None
+
+
+def resolve_challenger_checks_for_task(db: "Session", task) -> list[str]:
+    """P1.3 — walk task.origin → Objective → dependency ancestors,
+    collect all challenger_checks in order, dedupe by text.
+
+    Returns [] when task has no origin or no objective matches.
+    Never raises — a missing objective simply yields no checks.
+    """
+    if not getattr(task, "origin", None):
+        return []
+    from app.models import Objective  # local import — avoids circular
+
+    root = db.query(Objective).filter(
+        Objective.project_id == task.project_id,
+        Objective.external_id == task.origin,
+    ).first()
+    if not root:
+        return []
+
+    # BFS through dependencies. Guard against cycles (shouldn't exist per
+    # objective_dependencies cycle-check, but defensive).
+    visited_ids: set[int] = set()
+    order: list[str] = []
+    seen_text: set[str] = set()
+    queue = [root]
+    while queue:
+        obj = queue.pop(0)
+        if obj.id in visited_ids:
+            continue
+        visited_ids.add(obj.id)
+        for raw in (obj.challenger_checks or []):
+            txt = _normalize_check(raw)
+            if txt and txt not in seen_text:
+                seen_text.add(txt)
+                order.append(txt)
+        for dep in (obj.dependencies or []):
+            if dep.id not in visited_ids:
+                queue.append(dep)
+    return order
+
+
 @dataclass
 class ChallengeFinding:
     type: str
@@ -121,6 +194,7 @@ def run_challenge(
     model: str = "opus",
     max_budget_usd: float = 2.0,
     timeout_sec: int = 600,
+    extra_checks: list[str] | None = None,
 ) -> ChallengeResult:
     """Invoke Opus (or whatever model is set) to independently verify the delivery.
 
@@ -204,6 +278,22 @@ def run_challenge(
         extraction_block=extraction_block,
     )
 
+    # P1.3 — splice objective-level challenger checks in right after the task header.
+    # Placement: inject after the EXTRACTION block so the model has the context first
+    # and then reads the "you must also verify these" rules just before the JSON contract.
+    injected_checks: list[str] = []
+    if extra_checks:
+        injected_checks = [c for c in extra_checks if c and str(c).strip()]
+    if injected_checks:
+        bullets = "\n".join(f"- {c}" for c in injected_checks)
+        extra_section = EXTRA_CHECKS_TEMPLATE.format(checks_bullet_list=bullets)
+        # Insert just before the JSON contract marker ("ODPOWIEDŹ — czysty JSON...")
+        marker = "ODPOWIEDŹ — czysty JSON bez markdown:"
+        if marker in prompt:
+            prompt = prompt.replace(marker, extra_section.strip() + "\n\n" + marker)
+        else:
+            prompt = prompt + extra_section
+
     cli = invoke_fn(
         prompt=prompt,
         workspace_dir=workspace_dir,
@@ -218,6 +308,8 @@ def run_challenge(
         "model_used": cli.model_used,
         "is_error": cli.is_error,
         "parse_error": cli.parse_error,
+        "injected_checks_count": len(injected_checks),
+        "injected_checks": injected_checks,
     })
 
     if cli.is_error or cli.parse_error:

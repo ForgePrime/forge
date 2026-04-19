@@ -1,0 +1,175 @@
+{
+  "project": "p1pause-1776590541990",
+  "goal": "Implement P1.1: make the orchestrate loop's pause button actually halt execution. The pause_requested flag exists on OrchestrateRun and the UI endpoint flips it, but the executor loop never checks it — users click Pause yet the run keeps consuming tasks and budget.",
+  "created": "2026-04-19T09:31:48Z",
+  "updated": "2026-04-19T09:35:41Z",
+  "tasks": [
+    {
+      "id": "T-001",
+      "name": "Add _check_pause() helper and cooperative gate in orchestrate loop",
+      "description": "",
+      "instruction": "In platform/app/models/orchestrate_run.py: (1) add pause_requested: Mapped[bool] mapped_column(nullable=False, server_default=\"false\"), paused_at: Mapped[dt.datetime | None] DateTime(timezone=True), resumed_at: Mapped[dt.datetime | None] DateTime(timezone=True); (2) extend CheckConstraint to include PAUSED status; (3) add schema migration in platform/app/services/schema_migrations.py to ADD COLUMN pause_requested bool default false, paused_at timestamptz, resumed_at timestamptz if not exist. In platform/app/api/pipeline.py: (4) add _check_pause(db, run_id) helper mirroring _check_cancel; (5) in orchestrate() loop, after candidate found and before claiming (before candidate.status = IN_PROGRESS), call _check_pause and if True: _update_run status=PAUSED paused_at=now current_phase=paused, return stopped_reason=paused.",
+      "status": "IN_PROGRESS",
+      "type": "feature",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "_check_pause(db, run_id) returns True when pause_requested=True in DB (fresh read)",
+          "verification": "test",
+          "test_path": "platform/tests/"
+        },
+        {
+          "text": "_check_pause(db, None) returns False without crash",
+          "verification": "test",
+          "test_path": "platform/tests/"
+        },
+        {
+          "text": "Orchestrate loop sets status=PAUSED when flag is set",
+          "verification": "test",
+          "test_path": "platform/tests/"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "pause_gate": "cooperative _check_pause() in orchestrate loop, model has pause_requested/paused_at/resumed_at"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": [],
+      "agent": "default",
+      "started_at": "2026-04-19T09:35:41Z",
+      "started_at_commit": "515273aba576d258eb2883ce480d68f074d7cd8d"
+    },
+    {
+      "id": "T-002",
+      "name": "Add POST /orchestrate-runs/{id}/pause endpoint",
+      "description": "",
+      "instruction": "In platform/app/api/pipeline.py, add @router.post(\"/orchestrate-runs/{run_id}/pause\"). Mirror orchestrate_run_cancel: fetch run (404 if missing), 409 if status in (DONE, FAILED, CANCELLED, BUDGET_EXCEEDED, PAUSED), set run.pause_requested=True, db.commit(), return {pause_requested: True, status: run.status}. Add tests for: pause sets flag, pause on finished/paused returns 409.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-001"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "POST /orchestrate-runs/{id}/pause sets pause_requested=True and returns 200",
+          "verification": "test",
+          "test_path": "platform/tests/"
+        },
+        {
+          "text": "POST /orchestrate-runs/{id}/pause on DONE/FAILED/CANCELLED/PAUSED run returns 409",
+          "verification": "test",
+          "test_path": "platform/tests/"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "pause_endpoint": "POST /orchestrate-runs/{id}/pause -> {pause_requested: bool, status: str}"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-003",
+      "name": "Add POST /orchestrate-runs/{id}/resume endpoint",
+      "description": "",
+      "instruction": "In platform/app/api/pipeline.py, add @router.post(\"/orchestrate-runs/{run_id}/resume\"): fetch run (404 if missing), 409 if status != PAUSED, set run.pause_requested=False, run.status=RUNNING, run.resumed_at=now(utc), db.commit(), return {resumed: True, status: RUNNING}. Note: the background loop exited on pause — resume clears the flag for the next /orchestrate invocation. Add tests: resume on PAUSED clears flag sets RUNNING sets resumed_at; resume on non-PAUSED returns 409.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-002"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "POST /orchestrate-runs/{id}/resume on PAUSED run returns 200, status=RUNNING, clears pause_requested, sets resumed_at",
+          "verification": "test",
+          "test_path": "platform/tests/"
+        },
+        {
+          "text": "POST /orchestrate-runs/{id}/resume on non-PAUSED run returns 409",
+          "verification": "test",
+          "test_path": "platform/tests/"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend"
+      ],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "resume_endpoint": "POST /orchestrate-runs/{id}/resume -> {resumed: bool, status: str}"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-004",
+      "name": "Expose pause fields in run status endpoint and render Resume in UI panel",
+      "description": "",
+      "instruction": "Two changes: (A) In platform/app/api/pipeline.py orchestrate_run_status() (~line 1308), add pause_requested, paused_at (isoformat or null), resumed_at (isoformat or null) to returned dict. (B) In platform/app/templates/_orchestrate_panel.html: add Pause button next to Cancel in RUNNING/PENDING block (hx-post to UI pause route); add PAUSED status badge color; add PAUSED block showing paused_at and Resume button (hx-post to UI resume route with page reload). In platform/app/api/ui.py, find existing /ui/orchestrate-runs/{id}/cancel route and add matching /pause and /resume routes that call the API and redirect back.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-003"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "GET /orchestrate-runs/{id} response includes pause_requested, paused_at, resumed_at fields",
+          "verification": "test",
+          "test_path": "platform/tests/"
+        },
+        {
+          "text": "Pause button renders in RUNNING state and Resume button renders in PAUSED state in _orchestrate_panel.html",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [
+        "backend",
+        "frontend"
+      ],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "pause_ui": "Pause/Resume UI in orchestrate panel, pause fields in status API"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    }
+  ],
+  "plan_approved_at": "2026-04-19T09:32:58Z"
+}

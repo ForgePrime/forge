@@ -191,6 +191,87 @@ def ensure_workspace_infra(
     )
 
 
+# P5.1 — workspace dependency bootstrap.
+@dataclass
+class DepsInstallResult:
+    attempted: bool          # True iff requirements.txt existed and we ran pip
+    installed: bool          # True iff pip exited 0
+    file_path: str | None    # path to requirements.txt that was used
+    return_code: int | None
+    duration_sec: float
+    stdout_tail: str
+    stderr_tail: str
+    error: str | None = None
+
+
+def install_workspace_deps(
+    workspace_dir: str,
+    *,
+    python_exe: str | None = None,
+    timeout_sec: int = 300,
+    requirements_filename: str = "requirements.txt",
+) -> DepsInstallResult:
+    """If `requirements.txt` exists in the workspace, run `pip install -r` against it.
+
+    Why: pilot tests failed with ImportError ("No module named locust") because Forge
+    only spun up Docker (postgres/redis) but never installed the Python deps Claude
+    listed. Phase A test_runner ran pytest with stale deps → tests errored → masked
+    as fail-throughs because the gate at pipeline.py:1027 already treats `tests_error`
+    same as `tests_failed`, but the user couldn't tell *why*.
+
+    Returns a DepsInstallResult — the caller logs/persists it. We never raise: a
+    missing requirements.txt is a normal "skip" path; a pip failure is reported
+    via DepsInstallResult.error so orchestrate can surface a finding."""
+    import sys
+    import time
+
+    ws = pathlib.Path(workspace_dir)
+    req = ws / requirements_filename
+    if not req.exists():
+        return DepsInstallResult(
+            attempted=False, installed=False, file_path=None,
+            return_code=None, duration_sec=0.0,
+            stdout_tail="", stderr_tail="",
+        )
+
+    py = python_exe or sys.executable
+    cmd = [py, "-m", "pip", "install", "-q", "--disable-pip-version-check",
+           "-r", str(req)]
+    start = time.monotonic()
+    try:
+        proc = subprocess.run(
+            cmd, cwd=str(ws), capture_output=True, text=True,
+            timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired as e:
+        return DepsInstallResult(
+            attempted=True, installed=False, file_path=str(req),
+            return_code=None, duration_sec=time.monotonic() - start,
+            stdout_tail="", stderr_tail="",
+            error=f"pip install timed out after {timeout_sec}s",
+        )
+    except FileNotFoundError:
+        return DepsInstallResult(
+            attempted=True, installed=False, file_path=str(req),
+            return_code=None, duration_sec=time.monotonic() - start,
+            stdout_tail="", stderr_tail="",
+            error=f"python executable not found: {py}",
+        )
+    duration = time.monotonic() - start
+    stdout = (proc.stdout or "")[-2000:]
+    stderr = (proc.stderr or "")[-2000:]
+    return DepsInstallResult(
+        attempted=True,
+        installed=proc.returncode == 0,
+        file_path=str(req),
+        return_code=proc.returncode,
+        duration_sec=duration,
+        stdout_tail=stdout,
+        stderr_tail=stderr,
+        error=None if proc.returncode == 0 else f"pip exit {proc.returncode}",
+    )
+
+
 def stop_workspace_infra(project_slug: str, workspace_dir: str) -> bool:
     """Stop containers for a project. Returns True on success."""
     ws = pathlib.Path(workspace_dir)

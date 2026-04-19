@@ -27,9 +27,38 @@
 
 {% if c.full_prompt %}
 <div class="bg-white rounded shadow p-5 mb-4">
-    <h2 class="font-semibold mb-2">Full prompt ({{ c.prompt_chars }}ch)</h2>
-    <pre class="text-xs mono bg-slate-900 text-slate-100 p-3 rounded overflow-auto max-h-96 whitespace-pre-wrap">{{ c.full_prompt }}</pre>
+    <div class="flex items-center justify-between mb-2">
+        <h2 class="font-semibold">Full prompt ({{ c.prompt_chars }}ch)</h2>
+        <div class="flex gap-2 text-xs">
+            <button onclick="navigator.clipboard.writeText(document.getElementById('full-prompt').textContent); forgeToast('Prompt copied.', 'success')"
+                    class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded">📋 Copy prompt</button>
+            <button onclick="replayCall()"
+                    class="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 font-semibold px-2 py-1 rounded"
+                    title="J6 replay — re-run this prompt with current contract + skills">↻ Replay with current config</button>
+        </div>
+    </div>
+    <pre id="full-prompt" class="text-xs mono bg-slate-900 text-slate-100 p-3 rounded overflow-auto max-h-96 whitespace-pre-wrap">{{ c.full_prompt }}</pre>
 </div>
+<script>
+function replayCall() {
+    if (!confirm('Re-run this LLM call with current contract + skills?\n\nCost: budget-capped at $0.50. Results shown in an alert.')) return;
+    const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+    fetch('/api/v1/tier1/llm-calls/{{ c.id }}/replay',
+        {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+         body: JSON.stringify({max_budget_usd: 0.50, model: 'sonnet'})})
+      .then(r => r.json()).then(j => {
+          if (j.original) {
+              const msg = 'Identical: ' + j.identical + '\n\nOriginal (' + j.original.chars + 'ch, $' + j.original.cost_usd + '):\n' +
+                          j.original.preview.slice(0, 500) +
+                          '\n\n---\n\nReplayed (' + j.replayed.chars + 'ch, $' + j.replayed.cost_usd + '):\n' +
+                          j.replayed.preview.slice(0, 500);
+              alert(msg);
+          } else {
+              alert('Replay failed: ' + (j.detail || 'unknown error'));
+          }
+      }).catch(e => alert('Replay error: ' + e));
+}
+</script>
 {% endif %}
 
 {% if c.response_text %}

@@ -4,7 +4,9 @@
     <span class="pill text-base px-3 py-1
         {% if r.status == 'RUNNING' %}bg-blue-100 text-blue-700
         {% elif r.status == 'PENDING' %}bg-slate-100
+        {% elif r.status == 'PAUSED' %}bg-amber-100 text-amber-800 border border-amber-300
         {% elif r.status == 'DONE' %}bg-green-100 text-green-700
+        {% elif r.status == 'PARTIAL_FAIL' %}bg-orange-100 text-orange-800 border border-orange-300
         {% elif r.status == 'CANCELLED' %}bg-amber-100 text-amber-700
         {% else %}bg-red-100 text-red-700
         {% endif %}">{{ r.status }}</span>
@@ -24,13 +26,114 @@
         {% if r.current_phase %}<span class="pill bg-blue-100 text-blue-700 text-xs ml-2">{{ r.current_phase }}</span>{% endif %}
     </div>
     <div class="text-sm text-slate-800">{{ r.progress_message or '...' }}</div>
-    <form hx-post="/ui/orchestrate-runs/{{ r.id }}/cancel"
-          hx-target="closest div" hx-swap="none"
-          hx-confirm="Anulować bieżący run? Bieżący task dokończy się zanim się zatrzyma."
-          class="mt-2">
-        <button type="submit" class="text-xs text-red-600 hover:underline">⏹ Cancel</button>
-    </form>
+    <div class="flex gap-2 mt-2">
+        {% if r.pause_requested %}
+        <form hx-post="/api/v1/tier1/orchestrate-runs/{{ r.id }}/resume"
+              hx-swap="none" hx-on:htmx:after-request="if (event.detail.successful) location.reload()"
+              class="inline">
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1 rounded">▶ Resume</button>
+        </form>
+        {% else %}
+        <form hx-post="/api/v1/tier1/orchestrate-runs/{{ r.id }}/pause"
+              hx-swap="none" hx-on:htmx:after-request="if (event.detail.successful) location.reload()"
+              class="inline">
+            <button type="submit" class="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 text-xs font-semibold px-3 py-1 rounded">⏸ Pause</button>
+        </form>
+        {% endif %}
+        <form hx-post="/ui/orchestrate-runs/{{ r.id }}/cancel"
+              hx-target="closest div" hx-swap="none"
+              hx-confirm="Anulować bieżący run? Bieżący task dokończy się zanim się zatrzyma."
+              class="inline">
+            <button type="submit" class="text-xs text-rose-600 hover:underline">⏹ Cancel</button>
+        </form>
+    </div>
+    {% if r.pause_requested %}
+    <div class="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+        ⏸ Pause requested. Current task will complete, then the run halts. Resume button above.
+    </div>
+    {% endif %}
 </div>
+
+{# Mockup 04 — Phase A/B/C breakdown for the current task #}
+<div class="bg-white rounded shadow p-3 mb-3">
+    <div class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Phase breakdown · current task</div>
+    {% set phase = r.current_phase or '' %}
+    <div class="grid grid-cols-3 gap-2">
+        {% for ph_key, ph_label, ph_desc in [
+            ('execute', 'Phase A · execute + tests', 'Claude writes code + runs test_runner'),
+            ('extract', 'Phase B · findings', 'delivery_extractor pulls findings + decisions'),
+            ('challenge', 'Phase C · challenger', 'cross-model verification of claims'),
+        ] %}
+        {% set active = ph_key in phase %}
+        <div class="rounded border-2 p-2 text-xs {% if active %}border-blue-500 bg-blue-50{% else %}border-slate-200 bg-slate-50 opacity-70{% endif %}">
+            <div class="font-semibold">{{ ph_label }}</div>
+            <div class="text-slate-500 text-xs mt-1">{{ ph_desc }}</div>
+            {% if active %}
+            <div class="text-xs text-blue-700 mt-1 font-semibold">⟳ running</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{# SSE live console — streams state changes from /tier1/orchestrate-runs/{id}/stream #}
+<div class="bg-slate-900 text-slate-100 rounded-lg overflow-hidden mb-3">
+    <div class="px-4 py-2 flex items-center justify-between border-b border-slate-800 text-xs">
+        <div class="flex items-center gap-2">
+            <span id="sse-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <b class="uppercase tracking-wide">live console · SSE</b>
+            <span id="sse-status" class="text-slate-400">connecting…</span>
+        </div>
+        <label class="flex items-center gap-1 text-slate-400">
+            <input type="checkbox" id="sse-autoscroll" checked> auto-scroll
+        </label>
+    </div>
+    <div id="sse-log" class="p-3 mono text-xs overflow-y-auto" style="max-height: 300px; min-height: 100px;"></div>
+</div>
+<script>
+(function() {
+    const runId = {{ r.id }};
+    const dot = document.getElementById('sse-dot');
+    const statusEl = document.getElementById('sse-status');
+    const log = document.getElementById('sse-log');
+    if (!log) return;
+    const es = new EventSource('/api/v1/tier1/orchestrate-runs/' + runId + '/stream');
+    function appendLine(color, text) {
+        const div = document.createElement('div');
+        div.className = color;
+        const ts = new Date().toLocaleTimeString();
+        div.textContent = '[' + ts + '] ' + text;
+        log.appendChild(div);
+        if (document.getElementById('sse-autoscroll').checked) {
+            log.scrollTop = log.scrollHeight;
+        }
+    }
+    es.addEventListener('open', () => { dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse'; statusEl.textContent = 'streaming'; });
+    es.addEventListener('state', (e) => {
+        try {
+            const s = JSON.parse(e.data);
+            appendLine('text-slate-300', (s.current_task||'-') + ' · ' + (s.phase||'-') + ' · ' + (s.progress||''));
+            if (s.last_call) {
+                appendLine('text-slate-500', '  └ call #' + s.last_call.id + ' · ' + s.last_call.purpose + ' · $' + (s.last_call.cost_usd||0).toFixed(4) + ' · ' + s.last_call.preview.slice(0, 80));
+            }
+        } catch(_) {}
+    });
+    es.addEventListener('heartbeat', () => { dot.className = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse'; });
+    es.addEventListener('terminal', (e) => {
+        try {
+            const t = JSON.parse(e.data);
+            appendLine(t.status === 'DONE' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold', 'TERMINAL · ' + t.status);
+        } catch(_) {}
+        dot.className = 'w-2 h-2 rounded-full bg-slate-500';
+        statusEl.textContent = 'closed';
+        es.close();
+    });
+    es.addEventListener('error', () => {
+        dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        statusEl.textContent = 'reconnecting…';
+    });
+})();
+</script>
 
 {# J2 — trajectory forecast (auto-fetched + auto-refreshed by polling parent) #}
 <div id="forge-forecast" class="bg-white border border-slate-200 rounded p-3 mb-3 text-xs"
@@ -59,6 +162,25 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
     }
 });
 </script>
+{% elif r.status == 'PAUSED' %}
+<div class="bg-amber-50 border border-amber-200 rounded p-3 mb-3">
+    <div class="text-sm text-amber-900 mb-2">
+        ⏸ <b>Paused</b> after {{ r.tasks_completed }} task(s){% if r.paused_at %} at <span class="mono">{{ r.paused_at[:19].replace('T', ' ') }}</span>{% endif %}.
+        {{ r.progress_message or 'Resume to continue with remaining TODO tasks.' }}
+    </div>
+    <form hx-post="/api/v1/tier1/orchestrate-runs/{{ r.id }}/resume"
+          hx-swap="none" hx-on:htmx:after-request="if (event.detail.successful) location.reload()"
+          class="inline">
+        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-3 py-1.5 rounded">▶ Resume</button>
+    </form>
+    {% if r.resumed_at %}
+    <span class="text-xs text-slate-500 ml-2">previously resumed at <span class="mono">{{ r.resumed_at[:19].replace('T', ' ') }}</span></span>
+    {% endif %}
+</div>
+{% elif r.status == 'PARTIAL_FAIL' %}
+<div class="bg-orange-50 border border-orange-200 rounded p-3 mb-3 text-sm text-orange-900">
+    <strong>Partial fail:</strong> {{ r.progress_message }}
+</div>
 {% elif r.status == 'CANCELLED' %}
 <div class="bg-amber-50 border border-amber-200 rounded p-3 mb-3 text-sm">
     Cancelled: {{ r.progress_message }}

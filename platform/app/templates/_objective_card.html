@@ -44,12 +44,13 @@
                     class="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 px-2 py-0.5 rounded text-xs font-semibold"
                     title="Push this objective from {{o.status}} back to ACTIVE with gap notes — history preserved">↶ Re-open</button>
             {% else %}
-            <form hx-post="/ui/projects/{{project}}/plan" hx-swap="none"
-                  hx-on:htmx:after-request="if (event.detail.successful) window.location.reload()"
-                  class="inline">
-                <input type="hidden" name="objective_external_id" value="{{o.external_id}}">
-                <button type="submit" class="bg-blue-600 text-white px-2 py-0.5 rounded text-xs hover:bg-blue-700" title="Decompose this objective into tasks">Plan →</button>
-            </form>
+            {# Paradigm (mockup 03v2): Planning is a TASK, not a button.
+               Clicking "+ Planning task" creates a PLANNING-type task on this objective.
+               The legacy "/plan" monolithic button is still reachable for backward compat
+               from the pipeline stepper — here we surface the per-objective paradigm. #}
+            <a href="/ui/projects/{{project}}/objectives/{{o.external_id}}"
+               class="bg-purple-600 text-white px-2 py-0.5 rounded text-xs hover:bg-purple-700"
+               title="Open objective detail — create PLANNING task from there">+ Planning task →</a>
             {% endif %}
             <button hx-get="/ui/projects/{{project}}/objectives/{{o.external_id}}/card?edit=1"
                     hx-target="#obj-{{o.external_id}}"

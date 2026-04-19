@@ -41,6 +41,8 @@ class Skill(Base):
     )
     auto_attach_rule: Mapped[dict | None] = mapped_column(JSONB)
     cost_impact_usd: Mapped[float | None] = mapped_column(Float)
+    # P5.8 — per-skill timeout hint for hook invocations. NULL → caller default.
+    recommended_timeout_sec: Mapped[int | None] = mapped_column(Integer)
     is_built_in: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

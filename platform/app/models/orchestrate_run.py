@@ -16,7 +16,7 @@ class OrchestrateRun(Base):
     __tablename__ = "orchestrate_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('PENDING','RUNNING','DONE','FAILED','CANCELLED','BUDGET_EXCEEDED')",
+            "status IN ('PENDING','RUNNING','PAUSED','DONE','FAILED','CANCELLED','BUDGET_EXCEEDED','PARTIAL_FAIL','INTERRUPTED')",
             name="valid_orchestrate_run_status",
         ),
     )
@@ -28,7 +28,13 @@ class OrchestrateRun(Base):
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="PENDING")
+    # P5.7 — bumped on every _update_run so orphan-recovery can detect stale workers.
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
     params: Mapped[dict] = mapped_column(JSONB, nullable=False)  # max_tasks, enable_redis, etc.
+    # Mockup 04 — pause request flag (cooperative, executor checks between tasks)
+    pause_requested: Mapped[bool] = mapped_column(nullable=False, server_default="false")
+    paused_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    resumed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Live progress
     current_task_external_id: Mapped[str | None] = mapped_column(String(20))

@@ -461,7 +461,9 @@ def list_knowledge(slug: str, request: Request, category: str | None = None, sta
     return [
         {"id": k.id, "external_id": k.external_id, "title": k.title,
          "category": k.category, "content": k.content[:200], "scopes": k.scopes,
-         "status": k.status, "version": k.version}
+         "status": k.status, "version": k.version,
+         # P3.5 — surface last_read_at so the UI can age sources
+         "last_read_at": k.last_read_at.isoformat() if k.last_read_at else None}
         for k in q.all()
     ]
 

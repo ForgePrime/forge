@@ -196,9 +196,27 @@ def chat(
 
     text = (res.agent_response or "").strip()
     answer, not_checked = _extract_not_checked(text)
+    # Tool-call surface: Claude CLI sometimes returns fenced JSON with tool_use blocks.
+    # Heuristic — scan agent_response for ```tool_use or ```json blocks and lift them.
+    tool_calls: list[dict] = []
+    try:
+        for m in re.finditer(r"```(?:tool_use|json)\s*\n(.+?)\n```", text, re.DOTALL):
+            raw = m.group(1).strip()
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict) and ("name" in parsed or "tool" in parsed):
+                tool_calls.append({
+                    "name": parsed.get("name") or parsed.get("tool") or "unknown",
+                    "args": parsed.get("args") or parsed.get("input") or {},
+                    "result": parsed.get("result"),
+                })
+    except Exception:  # pragma: no cover
+        pass
     return ChatResult(
         answer=answer or "(empty response)",
-        tool_calls=[],       # non-tool mode for v1; real tool-use parsing comes later
+        tool_calls=tool_calls,
         not_checked=not_checked,
         cost_usd=res.cost_usd or 0.0,
         duration_ms=res.duration_ms,

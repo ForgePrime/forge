@@ -1,4 +1,6 @@
-from sqlalchemy import String, Text, Integer, ForeignKey, CheckConstraint, Table, Column
+import datetime as dt
+
+from sqlalchemy import String, Text, Integer, ForeignKey, CheckConstraint, Table, Column, DateTime
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,3 +47,5 @@ class Knowledge(Base, TimestampMixin):
     focus_hint: Mapped[str | None] = mapped_column(Text)
     # C1 — for source_type='url': original URL; for 'folder': absolute path
     target_url: Mapped[str | None] = mapped_column(Text)
+    # P3.5 — last time this source was injected into a Claude prompt (helps prune stale entries)
+    last_read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))

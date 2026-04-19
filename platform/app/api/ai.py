@@ -69,6 +69,22 @@ def _build_project_summary(db: Session, project: Project | None) -> str:
     contract = build_contract_injection(project)
     if contract:
         lines.append(contract)
+    # J5 — inject top anti-patterns so LLM proactively avoids repeat failures
+    try:
+        from app.models import AntiPattern
+        org_id = project.organization_id
+        aps = db.query(AntiPattern).filter(
+            AntiPattern.active == True,
+            (AntiPattern.organization_id == org_id) | (AntiPattern.organization_id.is_(None)),
+        ).order_by(AntiPattern.times_seen.desc()).limit(5).all()
+        if aps:
+            lines.append("\n## Active anti-patterns (do NOT repeat these):")
+            for ap in aps:
+                lines.append(f"- **{ap.title}** — {ap.description[:300]}")
+                if ap.correct_way:
+                    lines.append(f"  ↳ Correct: {ap.correct_way[:250]}")
+    except Exception:
+        pass
     return "\n".join(lines)
 
 

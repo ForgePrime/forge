@@ -7,7 +7,7 @@ import datetime as dt
 import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -39,6 +39,94 @@ def _project(db: Session, slug: str, request: Request) -> Project:
     if org and p.organization_id != org.id:
         raise HTTPException(403, "project not in current organization")
     return p
+
+
+# ===================================================================
+# P2.2 — inline test code retrieval for AC rows
+# ===================================================================
+
+@router.get("/projects/{slug}/tasks/{external_id}/ac/{position}/test-code")
+def ac_test_code(slug: str, external_id: str, position: int, request: Request,
+                 db: Session = Depends(get_db)):
+    """Return the source code for the test file referenced by this AC's test_path.
+
+    test_path can be:
+      - plain file path (e.g. "tests/test_login.py") — returns full file (up to 400 lines)
+      - file::symbol (e.g. "tests/test_login.py::test_rejects_expired") — returns just that function
+    """
+    import ast
+    import pathlib
+
+    _user(request)
+    proj = _project(db, slug, request)
+    task = db.query(Task).filter(
+        Task.project_id == proj.id, Task.external_id == external_id
+    ).first()
+    if not task:
+        raise HTTPException(404, f"task {external_id} not found")
+    ac = next((a for a in task.acceptance_criteria if a.position == position), None)
+    if not ac:
+        raise HTTPException(404, f"ac position {position} not found")
+    if not ac.test_path:
+        raise HTTPException(404, "ac has no test_path")
+
+    from app.api.pipeline import _workspace as _ws
+    ws = pathlib.Path(_ws(slug)).resolve()
+    raw = ac.test_path.strip()
+    symbol: str | None = None
+    if "::" in raw:
+        file_part, _, sym = raw.partition("::")
+        # Walk down the symbol chain (::TestClass::test_method). We just use the last segment.
+        symbol = sym.split("::")[-1]
+        file_part = file_part.strip()
+    else:
+        file_part = raw
+
+    # Path safety: resolve against workspace and ensure no ../ escapes.
+    target = (ws / file_part).resolve()
+    try:
+        target.relative_to(ws)
+    except ValueError:
+        raise HTTPException(400, "test_path escapes workspace")
+    if not target.exists() or not target.is_file():
+        return {"file": file_part, "symbol": symbol, "exists": False,
+                "source": None, "line_range": None, "truncated": False,
+                "language": None, "note": "file not found in workspace"}
+
+    text = target.read_text(encoding="utf-8", errors="replace")
+    lang = target.suffix.lstrip(".") or "txt"
+    source = text
+    line_start, line_end = 1, text.count("\n") + 1
+    truncated = False
+    MAX_LINES = 400
+
+    if symbol and lang == "py":
+        try:
+            tree = ast.parse(text)
+            found = None
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) \
+                   and node.name == symbol:
+                    found = node
+                    break
+            if found is not None:
+                line_start = getattr(found, "lineno", 1)
+                line_end = getattr(found, "end_lineno", line_start)
+                lines = text.splitlines()
+                source = "\n".join(lines[line_start - 1: line_end])
+        except SyntaxError:
+            pass  # Fall through to full file
+
+    if source.count("\n") + 1 > MAX_LINES:
+        lines = source.splitlines()[:MAX_LINES]
+        source = "\n".join(lines)
+        truncated = True
+
+    return {
+        "file": file_part, "symbol": symbol, "exists": True,
+        "source": source, "line_range": [line_start, line_end],
+        "truncated": truncated, "language": lang,
+    }
 
 
 # ===================================================================
@@ -139,11 +227,138 @@ def contract_get(slug: str, request: Request, db: Session = Depends(get_db)):
 
 @router.put("/projects/{slug}/contract")
 def contract_put(slug: str, body: ContractBody, request: Request, db: Session = Depends(get_db)):
-    _user(request)
+    user = _user(request)
     proj = _project(db, slug, request)
-    proj.contract_md = body.contract_md.strip()
+    previous = proj.contract_md or ""
+    new_content = body.contract_md.strip()
+    proj.contract_md = new_content
+    # Record a revision row if content actually changed
+    from app.models import ContractRevision
+    if previous != new_content:
+        last_ver = db.query(ContractRevision).filter(
+            ContractRevision.project_id == proj.id,
+        ).order_by(ContractRevision.version.desc()).first()
+        next_ver = (last_ver.version + 1) if last_ver else 1
+        db.add(ContractRevision(
+            project_id=proj.id, version=next_ver,
+            content_md=new_content,
+            saved_by_user_id=user.id,
+        ))
     db.commit()
     return {"slug": slug, "saved": True, "length": len(proj.contract_md)}
+
+
+@router.get("/projects/{slug}/contract/revisions")
+def contract_revisions(slug: str, request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    from app.models import ContractRevision
+    rows = db.query(ContractRevision).filter(
+        ContractRevision.project_id == proj.id,
+    ).order_by(ContractRevision.version.desc()).all()
+    return {"slug": slug, "revisions": [{
+        "version": r.version, "saved_at": r.saved_at.isoformat(),
+        "chars": len(r.content_md or ""),
+        "preview": (r.content_md or "")[:200],
+    } for r in rows]}
+
+
+@router.post("/projects/{slug}/contract/suggest")
+def contract_llm_suggest(slug: str, request: Request, db: Session = Depends(get_db)):
+    """LLM suggests improvements to the current contract (read-only; user decides)."""
+    _user(request)
+    proj = _project(db, slug, request)
+    if not proj.contract_md:
+        return {"suggestion": "_contract is empty — start with hard constraints (MUST/MUST NOT) and preferred stack_",
+                "cost_usd": 0.0}
+    from app.services.ai_chat import chat as _chat
+    from app.services.claude_cli import invoke_claude  # noqa
+    # Very small system prompt here — rely on ai_chat's SYSTEM_TEMPLATE by using chat()
+    page_ctx = {"page_id": "contract-suggest", "title": f"Contract of {slug}",
+                "route": f"/ui/projects/{slug}?tab=contract",
+                "entity_type": "project", "entity_id": slug,
+                "visible_data": {"chars": len(proj.contract_md)}, "actions": []}
+    result = _chat(
+        message=(f"Review the operational contract below. Propose 3-5 concrete improvements "
+                 f"(tightening wording, adding missing constraints, removing redundancy). "
+                 f"Do NOT rewrite — just list suggestions.\n\n---\n{proj.contract_md[:6000]}"),
+        page_ctx=page_ctx, project_summary="", recent_activity="",
+        plan_first=False, max_budget_usd=0.30, timeout_sec=120,
+    )
+    return {"suggestion": result.answer,
+            "not_checked": result.not_checked,
+            "cost_usd": result.cost_usd,
+            "model_used": result.model_used}
+
+
+class VetoBody(BaseModel):
+    veto_paths: list[str] = Field(default_factory=list)
+    budget_hard_cap_pct: int | None = Field(None, ge=50, le=100)
+
+
+@router.put("/projects/{slug}/veto-config")
+def set_veto_config(slug: str, body: VetoBody, request: Request, db: Session = Depends(get_db)):
+    """Configure veto paths + budget hard-cap pct (for autonomy veto clauses)."""
+    _user(request)
+    proj = _project(db, slug, request)
+    cfg = dict(proj.config or {})
+    cfg["veto_paths"] = [p.strip() for p in body.veto_paths if p.strip()]
+    if body.budget_hard_cap_pct is not None:
+        cfg["budget_hard_cap_pct"] = body.budget_hard_cap_pct
+    proj.config = cfg
+    db.commit()
+    return {"slug": slug, "veto_paths": cfg["veto_paths"],
+            "budget_hard_cap_pct": cfg.get("budget_hard_cap_pct")}
+
+
+@router.get("/projects/{slug}/veto-config")
+def get_veto_config(slug: str, request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    cfg = proj.config or {}
+    return {"slug": slug,
+            "veto_paths": cfg.get("veto_paths", []),
+            "budget_hard_cap_pct": cfg.get("budget_hard_cap_pct", 80)}
+
+
+# P2.4 — per-task + per-run USD budget configuration
+class BudgetBody(BaseModel):
+    budget_task_usd: float = Field(1.0, ge=0.01, le=100.0)
+    budget_run_usd: float = Field(5.0, ge=0.01, le=500.0)
+    warn_at_pct: int | None = Field(80, ge=10, le=100)
+
+
+@router.get("/projects/{slug}/budget-config")
+def get_budget_config(slug: str, request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    cfg = proj.config or {}
+    return {
+        "slug": slug,
+        "budget_task_usd": cfg.get("budget_task_usd", 1.0),
+        "budget_run_usd": cfg.get("budget_run_usd", 5.0),
+        "warn_at_pct": cfg.get("warn_at_pct", 80),
+    }
+
+
+@router.put("/projects/{slug}/budget-config")
+def set_budget_config(slug: str, body: BudgetBody, request: Request,
+                      db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    cfg = dict(proj.config or {})
+    cfg["budget_task_usd"] = float(body.budget_task_usd)
+    cfg["budget_run_usd"] = float(body.budget_run_usd)
+    if body.warn_at_pct is not None:
+        cfg["warn_at_pct"] = int(body.warn_at_pct)
+    proj.config = cfg
+    db.commit()
+    return {
+        "slug": slug,
+        "budget_task_usd": cfg["budget_task_usd"],
+        "budget_run_usd": cfg["budget_run_usd"],
+        "warn_at_pct": cfg.get("warn_at_pct"),
+    }
 
 
 def build_contract_injection(project: Project) -> str:
@@ -299,6 +514,432 @@ def objective_reopen(slug: str, external_id: str, body: ReopenBody,
     return {"objective": external_id, "status": "ACTIVE",
             "prior_status": prior_state["status"],
             "history_preserved": True}
+
+
+# ---- Objective DAG (dependencies) ----
+
+class DecisionResolveBody(BaseModel):
+    recommendation: str = Field(..., min_length=5, max_length=2000)
+    reasoning: str | None = Field(None, max_length=2000)
+    status: str = Field("CLOSED", pattern="^(CLOSED|SUPERSEDED)$")
+
+
+@router.post("/projects/{slug}/decisions/{external_id}/resolve")
+def resolve_decision(slug: str, external_id: str, body: DecisionResolveBody,
+                     request: Request, db: Session = Depends(get_db)):
+    """Resolve an OPEN decision (mockup 03 modal) — sets recommendation + status."""
+    _user(request)
+    proj = _project(db, slug, request)
+    d = db.query(Decision).filter(
+        Decision.project_id == proj.id, Decision.external_id == external_id
+    ).first()
+    if not d:
+        raise HTTPException(404, f"decision {external_id} not found")
+    if d.status != "OPEN":
+        raise HTTPException(409, f"decision is {d.status}; only OPEN can be resolved")
+    d.recommendation = body.recommendation.strip()
+    if body.reasoning:
+        d.reasoning = body.reasoning.strip()
+    d.status = body.status
+    db.commit()
+    return {"decision": external_id, "status": d.status, "recommendation": d.recommendation}
+
+
+# ---- Objective detail sub-endpoints (mockup 09) ----
+
+class ObjDescBody(BaseModel):
+    title: str | None = Field(None, max_length=300)
+    business_context: str | None = Field(None, max_length=10000)
+    priority: int | None = Field(None, ge=1, le=5)
+
+
+@router.patch("/projects/{slug}/objectives/{external_id}")
+def objective_patch(slug: str, external_id: str, body: ObjDescBody,
+                    request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+    if body.title is not None:
+        o.title = body.title.strip()
+    if body.business_context is not None:
+        o.business_context = body.business_context.strip()
+    if body.priority is not None:
+        o.priority = body.priority
+    db.commit()
+    return {"objective": external_id, "updated": True}
+
+
+class AckDebtBody(BaseModel):
+    reason: str = Field(..., min_length=20, max_length=4000)
+
+
+@router.post("/projects/{slug}/objectives/{external_id}/acknowledge-debt")
+def acknowledge_debt(slug: str, external_id: str, body: AckDebtBody,
+                     request: Request, db: Session = Depends(get_db)):
+    """User explicitly acknowledges scrutiny debt (unsourced AC / unrun manual AC / missing
+    scenarios) with a reason. Stored as a lesson (kind='insight') attached to the objective."""
+    user = _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+    from app.models import ProjectLesson
+    db.add(ProjectLesson(
+        project_id=proj.id, objective_external_id=external_id,
+        kind="insight",
+        title=f"Debt acknowledged on {external_id}",
+        description=body.reason.strip(),
+        tags=["debt-acknowledged", "user-decision"],
+        source="user",
+        created_by_user_id=user.id,
+    ))
+    db.commit()
+    return {"objective": external_id, "acknowledged": True}
+
+
+class RegenerateACBody(BaseModel):
+    count: int = Field(5, ge=1, le=20)
+
+
+@router.post("/projects/{slug}/objectives/{external_id}/regenerate-ac")
+def regenerate_ac(slug: str, external_id: str, body: RegenerateACBody,
+                  request: Request, db: Session = Depends(get_db)):
+    """Ask the LLM to derive N acceptance criteria from the objective description +
+    linked KB sources. Creates a new Task of type='analysis' containing the AC.
+
+    Behavior: creates an ANALYSIS task whose instruction is 'extract AC for this objective'.
+    Returns the task external_id. The task is TODO — user runs it via orchestrate.
+    """
+    _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+    # Allocate next T-NNN
+    from app.api.projects import _next_task_external_id
+    ext = _next_task_external_id(db, proj.id)
+    src_refs = []
+    existing_tasks = db.query(Task).filter(Task.project_id == proj.id,
+                                             Task.origin == external_id).all()
+    for t in existing_tasks:
+        for ref in (t.requirement_refs or []):
+            src_refs.append(ref)
+    t = Task(
+        project_id=proj.id, external_id=ext,
+        name=f"Derive {body.count} AC for {external_id}",
+        instruction=(f"Read the objective description (title: {o.title[:100]}...) "
+                     f"and its linked KB sources {src_refs or '(none linked yet)'}. "
+                     f"Produce exactly {body.count} acceptance criteria. Each must "
+                     f"cite its source (SRC-XXX) in the text if derivable; otherwise "
+                     f"prefix with 'INVENTED:'."),
+        type="analysis", status="TODO", origin=external_id,
+        requirement_refs=list(set(src_refs)) if src_refs else None,
+    )
+    db.add(t); db.commit()
+    return {"objective": external_id, "task_created": t.external_id}
+
+
+class ManualACBody(BaseModel):
+    text: str = Field(..., min_length=20, max_length=2000)
+    scenario_type: str = Field("positive", pattern="^(positive|negative|edge_case|regression)$")
+    verification: str = Field("manual", pattern="^(test|command|manual)$")
+    source_ref: str | None = None
+
+
+@router.post("/projects/{slug}/objectives/{external_id}/ac-manual")
+def add_ac_manual(slug: str, external_id: str, body: ManualACBody,
+                  request: Request, db: Session = Depends(get_db)):
+    """Add an AC directly on this objective — creates a placeholder DEVELOP task + AC.
+    Useful when user thought of something mid-flight that the LLM missed."""
+    _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+    from app.api.projects import _next_task_external_id
+    ext = _next_task_external_id(db, proj.id)
+    t = Task(
+        project_id=proj.id, external_id=ext,
+        name=f"Manual AC placeholder for {external_id}",
+        instruction="User-added AC. Implement when planning picks it up.",
+        type="develop", status="TODO", origin=external_id,
+    )
+    db.add(t); db.flush()
+    db.add(AcceptanceCriterion(
+        task_id=t.id, position=0,
+        text=body.text.strip(),
+        scenario_type=body.scenario_type, verification=body.verification,
+        source_ref=(body.source_ref or "").strip() or None,
+    ))
+    db.commit()
+    return {"objective": external_id, "task": ext, "ac_added": True}
+
+
+@router.post("/projects/{slug}/decisions/resolve-all")
+def resolve_all(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Bulk-resolve-all helper — returns count of OPEN decisions + their IDs so the UI
+    can open a batch modal (mockup 03v2 "Resolve all →")."""
+    _user(request)
+    proj = _project(db, slug, request)
+    opens = db.query(Decision).filter(
+        Decision.project_id == proj.id, Decision.status == "OPEN"
+    ).order_by(Decision.id).all()
+    return {"count": len(opens),
+            "decisions": [{"external_id": d.external_id, "issue": d.issue,
+                           "severity": d.severity,
+                           "recommendation_hint": d.recommendation}
+                          for d in opens]}
+
+
+class ScenarioBody(BaseModel):
+    label: str = Field(..., min_length=3, max_length=300)
+    kind: str = Field("edge_case", pattern="^(edge_case|failure_mode|security|regression|performance)$")
+    description: str | None = Field(None, max_length=2000)
+
+
+@router.post("/projects/{slug}/objectives/{external_id}/scenarios")
+def add_scenario(slug: str, external_id: str, body: ScenarioBody,
+                 request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+    scenarios = list(o.test_scenarios or [])
+    next_id = max((s.get("id", 0) for s in scenarios), default=0) + 1
+    scenarios.append({"id": next_id, "label": body.label.strip(),
+                       "kind": body.kind,
+                       "description": (body.description or "").strip() or None})
+    o.test_scenarios = scenarios
+    db.commit()
+    return {"objective": external_id, "scenario_id": next_id, "count": len(scenarios)}
+
+
+@router.delete("/projects/{slug}/objectives/{external_id}/scenarios/{scenario_id}")
+def delete_scenario(slug: str, external_id: str, scenario_id: int,
+                    request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+    scenarios = [s for s in (o.test_scenarios or []) if s.get("id") != scenario_id]
+    o.test_scenarios = scenarios
+    db.commit()
+    return {"removed": True, "count": len(scenarios)}
+
+
+class CheckBody(BaseModel):
+    text: str = Field(..., min_length=3, max_length=500)
+
+
+@router.post("/projects/{slug}/objectives/{external_id}/challenger-checks")
+def add_check(slug: str, external_id: str, body: CheckBody,
+              request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+    checks = list(o.challenger_checks or [])
+    next_id = max((c.get("id", 0) for c in checks), default=0) + 1
+    checks.append({"id": next_id, "text": body.text.strip()})
+    o.challenger_checks = checks
+    db.commit()
+    return {"objective": external_id, "check_id": next_id, "count": len(checks)}
+
+
+@router.delete("/projects/{slug}/objectives/{external_id}/challenger-checks/{check_id}")
+def delete_check(slug: str, external_id: str, check_id: int,
+                 request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+    checks = [c for c in (o.challenger_checks or []) if c.get("id") != check_id]
+    o.challenger_checks = checks
+    db.commit()
+    return {"removed": True, "count": len(checks)}
+
+
+@router.get("/projects/{slug}/objectives/{external_id}/activity")
+def objective_activity(slug: str, external_id: str,
+                        request: Request, db: Session = Depends(get_db)):
+    """Recent activity on this objective: reopens + AI interactions + task state flips."""
+    _user(request)
+    proj = _project(db, slug, request)
+    o = db.query(Objective).filter(Objective.project_id == proj.id,
+                                    Objective.external_id == external_id).first()
+    if not o:
+        raise HTTPException(404)
+
+    events = []
+
+    # Re-opens
+    reopens = db.query(ObjectiveReopen).filter(
+        ObjectiveReopen.objective_id == o.id
+    ).order_by(ObjectiveReopen.id.desc()).limit(10).all()
+    for r in reopens:
+        events.append({
+            "ts": r.created_at.isoformat(),
+            "kind": "reopen",
+            "label": f"Re-opened with notes: {(r.gap_notes or '')[:100]}",
+        })
+
+    # AI sidebar activity on this entity
+    from app.models import AIInteraction
+    ai = db.query(AIInteraction).filter(
+        AIInteraction.project_id == proj.id,
+        AIInteraction.entity_type == "objective",
+        AIInteraction.entity_id == external_id,
+    ).order_by(AIInteraction.id.desc()).limit(10).all()
+    for x in ai:
+        events.append({
+            "ts": x.created_at.isoformat(),
+            "kind": "ai_chat",
+            "label": f"chat: {x.message[:100]}",
+        })
+
+    # Tasks on this objective — recent completed_at
+    obj_tasks = db.query(Task).filter(Task.project_id == proj.id,
+                                       Task.origin == external_id).all()
+    for t in obj_tasks:
+        if t.completed_at:
+            events.append({
+                "ts": t.completed_at.isoformat(),
+                "kind": "task_done" if t.status == "DONE" else "task_" + t.status.lower(),
+                "label": f"{t.external_id} · {t.status} · {t.name[:80]}",
+            })
+
+    events.sort(key=lambda e: e["ts"], reverse=True)
+    return {"objective": external_id, "events": events[:20]}
+
+
+class ObjDepBody(BaseModel):
+    depends_on_external_id: str = Field(..., min_length=1)
+
+
+@router.post("/projects/{slug}/objectives/{external_id}/dependencies")
+def add_objective_dep(slug: str, external_id: str, body: ObjDepBody,
+                      request: Request, db: Session = Depends(get_db)):
+    """Add edge: objective `external_id` DEPENDS ON `depends_on_external_id`."""
+    _user(request)
+    proj = _project(db, slug, request)
+    src = db.query(Objective).filter(Objective.project_id == proj.id,
+                                      Objective.external_id == external_id).first()
+    tgt = db.query(Objective).filter(Objective.project_id == proj.id,
+                                      Objective.external_id == body.depends_on_external_id).first()
+    if not src or not tgt:
+        raise HTTPException(404, "one or both objectives not found")
+    if src.id == tgt.id:
+        raise HTTPException(422, "self-dependency not allowed")
+    # Simple cycle check: walk existing deps of tgt, ensure src not reached.
+    seen: set[int] = set()
+    stack = [tgt.id]
+    while stack:
+        cur = stack.pop()
+        if cur in seen:
+            continue
+        seen.add(cur)
+        if cur == src.id:
+            raise HTTPException(409, "adding this edge would create a cycle")
+        cur_obj = db.query(Objective).filter(Objective.id == cur).first()
+        if cur_obj:
+            stack.extend(d.id for d in cur_obj.dependencies)
+    if tgt not in src.dependencies:
+        src.dependencies.append(tgt)
+        db.commit()
+    return {"source": external_id, "depends_on": body.depends_on_external_id, "added": True}
+
+
+@router.delete("/projects/{slug}/objectives/{external_id}/dependencies/{depends_on_external_id}")
+def remove_objective_dep(slug: str, external_id: str, depends_on_external_id: str,
+                         request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    src = db.query(Objective).filter(Objective.project_id == proj.id,
+                                      Objective.external_id == external_id).first()
+    tgt = db.query(Objective).filter(Objective.project_id == proj.id,
+                                      Objective.external_id == depends_on_external_id).first()
+    if not src or not tgt:
+        raise HTTPException(404)
+    if tgt in src.dependencies:
+        src.dependencies.remove(tgt)
+        db.commit()
+    return {"removed": True}
+
+
+# P3.4 — per-objective KB scoping
+class KbFocusBody(BaseModel):
+    knowledge_external_ids: list[str] = Field(default_factory=list)
+
+
+@router.put("/projects/{slug}/objectives/{external_id}/kb-focus")
+def set_kb_focus(slug: str, external_id: str, body: KbFocusBody,
+                 request: Request, db: Session = Depends(get_db)):
+    """Narrow this objective to a specific subset of KB sources.
+    Empty list = no scoping (consult all sources)."""
+    _user(request)
+    proj = _project(db, slug, request)
+    obj = db.query(Objective).filter(Objective.project_id == proj.id,
+                                      Objective.external_id == external_id).first()
+    if not obj:
+        raise HTTPException(404)
+    ids: list[int] = []
+    for ext in body.knowledge_external_ids:
+        k = db.query(Knowledge).filter(Knowledge.project_id == proj.id,
+                                       Knowledge.external_id == ext.strip()).first()
+        if k:
+            ids.append(k.id)
+    obj.kb_focus_ids = ids or None
+    db.commit()
+    return {"objective": external_id,
+            "kb_focus_ids": obj.kb_focus_ids or [],
+            "count": len(obj.kb_focus_ids or [])}
+
+
+@router.get("/projects/{slug}/objectives/{external_id}/kb-focus")
+def get_kb_focus(slug: str, external_id: str,
+                 request: Request, db: Session = Depends(get_db)):
+    _user(request)
+    proj = _project(db, slug, request)
+    obj = db.query(Objective).filter(Objective.project_id == proj.id,
+                                      Objective.external_id == external_id).first()
+    if not obj:
+        raise HTTPException(404)
+    sources = []
+    if obj.kb_focus_ids:
+        rows = db.query(Knowledge).filter(Knowledge.id.in_(obj.kb_focus_ids)).all()
+        sources = [{"id": k.id, "external_id": k.external_id, "title": k.title,
+                    "category": k.category} for k in rows]
+    return {"objective": external_id, "scoped": bool(obj.kb_focus_ids), "sources": sources}
+
+
+@router.get("/projects/{slug}/objectives-dag")
+def objectives_dag(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Return all objectives + their DAG edges for rendering."""
+    _user(request)
+    proj = _project(db, slug, request)
+    objs = db.query(Objective).filter(Objective.project_id == proj.id) \
+        .order_by(Objective.id).all()
+    nodes = [{"external_id": o.external_id, "title": o.title, "status": o.status,
+              "priority": o.priority} for o in objs]
+    edges: list[dict] = []
+    for o in objs:
+        for d in o.dependencies:
+            edges.append({"from": o.external_id, "to": d.external_id})
+    return {"slug": slug, "nodes": nodes, "edges": edges}
 
 
 @router.get("/projects/{slug}/objectives/{external_id}/reopens")
@@ -605,6 +1246,49 @@ def finding_dismiss(slug: str, external_id: str, body: FindingDismissBody,
             "reason_len": len(f.dismissed_reason)}
 
 
+@router.post("/projects/{slug}/findings/{external_id}/create-task")
+def finding_to_task(slug: str, external_id: str, request: Request,
+                    db: Session = Depends(get_db)):
+    """P2.1 — convert a finding into a chore task one-click. The new task carries
+    origin_finding_id so the audit trail is preserved. Task is queued as TODO."""
+    _user(request)
+    proj = _project(db, slug, request)
+    f = db.query(Finding).filter(
+        Finding.project_id == proj.id, Finding.external_id == external_id
+    ).first()
+    if not f:
+        raise HTTPException(404, f"finding {external_id} not found")
+    if f.status in ("DISMISSED", "REJECTED"):
+        raise HTTPException(409, f"finding is {f.status}; cannot convert")
+
+    # Idempotency — if a task already exists for this finding, return it.
+    existing = db.query(Task).filter(
+        Task.project_id == proj.id, Task.origin_finding_id == f.id
+    ).first()
+    if existing:
+        return {"task_external_id": existing.external_id, "created": False,
+                "status": existing.status}
+
+    from app.api.pipeline import _next_external_id as _nxt
+    task_ext = _nxt(db, proj.id, Task, "T")
+    description = f.description or f.evidence or ""
+    if f.suggested_action:
+        description += f"\n\nSuggested action: {f.suggested_action}"
+    t = Task(
+        project_id=proj.id,
+        external_id=task_ext,
+        name=f"Fix: {f.title[:150]}",
+        description=description[:4000],
+        instruction=f"Address finding {external_id} (severity={f.severity}).",
+        type="chore",
+        status="TODO",
+        origin_finding_id=f.id,
+    )
+    db.add(t); db.commit(); db.refresh(t)
+    return {"task_external_id": t.external_id, "created": True, "status": t.status,
+            "finding_external_id": external_id}
+
+
 # ===================================================================
 # L1 — auto-draft docs
 # ===================================================================
@@ -832,6 +1516,157 @@ def cost_forensic(slug: str, external_id: str, request: Request, db: Session = D
 # J2 — mid-run trajectory forecast for orchestrate runs
 # ===================================================================
 
+@router.post("/orchestrate-runs/{run_id}/pause")
+def pause_run(run_id: int, request: Request, db: Session = Depends(get_db)):
+    """P1.1 cooperative pause — sets flag. Executor checks between tasks and halts there."""
+    _user(request)
+    run = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    if not run:
+        raise HTTPException(404)
+    if run.status not in ("RUNNING", "PENDING"):
+        raise HTTPException(409, f"run is {run.status}; cannot pause")
+    run.pause_requested = True
+    db.commit()
+    return {"run_id": run_id, "pause_requested": True, "status": run.status}
+
+
+@router.post("/orchestrate-runs/{run_id}/resume")
+def resume_run(run_id: int, request: Request, background_tasks: BackgroundTasks,
+               db: Session = Depends(get_db)):
+    """P1.1 resume — only valid for PAUSED runs. Clears the flag AND respawns the worker
+    so remaining TODO tasks resume execution. Runs still RUNNING with pending pause request
+    just get the flag cleared (the executor will observe it on the next iteration)."""
+    _user(request)
+    run = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    if not run:
+        raise HTTPException(404)
+    if run.status in ("DONE", "FAILED", "CANCELLED", "BUDGET_EXCEEDED", "PARTIAL_FAIL"):
+        raise HTTPException(409, f"run is {run.status}; cannot resume terminal state")
+
+    respawned = False
+    if run.status == "PAUSED":
+        proj = db.query(Project).filter(Project.id == run.project_id).first()
+        if not proj:
+            raise HTTPException(500, "project missing for paused run")
+        run.status = "RUNNING"
+        run.pause_requested = False
+        run.resumed_at = dt.datetime.now(dt.timezone.utc)
+        run.progress_message = "Resuming from pause..."
+        db.commit()
+        # Respawn worker with same params; orchestrate() will pick up next TODO.
+        from app.api.pipeline import _run_orchestrate_background
+        background_tasks.add_task(_run_orchestrate_background, proj.slug, run.params or {}, run.id)
+        respawned = True
+    else:
+        # status RUNNING/PENDING with pending pause request: just clear the flag.
+        run.pause_requested = False
+        db.commit()
+
+    return {"run_id": run_id, "pause_requested": False,
+            "status": run.status, "respawned": respawned}
+
+
+class CrafterPreviewBody(BaseModel):
+    seed_prompt: str = Field(..., min_length=10, max_length=20000)
+
+
+@router.post("/projects/{slug}/crafter-preview")
+def crafter_preview(slug: str, body: CrafterPreviewBody,
+                    request: Request, db: Session = Depends(get_db)):
+    """Run the crafter on a seed prompt WITHOUT triggering the executor. Used in
+    mockup 07 "Preview crafted prompt" — lets user inspect what the crafted output
+    would look like before committing to full crafted-mode execution."""
+    _user(request)
+    proj = _project(db, slug, request)
+    from app.services.crafter import craft_executor_prompt
+    from app.api.pipeline import _resolve_anthropic_key, _workspace
+    workspace = _workspace(slug)
+    key = _resolve_anthropic_key(db, proj)
+    result = craft_executor_prompt(
+        seed_prompt=body.seed_prompt, workspace_dir=workspace,
+        model="opus", api_key=key, max_budget_usd=1.0, timeout_sec=180,
+    )
+    return {
+        "executor_prompt": result.executor_prompt,
+        "not_checked": result.not_checked,
+        "crafter_cost_usd": result.crafter_call.cost_usd or 0.0,
+        "crafter_duration_ms": result.crafter_call.duration_ms,
+        "crafter_model": result.crafter_call.model_used,
+    }
+
+
+@router.get("/orchestrate-runs/{run_id}/stream")
+def orchestrate_stream(run_id: int, request: Request, db: Session = Depends(get_db)):
+    """SSE live stream of orchestrate run state. Emits on any field change + heartbeat every 10s.
+    Terminates when run reaches a terminal state (DONE/FAILED/CANCELLED/BUDGET_EXCEEDED).
+    """
+    from fastapi.responses import StreamingResponse
+    import json as _json
+    import time as _time
+    from app.database import SessionLocal
+    from app.models.orchestrate_run import OrchestrateRun
+    from app.models import LLMCall
+
+    _user(request)
+    run = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    if not run:
+        raise HTTPException(404)
+    # Org scope
+    proj = db.query(Project).filter(Project.id == run.project_id).first()
+    org = getattr(request.state, "org", None)
+    if proj and org and proj.organization_id != org.id:
+        raise HTTPException(403)
+
+    TERMINAL = {"DONE", "FAILED", "CANCELLED", "BUDGET_EXCEEDED", "PARTIAL_FAIL"}
+
+    def event_stream():
+        last_state: dict = {}
+        last_heartbeat = _time.monotonic()
+        deadline = _time.monotonic() + 1800  # max 30min
+        db_local = SessionLocal()
+        try:
+            while _time.monotonic() < deadline:
+                r = db_local.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+                if not r:
+                    yield f"event: error\ndata: {{\"error\":\"run disappeared\"}}\n\n"
+                    return
+                # Latest call preview for this run
+                latest_call = db_local.query(LLMCall).filter(
+                    LLMCall.project_id == r.project_id
+                ).order_by(LLMCall.id.desc()).first()
+                state = {
+                    "status": r.status,
+                    "current_task": r.current_task_external_id,
+                    "phase": r.current_phase,
+                    "progress": r.progress_message,
+                    "tasks_completed": r.tasks_completed,
+                    "tasks_failed": r.tasks_failed,
+                    "cost_usd": float(r.total_cost_usd or 0),
+                    "last_call": {
+                        "id": latest_call.id, "purpose": latest_call.purpose,
+                        "cost_usd": latest_call.cost_usd, "duration_ms": latest_call.duration_ms,
+                        "preview": (latest_call.prompt_preview or "")[:200],
+                    } if latest_call else None,
+                }
+                if state != last_state:
+                    yield "event: state\ndata: " + _json.dumps(state) + "\n\n"
+                    last_state = state
+                if _time.monotonic() - last_heartbeat > 10:
+                    yield "event: heartbeat\ndata: {}\n\n"
+                    last_heartbeat = _time.monotonic()
+                if r.status in TERMINAL:
+                    yield "event: terminal\ndata: " + _json.dumps({"status": r.status}) + "\n\n"
+                    return
+                _time.sleep(1.0)
+        finally:
+            db_local.close()
+
+    return StreamingResponse(event_stream(),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache, no-transform",
+                                      "X-Accel-Buffering": "no"})
+
+
 @router.get("/orchestrate-runs/{run_id}/forecast")
 def run_forecast(run_id: int, request: Request, db: Session = Depends(get_db)):
     """Project total run cost based on rolling avg of completed tasks so far."""
@@ -1016,15 +1851,60 @@ class HookCreateBody(BaseModel):
 def list_hooks(slug: str, request: Request, db: Session = Depends(get_db)):
     _user(request)
     proj = _project(db, slug, request)
-    from app.models import ProjectHook, Skill
+    from app.models import ProjectHook, Skill, HookRun
     rows = db.query(ProjectHook, Skill).outerjoin(
         Skill, ProjectHook.skill_id == Skill.id
     ).filter(ProjectHook.project_id == proj.id).order_by(ProjectHook.stage, ProjectHook.id).all()
-    return {"slug": slug, "hooks": [{
-        "id": h.id, "stage": h.stage, "enabled": h.enabled,
-        "purpose_text": h.purpose_text,
-        "skill": {"external_id": s.external_id, "name": s.name, "category": s.category} if s else None,
-    } for h, s in rows]}
+
+    # Latest HookRun per hook_id (P1.2 — surface the audit trail so the user
+    # can see the hook fired, not just that it's configured).
+    latest_runs: dict[int, HookRun] = {}
+    for run in db.query(HookRun).filter(HookRun.project_id == proj.id).order_by(
+        HookRun.id.desc()
+    ).limit(200).all():
+        latest_runs.setdefault(run.hook_id, run)
+
+    out = []
+    for h, s in rows:
+        last = latest_runs.get(h.id)
+        out.append({
+            "id": h.id, "stage": h.stage, "enabled": h.enabled,
+            "purpose_text": h.purpose_text,
+            "skill": {"external_id": s.external_id, "name": s.name, "category": s.category} if s else None,
+            "last_fired_at": last.started_at.isoformat() if last and last.started_at else None,
+            "last_status": last.status if last else None,
+            "last_summary": (last.summary[:140] if last and last.summary else None),
+            "last_llm_call_id": last.llm_call_id if last else None,
+        })
+    return {"slug": slug, "hooks": out}
+
+
+@router.get("/projects/{slug}/hook-runs")
+def list_hook_runs(slug: str, request: Request, db: Session = Depends(get_db),
+                   limit: int = 50):
+    """P1.2 — recent hook firings across all hooks for this project. Proves the wire-up."""
+    _user(request)
+    proj = _project(db, slug, request)
+    from app.models import HookRun, ProjectHook, Task
+    runs = db.query(HookRun).filter(
+        HookRun.project_id == proj.id
+    ).order_by(HookRun.id.desc()).limit(min(limit, 200)).all()
+    out = []
+    for r in runs:
+        hook = db.query(ProjectHook).filter(ProjectHook.id == r.hook_id).first()
+        task = db.query(Task).filter(Task.id == r.task_id).first() if r.task_id else None
+        out.append({
+            "id": r.id, "hook_id": r.hook_id,
+            "hook_stage": hook.stage if hook else r.stage,
+            "task_external_id": task.external_id if task else None,
+            "task_name": task.name if task else None,
+            "status": r.status, "summary": r.summary,
+            "duration_ms": r.duration_ms,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "llm_call_id": r.llm_call_id,
+        })
+    return {"slug": slug, "count": len(out), "runs": out}
 
 
 @router.post("/projects/{slug}/hooks")
@@ -1127,6 +2007,137 @@ def kb_conflicts(slug: str, request: Request, db: Session = Depends(get_db)):
         dedup.append(c)
     return {"slug": slug, "scanned": len(sources), "conflicts": dedup,
             "scope_limit": "keyword-based heuristic — false positives likely on semantically compatible phrasings."}
+
+
+@router.get("/projects/{slug}/docs/polished")
+def docs_polished(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Return the most-recent LLM-polished documentation artefacts per section.
+    Source: Task.type == 'documentation' AND status == 'DONE' — we read the task
+    result (if available) and surface it as a section block.
+
+    V0 implementation: aggregates all DONE documentation tasks' descriptions/instructions
+    as 'polished' sections. When tasks store richer output (delivery JSON), we'd pull that.
+    """
+    _user(request)
+    proj = _project(db, slug, request)
+    doc_tasks = db.query(Task).filter(
+        Task.project_id == proj.id,
+        Task.type == "documentation",
+        Task.status == "DONE",
+    ).order_by(Task.completed_at.desc()).all()
+    sections = []
+    for t in doc_tasks:
+        # Pull latest execution delivery
+        from app.models import Execution
+        exe = db.query(Execution).filter(Execution.task_id == t.id,
+                                          Execution.status == "ACCEPTED") \
+            .order_by(Execution.id.desc()).first()
+        delivery = exe.delivery if exe else None
+        summary = None
+        if delivery:
+            # Common shape: delivery["summary"] or delivery["changes"] list
+            summary = delivery.get("summary") if isinstance(delivery, dict) else None
+        sections.append({
+            "task_ext": t.external_id,
+            "title": t.name,
+            "origin_objective": t.origin,
+            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+            "summary": summary or (t.instruction[:800] if t.instruction else None),
+            "has_delivery": bool(delivery),
+        })
+    return {"slug": slug, "doc_task_sections": sections,
+            "count": len(sections)}
+
+
+@router.get("/projects/{slug}/docs/objective-rollup")
+def docs_per_objective_rollup(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Per-objective deliverable rollup (mockup 10): for each objective,
+    inputs consumed (KB refs), outputs produced (tasks done + AC + decisions),
+    cost + time."""
+    _user(request)
+    proj = _project(db, slug, request)
+    objs = db.query(Objective).filter(Objective.project_id == proj.id).order_by(Objective.id).all()
+    rollups = []
+    from app.models import Decision
+    for o in objs:
+        obj_tasks = db.query(Task).filter(Task.project_id == proj.id, Task.origin == o.external_id).all()
+        task_ids = [t.id for t in obj_tasks]
+        # AC count
+        ac_count = 0
+        if task_ids:
+            ac_count = db.query(AcceptanceCriterion).filter(
+                AcceptanceCriterion.task_id.in_(task_ids)
+            ).count()
+        # Cost: LLM calls on executions of those tasks
+        from app.models import Execution
+        exec_ids = [e.id for e in db.query(Execution).filter(
+            Execution.task_id.in_(task_ids)
+        ).all()] if task_ids else []
+        cost = 0.0
+        if exec_ids:
+            cost = db.query(func.coalesce(func.sum(LLMCall.cost_usd), 0.0)).filter(
+                LLMCall.execution_id.in_(exec_ids)
+            ).scalar() or 0.0
+        # Decisions
+        decisions = db.query(Decision).filter(Decision.project_id == proj.id).all()
+        # KB refs (unique)
+        src_refs: set[str] = set()
+        for t in obj_tasks:
+            for ref in (t.requirement_refs or []):
+                src_refs.add(ref.split()[0].split("§")[0].strip())
+        # Tasks by status
+        by_status: dict[str, int] = {}
+        for t in obj_tasks:
+            by_status[t.status] = by_status.get(t.status, 0) + 1
+        rollups.append({
+            "external_id": o.external_id,
+            "title": o.title,
+            "status": o.status,
+            "inputs": {
+                "kb_sources": sorted(src_refs),
+                "kb_sources_count": len(src_refs),
+            },
+            "outputs": {
+                "tasks_total": len(obj_tasks),
+                "tasks_by_status": by_status,
+                "ac_count": ac_count,
+                "decisions_count": len(decisions),
+            },
+            "cost_usd": round(cost, 4),
+        })
+    return {"slug": slug, "rollups": rollups}
+
+
+@router.get("/projects/{slug}/docs/export.md")
+def docs_export_md(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Return auto-generated docs as a raw markdown file for download."""
+    from fastapi.responses import PlainTextResponse
+    _user(request)
+    proj = _project(db, slug, request)
+    auto = docs_auto_draft(slug, request, db)
+    # Append per-objective rollup
+    rollups = docs_per_objective_rollup(slug, request, db)["rollups"]
+    md = auto["content_md"]
+    if rollups:
+        md += "\n\n---\n\n# Per-objective rollup\n"
+        for r in rollups:
+            md += (
+                f"\n## {r['external_id']} · {r['title']} · {r['status']}\n"
+                f"- **Inputs:** {r['inputs']['kb_sources_count']} KB source(s): "
+                f"{', '.join(r['inputs']['kb_sources']) or '(none)'}\n"
+                f"- **Outputs:** {r['outputs']['tasks_total']} tasks "
+                f"({r['outputs']['tasks_by_status']}), "
+                f"{r['outputs']['ac_count']} AC, "
+                f"{r['outputs']['decisions_count']} decisions in project\n"
+                f"- **Cost:** ${r['cost_usd']}\n"
+            )
+    return PlainTextResponse(
+        md,
+        headers={
+            "Content-Disposition": f'attachment; filename="{slug}-docs.md"',
+            "Content-Type": "text/markdown; charset=utf-8",
+        },
+    )
 
 
 @router.get("/projects/{slug}/docs/auto")

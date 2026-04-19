@@ -3,84 +3,179 @@
 {% block content %}
 
 <div class="mb-4">
-    <a href="/ui/projects/{{ proj.slug }}?tab=objectives" class="text-sm text-blue-600 hover:underline">← {{ proj.slug }}</a>
+    <a href="/ui/projects/{{ proj.slug }}?tab=objectives" class="text-sm text-blue-600 hover:underline">← {{ proj.slug }} / Objectives</a>
 </div>
 
-{# ========== Header ========== #}
-<div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+{# ========== Header w/ status strip ========== #}
+<div class="bg-white rounded-xl shadow-sm p-5 mb-4">
     <div class="flex items-start justify-between gap-4 mb-3">
         <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-2 flex-wrap">
                 <span class="mono text-xs text-slate-400">{{ o.external_id }}</span>
-                <span class="pill {% if o.status == 'ACHIEVED' %}bg-emerald-100 text-emerald-700{% elif o.status == 'ACTIVE' %}bg-blue-100 text-blue-700{% elif o.status == 'ABANDONED' %}bg-rose-100 text-rose-700{% else %}bg-slate-100 text-slate-700{% endif %} text-xs font-semibold">{{ o.status }}</span>
+                <span class="pill {% if o.status == 'ACHIEVED' %}bg-emerald-100 text-emerald-700{% elif o.status == 'ACTIVE' %}bg-blue-100 text-blue-700{% elif o.status == 'ABANDONED' %}bg-rose-100 text-rose-700{% else %}bg-slate-100 text-slate-700{% endif %} text-xs font-semibold">{% if scrutiny.open_ambiguities %}⏸ BLOCKED{% else %}{{ o.status }}{% endif %}</span>
                 <span class="text-xs text-slate-500">P{{ o.priority }}</span>
                 {% if o.autonomy_optout %}
                 <span class="pill bg-amber-100 text-amber-800 text-xs">⏸ autonomy opt-out</span>
                 {% endif %}
-                {% if deps_on %}
-                <span class="pill bg-slate-200 text-slate-700 text-xs">depends on: {{ deps_on }}</span>
+                {% if deps_on_list %}
+                <span class="pill bg-slate-200 text-slate-700 text-xs">depends on: {% for d in deps_on_list %}<a href="/ui/projects/{{ proj.slug }}/objectives/{{ d }}" class="underline hover:text-blue-700 mono">{{ d }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>
                 {% endif %}
-                {% if blocks %}
-                <span class="pill bg-slate-200 text-slate-700 text-xs">blocks: {{ blocks }}</span>
+                {% if blocks_list %}
+                <span class="pill bg-slate-200 text-slate-700 text-xs">blocks: {% for d in blocks_list %}<a href="/ui/projects/{{ proj.slug }}/objectives/{{ d }}" class="underline hover:text-blue-700 mono">{{ d }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>
                 {% endif %}
             </div>
-            <h1 class="text-2xl font-bold">{{ o.title }}</h1>
+            <h1 id="obj-title" class="text-2xl font-bold">{{ o.title }}</h1>
         </div>
         <div class="flex gap-2 flex-shrink-0">
+            <button onclick="toggleEditDesc()" class="text-sm text-blue-600 hover:underline">✎ Edit</button>
             {% if o.status in ["ACHIEVED", "ABANDONED"] %}
             <button onclick="document.getElementById('reopen-modal').classList.remove('hidden')"
                     class="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 px-3 py-1.5 rounded text-sm font-semibold">↶ Re-open</button>
             {% endif %}
-            <label class="text-xs text-slate-600 flex items-center gap-2 whitespace-nowrap">
-                <input type="checkbox" {% if o.autonomy_optout %}checked{% endif %}
-                       onchange="toggleOptOut(this.checked)"> autonomy opt-out
+            <label class="text-xs text-slate-600 flex items-center gap-1 whitespace-nowrap">
+                <input type="checkbox" {% if o.autonomy_optout %}checked{% endif %} onchange="toggleOptOut(this.checked)">
+                opt-out
             </label>
         </div>
     </div>
 
-    {# Scrutiny debt strip — per-objective #}
-    {% if scrutiny %}
-    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs">
-        <div class="font-bold text-amber-900 mb-2">🔎 Scrutiny debt on {{ o.external_id }}</div>
-        <div class="grid grid-cols-4 gap-2">
-            <div class="bg-white rounded p-2 border border-amber-200">
-                <b>{{ scrutiny.ac_unsourced }}</b> AC unsourced
-                <div class="text-slate-500">invented by LLM · require attribution</div>
-            </div>
-            <div class="bg-white rounded p-2 border border-amber-200">
-                <b>{{ scrutiny.ac_manual_never_run }}</b> AC manual · not executed
-                <div class="text-slate-500">user-added, never verified</div>
-            </div>
-            <div class="bg-white rounded p-2 border border-amber-200">
-                <b>{{ scrutiny.open_ambiguities }}</b> open decisions
-                <div class="text-slate-500">block planning until resolved</div>
-            </div>
-            <div class="bg-white rounded p-2 border border-amber-200">
-                <b>{{ scrutiny.reopen_count }}</b> re-opens
-                <div class="text-slate-500">history of gap notes</div>
+    {# Status strip: 4 metrics #}
+    <div class="grid grid-cols-4 gap-3 pt-3 border-t border-slate-100">
+        <div>
+            <div class="text-xs font-semibold text-slate-500 uppercase">Progress</div>
+            <div class="flex items-center gap-2 mt-1">
+                {% set kr_total = o.key_results|length %}
+                {% set kr_done = o.key_results|selectattr('status', 'equalto', 'ACHIEVED')|list|length %}
+                {% set kr_pct = (100 * kr_done / kr_total)|round|int if kr_total else 0 %}
+                <div class="h-2 bg-slate-100 rounded-full flex-1 overflow-hidden"><div class="h-full bg-emerald-500" style="width: {{ kr_pct }}%"></div></div>
+                <span class="text-xs font-semibold">{{ kr_done }}/{{ kr_total }} KR met</span>
             </div>
         </div>
+        <div>
+            <div class="text-xs font-semibold text-slate-500 uppercase">Tasks</div>
+            {% set task_done = obj_tasks|selectattr('status', 'equalto', 'DONE')|list|length %}
+            {% set task_running = obj_tasks|selectattr('status', 'equalto', 'IN_PROGRESS')|list|length %}
+            {% set task_failed = obj_tasks|selectattr('status', 'equalto', 'FAILED')|list|length %}
+            <div class="text-sm font-semibold mt-1">{{ task_done }} done · {{ task_running }} running · {{ obj_tasks|length - task_done - task_running - task_failed }} planned{% if task_failed %} · <span class="text-rose-600">{{ task_failed }} failed</span>{% endif %}</div>
+        </div>
+        <div>
+            <div class="text-xs font-semibold text-slate-500 uppercase">Ambiguities</div>
+            <div class="text-sm font-semibold mt-1">
+                {% if scrutiny.open_ambiguities %}<span class="text-amber-700">{{ scrutiny.open_ambiguities }} open</span>{% else %}<span class="text-emerald-700">0 open</span>{% endif %}
+                · <span class="text-slate-500">{{ resolved_decisions|length }} resolved</span>
+            </div>
+        </div>
+        <div>
+            <div class="text-xs font-semibold text-slate-500 uppercase">Cost so far</div>
+            <div class="text-sm font-semibold mt-1 mono">${{ '%.2f' % (obj_cost or 0) }}</div>
+        </div>
     </div>
-    {% endif %}
+</div>
+
+{# ========== Scrutiny debt strip ========== #}
+<div class="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-4">
+    <div class="flex items-center gap-3 mb-3">
+        <div class="text-2xl">🔎</div>
+        <div>
+            <div class="font-bold text-slate-900">Scrutiny debt on {{ o.external_id }}</div>
+            <div class="text-xs text-slate-700">Counters that indicate unverified assumptions. Close before declaring ACHIEVED.</div>
+        </div>
+    </div>
+    <div class="grid grid-cols-4 gap-2 text-xs">
+        <div class="bg-white rounded p-2 border border-amber-200">
+            <b>{{ scrutiny.ac_unsourced }}</b> AC unsourced
+            <div class="text-slate-500">invented by LLM · need attribution</div>
+        </div>
+        <div class="bg-white rounded p-2 border border-amber-200">
+            <b>{{ scrutiny.ac_manual_never_run }}</b> manual AC · not executed
+            <div class="text-slate-500">require verification</div>
+        </div>
+        <div class="bg-white rounded p-2 border border-amber-200">
+            <b>{{ scrutiny.scenarios_count }}</b> failure-mode scenarios
+            <div class="text-slate-500">non-happy-path · <span class="{% if scrutiny.scenarios_count == 0 %}text-rose-600 font-semibold{% endif %}">{% if scrutiny.scenarios_count == 0 %}0 defined — unsafe{% else %}captured{% endif %}</span></div>
+        </div>
+        <div class="bg-white rounded p-2 border border-amber-200">
+            <b>{{ scrutiny.reopen_count }}</b> re-opens
+            <div class="text-slate-500">history of gap notes</div>
+        </div>
+    </div>
+    <div class="flex gap-2 mt-3 justify-end">
+        <a href="#scenarios-section" class="text-xs text-slate-600 hover:text-slate-900 px-3 py-1.5">Add scenarios ↓</a>
+        <a href="#ac-section" class="text-xs text-slate-600 hover:text-slate-900 px-3 py-1.5">Attribute AC sources ↓</a>
+        <button onclick="document.getElementById('ack-debt-modal').classList.remove('hidden')"
+                class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded">Acknowledge debt (log reason) →</button>
+        <button onclick="document.getElementById('continue-anyway-modal').classList.remove('hidden')"
+                class="text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold px-3 py-1.5 rounded">▶ Continue anyway</button>
+    </div>
+</div>
+
+{# Acknowledge debt modal — stores reason as an INSIGHT lesson #}
+<div id="ack-debt-modal" class="hidden fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-xl w-full overflow-hidden">
+        <div class="bg-slate-100 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
+            <h3 class="font-bold text-slate-800">📋 Acknowledge scrutiny debt — log reason</h3>
+            <button onclick="document.getElementById('ack-debt-modal').classList.add('hidden')" class="text-slate-400 text-2xl leading-none">×</button>
+        </div>
+        <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/acknowledge-debt"
+              hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { document.getElementById('ack-debt-modal').classList.add('hidden'); forgeToast('Debt acknowledged + logged as insight.', 'success'); }">
+            <div class="px-5 py-4 space-y-2">
+                <p class="text-sm text-slate-700">Explicitly acknowledging debt creates a <b>lesson of kind=insight</b> attached to this objective. It signals "I know there's debt here, and here's why I'm accepting it." The debt counters remain visible; this is <em>not</em> a dismiss button.</p>
+                <label class="text-xs font-semibold">Why accept the debt? <span class="text-rose-600">(≥20 chars)</span></label>
+                <textarea name="reason" rows="5" required minlength="20" maxlength="4000"
+                          placeholder="e.g. Pilot phase — formal source attribution deferred until production. Failure modes already covered by T-001's scenarios."
+                          class="w-full border border-slate-300 rounded p-2 text-sm"></textarea>
+            </div>
+            <div class="bg-slate-50 px-5 py-3 flex justify-end gap-2">
+                <button type="button" onclick="document.getElementById('ack-debt-modal').classList.add('hidden')" class="px-3 py-1.5 text-sm">Cancel</button>
+                <button type="submit" class="bg-slate-700 hover:bg-slate-900 text-white font-semibold px-4 py-1.5 rounded text-sm">Acknowledge + log</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# Continue anyway modal — proceeds despite debt, also requires reason #}
+<div id="continue-anyway-modal" class="hidden fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-xl w-full overflow-hidden">
+        <div class="bg-amber-50 border-b border-amber-200 px-5 py-3 flex items-center justify-between">
+            <h3 class="font-bold text-amber-900">▶ Continue anyway — despite scrutiny debt</h3>
+            <button onclick="document.getElementById('continue-anyway-modal').classList.add('hidden')" class="text-slate-400 text-2xl leading-none">×</button>
+        </div>
+        <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/acknowledge-debt"
+              hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { document.getElementById('continue-anyway-modal').classList.add('hidden'); forgeToast('Acknowledged. You may start an ANALYSIS task now.', 'success'); }">
+            <div class="px-5 py-4 space-y-2">
+                <p class="text-sm text-slate-700">Forge will let you kick off an ANALYSIS task anyway. <b>Scrutiny debt remains visible</b>; the reason you give here goes into the lesson log for audit.</p>
+                <label class="text-xs font-semibold">Reason <span class="text-rose-600">(≥20 chars)</span></label>
+                <textarea name="reason" rows="4" required minlength="20" maxlength="4000"
+                          placeholder="e.g. Client deadline Thursday — accepting 2 unsourced AC and will re-attribute post-ship."
+                          class="w-full border border-slate-300 rounded p-2 text-sm"></textarea>
+            </div>
+            <div class="bg-slate-50 px-5 py-3 flex justify-end gap-2">
+                <button type="button" onclick="document.getElementById('continue-anyway-modal').classList.add('hidden')" class="px-3 py-1.5 text-sm">Cancel</button>
+                <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white font-semibold px-4 py-1.5 rounded text-sm">Log + Continue</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 {# ========== 3-column layout ========== #}
-<div class="grid grid-cols-12 gap-5">
+<div class="grid grid-cols-12 gap-4">
 
-{# ---------- LEFT: KB sources + DAG neighbors ---------- #}
+{# ---------- LEFT: KB sources + DAG + KR ---------- #}
 <div class="col-span-3">
-    <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">📚 KB sources referenced</h3>
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-3">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">📚 KB referenced</h3>
             <a href="/ui/projects/{{ proj.slug }}?tab=knowledge" class="text-xs text-blue-600 hover:underline">Manage</a>
         </div>
         {% if referenced_sources %}
-        <div class="space-y-1 text-xs">
+        <div class="space-y-1.5 text-xs">
             {% for s in referenced_sources %}
             <div class="p-2 bg-blue-50 border border-blue-200 rounded">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                     <span class="mono text-slate-500">{{ s.external_id }}</span>
-                    <span class="pill bg-slate-100 text-slate-600 uppercase">{{ s.source_type or 'file' }}</span>
+                    <span class="pill bg-slate-100 text-slate-600 uppercase text-xs">{{ s.source_type or 'file' }}</span>
                 </div>
                 <div class="font-semibold mt-1">{{ s.title[:80] }}</div>
                 {% if s.description %}<div class="text-slate-500 mt-1">{{ s.description[:120] }}</div>{% endif %}
@@ -88,7 +183,32 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-xs text-slate-400 italic">No KB sources linked from any task on this objective. Add <span class="mono">requirement_refs</span> to tasks to create the link.</div>
+        <div class="text-xs text-slate-400 italic">No KB sources linked. Add <span class="mono">requirement_refs</span> to tasks.</div>
+        {% endif %}
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-3">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">🔗 DAG neighbors</h3>
+        {% if deps_on_list %}
+        <div class="text-xs text-slate-500 mb-1">Depends on:</div>
+        {% for d in deps_on_list %}
+        <a class="block p-2 bg-slate-50 rounded border border-slate-200 text-xs mb-1"
+           href="/ui/projects/{{ proj.slug }}/objectives/{{ d }}">
+            <span class="mono text-slate-500">{{ d }}</span>
+        </a>
+        {% endfor %}
+        {% endif %}
+        {% if blocks_list %}
+        <div class="text-xs text-slate-500 mb-1 mt-2">Blocks:</div>
+        {% for d in blocks_list %}
+        <a class="block p-2 bg-slate-50 rounded border border-slate-200 text-xs mb-1"
+           href="/ui/projects/{{ proj.slug }}/objectives/{{ d }}">
+            <span class="mono text-slate-500">{{ d }}</span>
+        </a>
+        {% endfor %}
+        {% endif %}
+        {% if not deps_on_list and not blocks_list %}
+        <div class="text-xs text-slate-400 italic">No dependencies. Add in <a href="/ui/projects/{{ proj.slug }}?tab=objectives" class="text-blue-600 hover:underline">DAG view</a>.</div>
         {% endif %}
     </div>
 
@@ -110,98 +230,264 @@
     </div>
 </div>
 
-{# ---------- MIDDLE: description + AC + test scenarios ---------- #}
+{# ---------- MIDDLE: description + decisions + AC + scenarios + challenger ---------- #}
 <div class="col-span-6">
+
+    {# 📝 Description (editable) #}
     <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
-        <h3 class="font-bold text-sm mb-2">📝 Description</h3>
-        <div class="prose prose-sm text-sm text-slate-700 space-y-2">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-sm">📝 Description</h3>
+            <div class="flex gap-2 text-xs">
+                <button onclick="expandWithLLM()" class="text-blue-600 hover:underline">🪄 Ask LLM to expand</button>
+            </div>
+        </div>
+        <div id="desc-read" class="prose prose-sm text-sm text-slate-700">
             {% if o.business_context %}
             <p class="whitespace-pre-wrap">{{ o.business_context }}</p>
             {% else %}
-            <p class="text-slate-400 italic">(no description yet)</p>
+            <p class="text-slate-400 italic">(no description yet — click Edit)</p>
             {% endif %}
+        </div>
+        <div id="desc-edit" class="hidden">
+            <input id="desc-title-input" value="{{ o.title }}" class="w-full border border-slate-300 rounded px-2 py-1 text-base font-semibold mb-2">
+            <textarea id="desc-body-input" rows="6" class="w-full border border-slate-300 rounded p-2 text-sm">{{ o.business_context or '' }}</textarea>
+            <div class="flex gap-2 mt-2">
+                <button onclick="saveDesc()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1 rounded text-xs">Save</button>
+                <button onclick="toggleEditDesc()" class="text-slate-500 px-3 py-1 text-xs">Cancel</button>
+            </div>
         </div>
     </div>
 
-    {# AC aggregated across all tasks on this objective #}
-    <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+    {# ⚠ Open ambiguities — per-Q inline resolve #}
+    {% if open_decisions %}
+    <div class="bg-white rounded-xl shadow-sm p-5 mb-4 border-l-4 border-amber-500">
         <div class="flex items-center justify-between mb-3">
-            <h3 class="font-bold text-sm">✅ Acceptance criteria (on all tasks)</h3>
-            <span class="text-xs text-slate-500">{{ all_ac|length }} total · {{ all_ac_unsourced }} unsourced</span>
+            <h3 class="font-bold text-sm">⚠ Open ambiguities ({{ open_decisions|length }})</h3>
+            <a href="/ui/projects/{{ proj.slug }}?tab=decisions" class="text-xs text-blue-600 hover:underline">Open Decisions tab →</a>
         </div>
+        <div class="space-y-2">
+            {% for d in open_decisions %}
+            <div class="border border-amber-200 rounded bg-amber-50/50">
+                <div class="p-3">
+                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                        <span class="mono text-xs text-slate-400">{{ d.external_id }}</span>
+                        {% if d.severity %}<span class="pill {% if d.severity|lower == 'high' %}bg-rose-100 text-rose-700{% else %}bg-amber-100 text-amber-700{% endif %} text-xs uppercase">{{ d.severity }}</span>{% endif %}
+                        <span class="font-semibold">{{ d.issue or d.type }}</span>
+                    </div>
+                    {% if d.recommendation %}<p class="text-xs text-slate-600">{{ d.recommendation[:300] }}</p>{% endif %}
+                    <button onclick="document.getElementById('ans-{{ d.external_id }}').classList.toggle('hidden')"
+                            class="mt-2 text-xs text-blue-600 hover:underline font-semibold">Answer →</button>
+                </div>
+                <div id="ans-{{ d.external_id }}" class="hidden p-3 border-t border-amber-200 bg-white">
+                    <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/decisions/{{ d.external_id }}/resolve"
+                          hx-ext="json-enc" hx-swap="none"
+                          hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('Resolved', 'success'); setTimeout(() => location.reload(), 500); }"
+                          class="space-y-2">
+                        <textarea name="recommendation" rows="3" required minlength="5"
+                                  placeholder="Your resolution (≥5 chars)"
+                                  class="w-full border border-slate-300 rounded p-2 text-sm"></textarea>
+                        <textarea name="reasoning" rows="2" placeholder="Reasoning (optional)"
+                                  class="w-full border border-slate-300 rounded p-2 text-xs"></textarea>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1 rounded text-xs">Save + Close</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ✓ Resolved decisions #}
+    {% if resolved_decisions %}
+    <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+        <details>
+            <summary class="cursor-pointer font-bold text-sm text-slate-700">✓ Resolved decisions ({{ resolved_decisions|length }})</summary>
+            <ul class="mt-2 space-y-1 text-xs text-slate-600">
+                {% for d in resolved_decisions[:20] %}
+                <li class="border-l-2 border-emerald-300 pl-2">
+                    <span class="mono text-slate-400">{{ d.external_id }}</span>
+                    {{ d.issue[:80] if d.issue else d.type }} → <b class="text-emerald-700">{{ (d.recommendation or '')[:120] }}</b>
+                </li>
+                {% endfor %}
+            </ul>
+        </details>
+    </div>
+    {% endif %}
+
+    {# ✅ Acceptance criteria — aggregated from all tasks #}
+    <div id="ac-section" class="bg-white rounded-xl shadow-sm p-5 mb-4">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 class="font-bold text-sm">✅ Acceptance criteria (aggregated · {{ all_ac|length }})</h3>
+            <div class="flex gap-2 text-xs">
+                <button onclick="regenerateAC()" class="bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-semibold px-3 py-1 rounded">🪄 Regenerate from sources</button>
+                <button onclick="document.getElementById('manual-ac-form').classList.toggle('hidden')"
+                        class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1 rounded">+ Add manually</button>
+                <span class="ml-2 {% if all_ac_unsourced %}text-rose-600 font-semibold{% else %}text-slate-500{% endif %}">{{ all_ac_unsourced }} unsourced</span>
+            </div>
+        </div>
+
+        <form id="manual-ac-form" class="hidden bg-slate-50 rounded p-3 mb-3"
+              hx-post="/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/ac-manual"
+              hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('AC added to new task.', 'success'); setTimeout(() => location.reload(), 400); }">
+            <div class="grid grid-cols-3 gap-2 mb-2">
+                <select name="scenario_type" class="border border-slate-300 rounded px-2 py-1 text-xs">
+                    <option value="positive">positive</option>
+                    <option value="negative">negative</option>
+                    <option value="edge_case">edge_case</option>
+                    <option value="regression">regression</option>
+                </select>
+                <select name="verification" class="border border-slate-300 rounded px-2 py-1 text-xs">
+                    <option value="manual">manual</option>
+                    <option value="test">test</option>
+                    <option value="command">command</option>
+                </select>
+                <input name="source_ref" placeholder="SRC-XXX (optional)" class="border border-slate-300 rounded px-2 py-1 text-xs mono">
+            </div>
+            <textarea name="text" rows="2" required minlength="20" maxlength="2000"
+                      placeholder="AC text (≥20 chars)"
+                      class="w-full border border-slate-300 rounded p-2 text-sm mb-2"></textarea>
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1 rounded text-xs">Save AC</button>
+        </form>
+
         {% if all_ac %}
         <ul class="text-xs space-y-1">
-            {% for ac in all_ac[:15] %}
+            {% for ac in all_ac[:20] %}
             <li class="flex items-start gap-2 py-1 border-b border-slate-100">
-                <span class="mono text-slate-400">{{ ac.task_ext }} · AC-{{ ac.position }}</span>
-                <span class="flex-1">{{ ac.text[:120] }}</span>
+                <span class="mono text-slate-400 whitespace-nowrap">{{ ac.task_ext }}·AC-{{ ac.position }}</span>
+                <span class="flex-1">{{ ac.text[:160] }}</span>
                 {% if ac.source_ref %}
-                <span class="pill bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs">📎</span>
+                <span class="pill bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs">📎 {{ ac.source_ref[:30] }}</span>
                 {% else %}
                 <span class="pill bg-rose-100 text-rose-700 text-xs font-semibold">⚠ unsourced</span>
                 {% endif %}
             </li>
             {% endfor %}
         </ul>
-        {% if all_ac|length > 15 %}
-        <div class="text-xs text-slate-400 mt-2">…and {{ all_ac|length - 15 }} more (see individual tasks).</div>
-        {% endif %}
+        {% if all_ac|length > 20 %}<div class="text-xs text-slate-400 mt-2">…and {{ all_ac|length - 20 }} more.</div>{% endif %}
         {% else %}
         <div class="text-xs text-slate-400 italic">No AC — plan this objective first to generate tasks with AC.</div>
         {% endif %}
     </div>
 
-    {# Open decisions (ambiguities) on this objective #}
-    {% if open_decisions %}
-    <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-4">
+    {# 🧪 Test scenarios — non-happy-path first-class #}
+    <div id="scenarios-section" class="bg-white rounded-xl shadow-sm p-5 mb-4">
         <div class="flex items-center justify-between mb-3">
-            <h3 class="font-bold text-sm text-amber-900">⚠ Open decisions ({{ open_decisions|length }})</h3>
-            <a href="/ui/projects/{{ proj.slug }}?tab=decisions" class="text-xs text-amber-700 hover:underline font-semibold">Resolve in Decisions tab →</a>
+            <div>
+                <h3 class="font-bold text-sm">🧪 Test scenarios <span class="text-xs text-slate-500 font-normal">— non-happy-path first</span></h3>
+                <p class="text-xs text-slate-500">Edge cases, failure modes, security. Force plan to handle them.</p>
+            </div>
+            <button onclick="document.getElementById('scenario-add-form').classList.toggle('hidden')"
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1 rounded">+ Add</button>
         </div>
-        <ul class="text-xs space-y-1">
-            {% for d in open_decisions[:6] %}
-            <li class="bg-white border border-amber-200 rounded p-2">
+        <form id="scenario-add-form" class="hidden bg-slate-50 rounded p-3 mb-3"
+              hx-post="/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/scenarios"
+              hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('Scenario added', 'success'); setTimeout(() => location.reload(), 400); }">
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <input name="label" required minlength="3" placeholder="Short label (e.g. 'Legacy DB row has NULL')"
+                       class="border border-slate-300 rounded px-2 py-1 text-sm">
+                <select name="kind" class="border border-slate-300 rounded px-2 py-1 text-sm">
+                    <option value="edge_case">edge_case</option>
+                    <option value="failure_mode">failure_mode</option>
+                    <option value="security">security</option>
+                    <option value="regression">regression</option>
+                    <option value="performance">performance</option>
+                </select>
+            </div>
+            <textarea name="description" rows="2" placeholder="Describe the scenario + expected outcome"
+                      class="w-full border border-slate-300 rounded p-2 text-xs mb-2"></textarea>
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1 rounded text-xs">Save</button>
+        </form>
+        {% if o.test_scenarios %}
+        <div class="space-y-2">
+            {% for s in o.test_scenarios %}
+            {% set kind_colors = {
+                'edge_case': 'bg-rose-100 text-rose-700',
+                'failure_mode': 'bg-rose-100 text-rose-700',
+                'security': 'bg-purple-100 text-purple-700',
+                'regression': 'bg-amber-100 text-amber-700',
+                'performance': 'bg-blue-100 text-blue-700',
+            } %}
+            <div class="p-2 bg-rose-50 rounded border border-rose-200">
                 <div class="flex items-center gap-2 mb-1">
-                    <span class="mono text-slate-400">{{ d.external_id }}</span>
-                    {% if d.severity %}<span class="pill bg-rose-100 text-rose-700 text-xs uppercase">{{ d.severity }}</span>{% endif %}
+                    <span class="pill {{ kind_colors.get(s.kind, 'bg-slate-100') }} text-xs font-bold uppercase">{{ s.kind }}</span>
+                    <b class="flex-1">{{ s.label }}</b>
+                    <button onclick="deleteScenario({{ s.id }})" class="text-rose-600 hover:text-rose-900 text-xs">×</button>
                 </div>
-                <div class="font-semibold">{{ d.issue[:200] if d.issue else d.type }}</div>
+                {% if s.description %}<div class="text-xs text-slate-600">{{ s.description }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-xs text-amber-700 italic bg-amber-50 rounded p-2">
+            ⚠ No failure modes captured. This objective will likely ship happy-path-only code.
+            Add at least 3-5 scenarios (edge case, failure mode, security).
+        </div>
+        {% endif %}
+    </div>
+
+    {# 🤝 Challenger will verify — objective-level config #}
+    <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+        <div class="flex items-center justify-between mb-3">
+            <div>
+                <h3 class="font-bold text-sm">🤝 Challenger will verify</h3>
+                <p class="text-xs text-slate-500">Applied to every develop task on this objective.</p>
+            </div>
+            <button onclick="document.getElementById('check-add-form').classList.toggle('hidden')"
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1 rounded">+ Add check</button>
+        </div>
+        <form id="check-add-form" class="hidden bg-slate-50 rounded p-3 mb-3"
+              hx-post="/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/challenger-checks"
+              hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('Check added', 'success'); setTimeout(() => location.reload(), 400); }">
+            <input name="text" required minlength="3"
+                   placeholder="e.g. 'Plan handles every scenario above'"
+                   class="w-full border border-slate-300 rounded px-2 py-1 text-sm mb-2">
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1 rounded text-xs">Save</button>
+        </form>
+        {% if o.challenger_checks %}
+        <ul class="space-y-1 text-sm">
+            {% for c in o.challenger_checks %}
+            <li class="flex items-start gap-2">
+                <span class="text-slate-400">▸</span>
+                <span class="flex-1">{{ c.text }}</span>
+                <button onclick="deleteCheck({{ c.id }})" class="text-rose-600 hover:text-rose-900 text-xs">×</button>
             </li>
             {% endfor %}
         </ul>
+        {% else %}
+        <div class="text-xs text-slate-400 italic">No objective-level challenger checks. Challenger will only verify per-task AC.</div>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
-{# ---------- RIGHT: Ask-Forge-to panel + tasks list ---------- #}
+{# ---------- RIGHT: Ask Forge + tasks + activity ---------- #}
 <div class="col-span-3">
-    <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-3">
         <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">🎯 Ask Forge to…</h3>
         <div class="space-y-1.5">
-            <button onclick="quickTask('analysis')"
-                    class="w-full text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded px-2.5 py-2 text-xs">
+            <button onclick="quickTask('analysis')" class="w-full text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded px-2.5 py-2 text-xs">
                 <div class="font-semibold text-blue-900">+ Analysis task</div>
                 <div class="text-slate-600">Research KB, find ambiguities, write AC</div>
             </button>
-            <button onclick="quickTask('planning')"
-                    class="w-full text-left bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded px-2.5 py-2 text-xs">
+            <button onclick="quickTask('planning')" class="w-full text-left bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded px-2.5 py-2 text-xs">
                 <div class="font-semibold text-purple-900">+ Planning task</div>
                 <div class="text-slate-600">Decompose into develop tasks</div>
             </button>
-            <button onclick="quickTask('develop')"
-                    class="w-full text-left bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded px-2.5 py-2 text-xs">
+            <button onclick="quickTask('develop')" class="w-full text-left bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded px-2.5 py-2 text-xs">
                 <div class="font-semibold text-emerald-900">+ Develop task</div>
                 <div class="text-slate-600">Write code / tests</div>
             </button>
-            <button onclick="quickTask('documentation')"
-                    class="w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-2.5 py-2 text-xs">
+            <button onclick="quickTask('documentation')" class="w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-2.5 py-2 text-xs">
                 <div class="font-semibold text-slate-800">+ Documentation task</div>
                 <div class="text-slate-600">Write ADR / guide / runbook</div>
             </button>
+            <div class="text-xs text-slate-400 italic text-center pt-1">or describe, LLM picks type</div>
         </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm p-4">
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-3">
         <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">Tasks ({{ obj_tasks|length }})</h3>
         {% if obj_tasks %}
         <div class="space-y-2 text-xs">
@@ -215,6 +501,16 @@
                 'bug':      'border-rose-500 bg-rose-50/30',
                 'chore':    'border-slate-400 bg-slate-50/30',
             } %}
+            {% set subtitle = '' %}
+            {% if t.status == 'TODO' and t.type == 'analysis' %}{% set subtitle = 'Will start when user triggers orchestrate' %}
+            {% elif t.status == 'TODO' and t.type == 'planning' %}{% set subtitle = 'Needs: analysis complete + all ambiguities resolved' %}
+            {% elif t.status == 'TODO' and t.type == 'develop' %}{% set subtitle = 'Queued — will execute in next orchestrate run' %}
+            {% elif t.status == 'TODO' and t.type == 'documentation' %}{% set subtitle = 'Runs after develop tasks DONE' %}
+            {% elif t.status == 'FAILED' %}{% set subtitle = 'Retry from task page, or Re-open with gap notes' %}
+            {% elif t.status == 'IN_PROGRESS' %}{% set subtitle = 'Currently executing — see live panel' %}
+            {% elif t.status == 'DONE' %}{% set subtitle = 'Open for scrutiny — click to view deliverable' %}
+            {% elif t.status == 'SKIPPED' %}{% set subtitle = 'Skipped by user — reason in task details' %}
+            {% endif %}
             <a href="/ui/projects/{{ proj.slug }}/tasks/{{ t.external_id }}"
                class="block p-2 rounded border-l-3 {{ type_styles.get(t.type, 'border-slate-300') }} hover:bg-slate-100">
                 <div class="flex items-center gap-1 mb-1 flex-wrap">
@@ -223,12 +519,23 @@
                     <span class="ml-auto pill {% if t.status == 'DONE' %}bg-emerald-100 text-emerald-700{% elif t.status == 'FAILED' %}bg-rose-100 text-rose-700{% elif t.status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700{% else %}bg-slate-100 text-slate-600{% endif %} text-xs">{{ t.status }}</span>
                 </div>
                 <div class="font-semibold">{{ t.name[:80] }}</div>
+                {% if subtitle %}<div class="text-slate-500 text-xs mt-0.5">{{ subtitle }}</div>{% endif %}
             </a>
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-xs text-slate-400 italic">No tasks yet.</div>
+        <div class="text-xs text-slate-400 italic">No tasks yet. Click a task-type button above.</div>
         {% endif %}
+    </div>
+
+    {# Recent activity #}
+    <div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">📡 Recent activity</h3>
+        <div id="obj-activity" class="space-y-1 text-xs"
+             hx-get="/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/activity"
+             hx-trigger="load" hx-swap="innerHTML">
+            <div class="text-slate-400">loading…</div>
+        </div>
     </div>
 </div>
 </div>
@@ -242,7 +549,7 @@
         </div>
         <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/reopen"
               hx-ext="json-enc" hx-swap="none"
-              hx-on:htmx:after-request="if (event.detail.successful) { document.getElementById('reopen-modal').classList.add('hidden'); forgeToast('Re-opened. Reloading...', 'success'); setTimeout(() => location.reload(), 600); }">
+              hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('Re-opened', 'success'); setTimeout(() => location.reload(), 600); }">
             <div class="px-5 py-4 space-y-3">
                 <p class="text-sm text-slate-700">Status flips from <b>{{ o.status }}</b> back to <b>ACTIVE</b>. History preserved.</p>
                 <textarea name="gap_notes" rows="5" required minlength="20" maxlength="4000"
@@ -259,27 +566,106 @@
 <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
 
 <script>
-function toggleOptOut(checked) {
-    const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
-    fetch('/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/autonomy-optout',
-        {method: 'PUT', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
-         body: JSON.stringify({autonomy_optout: checked})})
-        .then(r => { if (r.ok) forgeToast('Opt-out ' + (checked ? 'enabled' : 'disabled'), 'success'); else forgeToast('Save failed.', 'error'); });
+function _csrf() { return (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1]; }
+
+function toggleEditDesc() {
+    document.getElementById('desc-read').classList.toggle('hidden');
+    document.getElementById('desc-edit').classList.toggle('hidden');
 }
+
+function saveDesc() {
+    const title = document.getElementById('desc-title-input').value;
+    const body = document.getElementById('desc-body-input').value;
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}',
+        {method: 'PATCH', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': _csrf()},
+         body: JSON.stringify({title: title, business_context: body})})
+        .then(r => { if (r.ok) { forgeToast('Saved', 'success'); setTimeout(() => location.reload(), 400); } else forgeToast('Save failed', 'error'); });
+}
+
+function expandWithLLM() {
+    fetch('/api/v1/ai/chat', {method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': _csrf()},
+        body: JSON.stringify({
+            message: 'Expand the description of objective {{ o.external_id }}. Cite SRC-* sources where relevant.',
+            page_ctx: window.forgePageCtx || {page_id: 'objective-detail', entity_type: 'objective', entity_id: '{{ o.external_id }}', visible_data: {}, actions: []},
+        })})
+        .then(r => r.json()).then(data => {
+            forgeToast('LLM expansion ready — open AI sidebar to read.', 'info');
+            // Auto-open sidebar
+            const toggle = document.getElementById('forge-ai-toggle');
+            if (toggle) toggle.click();
+        }).catch(() => forgeToast('LLM call failed', 'error'));
+}
+
+function toggleOptOut(checked) {
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/autonomy-optout',
+        {method: 'PUT', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': _csrf()},
+         body: JSON.stringify({autonomy_optout: checked})})
+        .then(r => { if (r.ok) forgeToast('Opt-out: ' + (checked ? 'on' : 'off'), 'success'); });
+}
+
 function quickTask(taskType) {
-    const name = prompt('Short task name (for ' + taskType + '):');
+    const name = prompt('Short task name (' + taskType + '):');
     if (!name) return;
     const instruction = prompt('Instruction (what should the task do):');
     if (!instruction) return;
-    const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
     const form = new URLSearchParams();
     form.append('name', name); form.append('instruction', instruction);
     form.append('type', taskType); form.append('origin', '{{ o.external_id }}');
     fetch('/ui/projects/{{ proj.slug }}/tasks/new',
-        {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrf},
+        {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': _csrf()},
          body: form, redirect: 'manual'})
-        .then(r => { forgeToast('Task created.', 'success'); setTimeout(() => location.reload(), 500); });
+        .then(() => { forgeToast('Task created.', 'success'); setTimeout(() => location.reload(), 500); });
 }
+
+function regenerateAC() {
+    const count = parseInt(prompt('How many AC to derive? (1-20)', '5') || '0', 10);
+    if (!count || count < 1 || count > 20) return;
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/regenerate-ac',
+        {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': _csrf()},
+         body: JSON.stringify({count: count})})
+        .then(r => r.json()).then(data => {
+            if (data.task_created) {
+                forgeToast('Analysis task ' + data.task_created + ' created — run orchestrate to generate AC.', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                forgeToast('Regenerate failed.', 'error');
+            }
+        });
+}
+
+function deleteScenario(id) {
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/scenarios/' + id,
+        {method: 'DELETE', headers: {'X-CSRF-Token': _csrf()}})
+        .then(r => { if (r.ok) { forgeToast('Removed', 'success'); setTimeout(() => location.reload(), 300); } });
+}
+function deleteCheck(id) {
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/objectives/{{ o.external_id }}/challenger-checks/' + id,
+        {method: 'DELETE', headers: {'X-CSRF-Token': _csrf()}})
+        .then(r => { if (r.ok) { forgeToast('Removed', 'success'); setTimeout(() => location.reload(), 300); } });
+}
+
+// Render activity feed
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.target && e.target.id === 'obj-activity') {
+        try {
+            const j = JSON.parse(e.target.textContent);
+            if (!j.events || !j.events.length) {
+                e.target.innerHTML = '<div class="text-slate-400 italic">No activity yet.</div>';
+                return;
+            }
+            const icons = {reopen: '↶', ai_chat: '💬', task_done: '✅', task_failed: '✗', task_in_progress: '▶'};
+            const rows = j.events.map(ev => {
+                const when = new Date(ev.ts).toLocaleString();
+                return '<div class="flex items-start gap-2 py-1 border-b border-slate-100">' +
+                    '<span>' + (icons[ev.kind] || '•') + '</span>' +
+                    '<span class="flex-1">' + ev.label + '</span>' +
+                    '<span class="text-slate-400 text-xs whitespace-nowrap">' + when + '</span></div>';
+            }).join('');
+            e.target.innerHTML = rows;
+        } catch(_) {}
+    }
+});
 </script>
 
 {% endblock %}

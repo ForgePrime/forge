@@ -271,8 +271,11 @@ def post_deliver(
         evidence_str += (ev.get("evidence") or "").strip().lower() + "|"
     evidence_hash = hashlib.sha256(evidence_str.encode()).hexdigest() if evidence_str else None
 
-    # Validate
-    result = validate_delivery(delivery, contract, task.type, prev_attempt_dict)
+    # Validate — P5.5: pass per-AC verification so the validator's file/test
+    # rule stops over-rejecting command/manual ACs.
+    ac_verif_map = {ac.position: ac.verification for ac in task.acceptance_criteria}
+    result = validate_delivery(delivery, contract, task.type, prev_attempt_dict,
+                               ac_verifications=ac_verif_map)
 
     # Duplicate detection: if current hash matches any previous attempt → WARNING
     for pa in prev_attempts:

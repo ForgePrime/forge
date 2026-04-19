@@ -96,6 +96,68 @@
 </head>
 <body class="bg-slate-50 text-slate-800">
 <div id="forge-toasts" class="fixed top-4 right-4 z-50 flex flex-col items-end"></div>
+
+{# ⌘K / Ctrl+K global search overlay #}
+{% if request.state and request.state.user %}
+<div id="forge-cmdk" class="hidden fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-[15vh] px-4" onclick="if (event.target === this) this.classList.add('hidden');">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-slate-200">
+            <span class="text-xl">🔍</span>
+            <input id="forge-cmdk-input" type="text" placeholder="Search projects, objectives, tasks, KB sources, findings…"
+                   class="flex-1 outline-none text-base" autocomplete="off">
+            <span class="text-xs text-slate-400 mono border border-slate-300 rounded px-1.5 py-0.5">esc</span>
+        </div>
+        <div id="forge-cmdk-results" class="max-h-[60vh] overflow-y-auto">
+            <div class="p-4 text-xs text-slate-400 text-center">Type to search across all projects in this org.</div>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    const overlay = document.getElementById('forge-cmdk');
+    const input = document.getElementById('forge-cmdk-input');
+    const results = document.getElementById('forge-cmdk-results');
+    if (!overlay || !input) return;
+    function open() { overlay.classList.remove('hidden'); setTimeout(() => input.focus(), 30); }
+    function close() { overlay.classList.add('hidden'); input.value = ''; results.innerHTML = '<div class="p-4 text-xs text-slate-400 text-center">Type to search…</div>'; }
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); open(); }
+        if (e.key === 'Escape' && !overlay.classList.contains('hidden')) close();
+    });
+    let debounce;
+    input.addEventListener('input', () => {
+        clearTimeout(debounce);
+        const q = input.value.trim();
+        if (!q) { results.innerHTML = '<div class="p-4 text-xs text-slate-400 text-center">Type to search…</div>'; return; }
+        debounce = setTimeout(() => {
+            fetch('/api/v1/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+                .then(r => r.ok ? r.json() : null).then(data => {
+                    if (!data) { results.innerHTML = '<div class="p-4 text-xs text-rose-600">Search failed.</div>'; return; }
+                    let html = '';
+                    function section(label, items, renderer) {
+                        if (!items || !items.length) return '';
+                        let s = '<div class="px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-wide bg-slate-50">' + label + '</div>';
+                        items.forEach(it => { s += renderer(it); });
+                        return s;
+                    }
+                    const esc = x => String(x || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+                    html += section('Projects', data.projects, p =>
+                        `<a href="${p.href}" class="block px-4 py-2 hover:bg-blue-50 border-b border-slate-100 text-sm"><b>${esc(p.name)}</b> <span class="mono text-xs text-slate-400">${esc(p.slug)}</span></a>`);
+                    html += section('Objectives', data.objectives, o =>
+                        `<a href="${o.href}" class="block px-4 py-2 hover:bg-blue-50 border-b border-slate-100 text-sm"><span class="mono text-xs text-slate-400">${esc(o.external_id)}</span> <b>${esc(o.title)}</b> <span class="text-xs text-slate-500">${esc(o.project_slug)}</span></a>`);
+                    html += section('Tasks', data.tasks, t =>
+                        `<a href="${t.href}" class="block px-4 py-2 hover:bg-blue-50 border-b border-slate-100 text-sm"><span class="pill bg-slate-100 text-xs">${esc(t.type)}</span> <span class="mono text-xs text-slate-400">${esc(t.external_id)}</span> <b>${esc(t.name)}</b> <span class="pill bg-slate-100 text-xs">${esc(t.status)}</span> <span class="text-xs text-slate-500">${esc(t.project_slug)}</span></a>`);
+                    html += section('Knowledge', data.knowledge, k =>
+                        `<a href="${k.href}" class="block px-4 py-2 hover:bg-blue-50 border-b border-slate-100 text-sm"><span class="pill bg-slate-100 text-xs">${esc(k.source_type||'file')}</span> <span class="mono text-xs text-slate-400">${esc(k.external_id)}</span> <b>${esc(k.title)}</b></a>`);
+                    html += section('Findings', data.findings, f =>
+                        `<a href="${f.href}" class="block px-4 py-2 hover:bg-blue-50 border-b border-slate-100 text-sm"><span class="pill bg-rose-100 text-rose-700 text-xs">${esc(f.severity||'')}</span> <span class="mono text-xs text-slate-400">${esc(f.external_id)}</span> <b>${esc(f.title)}</b></a>`);
+                    results.innerHTML = html || '<div class="p-4 text-xs text-slate-400 text-center">No results.</div>';
+                });
+        }, 150);
+    });
+})();
+</script>
+{% endif %}
 <div id="forge-shell" class="flex min-h-screen w-screen">
 <div id="forge-main-col" class="flex-1 min-w-0">
 
@@ -296,10 +358,32 @@
     hideDropdowns(); input.focus();
   });
 
+  // Impact alert — client-side guard for destructive-sounding requests.
+  // Matches verbs in user message; NOT a replacement for server-side auth.
+  const DESTRUCTIVE_PATTERNS = [
+    /\bdelete\b/i, /\busun/i, /\bdrop\b/i,
+    /\bremove\b/i, /\bmerge\b.*\bmain\b/i,
+    /\boverwrite\b/i, /\brm\s/i,
+  ];
+  function destructiveHit(msg) {
+    for (const p of DESTRUCTIVE_PATTERNS) {
+      if (p.test(msg)) return p.source;
+    }
+    return null;
+  }
+
   // Send message
   async function sendMessage() {
     const msg = input.value.trim();
     if (!msg) return;
+    // Impact alert before sending destructive-sounding requests
+    const hit = destructiveHit(msg);
+    if (hit && !msg.startsWith('/')) {
+      const ok = confirm('⚠ Your message contains a destructive verb matching `' + hit + '`.\n\n' +
+                         'The AI sidebar is READ-ONLY for now — it cannot execute destructive ops on its own.\n' +
+                         'Your message will be sent to the LLM as a question. Continue?');
+      if (!ok) return;
+    }
     const empty = $('forge-ai-empty'); if (empty) empty.remove();
     appendMessage('user', msg);
     input.value = ''; hideDropdowns();

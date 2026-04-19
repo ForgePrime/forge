@@ -108,24 +108,42 @@ See `platform/app/services/schema_migrations.py` for the PENDING_COLUMNS list.
 
 **Current state:** no automated backup (Enterprise Audit item #5, RED). Before any client-visible deployment, add one of:
 
-### Option A — cron'd pg_dump to S3 (minimum)
+### Option A — cron'd pg_dump (minimum, script shipped)
+Shipped: `platform/scripts/backup.sh` — idempotent, prunes older backups,
+optional S3 upload.
+
 ```bash
 # /etc/cron.d/forge-backup  — nightly at 02:00
-0 2 * * * forge docker exec platform-db-1 pg_dump -U forge forge_platform | gzip | aws s3 cp - s3://forge-backups/$(date +\%Y-\%m-\%d).sql.gz
+0 2 * * * forge cd /path/to/forge && BACKUP_DIR=/var/backups/forge S3_BUCKET=forge-backups ./platform/scripts/backup.sh >> /var/log/forge-backup.log 2>&1
 ```
+
+Environment vars (all optional): `DB_CONTAINER`, `POSTGRES_USER`,
+`POSTGRES_DB`, `BACKUP_DIR`, `RETENTION_DAYS` (default 30),
+`S3_BUCKET` (upload skipped when empty).
 
 ### Option B — continuous WAL archiving (recommended for prod)
 Configure postgres with `archive_mode=on`, ship WAL segments to object storage. Enables point-in-time recovery. **Not yet scripted in Forge.**
 
 ### Restore verification
-Any backup is unvalidated until a restore is tested end-to-end. Recommended cadence: monthly in staging.
+Shipped: `platform/scripts/restore.sh` — safety-guarded restore with
+smoke verification (table count > 0). Default target is
+`forge_restore_test` (non-destructive). Production overwrite requires
+explicit `FORCE_PROD=1`.
 
 ```bash
-# example restore sequence — NOT TESTED in Forge yet
-docker exec -i platform-db-1 psql -U forge -d forge_platform < backup.sql
+# Verification-only restore (monthly recommended)
+./platform/scripts/restore.sh /var/backups/forge/forge-2026-04-19T02-00-00Z.sql.gz
+# → restores into forge_restore_test DB, checks tables, reports OK
+# → drop the test DB afterwards per the script's NOTE line
+
+# Actual DR restore (destructive — triple-check backup file)
+FORCE_PROD=1 TARGET_DB=forge_platform ./platform/scripts/restore.sh /var/backups/forge/<file>
 docker compose restart forge-api
-# smoke test: GET /health, then GET /api/v1/projects
+curl http://localhost:8000/health    # verify app comes up
 ```
+
+Expected monthly cadence: one script-driven verification restore into
+staging + smoke API tests. Document the date in an ops log.
 
 ---
 

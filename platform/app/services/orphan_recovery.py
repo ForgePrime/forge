@@ -79,12 +79,19 @@ def mark_orphan_runs_interrupted(db: Session, *,
     return touched
 
 
-def release_in_progress_tasks(db: Session, *, now: dt.datetime | None = None) -> list[int]:
+def release_in_progress_tasks(
+    db: Session, *, project_id: int | None = None,
+    now: dt.datetime | None = None,
+) -> list[int]:
     """Graceful shutdown: flip every IN_PROGRESS task back to TODO.
 
     Called from FastAPI lifespan on shutdown. Prevents tasks from being stuck
     for the full lease duration after a restart. Orchestrate loop re-claims
     them on next iteration — idempotent, safe.
+
+    `project_id`: optional scope. Tests MUST pass it to avoid touching other
+    projects' in-flight work. Production shutdown leaves it None (everything
+    is going down anyway).
 
     Returns list of task IDs released. Never raises — best-effort.
     """
@@ -92,9 +99,10 @@ def release_in_progress_tasks(db: Session, *, now: dt.datetime | None = None) ->
 
     now = now or dt.datetime.now(dt.timezone.utc)
     try:
-        stuck = (db.query(Task)
-                   .filter(Task.status == "IN_PROGRESS")
-                   .all())
+        q = db.query(Task).filter(Task.status == "IN_PROGRESS")
+        if project_id is not None:
+            q = q.filter(Task.project_id == project_id)
+        stuck = q.all()
     except Exception as e:  # pragma: no cover
         logger.warning("release-in-progress: query failed: %s", e)
         return []
@@ -122,7 +130,8 @@ def release_in_progress_tasks(db: Session, *, now: dt.datetime | None = None) ->
 
 
 def mark_running_runs_interrupted_on_shutdown(
-    db: Session, *, now: dt.datetime | None = None,
+    db: Session, *, project_id: int | None = None,
+    now: dt.datetime | None = None,
 ) -> list[int]:
     """Graceful shutdown: flip every RUNNING/PAUSED/PENDING OrchestrateRun to INTERRUPTED.
 
@@ -130,15 +139,21 @@ def mark_running_runs_interrupted_on_shutdown(
     this is called on shutdown so we know for certain the worker is going away.
     No staleness filter — everything RUNNING right now is about to be interrupted.
 
+    `project_id`: optional scope. Tests MUST pass it to avoid marking other
+    projects' live runs as interrupted. Production shutdown leaves None.
+
     Returns list of run IDs touched. Never raises.
     """
     from app.models import OrchestrateRun
 
     now = now or dt.datetime.now(dt.timezone.utc)
     try:
-        active = (db.query(OrchestrateRun)
-                    .filter(OrchestrateRun.status.in_(("RUNNING", "PAUSED", "PENDING")))
-                    .all())
+        q = db.query(OrchestrateRun).filter(
+            OrchestrateRun.status.in_(("RUNNING", "PAUSED", "PENDING"))
+        )
+        if project_id is not None:
+            q = q.filter(OrchestrateRun.project_id == project_id)
+        active = q.all()
     except Exception as e:  # pragma: no cover
         logger.warning("shutdown-runs: query failed: %s", e)
         return []

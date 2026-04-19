@@ -308,3 +308,17 @@ def project_skills(slug: str, request: Request, db: Session = Depends(get_db)):
         "cost_impact_usd": s.cost_impact_usd,
         "invocations": ps.invocations,
     } for ps, s in rows]}
+
+
+@router.get("/projects/{slug}/lift")
+def project_skill_lifts(slug: str, request: Request, db: Session = Depends(get_db)):
+    """P3.2 — rough success-lift per attached skill (pre/post attachment pass rates)."""
+    _user(request)
+    proj = db.query(Project).filter(Project.slug == slug).first()
+    if not proj:
+        raise HTTPException(404)
+    org = getattr(request.state, "org", None)
+    if org and proj.organization_id != org.id:
+        raise HTTPException(403)
+    from app.services.skill_lift import compute_project_skill_lifts
+    return {"slug": slug, "lifts": compute_project_skill_lifts(db, proj.id)}

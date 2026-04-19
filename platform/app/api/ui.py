@@ -11,7 +11,7 @@ from sqlalchemy import func as sqlfunc
 from app.database import get_db
 from app.models import (
     Project, Task, Objective, KeyResult, Knowledge, Decision, Finding,
-    Execution, LLMCall, TestRun,
+    Execution, LLMCall, TestRun, AcceptanceCriterion,
 )
 from app.api.pipeline import task_report as api_task_report, _workspace
 from app.api.projects import (
@@ -28,6 +28,9 @@ import datetime as dt
 TEMPLATES_DIR = pathlib.Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.cache = None  # Python 3.13 jinja2 cache hashing bug
+# P3.1 — relative timestamp filter, e.g. {{ row.created_at | reltime }}
+from app.services.time_format import reltime as _reltime
+templates.env.filters["reltime"] = _reltime
 
 router = APIRouter(prefix="/ui", tags=["ui"])
 
@@ -268,6 +271,7 @@ def ui_create_project(
 def project_view(
     slug: str, request: Request,
     tab: str = Query("knowledge"),  # KB-first per v2 mockup; objectives require sources
+    view: str = Query("list"),  # P3.3 — list | kanban | timeline (only meaningful for tab=tasks)
     file: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
@@ -323,6 +327,33 @@ def project_view(
     from app.services.pipeline_state import get_pipeline_state
     pipeline_state = get_pipeline_state(db, proj)
 
+    # KB "referenced in N objectives" — count how many distinct objectives
+    # have tasks that reference each Knowledge.external_id via requirement_refs.
+    kb_ref_counts: dict[str, int] = {}
+    if knowledge:
+        # Gather all tasks with requirement_refs
+        tasks_with_refs = db.query(Task).filter(
+            Task.project_id == proj.id,
+            Task.requirement_refs.isnot(None),
+        ).all()
+        from collections import defaultdict
+        src_to_objs: dict[str, set] = defaultdict(set)
+        for t in tasks_with_refs:
+            for ref in (t.requirement_refs or []):
+                src_id = ref.split()[0].split("§")[0].strip()
+                if t.origin:
+                    src_to_objs[src_id].add(t.origin)
+        kb_ref_counts = {k: len(v) for k, v in src_to_objs.items()}
+
+    # KB conflicts (K2 heuristic scan)
+    kb_conflicts_list = []
+    if tab == "knowledge":
+        try:
+            from app.api.tier1 import kb_conflicts as _kbc
+            kb_conflicts_list = _kbc(slug, request, db).get("conflicts", [])
+        except Exception:
+            kb_conflicts_list = []
+
     # Override default page_ctx with richer visible_data for AI sidebar.
     from app.services.page_context import build_page_context as _bpc
     request.state.page_ctx = _bpc(
@@ -355,12 +386,19 @@ def project_view(
 
     # L1 — auto-draft docs (lazy load only when tab=docs)
     docs_md = None
+    docs_toc: list[dict] = []
     if tab == "docs":
         from app.api.tier1 import docs_auto_draft as _docs
         try:
             docs_md = _docs(slug, request, db)["content_md"]
         except Exception as e:
             docs_md = f"_error generating docs: {e}_"
+        # P2.6 — TOC sidebar
+        try:
+            from app.services.docs_toc import extract_toc as _toc
+            docs_toc = _toc(docs_md or "")
+        except Exception:
+            docs_toc = []
 
     return templates.TemplateResponse(request, "project.html", {
         "project": slug, "proj": proj,
@@ -371,12 +409,16 @@ def project_view(
         "total_cost": total_cost, "cost_by_purpose": cost_by_purpose,
         "findings_count": len(findings), "decisions_count": len(decisions),
         "active_tab": tab,
+        "active_view": view if view in ("list", "kanban", "timeline") else "list",
         "files": files_data["files"], "dirs": files_data["dirs"],
         "truncated": files_data.get("truncated"),
         "current_file": current_file,
         "guidelines": guidelines,
         "pipeline_state": pipeline_state,
         "docs_md": docs_md,
+        "docs_toc": docs_toc,
+        "kb_ref_counts": kb_ref_counts,
+        "kb_conflicts": kb_conflicts_list,
     })
 
 
@@ -524,14 +566,21 @@ def objective_detail_view(slug: str, external_id: str, request: Request, db: Ses
         "source_type": s.source_type,
     } for s in referenced_sources]
 
-    # Open decisions linked to this objective (via Decision.objective_id if field exists, else filter none)
+    # Decisions — OPEN + RESOLVED (any non-OPEN) scoped to this project.
+    # TODO: Decision.objective_id is not modeled; we show project-wide for now.
     open_decisions = []
+    resolved_decisions = []
     try:
-        open_decisions = db.query(Decision).filter(
-            Decision.project_id == proj.id, Decision.status == "OPEN"
-        ).limit(20).all()
+        all_decisions = db.query(Decision).filter(
+            Decision.project_id == proj.id
+        ).order_by(Decision.id.desc()).all()
+        for d in all_decisions:
+            if d.status == "OPEN":
+                open_decisions.append(d)
+            else:
+                resolved_decisions.append(d)
     except Exception:
-        open_decisions = []
+        pass
 
     # Reopen history count
     from app.models import ObjectiveReopen
@@ -539,11 +588,29 @@ def objective_detail_view(slug: str, external_id: str, request: Request, db: Ses
         ObjectiveReopen.objective_id == obj.id
     ).count()
 
+    # DAG neighbors
+    deps_on_list = [d.external_id for d in obj.dependencies]
+    blocks_list = [d.external_id for d in obj.dependents]
+
+    # Cost on this objective (sum of llm_calls tied to executions of tasks with this origin)
+    obj_cost = 0.0
+    if task_ids:
+        from app.models import Execution
+        exec_ids = [e.id for e in db.query(Execution).filter(
+            Execution.task_id.in_(task_ids)
+        ).all()]
+        if exec_ids:
+            from sqlalchemy import func as _func
+            obj_cost = db.query(_func.coalesce(_func.sum(LLMCall.cost_usd), 0.0)).filter(
+                LLMCall.execution_id.in_(exec_ids)
+            ).scalar() or 0.0
+
     scrutiny = {
         "ac_unsourced": all_ac_unsourced,
         "ac_manual_never_run": ac_manual_never_run,
         "open_ambiguities": len(open_decisions),
         "reopen_count": reopen_count,
+        "scenarios_count": len(obj.test_scenarios or []),
     }
 
     # Update page_ctx for sidebar
@@ -607,9 +674,11 @@ def objective_detail_view(slug: str, external_id: str, request: Request, db: Ses
         "all_ac_unsourced": all_ac_unsourced,
         "referenced_sources": referenced_sources_view,
         "open_decisions": open_decisions,
+        "resolved_decisions": resolved_decisions,
         "scrutiny": scrutiny,
-        "deps_on": None,  # TODO: objective DAG not yet modeled
-        "blocks": None,
+        "deps_on_list": deps_on_list,
+        "blocks_list": blocks_list,
+        "obj_cost": obj_cost,
     })
 
 
@@ -818,6 +887,9 @@ def ui_orchestrate_run_panel(run_id: int, request: Request, db: Session = Depend
             "params": run.params,
             "error": run.error,
             "result": run.result,
+            "pause_requested": run.pause_requested,
+            "paused_at": run.paused_at.isoformat() if run.paused_at else None,
+            "resumed_at": run.resumed_at.isoformat() if run.resumed_at else None,
         },
         "project": proj.slug,
     })
@@ -833,6 +905,43 @@ def ui_orchestrate_run_cancel(run_id: int, request: Request, db: Session = Depen
     _assert_project_in_current_org(db, proj.slug, request)
     if run.status not in ("DONE", "FAILED", "CANCELLED", "BUDGET_EXCEEDED"):
         run.cancel_requested = True
+        db.commit()
+    return HTMLResponse(content="", status_code=200)
+
+
+@router.post("/orchestrate-runs/{run_id}/pause")
+def ui_orchestrate_run_pause(run_id: int, request: Request, db: Session = Depends(get_db)):
+    from app.api.pipeline import OrchestrateRun
+    run = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    if not run:
+        raise HTTPException(404)
+    proj = db.query(Project).filter(Project.id == run.project_id).first()
+    _assert_project_in_current_org(db, proj.slug, request)
+    if run.status in ("RUNNING", "PENDING"):
+        run.pause_requested = True
+        db.commit()
+    return HTMLResponse(content="", status_code=200)
+
+
+@router.post("/orchestrate-runs/{run_id}/resume")
+def ui_orchestrate_run_resume(run_id: int, request: Request, background_tasks: BackgroundTasks,
+                               db: Session = Depends(get_db)):
+    import datetime as dt
+    from app.api.pipeline import OrchestrateRun, _run_orchestrate_background
+    run = db.query(OrchestrateRun).filter(OrchestrateRun.id == run_id).first()
+    if not run:
+        raise HTTPException(404)
+    proj = db.query(Project).filter(Project.id == run.project_id).first()
+    _assert_project_in_current_org(db, proj.slug, request)
+    if run.status == "PAUSED":
+        run.status = "RUNNING"
+        run.pause_requested = False
+        run.resumed_at = dt.datetime.now(dt.timezone.utc)
+        run.progress_message = "Resuming from pause..."
+        db.commit()
+        background_tasks.add_task(_run_orchestrate_background, proj.slug, run.params or {}, run.id)
+    elif run.status in ("RUNNING", "PENDING"):
+        run.pause_requested = False
         db.commit()
     return HTMLResponse(content="", status_code=200)
 

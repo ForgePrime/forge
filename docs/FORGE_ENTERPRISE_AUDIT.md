@@ -24,9 +24,9 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | CI/CD | 5 | 0 | 0 | 5 | **RED** |
 | Scale & performance | 6 | 1 | 2 | 3 | **RED** |
 | Compliance (GDPR/audit) | 6 | 1 | 3 | 2 | **RED** |
-| Disaster recovery | 4 | 0 | 1 | 3 | **RED** |
+| Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 2 | 1 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **16** | **16** | **22** | **RED overall** |
+| **TOTAL (54 attr.)** | **54** | **16** | **18** | **20** | **RED overall** |
 
 **Verdict:** Forge is **NOT enterprise-production-ready today**. It is a well-engineered pilot with strong delivery-governance (CGAID coverage 82%+ per prior audit), but gaps in observability, CI/CD, compliance, and DR make it unsuitable for external-client launch without Phase 2 of the Production Roadmap.
 
@@ -125,8 +125,8 @@ Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Ro
 
 | Attribute | Status | Evidence | Gap |
 |-----------|--------|----------|-----|
-| Automated DB backup | RED | No backup script found in scripts/ | Add nightly pg_dump to offsite storage |
-| Restore-tested runbook | RED | No docs/RESTORE.md | Write + exercise end-to-end restore in staging |
+| Automated DB backup | AMBER | v1.4: `platform/scripts/backup.sh` ships — idempotent pg_dump with gzip, retention pruning, optional S3 upload. Cron example in docs/DEPLOY.md. | Production still needs monitoring (alert on missed nightly) + verified offsite copy. |
+| Restore-tested runbook | AMBER | v1.4: `platform/scripts/restore.sh` ships — safety-guarded (refuses to overwrite prod without FORCE_PROD=1), smoke verification via table count, instructions in docs/DEPLOY.md for monthly verification cadence. | Automate the monthly verification in CI or cron. |
 | RTO/RPO defined | RED | No stated targets | Declare (proposed: RTO 4h, RPO 24h for pilot tier) |
 | Workspace artifact durability | AMBER | `forge_output/` is in host filesystem (not S3 / object storage); forge_output/{project}/workspace/ is actual git repo per project | Move to object storage with versioning for prod |
 
@@ -182,3 +182,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.1 (2026-04-19, autonomous session)** — CSRF upgraded AMBER→GREEN after direct middleware contract tests added (`tests/test_csrf_middleware.py`, 9 tests). Security row: 4G/4A/2R → 5G/3A/2R. Overall 14G/16A/24R → 15G/15A/24R. Graceful shutdown (top-10 #8) landed — no audit row moved because shutdown isn't a separate attribute; reflected as improvement under 12-factor disposability.
 - **v1.2 (2026-04-19, autonomous session)** — Structured logs upgraded RED→AMBER. `services/logging_setup.py` adds stdlib JsonFormatter (opt-in via `FORGE_LOG_JSON` env), RequestIdMiddleware assigning per-request UUID echoed as `X-Request-Id`, and RequestIdFilter injecting the ID into every LogRecord. Zero new deps (stdlib only). 14 unit tests. Observability row: 1G/1A/4R → 1G/2A/3R. Overall 16G/14A/24R → 16G/15A/23R.
 - **v1.3 (2026-04-19, autonomous session)** — PII scrubbing row RED→AMBER. `services/pii_scanner.py` (NEW, zero-dep regex): EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD (Luhn-verified), IP_ADDRESS, SSN. `scan()` + `redact()` + policy wrapper `scan_then_decide()`. 30 unit tests. **Not yet wired into `/ingest`** — awaits per-project policy decision (block/warn/redact by default). Compliance row: 1G/2A/3R → 1G/3A/2R. Overall: 16G/15A/23R → 16G/16A/22R.
+- **v1.4 (2026-04-19, autonomous session)** — DB backup + restore scripts ship. `platform/scripts/backup.sh` (idempotent pg_dump, gzip, retention prune, optional S3) + `platform/scripts/restore.sh` (safety-guarded, smoke-verified). docs/DEPLOY.md updated with cron example + monthly verification cadence. DR category: 0G/1A/3R → 0G/3A/1R. Overall: 16G/16A/22R → 16G/18A/20R. **DR category upgraded AMBER overall** (was RED); still RED project overall (observability, CI/CD, compliance, scale).

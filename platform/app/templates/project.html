@@ -80,8 +80,9 @@
         "guidelines": "⚖ Guidelines",
         "decisions": "⚖ Decisions",
         "llm-calls": "🤖 LLM calls",
+        "integrations": "🔌 Integrations",
     } %}
-    {% for tab in ["knowledge","objectives","tasks","findings","files","docs","contract","skills","guidelines","decisions","llm-calls"] %}
+    {% for tab in ["knowledge","objectives","tasks","findings","files","docs","contract","skills","guidelines","decisions","llm-calls","integrations"] %}
     <a href="?tab={{ tab }}" class="px-3 py-2 text-sm whitespace-nowrap {% if active_tab == tab %}border-b-2 border-blue-600 font-semibold text-blue-700{% else %}text-slate-500 hover:text-slate-800{% endif %}">{{ tab_labels.get(tab, tab) }}</a>
     {% endfor %}
 </div>
@@ -98,46 +99,136 @@
     <span class="text-xs text-slate-500">{{ objectives|length }} objective(s)</span>
 </div>
 
-{# DAG view — SVG nodes sized by task count, colored by status, edges by task.depends_on #}
+{# Global ambiguity banner (mockup 03v2) — hard count of blockers across all objectives #}
+{% set total_open_ambig = 0 %}
+{% for d in decisions %}{% if d.status == 'OPEN' %}{% set total_open_ambig = total_open_ambig + 1 %}{% endif %}{% endfor %}
+
+{# DAG view — SVG nodes + edges from Objective.dependencies. #}
 <div id="obj-dag" class="hidden bg-white rounded-lg shadow p-4 mb-4 overflow-auto">
+    {# Global banner — hard count of ambiguities that block planning #}
+    {% if total_open_ambig %}
+    <div class="bg-amber-50 border border-amber-300 rounded p-3 mb-3 flex items-center gap-3">
+        <div class="w-8 h-8 bg-amber-500 text-white rounded-full flex items-center justify-center text-sm font-bold">!</div>
+        <div class="flex-1 text-sm">
+            <b>{{ total_open_ambig }} ambiguity(ies)</b> block planning on one or more objectives. Objectives with unresolved Q's are marked <b class="text-amber-700">⏸ BLOCKED</b> below.
+        </div>
+        <a href="?tab=decisions" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-3 py-1.5 rounded">Resolve all →</a>
+    </div>
+    {% endif %}
+
+    {# Legend — 4 task types color-coded (teaching moment) #}
+    <div class="grid grid-cols-4 gap-2 mb-3 text-xs">
+        <div class="bg-blue-50 border border-blue-200 rounded p-2">
+            <div class="font-bold text-blue-700 uppercase">ANALYSIS</div>
+            <div class="text-slate-700">research KB · find ambiguities · write AC + KR</div>
+        </div>
+        <div class="bg-purple-50 border border-purple-200 rounded p-2">
+            <div class="font-bold text-purple-700 uppercase">PLANNING</div>
+            <div class="text-slate-700">objective → develop tasks DAG. <b>Planning is a task — not a button.</b></div>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-200 rounded p-2">
+            <div class="font-bold text-emerald-700 uppercase">DEVELOP</div>
+            <div class="text-slate-700">write code + tests · Phase A/B/C verification</div>
+        </div>
+        <div class="bg-slate-100 border border-slate-300 rounded p-2">
+            <div class="font-bold text-slate-700 uppercase">DOCUMENTATION</div>
+            <div class="text-slate-700">ADR · API ref · runbook · user guide</div>
+        </div>
+    </div>
+
     {% if objectives %}
-    {% set cols = 3 %}
-    <svg width="1100" height="{{ ((objectives|length + cols - 1) // cols) * 180 + 40 }}" xmlns="http://www.w3.org/2000/svg">
+    {% set cols = 2 %}
+    {% set node_w = 380 %}
+    {% set node_h = 180 %}
+    {% set col_gap = 70 %}
+    {% set row_gap = 70 %}
+    {% set ext_to_pos = {} %}
+    {% for o in objectives %}
+        {% set _r = loop.index0 // cols %}
+        {% set _c = loop.index0 % cols %}
+        {% set _cx = 230 + _c * (node_w + col_gap) %}
+        {% set _cy = 100 + _r * (node_h + row_gap) %}
+        {% set _ = ext_to_pos.update({o.external_id: {'cx': _cx, 'cy': _cy}}) %}
+    {% endfor %}
+    {% set svg_w = 230 + cols * (node_w + col_gap) %}
+    {% set svg_h = 100 + (((objectives|length + cols - 1) // cols)) * (node_h + row_gap) + 20 %}
+    <svg width="{{ svg_w }}" height="{{ svg_h }}" xmlns="http://www.w3.org/2000/svg">
         <defs>
-            <marker id="arrhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <marker id="arrhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
             </marker>
         </defs>
-        {# Layout: simple grid, 3 per row. #}
+        {# Edges FIRST so they render beneath nodes #}
         {% for o in objectives %}
-        {% set row = loop.index0 // cols %}
-        {% set col = loop.index0 % cols %}
-        {% set cx = 180 + col * 320 %}
-        {% set cy = 60 + row * 180 %}
+            {% for d in o.dependencies %}
+                {% set src = ext_to_pos[o.external_id] %}
+                {% set tgt = ext_to_pos[d.external_id] %}
+                {% if src and tgt %}
+                    <path d="M {{ tgt.cx + node_w // 2 }} {{ tgt.cy }} C {{ (tgt.cx + src.cx)//2 }} {{ tgt.cy }}, {{ (tgt.cx + src.cx)//2 }} {{ src.cy }}, {{ src.cx - node_w // 2 }} {{ src.cy }}"
+                          stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrhead)"/>
+                {% endif %}
+            {% endfor %}
+        {% endfor %}
+        {# Nodes — richer: status header, 4 type-lanes, blocked indicator #}
+        {% for o in objectives %}
+        {% set pos = ext_to_pos[o.external_id] %}
+        {% set cx = pos.cx %}{% set cy = pos.cy %}
         {% set obj_tasks = tasks|selectattr('origin', 'equalto', o.external_id)|list %}
-        {% set done = obj_tasks|selectattr('status', 'equalto', 'DONE')|list|length %}
-        {% set total = obj_tasks|length %}
+        {% set has_ambig = total_open_ambig > 0 %}  {# heuristic: at project level for now #}
+        {% set blocked = has_ambig and o.status == 'ACTIVE' and obj_tasks|selectattr('type', 'equalto', 'planning')|list|length == 0 %}
         <a href="/ui/projects/{{ project }}/objectives/{{ o.external_id }}">
-            <rect x="{{ cx - 130 }}" y="{{ cy - 50 }}" width="260" height="110" rx="10"
-                  fill="{% if o.status == 'ACHIEVED' %}#d1fae5{% elif o.status == 'ACTIVE' %}#dbeafe{% elif o.status == 'ABANDONED' %}#fee2e2{% else %}#f1f5f9{% endif %}"
-                  stroke="{% if o.status == 'ACHIEVED' %}#059669{% elif o.status == 'ACTIVE' %}#2563eb{% else %}#94a3b8{% endif %}"
-                  stroke-width="2"/>
-            <text x="{{ cx - 120 }}" y="{{ cy - 28 }}" font-size="11" font-family="monospace" fill="#475569">{{ o.external_id }}</text>
-            <text x="{{ cx - 120 }}" y="{{ cy - 10 }}" font-size="13" font-weight="bold" fill="#0f172a">
-                {{ o.title[:30] }}{% if o.title|length > 30 %}…{% endif %}
-            </text>
-            <text x="{{ cx - 120 }}" y="{{ cy + 8 }}" font-size="10" fill="#64748b">{{ o.status }} · P{{ o.priority }}</text>
-            {% if total %}
-            <text x="{{ cx - 120 }}" y="{{ cy + 28 }}" font-size="10" fill="#475569">{{ done }}/{{ total }} tasks done</text>
-            <rect x="{{ cx - 120 }}" y="{{ cy + 34 }}" width="240" height="6" fill="#e2e8f0" rx="3"/>
-            <rect x="{{ cx - 120 }}" y="{{ cy + 34 }}" width="{{ (240 * done / total)|int if total else 0 }}" height="6" fill="#10b981" rx="3"/>
+            <rect x="{{ cx - node_w // 2 }}" y="{{ cy - 80 }}" width="{{ node_w }}" height="{{ node_h }}" rx="10"
+                  fill="{% if o.status == 'ACHIEVED' %}#d1fae5{% elif blocked %}#fef3c7{% elif o.status == 'ACTIVE' %}#dbeafe{% elif o.status == 'ABANDONED' %}#fee2e2{% else %}#f1f5f9{% endif %}"
+                  stroke="{% if o.status == 'ACHIEVED' %}#059669{% elif blocked %}#f59e0b{% elif o.status == 'ACTIVE' %}#2563eb{% else %}#94a3b8{% endif %}"
+                  stroke-width="{% if blocked %}3{% else %}2{% endif %}"/>
+            {# Header row: ID, status badge, BLOCKED indicator if any #}
+            <text x="{{ cx - node_w//2 + 12 }}" y="{{ cy - 58 }}" font-size="11" font-family="monospace" fill="#475569">{{ o.external_id }}</text>
+            {% if blocked %}
+            <text x="{{ cx + node_w//2 - 12 }}" y="{{ cy - 58 }}" font-size="11" font-weight="bold" fill="#b45309" text-anchor="end">⏸ BLOCKED</text>
             {% else %}
-            <text x="{{ cx - 120 }}" y="{{ cy + 28 }}" font-size="10" fill="#94a3b8">no tasks</text>
+            <text x="{{ cx + node_w//2 - 12 }}" y="{{ cy - 58 }}" font-size="10" fill="#64748b" text-anchor="end">{{ o.status }} · P{{ o.priority }}</text>
             {% endif %}
+            <text x="{{ cx - node_w//2 + 12 }}" y="{{ cy - 38 }}" font-size="14" font-weight="bold" fill="#0f172a">
+                {{ o.title[:40] }}{% if o.title|length > 40 %}…{% endif %}
+            </text>
+            {# 4 type-lanes — shows sub-task summary under each objective (mockup 03v2) #}
+            {% set lane_y = cy - 18 %}
+            {% for ttype, lane_label, lane_color, lane_bg in [
+                ('analysis', 'ANA', '#2563eb', '#dbeafe'),
+                ('planning', 'PLN', '#9333ea', '#f3e8ff'),
+                ('develop',  'DEV', '#059669', '#d1fae5'),
+                ('documentation', 'DOC', '#64748b', '#e2e8f0'),
+            ] %}
+            {% set by_type = obj_tasks|selectattr('type', 'equalto', ttype)|list %}
+            {% set by_done = by_type|selectattr('status', 'equalto', 'DONE')|list|length %}
+            {% set by_fail = by_type|selectattr('status', 'equalto', 'FAILED')|list|length %}
+            {% set lane_offset_x = loop.index0 * (node_w // 4) %}
+            <rect x="{{ cx - node_w//2 + 12 + lane_offset_x }}" y="{{ lane_y }}" width="{{ node_w // 4 - 8 }}" height="40" rx="4"
+                  fill="{{ lane_bg }}" stroke="{{ lane_color }}" stroke-width="1"/>
+            <text x="{{ cx - node_w//2 + 16 + lane_offset_x }}" y="{{ lane_y + 14 }}" font-size="9" font-weight="bold" fill="{{ lane_color }}">{{ lane_label }}</text>
+            {% if by_type %}
+            <text x="{{ cx - node_w//2 + 16 + lane_offset_x }}" y="{{ lane_y + 30 }}" font-size="11" font-weight="bold" fill="#0f172a">{{ by_done }}/{{ by_type|length }}</text>
+                {% if by_fail %}
+                <text x="{{ cx - node_w//2 + 50 + lane_offset_x }}" y="{{ lane_y + 30 }}" font-size="9" fill="#dc2626" font-weight="bold">{{ by_fail }}✗</text>
+                {% endif %}
+            {% else %}
+            <text x="{{ cx - node_w//2 + 16 + lane_offset_x }}" y="{{ lane_y + 30 }}" font-size="10" fill="#94a3b8">—</text>
+            {% endif %}
+            {% endfor %}
+            {# KR progress bar at bottom #}
+            {% set kr_total = o.key_results|length %}
+            {% set kr_done = o.key_results|selectattr('status', 'equalto', 'ACHIEVED')|list|length %}
+            <text x="{{ cx - node_w//2 + 12 }}" y="{{ cy + 60 }}" font-size="10" fill="#64748b">KR {{ kr_done }}/{{ kr_total }}{% if obj_tasks %} · tasks {{ obj_tasks|length }}{% endif %}</text>
+            <rect x="{{ cx - node_w//2 + 12 }}" y="{{ cy + 66 }}" width="{{ node_w - 24 }}" height="4" fill="#e2e8f0" rx="2"/>
+            <rect x="{{ cx - node_w//2 + 12 }}" y="{{ cy + 66 }}" width="{{ ((node_w - 24) * kr_done / kr_total)|int if kr_total else 0 }}" height="4" fill="#10b981" rx="2"/>
         </a>
         {% endfor %}
     </svg>
-    <div class="text-xs text-slate-500 mt-2 italic">Graph layout is 3×N grid. Edges between objectives not yet rendered (Objective.depends_on not modeled).</div>
+    <div class="text-xs text-slate-500 mt-2 italic">
+        Each objective shows 4 type-lanes (ANA/PLN/DEV/DOC) with done/total counts. BLOCKED = open ambiguities + no PLANNING task yet.
+        Edges rendered from <span class="mono">objective_dependencies</span> table. Add/remove via
+        <span class="mono">POST/DELETE /api/v1/tier1/projects/{slug}/objectives/{ext}/dependencies</span>.
+    </div>
     {% else %}
     <div class="text-slate-400 italic">No objectives yet.</div>
     {% endif %}
@@ -196,6 +287,16 @@
 </div>{# /#obj-list #}
 
 {% elif active_tab == "tasks" %}
+{# P3.3 — view toggles: list | kanban | timeline #}
+<div class="flex items-center gap-2 mb-3 text-xs">
+    <span class="text-slate-500 font-semibold uppercase tracking-wide">View:</span>
+    {% for v, label, icon in [('list','List','📋'), ('kanban','Kanban','🗂️'), ('timeline','Timeline','📅')] %}
+    <a href="?tab=tasks&view={{ v }}"
+       class="pill px-2 py-0.5 border {{ 'bg-slate-200 text-slate-800 border-slate-300 font-semibold' if active_view == v else 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100' }}">
+        {{ icon }} {{ label }}
+    </a>
+    {% endfor %}
+</div>
 {% if not tasks %}
 <div class="bg-white rounded-lg shadow p-8 text-center mb-4">
     <div class="text-4xl mb-3">✅</div>
@@ -207,6 +308,66 @@
             Create an objective first, then plan tasks.
         {% endif %}
     </div>
+</div>
+{% elif active_view == 'kanban' %}
+{# Kanban — TODO / IN_PROGRESS / DONE / FAILED columns. Skipped go alongside Done. #}
+{% set kanban_cols = [
+    ('TODO', 'Queued', 'bg-slate-100', 'border-slate-300'),
+    ('IN_PROGRESS', 'In progress', 'bg-blue-100', 'border-blue-300'),
+    ('DONE', 'Done', 'bg-emerald-100', 'border-emerald-300'),
+    ('FAILED', 'Failed', 'bg-rose-100', 'border-rose-300'),
+] %}
+<div class="grid grid-cols-1 md:grid-cols-4 gap-3" id="kanban-board">
+    {% for st, label, hbg, brd in kanban_cols %}
+    {% set col_tasks = tasks | selectattr('status', 'equalto', st) | list %}
+    <div class="bg-white rounded shadow border-t-4 {{ brd }}">
+        <div class="px-3 py-2 {{ hbg }} flex items-center justify-between">
+            <div class="font-semibold text-sm">{{ label }}</div>
+            <span class="pill bg-white text-slate-700 text-xs">{{ col_tasks|length }}</span>
+        </div>
+        <div class="p-2 space-y-2 min-h-[80px]">
+            {% for t in col_tasks %}
+            <a href="/ui/projects/{{ proj.slug }}/tasks/{{ t.external_id }}"
+               class="block bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded p-2 text-xs">
+                <div class="flex items-center gap-2">
+                    <span class="mono text-slate-500">{{ t.external_id }}</span>
+                    {% if t.type %}<span class="pill bg-slate-100 text-slate-600 text-xs">{{ t.type }}</span>{% endif %}
+                </div>
+                <div class="font-medium text-slate-800 mt-0.5 truncate">{{ t.name }}</div>
+                {% if t.origin %}<div class="text-xs text-slate-500 mt-0.5">↳ {{ t.origin }}</div>{% endif %}
+                {% if t.completed_at %}<div class="text-xs text-slate-400 mt-0.5">{{ t.completed_at | reltime }}</div>{% endif %}
+            </a>
+            {% else %}
+            <div class="text-xs text-slate-400 italic px-2 py-3 text-center">empty</div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% elif active_view == 'timeline' %}
+{# Timeline — chronological list grouped by day, newest first #}
+<div class="bg-white rounded shadow p-4">
+    {% set tl = tasks | sort(attribute='created_at', reverse=true) %}
+    <ol class="relative border-l border-slate-300 ml-3 space-y-3">
+        {% for t in tl %}
+        <li class="ml-4">
+            <span class="absolute -left-1.5 mt-1.5 w-3 h-3 rounded-full
+                         {% if t.status == 'DONE' %}bg-emerald-500
+                         {% elif t.status == 'FAILED' %}bg-rose-500
+                         {% elif t.status == 'IN_PROGRESS' %}bg-blue-500
+                         {% else %}bg-slate-300{% endif %}"></span>
+            <div class="flex items-center gap-2 text-xs">
+                <span class="mono text-slate-500">{{ t.external_id }}</span>
+                <span class="pill bg-slate-100 text-slate-700 text-xs">{{ t.status }}</span>
+                {% if t.type %}<span class="pill bg-slate-100 text-slate-600 text-xs">{{ t.type }}</span>{% endif %}
+                <span class="text-slate-500 ml-auto">{{ (t.completed_at or t.started_at or t.created_at) | reltime }}</span>
+            </div>
+            <a href="/ui/projects/{{ proj.slug }}/tasks/{{ t.external_id }}"
+               class="block mt-0.5 font-medium text-slate-800 hover:text-blue-700 hover:underline">{{ t.name }}</a>
+            {% if t.origin %}<div class="text-xs text-slate-500">↳ origin {{ t.origin }}</div>{% endif %}
+        </li>
+        {% endfor %}
+    </ol>
 </div>
 {% else %}
 <table class="bg-white rounded shadow w-full text-sm">
@@ -280,16 +441,43 @@
     </div>
     {% endif %}
     {% for d in decisions %}
-    <div class="bg-white rounded shadow p-4">
-        <div class="flex items-center gap-2 mb-1">
-            <span class="mono text-xs text-slate-500">{{ d.external_id }}</span>
-            <span class="pill bg-slate-100">{{ d.type }}</span>
-            {% if d.severity %}<span class="pill bg-slate-100 text-xs">{{ d.severity }}</span>{% endif %}
-            <span class="pill {% if d.status == 'CLOSED' %}bg-green-100 text-green-700{% else %}bg-amber-100 text-amber-700{% endif %}">{{ d.status }}</span>
+    <div id="decision-{{ d.external_id }}" class="bg-white rounded shadow p-4 {% if d.status == 'OPEN' %}border-l-4 border-amber-500{% endif %}">
+        <div class="flex items-center justify-between gap-2 mb-1">
+            <div class="flex items-center gap-2">
+                <span class="mono text-xs text-slate-500">{{ d.external_id }}</span>
+                <span class="pill bg-slate-100 text-xs">{{ d.type }}</span>
+                {% if d.severity %}<span class="pill {% if d.severity|lower == 'high' %}bg-rose-100 text-rose-700{% elif d.severity|lower == 'medium' %}bg-amber-100 text-amber-700{% else %}bg-slate-100{% endif %} text-xs uppercase">{{ d.severity }}</span>{% endif %}
+                <span class="pill {% if d.status == 'CLOSED' %}bg-emerald-100 text-emerald-700{% elif d.status == 'OPEN' %}bg-amber-100 text-amber-700 font-semibold{% else %}bg-slate-100{% endif %}">{{ d.status }}</span>
+            </div>
+            {% if d.status == 'OPEN' %}
+            <button onclick="document.getElementById('resolve-{{ d.external_id }}').classList.toggle('hidden')"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1 rounded text-xs">Resolve →</button>
+            {% endif %}
         </div>
         <h4 class="font-semibold">{{ d.issue }}</h4>
-        <p class="text-sm text-slate-600 mt-1"><span class="text-slate-400">→</span> {{ d.recommendation }}</p>
-        {% if d.reasoning %}<p class="text-xs text-slate-500 mt-1 italic">{{ d.reasoning[:200] }}</p>{% endif %}
+        {% if d.recommendation %}<p class="text-sm text-slate-600 mt-1"><span class="text-slate-400">→</span> {{ d.recommendation }}</p>{% endif %}
+        {% if d.reasoning %}<p class="text-xs text-slate-500 mt-1 italic">{{ d.reasoning[:500] }}</p>{% endif %}
+
+        {% if d.status == 'OPEN' %}
+        <div id="resolve-{{ d.external_id }}" class="hidden mt-3 pt-3 border-t border-slate-200">
+            <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/decisions/{{ d.external_id }}/resolve"
+                  hx-ext="json-enc" hx-swap="none"
+                  hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('Decision resolved', 'success'); setTimeout(() => location.reload(), 500); }"
+                  class="space-y-2">
+                <label class="text-xs font-semibold text-slate-700 block">Recommendation <span class="text-rose-600">(your resolution)</span></label>
+                <textarea name="recommendation" rows="3" required minlength="5" maxlength="2000"
+                          placeholder="e.g. Use PostgreSQL 16 with logical replication. Confirmed with client 2026-04-15."
+                          class="w-full border border-slate-300 rounded p-2 text-sm"></textarea>
+                <label class="text-xs font-semibold text-slate-700 block">Reasoning (optional — for audit)</label>
+                <textarea name="reasoning" rows="2" maxlength="2000"
+                          placeholder="Why this option — trade-offs considered, who consulted, what was rejected"
+                          class="w-full border border-slate-300 rounded p-2 text-xs"></textarea>
+                <div class="flex gap-2 justify-end">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-1.5 rounded text-sm">Save + Close</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>
@@ -299,6 +487,22 @@
 <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm text-slate-700">
     📚 <b>Knowledge Base</b> = sources Forge reads. 4 intake types: <b>file</b> (use the SOW uploader at top of page) · <b>URL</b> · <b>folder path</b> · <b>manual note</b>. Add a description so Claude knows what to focus on.
 </div>
+
+{# KB conflicts banner (K2 heuristic) #}
+{% if kb_conflicts %}
+<div class="bg-rose-50 border border-rose-300 rounded-lg p-3 mb-4">
+    <div class="font-bold text-rose-800 mb-2">⚠ {{ kb_conflicts|length }} source conflict(s) detected</div>
+    <div class="space-y-1 text-xs">
+        {% for c in kb_conflicts %}
+        <div class="bg-white rounded p-2 border border-rose-200">
+            <b>{{ c.pair[0] }}</b> ↔ <b>{{ c.pair[1] }}</b> · "{{ c.titles[0][:50] }}" vs "{{ c.titles[1][:50] }}"
+            <div class="text-slate-600 mt-0.5">conflicting terms: <span class="mono">{{ c.conflict_terms[0]|join(',') }}</span> vs <span class="mono">{{ c.conflict_terms[1]|join(',') }}</span></div>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="text-xs text-slate-500 italic mt-2">Heuristic keyword-based — verify before acting. False positives possible on compatible phrasings.</div>
+</div>
+{% endif %}
 
 <div class="grid grid-cols-3 gap-3 mb-5">
     {# URL #}
@@ -373,6 +577,12 @@
             <span class="pill text-xs {{ st_styles.get(st, 'bg-slate-100') }} font-semibold uppercase">{{ st }}</span>
             <span class="pill bg-slate-100 text-xs">{{ k.category }}</span>
             <span class="text-xs text-slate-400">{{ k.content|length }} ch</span>
+            {% set ref_count = kb_ref_counts.get(k.external_id, 0) if kb_ref_counts else 0 %}
+            {% if ref_count %}
+            <span class="pill bg-emerald-100 text-emerald-700 text-xs" title="Referenced by tasks on {{ ref_count }} distinct objective(s)">✨ used in {{ ref_count }} obj</span>
+            {% else %}
+            <span class="pill bg-slate-100 text-slate-500 text-xs" title="No task links to this source via requirement_refs — may be unused">○ unused</span>
+            {% endif %}
             <h4 class="font-semibold flex-1">{{ k.title }}</h4>
         </div>
         {% if k.target_url %}<div class="text-xs text-slate-500 mono mb-1 truncate">{{ k.target_url }}</div>{% endif %}
@@ -404,6 +614,96 @@
         <div class="text-slate-400 text-sm col-span-2">loading mode…</div>
     </div>
 </div>
+
+{# H1 — Post-stage hooks configuration #}
+<div class="bg-white rounded-lg shadow p-5 mb-4">
+    <div class="flex items-center justify-between mb-3">
+        <div>
+            <h2 class="font-bold text-lg">🪝 Post-stage hooks</h2>
+            <p class="text-xs text-slate-500">Run a skill automatically after every task of a given stage completes. Good for project-wide invariants (e.g. "always re-check security after develop").</p>
+        </div>
+        <button onclick="document.getElementById('hook-new').classList.toggle('hidden')"
+                class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded">+ Add hook</button>
+    </div>
+    <div id="hook-new" class="hidden bg-slate-50 rounded p-3 mb-3">
+        <form hx-post="/api/v1/tier1/projects/{{ proj.slug }}/hooks" hx-ext="json-enc" hx-swap="none"
+              hx-on:htmx:after-request="if (event.detail.successful) { forgeToast('Hook added', 'success'); document.getElementById('hooks-list').dispatchEvent(new Event('reload-hooks')); this.reset(); document.getElementById('hook-new').classList.add('hidden'); }">
+            <div class="grid grid-cols-3 gap-2 mb-2">
+                <select name="stage" required class="border border-slate-300 rounded px-2 py-1 text-xs">
+                    <option value="after_analysis">after_analysis</option>
+                    <option value="after_planning">after_planning</option>
+                    <option value="after_develop">after_develop</option>
+                    <option value="after_documentation">after_documentation</option>
+                </select>
+                <input name="skill_external_id" placeholder="SK-security-owasp (optional)" class="border border-slate-300 rounded px-2 py-1 text-xs mono">
+                <label class="flex items-center gap-1 text-xs"><input type="checkbox" name="enabled" checked> enabled</label>
+            </div>
+            <input name="purpose_text" placeholder="Purpose note (why this hook exists)" class="w-full border border-slate-300 rounded px-2 py-1 text-xs mb-2">
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1 rounded">Save hook</button>
+        </form>
+    </div>
+    <div id="hooks-list"
+         hx-get="/api/v1/tier1/projects/{{ proj.slug }}/hooks"
+         hx-trigger="load, reload-hooks"
+         hx-swap="innerHTML">
+        <div class="text-slate-400 text-sm">loading hooks…</div>
+    </div>
+</div>
+<script>
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.target && e.target.id === 'hooks-list') {
+        try {
+            const j = JSON.parse(e.target.textContent);
+            if (!j.hooks || !j.hooks.length) {
+                e.target.innerHTML = '<div class="text-xs text-slate-400 italic">No hooks configured. Click + Add hook above.</div>';
+                return;
+            }
+            const rows = j.hooks.map(h => {
+                const stageColors = {
+                    after_analysis: 'bg-blue-100 text-blue-700',
+                    after_planning: 'bg-purple-100 text-purple-700',
+                    after_develop: 'bg-emerald-100 text-emerald-700',
+                    after_documentation: 'bg-slate-200 text-slate-800',
+                };
+                const statusColors = {
+                    fired: 'bg-emerald-100 text-emerald-700',
+                    skipped_no_skill: 'bg-slate-200 text-slate-700',
+                    skipped_no_cli: 'bg-amber-100 text-amber-800',
+                    error: 'bg-rose-100 text-rose-700',
+                };
+                const skName = h.skill ? h.skill.external_id + ' (' + h.skill.name + ')' : '(no skill — just metadata)';
+                let lastBlock = '<span class="text-slate-400">never fired</span>';
+                if (h.last_fired_at) {
+                    const when = h.last_fired_at.slice(0, 19).replace('T', ' ');
+                    const pill = '<span class="pill text-xs ' + (statusColors[h.last_status] || 'bg-slate-100') + '">' + h.last_status + '</span>';
+                    const linkSuffix = h.last_llm_call_id ? ' · <a href="/ui/llm-calls/' + h.last_llm_call_id + '" class="text-blue-600 hover:underline">llm call #' + h.last_llm_call_id + '</a>' : '';
+                    lastBlock = pill + ' <span class="text-slate-500 mono">' + when + '</span>' + linkSuffix;
+                }
+                return '<div class="py-2 border-b border-slate-100 text-xs">' +
+                    '<div class="flex items-center gap-2">' +
+                    '<span class="pill ' + (stageColors[h.stage]||'bg-slate-100') + '">' + h.stage + '</span>' +
+                    '<span class="' + (h.enabled ? 'text-emerald-700 font-semibold' : 'text-slate-400') + '">' + (h.enabled ? '✓ enabled' : '⊘ disabled') + '</span>' +
+                    '<span class="mono">' + skName + '</span>' +
+                    (h.purpose_text ? '<span class="text-slate-500 italic">· ' + h.purpose_text + '</span>' : '') +
+                    '<button onclick="deleteHook(' + h.id + ')" class="ml-auto text-rose-600 hover:underline">remove</button>' +
+                    '</div>' +
+                    '<div class="mt-1 pl-1 flex items-center gap-2">' +
+                    '<span class="text-slate-400">last:</span>' + lastBlock +
+                    (h.last_summary ? '<span class="text-slate-500 italic truncate" title="' + h.last_summary.replace(/"/g, '&quot;') + '">— ' + h.last_summary.slice(0, 80) + '</span>' : '') +
+                    '</div>' +
+                    '</div>';
+            }).join('');
+            e.target.innerHTML = rows;
+        } catch(_) {}
+    }
+});
+function deleteHook(id) {
+    const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/hooks/' + id,
+        {method: 'DELETE', headers: {'X-CSRF-Token': csrf}})
+        .then(r => { if (r.ok) { forgeToast('Removed', 'success'); document.getElementById('hooks-list').dispatchEvent(new Event('reload-hooks')); htmx.trigger('#hooks-list', 'reload-hooks'); } });
+}
+</script>
 
 {# I1-I5 Autonomy radar #}
 <div class="bg-white rounded-lg shadow p-5 mb-4">
@@ -513,8 +813,52 @@ function promoteAutonomy(target) {
             <span class="mono">{{ proj.contract_md|length if proj.contract_md else 0 }} chars</span>
             <span>·</span>
             <span class="mono">~{{ ((proj.contract_md|length if proj.contract_md else 0) / 4) | round | int }} tokens</span>
+            <button onclick="suggestContract()" class="ml-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-semibold px-2.5 py-1 rounded">🪄 LLM suggest</button>
+            <button onclick="document.getElementById('contract-revisions-panel').classList.toggle('hidden')"
+                    class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2.5 py-1 rounded">📜 Revisions</button>
         </div>
     </div>
+    <div id="contract-revisions-panel" class="hidden bg-slate-50 border border-slate-200 rounded p-3 mb-3 text-xs"
+         hx-get="/api/v1/tier1/projects/{{ proj.slug }}/contract/revisions"
+         hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-slate-400">loading revisions…</div>
+    </div>
+    <div id="contract-suggestion" class="hidden bg-blue-50 border border-blue-200 rounded p-3 mb-3 text-sm">
+        <div class="font-bold text-blue-900 mb-1">🪄 LLM suggestions</div>
+        <div id="contract-suggestion-text" class="prose prose-sm text-slate-700 whitespace-pre-wrap"></div>
+    </div>
+    <script>
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.target && e.target.id === 'contract-revisions-panel') {
+            try {
+                const j = JSON.parse(e.target.textContent);
+                if (!j.revisions || !j.revisions.length) {
+                    e.target.innerHTML = '<div class="text-slate-400 italic">No revisions yet — save the contract to create v1.</div>';
+                    return;
+                }
+                const rows = j.revisions.map(r =>
+                    '<div class="flex items-center gap-3 py-1.5 border-b border-slate-100"><span class="mono text-slate-500">v' + r.version + '</span>' +
+                    '<span class="text-slate-500 text-xs">' + new Date(r.saved_at).toLocaleString() + '</span>' +
+                    '<span class="text-slate-500">' + r.chars + ' chars</span>' +
+                    '<span class="text-slate-400 text-xs flex-1 truncate">' + (r.preview||'').replace(/\n/g, ' ').slice(0, 100) + '</span></div>'
+                ).join('');
+                e.target.innerHTML = '<div class="font-semibold text-slate-700 mb-2">Contract history (' + j.revisions.length + ' revisions)</div>' + rows;
+            } catch(_) {}
+        }
+    });
+    function suggestContract() {
+        const box = document.getElementById('contract-suggestion');
+        const text = document.getElementById('contract-suggestion-text');
+        box.classList.remove('hidden');
+        text.textContent = 'Thinking…';
+        const csrf = (document.cookie.match(/forge_csrf=([^;]+)/) || ['',''])[1];
+        fetch('/api/v1/tier1/projects/{{ proj.slug }}/contract/suggest',
+            {method: 'POST', headers: {'X-CSRF-Token': csrf}})
+            .then(r => r.json()).then(j => {
+                text.textContent = j.suggestion + (j.not_checked && j.not_checked.length ? '\n\n⚠ NOT_CHECKED:\n- ' + j.not_checked.join('\n- ') : '');
+            }).catch(() => { text.textContent = 'Suggestion failed.'; });
+    }
+    </script>
     <form id="contract-form" hx-put="/api/v1/tier1/projects/{{ proj.slug }}/contract"
           hx-ext="json-enc" hx-swap="none"
           hx-on:htmx:after-request="if (event.detail.successful) forgeToast('Contract saved — applies to all future LLM calls.', 'success'); else forgeToast('Save failed.', 'error');"
@@ -529,6 +873,105 @@ function promoteAutonomy(target) {
     </form>
 </div>
 <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
+
+{# P2.4 — Budget configuration + P2.5 — Veto configuration #}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+    <div class="bg-white rounded-lg shadow p-5">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="font-bold text-lg">💰 Budget</h2>
+            <span id="budget-save-status" class="text-xs text-slate-400"></span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">USD caps per task + per run. When spending hits <b>warn_at_pct</b>, UI shows amber; 100% blocks new tasks.</p>
+        <form id="budget-form" class="space-y-2 text-sm">
+            <label class="block">
+                <span class="text-xs text-slate-600">Per-task budget (USD)</span>
+                <input name="budget_task_usd" type="number" min="0.01" max="100" step="0.05"
+                       class="mt-0.5 w-full border border-slate-300 rounded px-2 py-1 mono">
+            </label>
+            <label class="block">
+                <span class="text-xs text-slate-600">Per-run budget (USD)</span>
+                <input name="budget_run_usd" type="number" min="0.01" max="500" step="0.10"
+                       class="mt-0.5 w-full border border-slate-300 rounded px-2 py-1 mono">
+            </label>
+            <label class="block">
+                <span class="text-xs text-slate-600">Warn at %</span>
+                <input name="warn_at_pct" type="number" min="10" max="100" step="5"
+                       class="mt-0.5 w-full border border-slate-300 rounded px-2 py-1 mono">
+            </label>
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded">Save budget</button>
+        </form>
+    </div>
+    <div class="bg-white rounded-lg shadow p-5">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="font-bold text-lg">🚫 Veto paths</h2>
+            <span id="veto-save-status" class="text-xs text-slate-400"></span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">One fnmatch glob per line (e.g. <span class="mono">migrations/**</span>, <span class="mono">.env*</span>, <span class="mono">infra/prod/**</span>). Any file touched by Forge that matches blocks the task.</p>
+        <form id="veto-form" class="space-y-2 text-sm">
+            <textarea name="veto_paths" rows="5" placeholder="migrations/**&#10;.env*&#10;infra/prod/**"
+                      class="w-full border border-slate-300 rounded px-2 py-1 text-xs mono"></textarea>
+            <label class="block">
+                <span class="text-xs text-slate-600">Budget hard-cap % (abort run when exceeded)</span>
+                <input name="budget_hard_cap_pct" type="number" min="50" max="100" step="5"
+                       class="mt-0.5 w-full border border-slate-300 rounded px-2 py-1 mono">
+            </label>
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded">Save veto</button>
+        </form>
+    </div>
+</div>
+<script>
+(function() {
+    const csrf = () => (document.cookie.match(/forge_csrf=([^;]+)/) || ['', ''])[1];
+    // Load existing config
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/budget-config').then(r => r.json()).then(j => {
+        const f = document.getElementById('budget-form');
+        if (!f) return;
+        f.elements.budget_task_usd.value = j.budget_task_usd;
+        f.elements.budget_run_usd.value = j.budget_run_usd;
+        f.elements.warn_at_pct.value = j.warn_at_pct;
+    });
+    fetch('/api/v1/tier1/projects/{{ proj.slug }}/veto-config').then(r => r.json()).then(j => {
+        const f = document.getElementById('veto-form');
+        if (!f) return;
+        f.elements.veto_paths.value = (j.veto_paths || []).join('\n');
+        f.elements.budget_hard_cap_pct.value = j.budget_hard_cap_pct || 80;
+    });
+    document.getElementById('budget-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const f = e.target;
+        fetch('/api/v1/tier1/projects/{{ proj.slug }}/budget-config',
+            {method: 'PUT', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf()},
+             body: JSON.stringify({
+                budget_task_usd: parseFloat(f.elements.budget_task_usd.value),
+                budget_run_usd: parseFloat(f.elements.budget_run_usd.value),
+                warn_at_pct: parseInt(f.elements.warn_at_pct.value, 10),
+             })})
+          .then(r => r.json().then(j => ({ok: r.ok, j})))
+          .then(({ok, j}) => {
+              const s = document.getElementById('budget-save-status');
+              s.textContent = ok ? '✓ saved $' + j.budget_task_usd + ' / task · $' + j.budget_run_usd + ' / run' : '× ' + (j.detail || 'failed');
+              s.className = 'text-xs ' + (ok ? 'text-emerald-600' : 'text-rose-600');
+          });
+    });
+    document.getElementById('veto-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const f = e.target;
+        const paths = f.elements.veto_paths.value.split('\n').map(s => s.trim()).filter(Boolean);
+        fetch('/api/v1/tier1/projects/{{ proj.slug }}/veto-config',
+            {method: 'PUT', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf()},
+             body: JSON.stringify({
+                veto_paths: paths,
+                budget_hard_cap_pct: parseInt(f.elements.budget_hard_cap_pct.value, 10),
+             })})
+          .then(r => r.json().then(j => ({ok: r.ok, j})))
+          .then(({ok, j}) => {
+              const s = document.getElementById('veto-save-status');
+              s.textContent = ok ? '✓ saved ' + (j.veto_paths || []).length + ' rule(s)' : '× ' + (j.detail || 'failed');
+              s.className = 'text-xs ' + (ok ? 'text-emerald-600' : 'text-rose-600');
+          });
+    });
+})();
+</script>
 
 {% elif active_tab == "skills" %}
 <div class="bg-white rounded-lg shadow p-5">
@@ -650,6 +1093,51 @@ function reloadCatalog() {
 }
 </script>
 
+{% elif active_tab == "integrations" %}
+<div class="bg-white rounded-lg shadow p-5">
+    <div class="flex items-center justify-between mb-3">
+        <div>
+            <h2 class="font-bold text-lg">🔌 Integrations</h2>
+            <p class="text-xs text-slate-500">Hook Forge into your tooling. Most are stubs in v0.</p>
+        </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 text-sm">
+        <div class="bg-emerald-50 border border-emerald-200 rounded p-3">
+            <div class="font-bold text-emerald-700 mb-1">✓ Webhooks</div>
+            <p class="text-xs text-slate-700 mb-2">Outbound webhooks on task state changes, orchestrate run events, findings. Available under <span class="mono">/api/v1/webhooks</span>.</p>
+            <a href="/docs#/webhooks" target="_blank" class="text-xs text-blue-600 hover:underline">OpenAPI →</a>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-200 rounded p-3">
+            <div class="font-bold text-emerald-700 mb-1">✓ Share links</div>
+            <p class="text-xs text-slate-700 mb-2">Capability-URL based read-only sharing of project summary / task reports with external stakeholders.</p>
+            <a href="/docs#/share" target="_blank" class="text-xs text-blue-600 hover:underline">OpenAPI →</a>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded p-3 opacity-60">
+            <div class="font-bold text-slate-600 mb-1">⊙ SharePoint / Confluence</div>
+            <p class="text-xs text-slate-700 mb-2">URL-based crawler supports public pages. OAuth / cookie-auth for SharePoint is not yet implemented.</p>
+            <span class="text-xs text-slate-400">Planned</span>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded p-3 opacity-60">
+            <div class="font-bold text-slate-600 mb-1">⊙ Jira / Linear</div>
+            <p class="text-xs text-slate-700 mb-2">Sync objectives / tasks bi-directionally. Not implemented; webhook hooks exist to stream events out.</p>
+            <span class="text-xs text-slate-400">Planned</span>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded p-3 opacity-60">
+            <div class="font-bold text-slate-600 mb-1">⊙ Slack / Teams notifications</div>
+            <p class="text-xs text-slate-700 mb-2">Send digest / P0 alerts to chat channels. Today: webhooks can deliver JSON; Slack-specific formatter is not implemented.</p>
+            <span class="text-xs text-slate-400">Planned</span>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded p-3 opacity-60">
+            <div class="font-bold text-slate-600 mb-1">⊙ Email (SMTP)</div>
+            <p class="text-xs text-slate-700 mb-2">Invitations, password reset, digest emails.</p>
+            <span class="text-xs text-slate-400">Planned</span>
+        </div>
+    </div>
+    <div class="mt-4 bg-amber-50 border border-amber-200 rounded p-3 text-xs">
+        <b>What's intentionally missing:</b> direct Git provider integrations (GitHub PR auto-comments, GitLab MR). Forge produces diffs + deliverable markdown; Git integration is in your CI pipeline — Forge avoids tight coupling to keep vendor-neutrality.
+    </div>
+</div>
+
 {% elif active_tab == "docs" %}
 <div class="bg-white rounded-lg shadow p-5">
     <div class="flex items-center justify-between mb-3">
@@ -660,14 +1148,142 @@ function reloadCatalog() {
         <div class="flex gap-2">
             <button onclick="navigator.clipboard.writeText(document.getElementById('docs-md').textContent); forgeToast('Markdown copied.', 'success')"
                     class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-3 py-1.5 rounded">📋 Copy md</button>
+            <a href="/api/v1/tier1/projects/{{ proj.slug }}/docs/export.md"
+               class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-3 py-1.5 rounded">📥 Download .md</a>
             <a href="/api/v1/tier1/projects/{{ proj.slug }}/docs/auto" target="_blank"
                class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-3 py-1.5 rounded">View JSON</a>
         </div>
     </div>
-    <div class="border border-slate-200 rounded-lg p-4 bg-slate-50 font-mono text-xs overflow-auto max-h-[80vh]">
-        <pre id="docs-md" class="whitespace-pre-wrap">{{ docs_md or "_loading…_" }}</pre>
+    {# P2.6 — TOC sidebar + doc body #}
+    <div class="flex gap-4">
+        {% if docs_toc %}
+        <aside class="w-56 shrink-0 sticky top-4 self-start border border-slate-200 rounded-lg bg-white p-3 max-h-[60vh] overflow-auto text-xs">
+            <div class="font-semibold text-slate-600 uppercase tracking-wide text-xs mb-2">On this page</div>
+            <ul class="space-y-1">
+                {% for h in docs_toc %}
+                <li class="{% if h.level == 2 %}ml-3{% endif %}">
+                    <a href="#toc-{{ h.slug }}" class="text-blue-600 hover:underline truncate block" title="{{ h.text }}">
+                        {% if h.level == 1 %}📘{% else %}·{% endif %} {{ h.text }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </aside>
+        {% endif %}
+        <div class="flex-1 border border-slate-200 rounded-lg p-4 bg-slate-50 font-mono text-xs overflow-auto max-h-[60vh]"
+             id="docs-md-wrap">
+            <pre id="docs-md" class="whitespace-pre-wrap">{{ docs_md or "_loading…_" }}</pre>
+        </div>
+    </div>
+    {% if docs_toc %}
+    <script>
+    (function() {
+        // P2.6 — client-side: wrap heading lines inside the <pre> so hash anchors work.
+        const pre = document.getElementById('docs-md');
+        if (!pre) return;
+        const src = pre.textContent;
+        const lines = src.split('\n');
+        const toc = {{ docs_toc | tojson }};
+        // Build new inner HTML: original text but with <span id="toc-slug"> at each heading line.
+        const tocByLine = {};
+        toc.forEach(h => { tocByLine[h.line] = h.slug; });
+        const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const out = lines.map((ln, i) => {
+            const slug = tocByLine[i + 1];
+            if (slug) {
+                return '<span id="toc-' + slug + '" class="toc-anchor">' + esc(ln) + '</span>';
+            }
+            return esc(ln);
+        }).join('\n');
+        pre.innerHTML = out;
+        // Smooth scroll: intercept hash clicks so the pre scroll + page scroll both cooperate.
+        document.querySelectorAll('aside a[href^="#toc-"]').forEach(a => {
+            a.addEventListener('click', ev => {
+                const slug = a.getAttribute('href').replace('#toc-', '');
+                const target = document.getElementById('toc-' + slug);
+                if (!target) return;
+                ev.preventDefault();
+                target.scrollIntoView({behavior: 'smooth', block: 'center'});
+                target.style.background = 'rgba(251, 191, 36, 0.35)';
+                setTimeout(() => { target.style.background = ''; }, 1500);
+            });
+        });
+    })();
+    </script>
+    {% endif %}
+
+    <h3 class="font-bold text-sm uppercase tracking-wide text-slate-500 mt-5 mb-2">Per-objective rollup</h3>
+    <div id="obj-rollup"
+         hx-get="/api/v1/tier1/projects/{{ proj.slug }}/docs/objective-rollup"
+         hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-slate-400 text-sm">loading rollup…</div>
+    </div>
+
+    <h3 class="font-bold text-sm uppercase tracking-wide text-slate-500 mt-5 mb-2">
+        📝 LLM-polished (from DOCUMENTATION tasks)
+        <span class="text-xs text-slate-400 font-normal normal-case">— DOC task type, mockup 10 second layer</span>
+    </h3>
+    <div id="doc-polished"
+         hx-get="/api/v1/tier1/projects/{{ proj.slug }}/docs/polished"
+         hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-slate-400 text-sm">loading polished sections…</div>
     </div>
 </div>
+<script>
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.target && e.target.id === 'doc-polished') {
+        try {
+            const j = JSON.parse(e.target.textContent);
+            if (!j.doc_task_sections || !j.doc_task_sections.length) {
+                e.target.innerHTML = '<div class="bg-slate-50 rounded p-3 text-xs text-slate-600">' +
+                    'No DOCUMENTATION tasks completed yet. Create one from an Objective detail page ' +
+                    '(Ask Forge to… + Documentation task). When it DONE, its output appears here.</div>';
+                return;
+            }
+            const rows = j.doc_task_sections.map(s =>
+                '<div class="bg-white rounded border border-slate-200 p-3 mb-2">' +
+                '<div class="flex items-center gap-2 mb-2"><span class="mono text-xs text-slate-400">' + s.task_ext + '</span>' +
+                (s.origin_objective ? '<span class="pill bg-slate-100 text-xs">on ' + s.origin_objective + '</span>' : '') +
+                '<span class="font-semibold flex-1">' + s.title + '</span>' +
+                (s.completed_at ? '<span class="text-xs text-slate-400">' + new Date(s.completed_at).toLocaleString() + '</span>' : '') +
+                '</div>' +
+                '<pre class="whitespace-pre-wrap text-xs text-slate-700 bg-slate-50 p-2 rounded">' + (s.summary || '_no summary captured_') + '</pre>' +
+                '</div>'
+            ).join('');
+            e.target.innerHTML = rows;
+        } catch(_) {}
+    }
+});
+</script>
+<script>
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.target && e.target.id === 'obj-rollup') {
+        try {
+            const j = JSON.parse(e.target.textContent);
+            if (!j.rollups || !j.rollups.length) {
+                e.target.innerHTML = '<div class="text-xs text-slate-400 italic">No objectives yet.</div>';
+                return;
+            }
+            const cards = j.rollups.map(r => {
+                const statusClr = r.status === 'ACHIEVED' ? 'border-emerald-500' :
+                                  r.status === 'ACTIVE' ? 'border-blue-500' :
+                                  r.status === 'ABANDONED' ? 'border-rose-500' : 'border-slate-300';
+                const byStatus = Object.entries(r.outputs.tasks_by_status||{}).map(([k,v])=>k+'='+v).join(', ') || 'none';
+                return '<div class="bg-white rounded border-l-4 ' + statusClr + ' p-3 mb-2">' +
+                    '<div class="flex items-center gap-2 mb-1"><span class="mono text-slate-500 text-xs">' + r.external_id + '</span>' +
+                    '<span class="font-semibold">' + r.title + '</span>' +
+                    '<span class="pill bg-slate-100 text-xs ml-auto">' + r.status + '</span></div>' +
+                    '<div class="grid grid-cols-3 gap-2 text-xs mt-2">' +
+                    '<div class="bg-slate-50 rounded p-2"><b>Inputs:</b> ' + r.inputs.kb_sources_count + ' KB source(s)<br><span class="text-slate-500 mono">' + (r.inputs.kb_sources.join(', ') || '(none)') + '</span></div>' +
+                    '<div class="bg-slate-50 rounded p-2"><b>Outputs:</b> ' + r.outputs.tasks_total + ' tasks<br><span class="text-slate-500">' + byStatus + '</span><br><span class="text-slate-500">' + r.outputs.ac_count + ' AC</span></div>' +
+                    '<div class="bg-slate-50 rounded p-2"><b>Cost:</b> <span class="mono">$' + r.cost_usd + '</span></div>' +
+                    '</div></div>';
+            }).join('');
+            e.target.innerHTML = cards;
+        } catch(_) {}
+    }
+});
+</script>
 
 {% endif %}
 {% endblock %}

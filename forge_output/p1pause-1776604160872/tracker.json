@@ -1,0 +1,198 @@
+{
+  "project": "p1pause-1776604160872",
+  "goal": "Implement P1.1: make the orchestrate loop's pause button actually halt execution. The pause_requested flag exists on OrchestrateRun and the UI endpoint flips it, but the executor loop never checks it — users click Pause yet the run keeps consuming tasks and budget.",
+  "created": "2026-04-19T13:12:47Z",
+  "updated": "2026-04-19T13:14:33Z",
+  "tasks": [
+    {
+      "id": "T-001",
+      "name": "Scaffold minimal platform workspace",
+      "description": "",
+      "instruction": "Create platform/ with app/__init__.py, app/main.py (bare FastAPI app), app/db.py (SQLAlchemy setup reading DATABASE_URL), app/models.py (OrchestrateRun with id, status, pause_requested, paused_at, resumed_at fields), app/api/__init__.py, app/api/pipeline.py (stub router), requirements.txt (fastapi==0.111.0, sqlalchemy==2.0.30, pytest, httpx, uvicorn, psycopg2-binary, jinja2), tests/__init__.py, tests/conftest.py (in-memory SQLite fixtures), tests/test_p1_pause.py (placeholder so collection succeeds).",
+      "status": "TODO",
+      "type": "chore",
+      "depends_on": [],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "pytest --collect-only succeeds without import errors on tests/test_p1_pause.py",
+          "verification": "manual"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "scaffold": "platform/ with OrchestrateRun model, db session, FastAPI app, test fixtures"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-002",
+      "name": "Add _check_pause() helper and cooperative gate in orchestrate loop",
+      "description": "",
+      "instruction": "In platform/app/api/pipeline.py add _check_pause(db, run_id) that reads OrchestrateRun fresh from DB; returns True when pause_requested=True, False when run_id is None or not found. Add cooperative gate in orchestrate loop stub: after each task call _check_pause; if True set run status=PAUSED and break. Write tests: test_check_pause_helper_detects_flag, test_check_pause_returns_false_for_null_run_id, test_check_constraint_accepts_paused.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-001"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "_check_pause(db, run_id) returns True when pause_requested=True in DB (fresh read)",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_check_pause_helper_detects_flag"
+        },
+        {
+          "text": "_check_pause(db, None) returns False without crash",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_check_pause_returns_false_for_null_run_id"
+        },
+        {
+          "text": "Orchestrate loop sets status=PAUSED when flag is set",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_check_constraint_accepts_paused"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "function": "_check_pause(db, run_id) -> bool in app/api/pipeline.py"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-003",
+      "name": "Add POST /orchestrate-runs/{id}/pause endpoint",
+      "description": "",
+      "instruction": "In platform/app/api/pipeline.py add POST /orchestrate-runs/{run_id}/pause. For RUNNING: set pause_requested=True, paused_at=now(), return 200 {status: ok}. For terminal/already-paused: return 409. Write tests: test_pause_endpoint_sets_flag_for_running, test_pause_endpoint_rejects_terminal_runs.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-002"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "POST /pause returns 200 and sets pause_requested=True for RUNNING run",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_pause_endpoint_sets_flag_for_running"
+        },
+        {
+          "text": "POST /pause returns 409 for terminal-state runs",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_pause_endpoint_rejects_terminal_runs"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "endpoint": "POST /orchestrate-runs/{id}/pause -> 200|409"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-004",
+      "name": "Add POST /orchestrate-runs/{id}/resume endpoint",
+      "description": "",
+      "instruction": "In platform/app/api/pipeline.py add POST /orchestrate-runs/{run_id}/resume. For PAUSED: clear pause_requested, set status=RUNNING, resumed_at=now(), return 200. For RUNNING+pause_requested=True: clear flag only, return 200. For terminal: return 409. Write tests: test_resume_endpoint_respawns_paused_run, test_resume_endpoint_clears_flag_for_running, test_resume_endpoint_rejects_terminal.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-003"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "POST /resume on PAUSED run sets status=RUNNING and resumed_at",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_resume_endpoint_respawns_paused_run"
+        },
+        {
+          "text": "POST /resume on RUNNING+flagged clears pause_requested only",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_resume_endpoint_clears_flag_for_running"
+        },
+        {
+          "text": "POST /resume on terminal run returns 409",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_resume_endpoint_rejects_terminal"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "produces": {
+        "endpoint": "POST /orchestrate-runs/{id}/resume -> 200|409"
+      },
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    },
+    {
+      "id": "T-005",
+      "name": "Expose pause fields in run status endpoint and render Resume in UI panel",
+      "description": "",
+      "instruction": "In platform/app/api/pipeline.py add GET /orchestrate-runs/{run_id} returning {id, status, pause_requested, paused_at, resumed_at}. In platform/app/templates/_orchestrate_panel.html render Resume form button (POST to /resume) when status==PAUSED. Write tests: test_run_status_endpoint_exposes_pause_fields, test_orchestrate_panel_renders_paused_with_resume.",
+      "status": "TODO",
+      "type": "feature",
+      "depends_on": [
+        "T-004"
+      ],
+      "parallel": false,
+      "conflicts_with": [],
+      "acceptance_criteria": [
+        {
+          "text": "GET /orchestrate-runs/{id} includes pause_requested, paused_at, resumed_at",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_run_status_endpoint_exposes_pause_fields"
+        },
+        {
+          "text": "UI panel renders Resume button when status=PAUSED",
+          "verification": "test",
+          "test_path": "platform/tests/test_p1_pause.py::test_orchestrate_panel_renders_paused_with_resume"
+        }
+      ],
+      "blocked_by_decisions": [],
+      "scopes": [],
+      "origin": "",
+      "knowledge_ids": [],
+      "source_requirements": [],
+      "exclusions": [],
+      "has_subtasks": false,
+      "subtask_total": 0,
+      "subtask_done": 0,
+      "subtasks": []
+    }
+  ],
+  "plan_approved_at": "2026-04-19T13:14:33Z"
+}

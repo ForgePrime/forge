@@ -75,6 +75,43 @@
 </div>
 {% endif %}
 
+{# Org-wide activity feed (mockup 01) #}
+<div class="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mb-6">
+    <div class="flex items-center justify-between mb-3">
+        <div class="font-bold text-slate-800 flex items-center gap-2">📡 Activity across all projects</div>
+        <span class="text-xs text-slate-500">⌘K for search</span>
+    </div>
+    <div id="org-activity"
+         hx-get="/api/v1/org/activity-feed" hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-slate-400 text-sm">loading…</div>
+    </div>
+</div>
+<script>
+document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.target && e.target.id === 'org-activity') {
+        try {
+            const j = JSON.parse(e.target.textContent);
+            if (!j.events || !j.events.length) {
+                e.target.innerHTML = '<div class="text-xs text-slate-400 italic text-center py-4">No activity yet across any project.</div>';
+                return;
+            }
+            const icons = {orchestrate_run:'▶',task_done:'✅',task_failed:'✗',task_in_progress:'⚙',objective_reopen:'↶',finding_opened:'🔍'};
+            const sevCls = {info:'text-slate-700',warn:'text-amber-800',neutral:'text-slate-600'};
+            const rows = j.events.map(ev => {
+                const when = ev.ts ? new Date(ev.ts).toLocaleString() : '';
+                return '<a href="' + (ev.href||'#') + '" class="flex items-start gap-2 py-1.5 text-sm ' + (sevCls[ev.severity]||'text-slate-700') + ' hover:bg-slate-50 px-2 rounded border-b border-slate-100">' +
+                    '<span>' + (icons[ev.kind]||'•') + '</span>' +
+                    '<span class="mono text-xs text-slate-400 w-28 truncate">' + (ev.project||'') + '</span>' +
+                    '<span class="flex-1 truncate">' + (ev.label||'') + '</span>' +
+                    '<span class="text-xs text-slate-400 whitespace-nowrap">' + when + '</span>' +
+                '</a>';
+            }).join('');
+            e.target.innerHTML = rows;
+        } catch(_) {}
+    }
+});
+</script>
+
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
     {% for p in projects %}
     {% set tasks_done = p.stats.tasks.DONE or 0 %}

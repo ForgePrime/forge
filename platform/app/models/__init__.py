@@ -23,6 +23,9 @@ from app.models.ai_interaction import AIInteraction
 from app.models.objective_reopen import ObjectiveReopen
 from app.models.skill import Skill, ProjectSkill
 from app.models.project_hook import ProjectHook
+from app.models.hook_run import HookRun
+from app.models.lessons import ProjectLesson, AntiPattern
+from app.models.contract_revision import ContractRevision
 
 __all__ = [
     "Organization",
@@ -56,4 +59,8 @@ __all__ = [
     "Skill",
     "ProjectSkill",
     "ProjectHook",
+    "HookRun",
+    "ProjectLesson",
+    "AntiPattern",
+    "ContractRevision",
 ]
