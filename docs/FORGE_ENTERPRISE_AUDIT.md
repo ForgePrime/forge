@@ -22,11 +22,11 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | Security | 10 | 5 | 3 | 2 | **AMBER** |
 | Observability | 6 | 3 | 1 | 2 | **AMBER** |
 | CI/CD | 5 | 0 | 4 | 1 | **AMBER** |
-| Scale & performance | 6 | 1 | 3 | 2 | **AMBER** |
+| Scale & performance | 6 | 2 | 2 | 2 | **AMBER** |
 | Compliance (GDPR/audit) | 6 | 2 | 3 | 1 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 3 | 0 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **19** | **23** | **12** | **AMBER overall** |
+| **TOTAL (54 attr.)** | **54** | **20** | **22** | **12** | **AMBER overall** |
 
 **Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
 CGAID delivery-governance is strong (93% per prior audit), and the baseline
@@ -111,7 +111,7 @@ Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
 |-----------|--------|----------|-----|
 | DB indexing review | AMBER | Primary keys + FK indexes auto-created; `orchestrate_runs` and `llm_calls` are write-heavy — no evidence of explicit indexes beyond FKs | Run `EXPLAIN ANALYZE` on hot paths (cost forecast, task_report); add indexes as needed |
 | Load test baseline | AMBER | v1.11: `platform/scripts/loadtest.js` ships as k6 starter — VUs/duration via env, ramp-up plan, checks health/ready/optional project-status, thresholds enforce p95 < 100ms health / 300ms ready / <1% errors. docs/DEPLOY.md updated with invocation examples. **Not yet run against a baseline** — needs k6 binary + staging instance; first run establishes numbers referenced by SLO-1/2/3. | Run in staging, record baseline, wire into CI as optional job. Add orchestrate end-to-end load scenario. |
-| Connection pooling | AMBER | SQLAlchemy default pool; size not explicitly tuned in config | Review + tune for expected concurrency |
+| Connection pooling | GREEN | v1.12: `app/database.py` tunes `pool_size=10`, `max_overflow=20`, `pool_recycle=1800s`, `pool_timeout=30s`, `pool_pre_ping=True`. Overridable via env vars `FORGE_DB_POOL_SIZE / MAX_OVERFLOW / POOL_RECYCLE / POOL_TIMEOUT`. Pool status verified in-process. | Tune defaults based on production workload measurement. |
 | Cache layer | GREEN | Redis included in docker-compose (used for workspace lease? rate limiting? unaudited) | — |
 | Background job durability | AMBER | `BackgroundTasks` FastAPI is in-process; lost on restart | Replace with Celery/RQ for production |
 | N+1 query detection | RED | No sqlalchemy.events profiling, no test assertion on query count | Add `pytest-sqlalchemy-profiler` or similar |
@@ -200,3 +200,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.9 (2026-04-19, autonomous session)** — Data retention policy row RED→AMBER. `services/data_retention.py` + `POST /api/v1/tier1/gdpr/retention/sweep`. 3 default policies (LLMCall 180d PII-conservative, AuditLog 365d SOC2-aligned, OrchestrateRun 365d for cost trends). Dry-run default; per-entity TTL overrides; per-entity error capture (single failure doesn't abort sweep); deterministic clock injection for tests. 12 unit tests. PromptElement excluded from defaults (needs TimestampMixin migration — documented inline). Compliance category: 2G/2A/2R → 2G/3A/1R. Overall: 18G/22A/14R → 18G/23A/13R.
 - **v1.10 (2026-04-19, autonomous session)** — SLO definitions row AMBER→GREEN. `docs/SLO.md` ships with 7 SLOs (UI availability, API correctness, orchestrate p95, cost per task, contract violation disclosure — the CGAID trust SLO — DR RPO/RTO, CI green rate). Every target has metric source + breach action + rationale. Honest header disclaimer: aspirational pending load test baseline. Observability category: 2G/2A/2R → 3G/1A/2R. Overall: 18G/23A/13R → 19G/22A/13R.
 - **v1.11 (2026-04-19, autonomous session)** — Load test baseline row RED→AMBER. `platform/scripts/loadtest.js` k6 starter ships — VUs/duration via env, ramp-up plan, thresholds encoded (p95 100ms/300ms/<1% errors). docs/DEPLOY.md updated with k6 invocation examples. Scale category: 1G/2A/3R → 1G/3A/2R. Overall: 19G/22A/13R → 19G/23A/12R. Still AMBER overall — running in staging + capturing baseline is a user-operated step, not code.
+- **v1.12 (2026-04-19, autonomous session)** — Connection pooling row AMBER→GREEN. `app/database.py` configures `pool_size=10`, `max_overflow=20`, `pool_recycle=1800s`, `pool_timeout=30s`, `pool_pre_ping=True`. All overridable via `FORGE_DB_POOL_*` env vars. Scale category: 1G/3A/2R → 2G/2A/2R. Overall: 19G/23A/12R → 20G/22A/12R.
