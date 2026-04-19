@@ -827,6 +827,17 @@ def update_ac(slug: str, external_id: str, position: int, body: ACUpdate, reques
         val = getattr(body, field)
         if val is not None:
             setattr(ac, field, val)
+    # Opcja A fail-fast — same rule as batch create_tasks: feature/bug AC with
+    # verification='command' must have test_path. 'command' is a descriptive
+    # label, pytest drives execution.
+    if task.type in ("feature", "bug") and ac.verification == "command" and not ac.test_path:
+        db.rollback()
+        raise HTTPException(
+            422,
+            f"AC #{position} now has verification='command' but no test_path. "
+            "'command' is a descriptive label — pytest still drives execution and needs "
+            "test_path. Shell commands are NOT executed.",
+        )
     db.commit()
     return {
         "position": ac.position, "text": ac.text, "scenario_type": ac.scenario_type,
