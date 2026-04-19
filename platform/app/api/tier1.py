@@ -4,6 +4,7 @@ trust-debt counters, auto-draft docs.
 Each endpoint enforces org-scoping via _assert_project_in_current_org from ui.py-style helper.
 """
 import datetime as dt
+import pathlib
 import re
 from typing import Any
 
@@ -1238,6 +1239,53 @@ def gdpr_export_user(user_id: int, request: Request, db: Session = Depends(get_d
 
     from app.services.gdpr_export import export_user_data
     return export_user_data(db, user_id)
+
+
+class CreatePRBody(BaseModel):
+    task_external_id: str = Field(..., min_length=1, max_length=32)
+
+
+@router.post("/projects/{slug}/pr/create")
+def create_pr_for_task(
+    slug: str, body: CreatePRBody, request: Request, db: Session = Depends(get_db),
+):
+    """Open a GitHub PR for a completed task (decision #7 A, starter mode).
+
+    Reads FORGE_GITHUB_TOKEN / OWNER / REPO env and invokes
+    `services.github_pr.open_pr_for_task`. Failures (auth, network,
+    missing config) return structured 400 with the reason — never 500.
+    """
+    _user(request)
+    proj = _project(db, slug, request)
+    from app.models import Task
+    task = (db.query(Task)
+              .filter(Task.project_id == proj.id,
+                      Task.external_id == body.task_external_id)
+              .order_by(Task.id.desc()).first())
+    if not task:
+        raise HTTPException(404, f"task {body.task_external_id} not found")
+
+    from app.services.github_pr import open_pr_for_task, GitHubError
+    from app.config import settings as _settings
+    workspace = str(pathlib.Path(_settings.workspace_root) / slug / "workspace")
+
+    try:
+        result = open_pr_for_task(
+            workspace_dir=workspace,
+            task_external_id=task.external_id,
+            task_name=task.name,
+            assisted_by=f"Assisted-by: Forge orchestrator (see /ui/projects/{slug}/tasks/{task.external_id}/report)",
+        )
+    except GitHubError as e:
+        raise HTTPException(400, {
+            "error": "github_pr_failed",
+            "detail": str(e),
+            "status_code": e.status_code,
+        })
+    return {
+        "task": task.external_id,
+        **result,
+    }
 
 
 @router.post("/projects/{slug}/export/skill-log")
