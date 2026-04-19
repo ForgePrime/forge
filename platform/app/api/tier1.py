@@ -1240,6 +1240,39 @@ def gdpr_export_user(user_id: int, request: Request, db: Session = Depends(get_d
     return export_user_data(db, user_id)
 
 
+class RetentionSweepBody(BaseModel):
+    dry_run: bool = True
+    entities: list[str] | None = None
+    overrides: dict[str, int] | None = None
+
+
+@router.post("/gdpr/retention/sweep")
+def gdpr_retention_sweep(body: RetentionSweepBody, request: Request, db: Session = Depends(get_db)):
+    """Run data-retention sweep (GDPR Article 5(1)(e) storage limitation).
+
+    Defaults to dry_run=True — deletes nothing, reports what WOULD be
+    deleted. Flip to false to actually delete.
+
+    Authorization: organization owner only (cross-org operation).
+    """
+    from app.models import Membership
+    current_user = _user(request)
+    has_owner = db.query(Membership).filter(
+        Membership.user_id == current_user.id,
+        Membership.role == "owner",
+    ).first() is not None
+    if not has_owner:
+        raise HTTPException(403, "retention sweep requires an owner role on at least one org")
+
+    from app.services.data_retention import sweep
+    return sweep(
+        db,
+        dry_run=body.dry_run,
+        entities=body.entities,
+        overrides=body.overrides,
+    )
+
+
 @router.get("/gdpr/orgs/{org_slug}/export")
 def gdpr_export_org(org_slug: str, request: Request, db: Session = Depends(get_db)):
     """Export all data Forge stores about an organization (GDPR Article 20).

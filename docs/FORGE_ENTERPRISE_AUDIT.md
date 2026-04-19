@@ -23,10 +23,10 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | Observability | 6 | 2 | 2 | 2 | **AMBER** |
 | CI/CD | 5 | 0 | 4 | 1 | **AMBER** |
 | Scale & performance | 6 | 1 | 2 | 3 | **RED** |
-| Compliance (GDPR/audit) | 6 | 2 | 2 | 2 | **AMBER** |
+| Compliance (GDPR/audit) | 6 | 2 | 3 | 1 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 3 | 0 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **18** | **22** | **14** | **AMBER overall** |
+| **TOTAL (54 attr.)** | **54** | **18** | **23** | **13** | **AMBER overall** |
 
 **Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
 CGAID delivery-governance is strong (93% per prior audit), and the baseline
@@ -124,7 +124,7 @@ Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
 |-----------|--------|----------|-----|
 | Audit log (who/when/what) | GREEN | `AuditLog` model + `_audit(...)` helper used in execute.py/pipeline.py | — |
 | PII scrubbing before LLM call | AMBER | v1.3: `services/pii_scanner.py` provides regex-based detection (EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD w/ Luhn, IP, SSN) + `redact()` + policy-wrapped `scan_then_decide()`. 30 unit tests. **NOT wired into `/ingest` yet** — standalone tool awaiting user policy decision (block vs warn vs redact by default). | Wire into ingest endpoint with project-level policy config. Optional upgrade to presidio/NER for higher recall. |
-| Data retention policy | RED | No code enforces retention limits; data accumulates indefinitely in DB | Add per-artifact retention config + scheduled cleanup |
+| Data retention policy | AMBER | v1.8: `services/data_retention.py` ships with 3 default policies (LLMCall 180d, AuditLog 365d, OrchestrateRun 365d) + dry-run support + per-entity overrides + per-entity error capture. `POST /api/v1/tier1/gdpr/retention/sweep` owner-only endpoint. 12 unit tests. **NOT yet scheduled** — admin manually triggers or wires to external cron. PromptElement excluded pending TimestampMixin migration. | Schedule via cron/systemd timer. Add PromptElement after migration. |
 | Right-to-delete (GDPR art. 17) | RED | No endpoint to purge user/org data | Add admin endpoint + verified cascading delete |
 | Data export (GDPR art. 20) | GREEN | v1.6: `services/gdpr_export.py` + tier1 endpoints `GET /gdpr/users/{id}/export` (self or owner) + `GET /gdpr/orgs/{slug}/export` (owner-only). Structured JSON covering identity/memberships/audit entries for users; projects summary + members for orgs. Explicit `notes` section documents what ISN'T in the export (workspace artifacts, raw LLM bodies). 8 unit tests. | — (upgraded AMBER→GREEN in v1.6) |
 | Terms + consent | AMBER | Not in Forge scope (client-facing deployment owns) | Document expectation in deploy guide |
@@ -197,3 +197,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.6 (2026-04-19, autonomous session)** — GDPR Article 20 data export. `services/gdpr_export.py` + tier1 endpoints `GET /gdpr/users/{id}/export` (self or owner) + `GET /gdpr/orgs/{slug}/export` (owner-only). Structured JSON with identity/memberships/audit/projects summary. Explicit `notes` section documenting what isn't exported (workspace, raw LLM bodies). 8 unit tests. Compliance data-export row AMBER→GREEN. Compliance category: 1G/3A/2R → 2G/2A/2R (**AMBER overall**, was RED). Total: 17G/18A/19R → 18G/17A/19R.
 - **v1.7 (2026-04-19, autonomous session)** — CI/CD category goes RED→AMBER. `.github/workflows/ci.yml` ships as starter (pytest against real postgres+redis, pip-audit, bandit, ruff — security/lint non-blocking until baseline clean). `.github/workflows/security.yml` runs weekly deep scan with 30-day artifact retention. `CHANGELOG.md` ships at repo root. Documentation CHANGELOG row RED→AMBER. CI category: 0G/0A/5R → 0G/4A/1R. Documentation: 2G/2A/1R → 2G/3A/0R. Total: 18G/17A/19R → **18G/22A/14R (AMBER overall — down from RED for the first time this session)**.
 - **v1.8 (2026-04-19, autonomous session)** — `docs/FORGE_FRAMEWORK_MANIFEST.md` ships — CGAID Artifact #9 org-level closure. Meta-level document enumerating Forge's 11 mechanical gates, acknowledging 5 procedural gaps honestly, full CGAID 9-artifact mapping table, delta vs CGAID reference manifest (Forge extends CGAID in 6 ways, is stricter in 3). No audit score movement (the manifest doesn't have its own audit row — it closes the prior CGAID Artifact #9 gap which was tracked separately at ~92% CGAID coverage). Needs user review before authoritative adoption.
+- **v1.9 (2026-04-19, autonomous session)** — Data retention policy row RED→AMBER. `services/data_retention.py` + `POST /api/v1/tier1/gdpr/retention/sweep`. 3 default policies (LLMCall 180d PII-conservative, AuditLog 365d SOC2-aligned, OrchestrateRun 365d for cost trends). Dry-run default; per-entity TTL overrides; per-entity error capture (single failure doesn't abort sweep); deterministic clock injection for tests. 12 unit tests. PromptElement excluded from defaults (needs TimestampMixin migration — documented inline). Compliance category: 2G/2A/2R → 2G/3A/1R. Overall: 18G/22A/14R → 18G/23A/13R.
