@@ -20,13 +20,13 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 |----------|-------------------|---|---|---|---------|
 | 12-factor app | 12 | 6 | 3 | 3 | **AMBER** |
 | Security | 10 | 6 | 2 | 2 | **AMBER** |
-| Observability | 6 | 4 | 1 | 1 | **AMBER** |
+| Observability | 6 | 5 | 1 | 0 | **GREEN** |
 | CI/CD | 5 | 0 | 5 | 0 | **AMBER** |
 | Scale & performance | 6 | 2 | 3 | 1 | **AMBER** |
 | Compliance (GDPR/audit) | 6 | 3 | 2 | 1 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 3 | 0 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **23** | **22** | **9** | **AMBER overall** |
+| **TOTAL (54 attr.)** | **54** | **24** | **22** | **8** | **AMBER overall** |
 
 **Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
 CGAID delivery-governance is strong (93% per prior audit), and the baseline
@@ -86,7 +86,7 @@ Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
 |-----------|--------|----------|-----|
 | Structured logs | AMBER | `app/services/logging_setup.py` (v1.2): stdlib JSON formatter opt-in via `FORGE_LOG_JSON=true`; `RequestIdMiddleware` assigns + echoes `X-Request-Id`; `RequestIdFilter` injects into every LogRecord. Tests: `tests/test_logging_setup.py` (14 tests). | Upgrade to AMBER from RED. Still stdlib (not structlog) — acceptable baseline; upgrade to structlog if processor chains needed. |
 | Metrics endpoint (Prometheus) | GREEN | v1.17 (decision #1 A): `prometheus-client>=0.20` added to deps; `services/metrics.py` exposes `forge_http_requests_total` + latency histogram + `forge_llm_calls_total` + `forge_llm_cost_usd_total` + `forge_orchestrate_runs_total` + `forge_task_status`. `/metrics` endpoint scrape-able (public in auth middleware). Route-template labels prevent cardinality explosion. 14 unit tests. `MetricsMiddleware` counts every HTTP request automatically. | Wire `record_llm_call` / `record_orchestrate_transition` into pipeline.py hot paths (one-line addition each). |
-| Distributed tracing | RED | No `opentelemetry` import | Add OTel instrumentation (FastAPI + SQLAlchemy + httpx) |
+| Distributed tracing | GREEN | v1.19 (decision #2 A): `opentelemetry-api/sdk/exporter-otlp + instrumentation-fastapi + instrumentation-sqlalchemy` added to deps. `services/tracing.py` with `setup_tracing()` idempotent wire + `get_tracer()` usable unconditionally. Opt-in via `FORGE_OTEL_ENABLED=true`; `FORGE_OTEL_EXPORTER=otlp|console`; `FORGE_OTEL_SERVICE_NAME` configurable. 11 unit tests. | Wire custom spans into pipeline.orchestrate + claude_cli for deeper call graph once baseline is observed. |
 | Health endpoint | GREEN | `main.py:117-119` `@app.get('/health')` returns `{status, version}` | — |
 | Liveness vs readiness split | GREEN | v1.5: `/health` is pure process-alive (no backend checks); `/ready` checks DB via SELECT 1 + Redis via raw socket PING (zero-dep, no `redis` lib added). Returns 200 with `checks: {db: ok/fail:…, redis: ok/fail:…}` or 503. Both public (not auth-gated). Tests: `tests/test_health_ready.py` (5 tests). | — (upgraded RED→GREEN in v1.5) |
 | Alert/SLO definitions | GREEN | v1.10: `docs/SLO.md` ships with 7 SLOs — UI availability (99.5%), API correctness (99.0%), orchestrate p95 latency (<120s), cost per task (<$1.50 mean, $10 hard ceiling), **contract violation disclosure rate** (≥95% — CGAID trust SLO), DR RPO/RTO (24h/4h), CI green rate (95%). All numbers explicitly aspirational pending load test baseline; adjustment process documented. | Tune after first month of measurement. |
@@ -207,3 +207,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.16 (2026-04-19, user decision #8 B)** — PII scrubbing row AMBER→GREEN. Scanner wired into `/ingest` with WARN posture. `knowledge.pii_scan JSONB` column added. Compliance: 2G/3A/1R → 3G/2A/1R. Overall: 21G/23A/10R → 22G/22A/10R.
 - **v1.17 (2026-04-19, user decision #1 A)** — Prometheus metrics row RED→GREEN. `prometheus-client>=0.20` dep + /metrics endpoint + MetricsMiddleware. 14 unit tests. Observability: 3G/1A/2R → 4G/1A/1R. Overall: 22G/22A/10R → 23G/22A/9R.
 - **v1.18 (2026-04-19, user decision #7 A)** — GitHub PR flow starter. `services/github_pr.py` + admin endpoint. Zero new deps (uses existing httpx 0.27). 12 unit tests with mocked client. Requires `FORGE_GITHUB_TOKEN` + `FORGE_GITHUB_REPO_OWNER` + `FORGE_GITHUB_REPO_NAME` env vars; config raises clear error listing missing vars. NOT wired into orchestrate auto-flow — manual trigger per task until user confirms against real repo. Roadmap Phase 1 week 2 #7 closed; doesn't move audit score because PR flow is tracked in roadmap, not a separate audit row.
+- **v1.19 (2026-04-19, user decision #2 A)** — Distributed tracing row RED→GREEN. `opentelemetry-api/sdk + FastAPI/SQLAlchemy instrumentors + OTLP exporter` added to deps. `services/tracing.py` idempotent setup with `FORGE_OTEL_ENABLED` opt-in env, console or OTLP exporter choice, auto-instruments FastAPI + SQLAlchemy engine. 11 unit tests. Observability category: 4G/1A/1R → 5G/1A/0R — **first category to reach fully-GREEN**. Overall: 23G/22A/9R → 24G/22A/8R.

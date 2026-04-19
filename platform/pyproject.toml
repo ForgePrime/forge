@@ -13,6 +13,14 @@ dependencies = [
     "pydantic-settings>=2.0",
     "python-multipart>=0.0.9",
     "prometheus-client>=0.20",  # /metrics endpoint (decision #1 A)
+    # OpenTelemetry tracing (decision #2 A). Opt-in at runtime via
+    # FORGE_OTEL_ENABLED=true; deps are installed always so the
+    # env-flip path is one-line, not a dep-add operation.
+    "opentelemetry-api>=1.28",
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
+    "opentelemetry-exporter-otlp>=1.28",
 ]
 
 [project.optional-dependencies]

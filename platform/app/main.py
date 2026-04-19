@@ -156,6 +156,16 @@ try:
 except Exception:  # pragma: no cover
     pass  # profiler is diagnostic — never block startup on its failure
 
+# OpenTelemetry tracing — OPT-IN via FORGE_OTEL_ENABLED=true (decision #2 A).
+# Deps installed unconditionally; `setup_tracing()` no-ops when disabled.
+# Must run AFTER app + all middleware registration so FastAPIInstrumentor
+# wraps the final stack.
+try:
+    from app.services.tracing import setup_tracing as _setup_tracing
+    _setup_tracing(app=app, engine=engine)
+except Exception:  # pragma: no cover
+    pass  # tracing is diagnostic — never block startup on its failure
+
 app.include_router(auth_router)
 app.include_router(execute_router)
 app.include_router(projects_router)
