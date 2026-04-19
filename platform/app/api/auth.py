@@ -161,7 +161,25 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    # Rate-limit brute-force login attempts per client IP.
+    # Gated behind FORGE_RATE_LIMIT_ENABLED=true so existing tests aren't affected.
+    import os as _os
+    if _os.environ.get("FORGE_RATE_LIMIT_ENABLED", "").lower() in ("1", "true", "yes"):
+        from app.services.rate_limit import check_rate_limit, RateLimitExceeded
+        client_ip = request.client.host if request.client else "unknown"
+        try:
+            check_rate_limit(
+                key=f"login:ip:{client_ip}",
+                max_per_window=10,      # 10 attempts
+                window_sec=60,          # per minute
+            )
+        except RateLimitExceeded as e:
+            raise HTTPException(
+                status_code=429,
+                detail={"error": "too_many_requests", "retry_after": e.retry_after},
+                headers={"Retry-After": str(e.retry_after)},
+            )
     user = db.query(User).filter(User.email == body.email).first()
     # Constant-time verify: always run bcrypt even if user not found (prevents enumeration)
     DUMMY = "$2b$12$CwTycUXWue0Thq9StjUM0uJ8W9Xd3nRkJ1oUN/NqVe.q6yGGi5GZS"

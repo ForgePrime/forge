@@ -15,7 +15,7 @@ import pathlib
 import datetime as dt
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -173,6 +173,7 @@ def _next_external_id(db: Session, project_id: int, model, prefix: str) -> str:
 @router.post("/projects/{slug}/ingest")
 async def ingest_documents(
     slug: str,
+    request: Request,
     files: list[UploadFile] = File(...),
     category: str = Form("source-document"),
     db: Session = Depends(get_db),
@@ -182,6 +183,25 @@ async def ingest_documents(
     Each file saved as Knowledge row with category=source-document (default).
     Returns list of created Knowledge external_ids.
     """
+    # Rate-limit ingestion per-user to prevent storage abuse.
+    # Gated behind FORGE_RATE_LIMIT_ENABLED=true so tests remain unaffected.
+    import os as _os
+    if _os.environ.get("FORGE_RATE_LIMIT_ENABLED", "").lower() in ("1", "true", "yes"):
+        from app.services.rate_limit import check_rate_limit, RateLimitExceeded
+        user = getattr(request.state, "user", None)
+        user_id = user.id if user else "anon"
+        try:
+            check_rate_limit(
+                key=f"ingest:user:{user_id}",
+                max_per_window=20,      # 20 ingests
+                window_sec=3600,        # per hour
+            )
+        except RateLimitExceeded as e:
+            raise HTTPException(
+                status_code=429,
+                detail={"error": "too_many_requests", "retry_after": e.retry_after},
+                headers={"Retry-After": str(e.retry_after)},
+            )
     proj = _project(db, slug)
     created = []
     for f in files:
