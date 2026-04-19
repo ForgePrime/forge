@@ -20,13 +20,13 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 |----------|-------------------|---|---|---|---------|
 | 12-factor app | 12 | 6 | 3 | 3 | **AMBER** |
 | Security | 10 | 5 | 3 | 2 | **AMBER** |
-| Observability | 6 | 1 | 2 | 3 | **RED** |
+| Observability | 6 | 2 | 2 | 2 | **AMBER** |
 | CI/CD | 5 | 0 | 0 | 5 | **RED** |
 | Scale & performance | 6 | 1 | 2 | 3 | **RED** |
 | Compliance (GDPR/audit) | 6 | 1 | 3 | 2 | **RED** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 2 | 1 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **16** | **18** | **20** | **RED overall** |
+| **TOTAL (54 attr.)** | **54** | **17** | **18** | **19** | **RED overall** |
 
 **Verdict:** Forge is **NOT enterprise-production-ready today**. It is a well-engineered pilot with strong delivery-governance (CGAID coverage 82%+ per prior audit), but gaps in observability, CI/CD, compliance, and DR make it unsuitable for external-client launch without Phase 2 of the Production Roadmap.
 
@@ -78,7 +78,7 @@ Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Ro
 | Metrics endpoint (Prometheus) | RED | No `/metrics` route found; no `prometheus_client` import | Add `starlette_prometheus` or equivalent |
 | Distributed tracing | RED | No `opentelemetry` import | Add OTel instrumentation (FastAPI + SQLAlchemy + httpx) |
 | Health endpoint | GREEN | `main.py:117-119` `@app.get('/health')` returns `{status, version}` | — |
-| Liveness vs readiness split | RED | Only one `/health` endpoint; no readiness probe distinct from liveness | Add `/ready` that checks DB+Redis+workspace |
+| Liveness vs readiness split | GREEN | v1.5: `/health` is pure process-alive (no backend checks); `/ready` checks DB via SELECT 1 + Redis via raw socket PING (zero-dep, no `redis` lib added). Returns 200 with `checks: {db: ok/fail:…, redis: ok/fail:…}` or 503. Both public (not auth-gated). Tests: `tests/test_health_ready.py` (5 tests). | — (upgraded RED→GREEN in v1.5) |
 | Alert/SLO definitions | AMBER | No formal SLOs; informal expectations in docstrings | Codify p95 latency targets + error-rate SLOs (Roadmap Phase 2 week 8) |
 
 **Category verdict:** RED. This is the single biggest enterprise blocker beyond tests — without metrics/tracing/alerts, production incidents will be diagnosed by log-tailing.
@@ -183,3 +183,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.2 (2026-04-19, autonomous session)** — Structured logs upgraded RED→AMBER. `services/logging_setup.py` adds stdlib JsonFormatter (opt-in via `FORGE_LOG_JSON` env), RequestIdMiddleware assigning per-request UUID echoed as `X-Request-Id`, and RequestIdFilter injecting the ID into every LogRecord. Zero new deps (stdlib only). 14 unit tests. Observability row: 1G/1A/4R → 1G/2A/3R. Overall 16G/14A/24R → 16G/15A/23R.
 - **v1.3 (2026-04-19, autonomous session)** — PII scrubbing row RED→AMBER. `services/pii_scanner.py` (NEW, zero-dep regex): EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD (Luhn-verified), IP_ADDRESS, SSN. `scan()` + `redact()` + policy wrapper `scan_then_decide()`. 30 unit tests. **Not yet wired into `/ingest`** — awaits per-project policy decision (block/warn/redact by default). Compliance row: 1G/2A/3R → 1G/3A/2R. Overall: 16G/15A/23R → 16G/16A/22R.
 - **v1.4 (2026-04-19, autonomous session)** — DB backup + restore scripts ship. `platform/scripts/backup.sh` (idempotent pg_dump, gzip, retention prune, optional S3) + `platform/scripts/restore.sh` (safety-guarded, smoke-verified). docs/DEPLOY.md updated with cron example + monthly verification cadence. DR category: 0G/1A/3R → 0G/3A/1R. Overall: 16G/16A/22R → 16G/18A/20R. **DR category upgraded AMBER overall** (was RED); still RED project overall (observability, CI/CD, compliance, scale).
+- **v1.5 (2026-04-19, autonomous session)** — `/ready` readiness probe added (liveness/readiness split). Zero-dep: raw TCP socket for Redis PING to avoid adding `redis` lib. Public (added to auth whitelist) so LB probes don't need credentials. 5 unit tests. Observability liveness row RED→GREEN. Category: 1G/2A/3R → 2G/2A/2R (AMBER overall). Total: 16G/18A/20R → 17G/18A/19R.

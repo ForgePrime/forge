@@ -153,7 +153,83 @@ app.include_router(share_router)
 
 @app.get("/health")
 def health():
+    """Liveness probe — process is alive and can serve a response.
+
+    Kubernetes/docker use this to decide "kill and restart this pod" —
+    it must NOT check downstream dependencies (DB, Redis, etc.) or a
+    transient DB blip triggers a restart loop. Only this process's
+    ability to answer HTTP is tested here.
+    """
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/ready")
+def ready():
+    """Readiness probe — app is prepared to receive traffic.
+
+    Unlike /health, this DOES check downstream dependencies. Load
+    balancers use /ready to decide "route new requests to this pod" —
+    a DB outage must make this return 503 so traffic skips this pod
+    until recovery, WITHOUT triggering a liveness restart.
+
+    Checks:
+      - DB: SELECT 1 via engine.connect()
+      - Redis (if settings.redis_url set): PING
+
+    Returns 200 + per-check status on all-OK; 503 + which check failed
+    otherwise.
+    """
+    from fastapi.responses import JSONResponse
+    checks: dict[str, str] = {}
+    all_ok = True
+
+    # --- DB check ---
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["db"] = "ok"
+    except Exception as e:  # pragma: no cover — exercised only under real DB outage
+        checks["db"] = f"fail: {type(e).__name__}: {str(e)[:200]}"
+        all_ok = False
+
+    # --- Redis check (optional) ---
+    redis_url = getattr(_settings, "redis_url", None) if "_settings" in dir() else None
+    # _settings isn't imported at module level; fetch via config
+    if redis_url is None:
+        try:
+            from app.config import settings as _s
+            redis_url = getattr(_s, "redis_url", None)
+        except Exception:
+            redis_url = None
+
+    if redis_url:
+        try:
+            # stdlib-only: open raw socket to the host:port from the URL
+            # (avoids adding `redis` lib dep just for a ping)
+            import urllib.parse
+            import socket
+            parsed = urllib.parse.urlparse(redis_url)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 6379
+            with socket.create_connection((host, port), timeout=2) as s:
+                s.sendall(b"PING\r\n")
+                data = s.recv(64)
+                if b"PONG" in data:
+                    checks["redis"] = "ok"
+                else:
+                    checks["redis"] = f"unexpected reply: {data[:40]!r}"
+                    all_ok = False
+        except Exception as e:
+            checks["redis"] = f"fail: {type(e).__name__}: {str(e)[:200]}"
+            all_ok = False
+
+    payload = {
+        "ready": all_ok,
+        "checks": checks,
+        "version": "0.1.0",
+    }
+    return JSONResponse(payload, status_code=200 if all_ok else 503)
 
 
 @app.get("/")

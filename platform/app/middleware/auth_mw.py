@@ -23,6 +23,7 @@ from app.services.auth import decode_access_token
 PUBLIC_PATHS = [
     "/",
     "/health",
+    "/ready",
     "/docs",
     "/openapi.json",
     "/redoc",
