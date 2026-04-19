@@ -23,10 +23,10 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | Observability | 6 | 3 | 1 | 2 | **AMBER** |
 | CI/CD | 5 | 0 | 5 | 0 | **AMBER** |
 | Scale & performance | 6 | 2 | 3 | 1 | **AMBER** |
-| Compliance (GDPR/audit) | 6 | 2 | 3 | 1 | **AMBER** |
+| Compliance (GDPR/audit) | 6 | 3 | 2 | 1 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 3 | 0 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **21** | **23** | **10** | **AMBER overall** |
+| **TOTAL (54 attr.)** | **54** | **22** | **22** | **10** | **AMBER overall** |
 
 **Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
 CGAID delivery-governance is strong (93% per prior audit), and the baseline
@@ -123,7 +123,7 @@ Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
 | Attribute | Status | Evidence | Gap |
 |-----------|--------|----------|-----|
 | Audit log (who/when/what) | GREEN | `AuditLog` model + `_audit(...)` helper used in execute.py/pipeline.py | — |
-| PII scrubbing before LLM call | AMBER | v1.3: `services/pii_scanner.py` provides regex-based detection (EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD w/ Luhn, IP, SSN) + `redact()` + policy-wrapped `scan_then_decide()`. 30 unit tests. **NOT wired into `/ingest` yet** — standalone tool awaiting user policy decision (block vs warn vs redact by default). | Wire into ingest endpoint with project-level policy config. Optional upgrade to presidio/NER for higher recall. |
+| PII scrubbing before LLM call | GREEN | v1.16: wired into `/api/v1/projects/{slug}/ingest` with WARN posture (user decision #8-B). Per-file `scan_then_decide` runs on every upload; `pii_scan` metadata stamped on Knowledge row (migration added `knowledge.pii_scan JSONB`) and surfaced in ingest response. Scanner failures fail-safe (treated as "pass" with error note). Never blocks — HIGH severity emits decision='warn', not 'block'. | Per-project policy override (block/warn/redact postures) if some clients need stricter posture. |
 | Data retention policy | AMBER | v1.8: `services/data_retention.py` ships with 3 default policies (LLMCall 180d, AuditLog 365d, OrchestrateRun 365d) + dry-run support + per-entity overrides + per-entity error capture. `POST /api/v1/tier1/gdpr/retention/sweep` owner-only endpoint. 12 unit tests. **NOT yet scheduled** — admin manually triggers or wires to external cron. PromptElement excluded pending TimestampMixin migration. | Schedule via cron/systemd timer. Add PromptElement after migration. |
 | Right-to-delete (GDPR art. 17) | RED | No endpoint to purge user/org data | Add admin endpoint + verified cascading delete |
 | Data export (GDPR art. 20) | GREEN | v1.6: `services/gdpr_export.py` + tier1 endpoints `GET /gdpr/users/{id}/export` (self or owner) + `GET /gdpr/orgs/{slug}/export` (owner-only). Structured JSON covering identity/memberships/audit entries for users; projects summary + members for orgs. Explicit `notes` section documents what ISN'T in the export (workspace artifacts, raw LLM bodies). 8 unit tests. | — (upgraded AMBER→GREEN in v1.6) |

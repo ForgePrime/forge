@@ -62,6 +62,9 @@ PENDING_COLUMNS: list[tuple[str, str, str]] = [
     # CGAID Artifact #4 Handoff — explicit risks list per task
     # Shape: list[{risk: str, mitigation: str, severity: "LOW|MEDIUM|HIGH", owner: str|null}]
     ("tasks", "risks", "JSONB"),
+    # Decision #8-B — PII scan metadata stamped on ingested Knowledge.
+    # Shape: {decision: "pass|warn|block", findings_count: int, types: list[str]}
+    ("knowledge", "pii_scan", "JSONB"),
 ]
 
 

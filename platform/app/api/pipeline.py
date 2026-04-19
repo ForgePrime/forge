@@ -203,6 +203,10 @@ async def ingest_documents(
                 headers={"Retry-After": str(e.retry_after)},
             )
     proj = _project(db, slug)
+    # Decision #8-B: PII scanner runs in WARN posture on every ingest.
+    # We do NOT block; we stamp pii_scan metadata on the Knowledge row
+    # so the UI can show a badge + the audit log tracks findings.
+    from app.services.pii_scanner import scan_then_decide
     created = []
     for f in files:
         raw = await f.read()
@@ -210,6 +214,24 @@ async def ingest_documents(
             content = raw.decode("utf-8")
         except UnicodeDecodeError:
             content = raw.decode("utf-8", errors="replace")
+
+        # PII scan (fail-safe: wrap in try so a detector bug never breaks ingest)
+        pii_meta = None
+        try:
+            findings, decision = scan_then_decide(
+                content,
+                # WARN posture: HIGH severity downgraded to 'warn', not 'block'
+                high_severity_blocks=False,
+                medium_severity_warns=True,
+            )
+            pii_meta = {
+                "decision": decision,
+                "findings_count": len(findings),
+                "types": sorted({x.type for x in findings}),
+            }
+        except Exception:
+            pii_meta = {"decision": "pass", "findings_count": 0, "types": [],
+                        "error": "scanner failed — treated as clean"}
 
         ext_id = _next_external_id(db, proj.id, Knowledge, "SRC")
         k = Knowledge(
@@ -221,10 +243,15 @@ async def ingest_documents(
             scopes=[],
             source_type="upload",
             source_ref=f.filename,
+            pii_scan=pii_meta,
         )
         db.add(k)
         db.flush()
-        created.append({"id": k.id, "external_id": ext_id, "filename": f.filename, "chars": len(content)})
+        created.append({
+            "id": k.id, "external_id": ext_id, "filename": f.filename,
+            "chars": len(content),
+            "pii_scan": pii_meta,  # surfaced in response so UI can show warning
+        })
     db.commit()
     return {"ingested": len(created), "documents": created}
 

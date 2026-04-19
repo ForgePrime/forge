@@ -49,3 +49,6 @@ class Knowledge(Base, TimestampMixin):
     target_url: Mapped[str | None] = mapped_column(Text)
     # P3.5 — last time this source was injected into a Claude prompt (helps prune stale entries)
     last_read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # Decision #8-B — PII scan metadata stamped at ingest time (WARN posture).
+    # Shape: {decision: "pass|warn|block", findings_count: int, types: list[str]}
+    pii_scan: Mapped[dict | None] = mapped_column(JSONB)
