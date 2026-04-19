@@ -1208,6 +1208,61 @@ def export_adrs(slug: str, request: Request, db: Session = Depends(get_db)):
     }
 
 
+# ===================================================================
+# GDPR Article 20 — Data portability export
+# Separate from CGAID in-repo exports; those are for engineering, these
+# are for legal/compliance (individual data subject requests).
+# ===================================================================
+
+@router.get("/gdpr/users/{user_id}/export")
+def gdpr_export_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    """Export all data Forge stores about a user (GDPR Article 20).
+
+    Authorization:
+      - The user themselves (user.id == request.state.user.id)
+      - An organization owner whose org the user belongs to
+      - Otherwise 403
+    """
+    current_user = _user(request)
+    if current_user.id != user_id:
+        from app.models import Membership
+        target_orgs = {m.organization_id for m in
+                       db.query(Membership).filter(Membership.user_id == user_id).all()}
+        current_owner_orgs = {m.organization_id for m in
+                              db.query(Membership).filter(
+                                  Membership.user_id == current_user.id,
+                                  Membership.role == "owner",
+                              ).all()}
+        if not (target_orgs & current_owner_orgs):
+            raise HTTPException(403, "GDPR export requires self OR org-owner role")
+
+    from app.services.gdpr_export import export_user_data
+    return export_user_data(db, user_id)
+
+
+@router.get("/gdpr/orgs/{org_slug}/export")
+def gdpr_export_org(org_slug: str, request: Request, db: Session = Depends(get_db)):
+    """Export all data Forge stores about an organization (GDPR Article 20).
+
+    Authorization: must be an owner of the target organization.
+    """
+    from app.models import Organization, Membership
+    current_user = _user(request)
+    org = db.query(Organization).filter(Organization.slug == org_slug).first()
+    if not org:
+        raise HTTPException(404, f"organization '{org_slug}' not found")
+    membership = (db.query(Membership)
+                    .filter(Membership.user_id == current_user.id,
+                            Membership.organization_id == org.id,
+                            Membership.role == "owner")
+                    .first())
+    if not membership:
+        raise HTTPException(403, "GDPR export requires owner role in the target organization")
+
+    from app.services.gdpr_export import export_organization_data
+    return export_organization_data(db, org.id)
+
+
 @router.post("/projects/{slug}/export/handoff")
 def export_handoff(slug: str, request: Request, db: Session = Depends(get_db)):
     """Manually regenerate in-repo .ai/handoff/HANDOFF_T-NNN-*.md for every feature/bug task.

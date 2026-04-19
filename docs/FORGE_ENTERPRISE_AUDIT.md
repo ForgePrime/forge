@@ -23,10 +23,10 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | Observability | 6 | 2 | 2 | 2 | **AMBER** |
 | CI/CD | 5 | 0 | 0 | 5 | **RED** |
 | Scale & performance | 6 | 1 | 2 | 3 | **RED** |
-| Compliance (GDPR/audit) | 6 | 1 | 3 | 2 | **RED** |
+| Compliance (GDPR/audit) | 6 | 2 | 2 | 2 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 2 | 1 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **17** | **18** | **19** | **RED overall** |
+| **TOTAL (54 attr.)** | **54** | **18** | **17** | **19** | **RED overall** |
 
 **Verdict:** Forge is **NOT enterprise-production-ready today**. It is a well-engineered pilot with strong delivery-governance (CGAID coverage 82%+ per prior audit), but gaps in observability, CI/CD, compliance, and DR make it unsuitable for external-client launch without Phase 2 of the Production Roadmap.
 
@@ -116,7 +116,7 @@ Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Ro
 | PII scrubbing before LLM call | AMBER | v1.3: `services/pii_scanner.py` provides regex-based detection (EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD w/ Luhn, IP, SSN) + `redact()` + policy-wrapped `scan_then_decide()`. 30 unit tests. **NOT wired into `/ingest` yet** — standalone tool awaiting user policy decision (block vs warn vs redact by default). | Wire into ingest endpoint with project-level policy config. Optional upgrade to presidio/NER for higher recall. |
 | Data retention policy | RED | No code enforces retention limits; data accumulates indefinitely in DB | Add per-artifact retention config + scheduled cleanup |
 | Right-to-delete (GDPR art. 17) | RED | No endpoint to purge user/org data | Add admin endpoint + verified cascading delete |
-| Data export (GDPR art. 20) | AMBER | Manual via SQL / export_* endpoints we added | Formalize per-user/per-org export bundle |
+| Data export (GDPR art. 20) | GREEN | v1.6: `services/gdpr_export.py` + tier1 endpoints `GET /gdpr/users/{id}/export` (self or owner) + `GET /gdpr/orgs/{slug}/export` (owner-only). Structured JSON covering identity/memberships/audit entries for users; projects summary + members for orgs. Explicit `notes` section documents what ISN'T in the export (workspace artifacts, raw LLM bodies). 8 unit tests. | — (upgraded AMBER→GREEN in v1.6) |
 | Terms + consent | AMBER | Not in Forge scope (client-facing deployment owns) | Document expectation in deploy guide |
 
 **Category verdict:** RED. PII-to-LLM and GDPR right-to-delete are hard blockers for EU enterprise clients. Roadmap Phase 4 week 11 addresses; consider accelerating if first client is EU-based.
@@ -184,3 +184,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.3 (2026-04-19, autonomous session)** — PII scrubbing row RED→AMBER. `services/pii_scanner.py` (NEW, zero-dep regex): EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD (Luhn-verified), IP_ADDRESS, SSN. `scan()` + `redact()` + policy wrapper `scan_then_decide()`. 30 unit tests. **Not yet wired into `/ingest`** — awaits per-project policy decision (block/warn/redact by default). Compliance row: 1G/2A/3R → 1G/3A/2R. Overall: 16G/15A/23R → 16G/16A/22R.
 - **v1.4 (2026-04-19, autonomous session)** — DB backup + restore scripts ship. `platform/scripts/backup.sh` (idempotent pg_dump, gzip, retention prune, optional S3) + `platform/scripts/restore.sh` (safety-guarded, smoke-verified). docs/DEPLOY.md updated with cron example + monthly verification cadence. DR category: 0G/1A/3R → 0G/3A/1R. Overall: 16G/16A/22R → 16G/18A/20R. **DR category upgraded AMBER overall** (was RED); still RED project overall (observability, CI/CD, compliance, scale).
 - **v1.5 (2026-04-19, autonomous session)** — `/ready` readiness probe added (liveness/readiness split). Zero-dep: raw TCP socket for Redis PING to avoid adding `redis` lib. Public (added to auth whitelist) so LB probes don't need credentials. 5 unit tests. Observability liveness row RED→GREEN. Category: 1G/2A/3R → 2G/2A/2R (AMBER overall). Total: 16G/18A/20R → 17G/18A/19R.
+- **v1.6 (2026-04-19, autonomous session)** — GDPR Article 20 data export. `services/gdpr_export.py` + tier1 endpoints `GET /gdpr/users/{id}/export` (self or owner) + `GET /gdpr/orgs/{slug}/export` (owner-only). Structured JSON with identity/memberships/audit/projects summary. Explicit `notes` section documenting what isn't exported (workspace, raw LLM bodies). 8 unit tests. Compliance data-export row AMBER→GREEN. Compliance category: 1G/3A/2R → 2G/2A/2R (**AMBER overall**, was RED). Total: 17G/18A/19R → 18G/17A/19R.

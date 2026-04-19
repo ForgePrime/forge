@@ -432,6 +432,45 @@ Audit v1.5:
 
 Unit tests from this session: 176/176 PASS.
 
+### Step 12 — GDPR Article 20 data portability export — DONE
+
+`services/gdpr_export.py`:
+- `export_user_data(db, user_id)` — identity, memberships, audit entries,
+  projects the user interacted with. Explicit "notes" section for what
+  ISN'T included (workspace filesystem, raw LLM prompt bodies).
+- `export_organization_data(db, org_id)` — identity + per-project summary
+  with counts (tasks, objectives, llm_calls, decisions, findings,
+  knowledge). Lightweight by default — verbose mode can come later.
+
+tier1.py endpoints:
+- `GET /api/v1/tier1/gdpr/users/{user_id}/export` — self or owner-of-
+  shared-org access. Otherwise 403.
+- `GET /api/v1/tier1/gdpr/orgs/{org_slug}/export` — owner-only.
+
+tests/test_gdpr_export.py: 8 unit tests with MagicMock sessions
+(no DB dependency). Covers 404 paths, basic shape, memberships inclusion,
+audit entries, org projects summary, notes section always present.
+
+**Decision D-17:** export aggregates by querying per-entity (not single
+join). Trade-off: slightly more DB queries vs single SELECT join.
+Rationale: with GDPR subject requests being rare (days/weeks), query
+count is negligible; per-entity queries are easier to evolve as new
+tables join the platform.
+
+**Not scoped here** (deferred):
+- GDPR Article 17 right-to-be-forgotten — erasure logic is more design-
+  heavy (FK constraints RESTRICT on some tables; must decide soft-delete
+  vs hard-delete + PII redaction strategy). Separate session.
+- Verbose prompts export — surfaces full `LLMCall.full_prompt` bodies.
+  Optional flag, dedicated session for performance considerations.
+
+Audit v1.6:
+- Compliance data-export row AMBER → GREEN
+- Compliance category: 1G/3A/2R → 2G/2A/2R (**AMBER overall**, was RED)
+- Total: 17G/18A/19R → 18G/17A/19R
+
+Unit tests from this session: 184/184 PASS.
+
 ### Step 10 — PII scanner baseline (audit #4) — DONE
 
 Zero-dep regex baseline for PII detection + redaction. Enterprise Audit
