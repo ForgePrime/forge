@@ -8,6 +8,19 @@ __pycache__/
 # Runtime output (per-project state, not tracked)
 #forge_output/
 
+# Test-only workspace artifacts that accumulate during pytest runs with
+# workspace_infra. Real project workspaces (forge_output/<real-slug>/workspace/)
+# stay tracked for developer continuity; the patterns below match only
+# transient test-generated slugs (p1pause-*, p2ac-*, e2e-*, …).
+forge_output/p1pause-*/
+forge_output/p2ac-*/
+forge_output/p3*-*/
+forge_output/p5*-*/
+forge_output/e2e-*/
+forge_output/*/workspace/__pycache__/
+forge_output/*/workspace/node_modules/
+forge_output/*/workspace/.pytest_cache/
+
 # Git worktrees for parallel task execution
 forge_worktrees/
 
