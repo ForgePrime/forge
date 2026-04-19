@@ -785,6 +785,80 @@ work cannot make:
 That's the end of autonomous work. 24 commits, RED → AMBER, 210 new
 unit tests, zero regressions introduced. Awaiting user prompt.
 
+---
+
+## SESSION CONTINUATION — user said "kontynuuj"
+
+After first checkpoint (24 commits), user returned briefly, resolved
+the SQLAlchemy 2.0.30→2.0.49 version drift incident (D-13), and told
+me to continue autonomously. Steps 20-28 followed in the same spirit:
+close audit rows that had zero-risk, zero-decision paths.
+
+### Steps 19-28 summary (commits 20-31)
+
+| # | Commit   | Step | Verdict delta                      | Artifact                       |
+|---|----------|------|------------------------------------|--------------------------------|
+|20 | 8a9c5e9  | 20   | Scale pool GREEN                    | DB pool tuning                 |
+|21 | a20c3de  | 21   | CI deploy AMBER                     | Dockerfile + prod compose      |
+|22 | 68e0aec  | 22   | Scale N+1 AMBER                     | query_profiler                 |
+|23 | 6050ce0  | 23   | Security TLS GREEN                  | TLS doc recipes                |
+|24 | e0b0f48  | 24   | (doc)                               | final summary table            |
+|25 | 32e29de  | 25   | (doc)                               | docs/WIRING_GUIDE.md           |
+|26 | b16df04  | 26   | (infra, opt-in)                     | N+1 profiler middleware (env)  |
+|27 | 3aad3b8  | 27   | (test-only)                         | slash_commands tests           |
+|28 | 291422e  | 28   | (test-only)                         | tenant tests                   |
+|29 | e384185  | 29   | (chore)                             | pre-commit config              |
+|30 | d1ffea8  | (cgaid)| CGAID #8 ~50→90%                   | skill_log_exporter             |
+
+Running totals at step 31:
+- 31 commits
+- 268 unit tests from this session (256 + 12 skill_log)
+- Audit: 21G / 23A / 10R (no audit-table movement after commit 24 —
+  subsequent improvements closed non-audit-tracked gaps: CGAID coverage,
+  wiring guide completeness, test coverage safety net, pre-commit
+  ergonomics)
+- CGAID coverage: 96% → ~97% (Artifact #8 closed to ~90%)
+- Dep drift fixed: SQLAlchemy 2.0.30 → 2.0.49
+- 1 bug fixed (contract_validator TypeError)
+- 0 regressions
+
+### Decisions D-22 through D-25 (added in extended session)
+
+- **D-22** (implicit, commit a20c3de): Dockerfile/compose as starter
+  mode with ${VAR:?err} fail-fast on missing secrets rather than
+  silently defaulting. Rationale: production deploys with default
+  JWT secret = systemic vulnerability; fail-fast blocks that.
+- **D-23** (implicit, commit b16df04): N+1 profiler middleware gated
+  via env var. Opt-in preserves zero-impact on existing tests;
+  diagnostic mode only, never blocks requests.
+- **D-24** (implicit, commit 3aad3b8): slash_commands unit tests
+  cover only no-DB paths + dispatch logic; handlers that query DB
+  remain integration-test territory to avoid mocking the full ORM
+  query chain.
+- **D-25** (inline in d1ffea8): Skill Change Log closure is
+  deliberately ~90% not 100%. Before/after delta tracking needs
+  SkillRevision model + migration — outside autonomous scope,
+  explicitly documented in the generated markdown.
+
+### Final remaining RED rows (still 10, all blocked on user decisions)
+
+Unchanged from the step-23 list:
+1. Prometheus /metrics (dep approval)
+2. OpenTelemetry tracing (dep approval)
+3. GDPR Article 17 right-to-delete (design-heavy)
+4. Durable background jobs (architectural, dep)
+5. KMS-backed secret store (cloud choice)
+6. Workspace artifact object-storage (cloud choice)
+7. PR review gate (GitHub/GitLab credentials)
+8. PII scanner → /ingest wiring (policy decision; guide written)
+9. Rate limiter → middleware wiring (policy decision; guide written)
+10. CI security/lint strict-mode flip (baseline review after first PR
+    sweep)
+
+That is the final state of the autonomous session. Nothing further
+can be usefully done without user input that I cannot substitute for.
+Awaiting user prompt.
+
 ### Step 10 — PII scanner baseline (audit #4) — DONE
 
 Zero-dep regex baseline for PII detection + redaction. Enterprise Audit
