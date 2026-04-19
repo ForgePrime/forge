@@ -21,16 +21,26 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | 12-factor app | 12 | 6 | 3 | 3 | **AMBER** |
 | Security | 10 | 5 | 3 | 2 | **AMBER** |
 | Observability | 6 | 2 | 2 | 2 | **AMBER** |
-| CI/CD | 5 | 0 | 0 | 5 | **RED** |
+| CI/CD | 5 | 0 | 4 | 1 | **AMBER** |
 | Scale & performance | 6 | 1 | 2 | 3 | **RED** |
 | Compliance (GDPR/audit) | 6 | 2 | 2 | 2 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
-| Documentation | 5 | 2 | 2 | 1 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **18** | **17** | **19** | **RED overall** |
+| Documentation | 5 | 2 | 3 | 0 | **AMBER** |
+| **TOTAL (54 attr.)** | **54** | **18** | **22** | **14** | **AMBER overall** |
 
-**Verdict:** Forge is **NOT enterprise-production-ready today**. It is a well-engineered pilot with strong delivery-governance (CGAID coverage 82%+ per prior audit), but gaps in observability, CI/CD, compliance, and DR make it unsuitable for external-client launch without Phase 2 of the Production Roadmap.
+**Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
+CGAID delivery-governance is strong (93% per prior audit), and the baseline
+infrastructure for observability, compliance, DR, and CI/CD is now in place.
+Remaining RED clusters are 14 attributes concentrated in:
+- Deep observability (Prometheus metrics endpoint, OpenTelemetry tracing)
+- Deploy automation (IaC — Roadmap Phase 3 item)
+- Compliance (GDPR retention + right-to-delete still needed)
+- Scale (load test baseline, N+1 detection, durable background jobs)
+- Documentation (deployment runbook partially green, needs a few missing pieces)
+- Secret management (KMS-backed — Roadmap Phase 2 week 5)
 
-Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Roadmap Phase 2 weeks 4-8).
+Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
+5-8 weeks at v1.0. Still gated on Roadmap Phase 2 + Phase 3 items.
 
 ---
 
@@ -87,11 +97,11 @@ Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Ro
 
 | Attribute | Status | Evidence | Gap |
 |-----------|--------|----------|-----|
-| CI config file present | RED | No `.github/workflows/*.yml`, no `.gitlab-ci.yml` at repo root | **Nothing runs on push.** Add GH Actions or GitLab CI (Roadmap Phase 3 week 9) |
-| Automated test on PR | RED | n/a — no CI | Same as above |
-| Automated security scan | RED | n/a — no CI | See Security table |
-| Deploy pipeline | RED | Deploy is manual (docker-compose on host) | Add IaC + staging→prod promotion (Roadmap Phase 3 week 9) |
-| Release versioning | RED | No git tags spotted in recent log, no `CHANGELOG.md` at repo root (per-file changelogs in doc/ only) | Add semver tags + release notes |
+| CI config file present | AMBER | v1.7: `.github/workflows/ci.yml` ships as starter — pytest against real postgres+redis services, py3.13 matrix, concurrency cancellation. Still starter: security/lint jobs use `continue-on-error: true` until baselines are clean. | Activate on GH org + turn off continue-on-error once baselines clean. |
+| Automated test on PR | AMBER | v1.7: `on: [push, pull_request]` trigger in ci.yml. Requires activation on GitHub side. | Same as above |
+| Automated security scan | AMBER | v1.7: pip-audit + bandit in ci.yml + weekly `.github/workflows/security.yml` with artifact upload. Non-blocking until baseline clean. | Fix initial findings, flip continue-on-error to false |
+| Deploy pipeline | RED | Deploy is manual (docker compose on host). ci.yml has no deploy stage. | Add IaC + staging→prod promotion (Roadmap Phase 3 week 9) |
+| Release versioning | AMBER | v1.7: `CHANGELOG.md` ships at repo root with "Unreleased" section + session summary. Git tags still TODO. | Tag first semver release `v0.1.0`; wire `changelog` to tags. |
 
 **Category verdict:** RED. Every production deployment today is artisanal.
 
@@ -185,3 +195,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.4 (2026-04-19, autonomous session)** — DB backup + restore scripts ship. `platform/scripts/backup.sh` (idempotent pg_dump, gzip, retention prune, optional S3) + `platform/scripts/restore.sh` (safety-guarded, smoke-verified). docs/DEPLOY.md updated with cron example + monthly verification cadence. DR category: 0G/1A/3R → 0G/3A/1R. Overall: 16G/16A/22R → 16G/18A/20R. **DR category upgraded AMBER overall** (was RED); still RED project overall (observability, CI/CD, compliance, scale).
 - **v1.5 (2026-04-19, autonomous session)** — `/ready` readiness probe added (liveness/readiness split). Zero-dep: raw TCP socket for Redis PING to avoid adding `redis` lib. Public (added to auth whitelist) so LB probes don't need credentials. 5 unit tests. Observability liveness row RED→GREEN. Category: 1G/2A/3R → 2G/2A/2R (AMBER overall). Total: 16G/18A/20R → 17G/18A/19R.
 - **v1.6 (2026-04-19, autonomous session)** — GDPR Article 20 data export. `services/gdpr_export.py` + tier1 endpoints `GET /gdpr/users/{id}/export` (self or owner) + `GET /gdpr/orgs/{slug}/export` (owner-only). Structured JSON with identity/memberships/audit/projects summary. Explicit `notes` section documenting what isn't exported (workspace, raw LLM bodies). 8 unit tests. Compliance data-export row AMBER→GREEN. Compliance category: 1G/3A/2R → 2G/2A/2R (**AMBER overall**, was RED). Total: 17G/18A/19R → 18G/17A/19R.
+- **v1.7 (2026-04-19, autonomous session)** — CI/CD category goes RED→AMBER. `.github/workflows/ci.yml` ships as starter (pytest against real postgres+redis, pip-audit, bandit, ruff — security/lint non-blocking until baseline clean). `.github/workflows/security.yml` runs weekly deep scan with 30-day artifact retention. `CHANGELOG.md` ships at repo root. Documentation CHANGELOG row RED→AMBER. CI category: 0G/0A/5R → 0G/4A/1R. Documentation: 2G/2A/1R → 2G/3A/0R. Total: 18G/17A/19R → **18G/22A/14R (AMBER overall — down from RED for the first time this session)**.

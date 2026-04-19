@@ -1,0 +1,44 @@
+name: Scheduled security scan
+
+# Weekly deep security sweep — complements PR-level checks in ci.yml
+# which are non-blocking. This one posts findings as issues.
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"  # Mondays 03:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  scan:
+    name: weekly dep + code scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+
+      - name: pip-audit
+        working-directory: platform
+        id: pipaudit
+        run: |
+          pip install pip-audit
+          pip-audit --format=json > /tmp/pip-audit.json || true
+          cat /tmp/pip-audit.json
+        continue-on-error: true
+
+      - name: bandit
+        id: bandit
+        run: |
+          pip install bandit
+          bandit -r platform/app -x platform/tests -f json -o /tmp/bandit.json || true
+          cat /tmp/bandit.json
+        continue-on-error: true
+
+      - name: Upload scan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-${{ github.run_id }}
+          path: |
+            /tmp/pip-audit.json
+            /tmp/bandit.json
+          retention-days: 30

@@ -1,0 +1,114 @@
+name: CI
+
+# Pragma: this workflow is a STARTER. Tune matrix + secrets before production use.
+# See docs/DEPLOY.md and docs/FORGE_ENTERPRISE_AUDIT.md for context.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # Cancel in-progress runs on the same branch when a newer commit arrives.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.13"]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: forge
+          POSTGRES_PASSWORD: forge
+          POSTGRES_DB: forge_platform
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U forge"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      FORGE_DATABASE_URL: postgresql://forge:forge@localhost:5432/forge_platform
+      FORGE_REDIS_URL: redis://localhost:6379
+      FORGE_JWT_SECRET: ci-dummy-jwt-secret-do-not-use-in-prod
+      # Tests don't hit Anthropic; mock / stub values are fine.
+      ANTHROPIC_API_KEY: ci-dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install platform deps
+        working-directory: platform
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Wait for postgres
+        run: |
+          for i in {1..30}; do
+            pg_isready -h localhost -U forge && break
+            sleep 1
+          done
+
+      - name: Run unit + integration tests
+        working-directory: platform
+        run: python -m pytest tests/ --tb=short -q
+
+  security:
+    name: security scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+
+      # Dependency vulnerability scan (pip-audit)
+      - name: pip-audit (platform deps)
+        working-directory: platform
+        run: |
+          pip install pip-audit
+          pip-audit --strict --disable-pip || echo "::warning::pip-audit found advisories — review before release"
+        continue-on-error: true  # Starter: non-blocking. Set to false once baseline is clean.
+
+      # Static analysis (bandit for Python security anti-patterns)
+      - name: bandit
+        run: |
+          pip install bandit
+          bandit -r platform/app -lll -x platform/tests || echo "::warning::bandit found HIGH severity issues"
+        continue-on-error: true  # Starter: non-blocking. Set to false once baseline is clean.
+
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - name: ruff check
+        run: |
+          pip install ruff
+          ruff check platform/app platform/tests || echo "::warning::ruff found style issues"
+        continue-on-error: true  # Starter: non-blocking until ruff config lands.
