@@ -222,6 +222,30 @@ FORGE_PROFILE_NPLUS1=true FORGE_NPLUS1_THRESHOLD=10 uvicorn ...
 
 ---
 
+## 5.5 Pre-commit hooks → activated
+
+**What it provides:** `.pre-commit-config.yaml` ships with hygiene hooks
+(trailing whitespace, EOL fixer, YAML/JSON validity, large-file check,
+merge-conflict marker detection, debug-statement + private-key catchers),
+plus ruff lint, ruff format-check, and bandit in non-blocking mode.
+
+**Activate:**
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files   # first run against whole tree
+```
+
+**After baseline clean:**
+- Remove `--exit-zero` from ruff hook args
+- Remove `-lll` from bandit hook args (flip to MEDIUM sensitivity)
+- Consider enabling gitleaks hook (stronger secret detection)
+
+**Rollback:** `pre-commit uninstall`. Config file stays.
+
+---
+
 ## 5. CI security/lint → strict mode
 
 **What it does:** `.github/workflows/ci.yml` runs pip-audit + bandit +

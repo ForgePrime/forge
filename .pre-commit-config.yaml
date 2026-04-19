@@ -1,0 +1,55 @@
+# Pre-commit hooks — run before each `git commit`.
+#
+# Install:  pip install pre-commit && pre-commit install
+# Update:   pre-commit autoupdate
+# Run all:  pre-commit run --all-files
+#
+# Starter config. Each hook is non-disruptive (won't block common cases)
+# until baseline is clean. After a clean baseline, tighten by setting
+# `always_run: true` + flipping `continue-on-error` equivalents (where
+# applicable) to fail the commit on issues.
+
+repos:
+  # --- Standard hygiene ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: debug-statements    # catches `breakpoint()` / `pdb.set_trace()`
+      - id: detect-private-key  # safety net against committing SSH / API keys
+
+  # --- Python lint + format (ruff) ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+        args: ['--exit-zero']   # non-blocking until baseline clean
+      - id: ruff-format
+        args: ['--check']
+        # Starter: check-only (no auto-fix) so commits don't mysteriously
+        # rewrite. Flip to auto-format once team agrees on style config.
+
+  # --- Python security (bandit) ---
+  - repo: https://github.com/PyCQA/bandit
+    rev: '1.7.9'
+    hooks:
+      - id: bandit
+        args: ['-lll', '-r', 'platform/app', '-x', 'platform/tests']
+        # Only report HIGH severity. MEDIUM findings tend to be noisy
+        # in FastAPI+SQLAlchemy apps (SQL string construction flagged
+        # as B608 even when using bind params). Tighten to -ll once
+        # false-positive baseline is suppressed inline with # nosec.
+
+  # --- Secret detection (gitleaks) ---
+  # Optional — add if your team wants stronger protection against
+  # accidental credential commits than the stdlib detect-private-key above.
+  # - repo: https://github.com/gitleaks/gitleaks
+  #   rev: v8.18.4
+  #   hooks:
+  #     - id: gitleaks
