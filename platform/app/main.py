@@ -108,6 +108,14 @@ from app.middleware.auth_mw import AuthMiddleware
 from app.middleware.role_mw import RoleMiddleware
 from app.middleware.page_ctx_mw import PageContextMiddleware
 from app.services.csrf import CSRFMiddleware
+from app.services.logging_setup import (
+    configure_logging as _configure_logging,
+    RequestIdMiddleware,
+)
+
+# Configure logging BEFORE middlewares/routes — so every subsequent log call
+# inherits the request-id filter and (if FORGE_LOG_JSON=true) JSON format.
+_configure_logging()
 
 app.add_middleware(
     CORSMiddleware,
@@ -123,6 +131,10 @@ app.add_middleware(PageContextMiddleware)
 app.add_middleware(RoleMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(AuthMiddleware)
+# RequestIdMiddleware added LAST so it runs FIRST on every request — assigns
+# the request_id BEFORE any other middleware logs. Also echoed as X-Request-Id
+# response header for client/server log correlation.
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(auth_router)
 app.include_router(execute_router)

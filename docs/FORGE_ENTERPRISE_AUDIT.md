@@ -20,13 +20,13 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 |----------|-------------------|---|---|---|---------|
 | 12-factor app | 12 | 6 | 3 | 3 | **AMBER** |
 | Security | 10 | 5 | 3 | 2 | **AMBER** |
-| Observability | 6 | 1 | 1 | 4 | **RED** |
+| Observability | 6 | 1 | 2 | 3 | **RED** |
 | CI/CD | 5 | 0 | 0 | 5 | **RED** |
 | Scale & performance | 6 | 1 | 2 | 3 | **RED** |
 | Compliance (GDPR/audit) | 6 | 1 | 2 | 3 | **RED** |
 | Disaster recovery | 4 | 0 | 1 | 3 | **RED** |
 | Documentation | 5 | 2 | 2 | 1 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **16** | **14** | **24** | **RED overall** |
+| **TOTAL (54 attr.)** | **54** | **16** | **15** | **23** | **RED overall** |
 
 **Verdict:** Forge is **NOT enterprise-production-ready today**. It is a well-engineered pilot with strong delivery-governance (CGAID coverage 82%+ per prior audit), but gaps in observability, CI/CD, compliance, and DR make it unsuitable for external-client launch without Phase 2 of the Production Roadmap.
 
@@ -74,7 +74,7 @@ Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Ro
 
 | Attribute | Status | Evidence | Gap |
 |-----------|--------|----------|-----|
-| Structured logs | RED | Python `logging` (stdlib), no JSON formatter, no correlation IDs found | Add `structlog` + request-id middleware |
+| Structured logs | AMBER | `app/services/logging_setup.py` (v1.2): stdlib JSON formatter opt-in via `FORGE_LOG_JSON=true`; `RequestIdMiddleware` assigns + echoes `X-Request-Id`; `RequestIdFilter` injects into every LogRecord. Tests: `tests/test_logging_setup.py` (14 tests). | Upgrade to AMBER from RED. Still stdlib (not structlog) — acceptable baseline; upgrade to structlog if processor chains needed. |
 | Metrics endpoint (Prometheus) | RED | No `/metrics` route found; no `prometheus_client` import | Add `starlette_prometheus` or equivalent |
 | Distributed tracing | RED | No `opentelemetry` import | Add OTel instrumentation (FastAPI + SQLAlchemy + httpx) |
 | Health endpoint | GREEN | `main.py:117-119` `@app.get('/health')` returns `{status, version}` | — |
@@ -180,3 +180,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 
 - **v1.0 (2026-04-19)** — Initial audit. 54 attributes scored across 8 categories. Overall RED for production; AMBER for internal pilot. Top 10 priority fixes identified, aligned with Production Roadmap Phase 2.
 - **v1.1 (2026-04-19, autonomous session)** — CSRF upgraded AMBER→GREEN after direct middleware contract tests added (`tests/test_csrf_middleware.py`, 9 tests). Security row: 4G/4A/2R → 5G/3A/2R. Overall 14G/16A/24R → 15G/15A/24R. Graceful shutdown (top-10 #8) landed — no audit row moved because shutdown isn't a separate attribute; reflected as improvement under 12-factor disposability.
+- **v1.2 (2026-04-19, autonomous session)** — Structured logs upgraded RED→AMBER. `services/logging_setup.py` adds stdlib JsonFormatter (opt-in via `FORGE_LOG_JSON` env), RequestIdMiddleware assigning per-request UUID echoed as `X-Request-Id`, and RequestIdFilter injecting the ID into every LogRecord. Zero new deps (stdlib only). 14 unit tests. Observability row: 1G/1A/4R → 1G/2A/3R. Overall 16G/14A/24R → 16G/15A/23R.

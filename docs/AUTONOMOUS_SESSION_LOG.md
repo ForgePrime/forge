@@ -252,11 +252,68 @@ landed in prior sessions for #3 and #5).
 **Enterprise Audit movement:** 14G/16A/24R → 16G/14A/24R (CSRF,
 disposability upgraded).
 
-Still OUT OF SCOPE this session (deferred):
-- CGAID v1.2 proposal for ITRP (separate dedicated session per user)
-- PR flow (needs GitHub/GitLab API credentials — user consent required)
-- Structured logging (structlog dep addition — user consent for deps)
-- Prometheus metrics (prometheus_client dep — same)
+### Step 9 — Structured JSON logging + request-id (audit #2) — DONE
+
+Audit top-10 item #2 closed without adding any new dependency.
+`services/logging_setup.py` (NEW) provides:
+- `JsonFormatter` — stdlib-only JSON encoder for LogRecord, single-line,
+  includes request_id + extras + exception info
+- `RequestIdFilter` — injects current request_id into every LogRecord
+- `RequestIdMiddleware` — assigns UUID per request, honors client-supplied
+  `X-Request-Id` header, echoes back in response headers
+- `configure_logging(force_json=None, level=None)` — idempotent; opt-in
+  via `FORGE_LOG_JSON=true` env var (default stdlib formatter so local
+  dev stays readable)
+
+Wired in main.py: `_configure_logging()` called BEFORE middleware stack;
+`RequestIdMiddleware` added LAST so it runs FIRST on every request.
+
+Tests: `tests/test_logging_setup.py` (14 tests) cover JSON shape, single-
+line guarantee, exception capture, non-serializable extras fallback
+(must not crash), filter injection, idempotent re-config, UUID
+assignment, client-header honored, per-request isolation.
+
+**Decision D-11:** stdlib-only, no structlog/loguru. **Rationale:**
+autonomous-session constraint — adding a dep requires user approval.
+stdlib is sufficient for JSON + request-id; processor chains /
+bound loggers would justify structlog in a future dedicated session.
+
+Audit v1.2:
+- Structured logs row RED → AMBER
+- Observability category 1G/1A/4R → 1G/2A/3R
+- Overall 16G/14A/24R → 16G/15A/23R
+- Still RED overall (observability + CI/CD + compliance + DR remain
+  primarily red — those are not one-commit fixes).
+
+Full regression: 521/521 pass (up from 507).
+
+---
+
+## Session end state (9 steps, 9 commits)
+
+Commits chronological:
+1. 039b519 — Handoff Document exporter (CGAID #4)
+2. ed68590 — Assisted-by commit trailer
+3. 94a62ce — Enterprise Readiness Audit v1.0 doc
+4. 0b09963 — Platform README + DEPLOY runbook
+5. e11afbd — Graceful SIGTERM shutdown + lease release
+6. eda3584 — CSRF enforcement verification (tests + docstring)
+7. 10f278e — Contract validator gate tests + defensive bug fix
+8. 28022b6 — Autonomy ladder unit tests (21 new)
+9. (next) — JSON structured logging + request-id middleware
+
+**Tests:** 466 → 521 (+55 new unit tests)
+**Bugs fixed:** 1 real (contract_validator TypeError on non-list files_changed)
+**CGAID compliance:** 82% → ~93% (Handoff #4 closed; #3 + #5 already landed)
+**Enterprise Audit totals:** 14G/16A/24R → 16G/15A/23R (3 attrs moved,
+1 upgrade each category tracked)
+
+Still OUT OF SCOPE this session (deferred to dedicated sessions):
+- CGAID v1.2 proposal for ITRP (requires user editorial input on manifest)
+- PR flow (needs GitHub/GitLab API credentials)
+- Prometheus metrics endpoint (needs `prometheus_client` dep approval)
 - Durable background jobs (Celery/RQ — large architectural change)
+- Skill Change Log formal artifact (medium code change, lower ROI today)
+- Load test baseline (requires test data generation, k6/Locust setup)
 
 
