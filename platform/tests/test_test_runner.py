@@ -111,10 +111,15 @@ def test_feature_task_with_failing_test_fails_gate(tmp_path):
 # ---------- BUG-B still exists (documented non-fix): command field is ignored ----------
 
 def test_bug_b_command_field_still_ignored_when_test_path_present(tmp_path):
-    """BUG-B (known): 'command' string is NOT executed; test_path drives pytest.
+    """Design decision (Opcja A, 2026-04-19): 'command' field is a descriptive label only.
 
-    Not fixed in this round — separate design decision (should Forge shell out to command?).
-    Documented here so future change has a regression test.
+    The 'command' string is NOT executed — pytest drives execution via test_path.
+    Validation (projects.py + core/pipeline_execution.py) now requires test_path when
+    verification='command'. This test guards the runtime behavior so future changes
+    that claim to "execute the command" must update both the runner and the docs.
+
+    If someday Forge grows a sandboxed shell executor (Opcja B), this test will need
+    to change together with an explicit project-level opt-in flag + whitelist.
     """
     (tmp_path / "pyproject.toml").write_text("[project]\nname='fake'\n")
     (tmp_path / "test_real.py").write_text("def test_x(): assert True\n")

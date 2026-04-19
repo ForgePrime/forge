@@ -19,7 +19,7 @@
         </div>
         <textarea name="text" rows="2" required minlength="20" class="w-full border rounded px-2 py-1 text-sm">{{ac.text}}</textarea>
         <input name="test_path" value="{{ac.test_path or ''}}" placeholder="tests/test_x.py::test_case" class="w-full border rounded px-2 py-1 text-xs mono">
-        <input name="command" value="{{ac.command or ''}}" placeholder="bash command (gdy verification=command)" class="w-full border rounded px-2 py-1 text-xs mono">
+        <input name="command" value="{{ac.command or ''}}" placeholder="descriptive label (NOT executed — pytest drives test_path)" class="w-full border rounded px-2 py-1 text-xs mono">
         <div class="flex gap-2">
             <button type="submit" class="bg-green-600 text-white px-2 py-0.5 text-xs rounded hover:bg-green-700">Zapisz</button>
             <button type="button"

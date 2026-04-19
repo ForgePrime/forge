@@ -138,7 +138,7 @@ CONTRACTS = {
             "conflicts_with: list of task IDs that modify same files — can use temp IDs within the same batch",
             "acceptance_criteria: list of structured AC objects (required for feature/bug tasks). "
             "Each AC must be: {text: str, verification: 'test'|'command'|'manual', test_path?: str, command?: str, check?: str, kr_link?: str, from_template?: str, params?: dict}. "
-            "verification='test' requires test_path, 'command' requires command field, 'manual' requires check field. "
+            "verification='test' requires test_path; 'command' also requires test_path (the 'command' field is an optional descriptive label — pytest drives execution, shell is NOT invoked); 'manual' requires check field. "
             "kr_link: 'O-001/KR-1' links AC result to a KR for automatic measurement update.",
             "type: task category — feature (default), bug, chore, or investigation",
             "blocked_by_decisions: list of decision IDs (D-001, etc.) that must be CLOSED before this task can start",

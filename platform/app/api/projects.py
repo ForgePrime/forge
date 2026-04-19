@@ -227,16 +227,25 @@ def create_tasks(slug: str, tasks: list[TaskCreate], request: Request, db: Sessi
         if t_data.type in ("feature", "bug") and len(t_data.acceptance_criteria) < 1:
             raise HTTPException(422, f"Task {t_data.external_id}: feature/bug requires at least 1 AC")
         if t_data.type in ("feature", "bug"):
+            # Per-AC check: verification='command' requires test_path just like 'test'.
+            # The 'command' field is a descriptive label — pytest drives execution, shell is NOT invoked.
+            for idx, ac in enumerate(t_data.acceptance_criteria):
+                if ac.verification == "command" and not ac.test_path:
+                    raise HTTPException(
+                        422,
+                        f"Task {t_data.external_id}: AC #{idx} has verification='command' but no "
+                        "test_path. 'command' is a descriptive label — pytest still drives execution "
+                        "and needs test_path. Shell commands are NOT executed.",
+                    )
             has_testable = any(
-                ac.verification in ("test", "command") and (ac.test_path or ac.command)
+                ac.verification in ("test", "command") and ac.test_path
                 for ac in t_data.acceptance_criteria
             )
             if not has_testable:
                 raise HTTPException(
                     422,
                     f"Task {t_data.external_id}: feature/bug requires at least 1 AC with "
-                    "verification='test'|'command' and test_path/command set — "
-                    "manual-only AC cannot gate execution.",
+                    "verification='test'|'command' and test_path set — manual-only AC cannot gate execution.",
                 )
 
         # Check instruction or description

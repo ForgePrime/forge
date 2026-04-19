@@ -1490,10 +1490,11 @@ def _warn_ac_quality(tasks: list) -> bool:
                         f"  {tid}: AC \"{criterion.get('text', '?')[:60]}\" has verification='test' "
                         f"but no 'test_path' — mechanical verification will fail"
                     )
-                elif criterion.get("verification") == "command" and not criterion.get("command"):
+                elif criterion.get("verification") == "command" and not criterion.get("test_path"):
                     errors.append(
                         f"  {tid}: AC \"{criterion.get('text', '?')[:60]}\" has verification='command' "
-                        f"but no 'command' — mechanical verification will fail"
+                        f"but no 'test_path' — 'command' field is a descriptive label only; "
+                        f"pytest still drives execution and needs test_path"
                     )
                 elif criterion.get("verification") == "manual" and not criterion.get("check"):
                     warnings.append(

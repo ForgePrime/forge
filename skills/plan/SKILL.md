@@ -129,7 +129,7 @@ For each task, provide ALL of:
   ```json
   {"text": "what is true when done", "verification": "test|command|manual", "test_path": "...", "command": "...", "check": "..."}
   ```
-  Rules: `test` requires `test_path`. `command` requires `command`. 2-5 per task. Functional, not metric-based.
+  Rules: `test` requires `test_path`. `command` also requires `test_path` (the `command` field is a descriptive label; pytest drives execution, shell is NOT invoked). 2-5 per task. Functional, not metric-based.
 
 After all tasks defined, derive cross-task exclusions (second pass):
 - Group by files/directories modified → add exclusions preventing overlap
