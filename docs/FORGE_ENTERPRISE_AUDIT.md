@@ -22,11 +22,11 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | Security | 10 | 5 | 3 | 2 | **AMBER** |
 | Observability | 6 | 3 | 1 | 2 | **AMBER** |
 | CI/CD | 5 | 0 | 5 | 0 | **AMBER** |
-| Scale & performance | 6 | 2 | 2 | 2 | **AMBER** |
+| Scale & performance | 6 | 2 | 3 | 1 | **AMBER** |
 | Compliance (GDPR/audit) | 6 | 2 | 3 | 1 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 3 | 0 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **20** | **23** | **11** | **AMBER overall** |
+| **TOTAL (54 attr.)** | **54** | **20** | **24** | **10** | **AMBER overall** |
 
 **Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
 CGAID delivery-governance is strong (93% per prior audit), and the baseline
@@ -114,7 +114,7 @@ Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
 | Connection pooling | GREEN | v1.12: `app/database.py` tunes `pool_size=10`, `max_overflow=20`, `pool_recycle=1800s`, `pool_timeout=30s`, `pool_pre_ping=True`. Overridable via env vars `FORGE_DB_POOL_SIZE / MAX_OVERFLOW / POOL_RECYCLE / POOL_TIMEOUT`. Pool status verified in-process. | Tune defaults based on production workload measurement. |
 | Cache layer | GREEN | Redis included in docker-compose (used for workspace lease? rate limiting? unaudited) | — |
 | Background job durability | AMBER | `BackgroundTasks` FastAPI is in-process; lost on restart | Replace with Celery/RQ for production |
-| N+1 query detection | RED | No sqlalchemy.events profiling, no test assertion on query count | Add `pytest-sqlalchemy-profiler` or similar |
+| N+1 query detection | AMBER | v1.14: `services/query_profiler.py` ships — SQLAlchemy `after_cursor_execute` listener, contextvar-scoped counter, normalizes statements (collapse placeholders + whitespace), threshold env override (`FORGE_NPLUS1_THRESHOLD`, default 5). `scope()` context manager for per-handler profiling; logs WARNING with structured extras on breach. 17 unit tests. Zero new deps. | Wire into request middleware for automatic per-request N+1 reporting. |
 
 **Category verdict:** RED. Without load testing, predicting p95 under real workload is guesswork. Roadmap Phase 2 week 6 addresses.
 
@@ -202,3 +202,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.11 (2026-04-19, autonomous session)** — Load test baseline row RED→AMBER. `platform/scripts/loadtest.js` k6 starter ships — VUs/duration via env, ramp-up plan, thresholds encoded (p95 100ms/300ms/<1% errors). docs/DEPLOY.md updated with k6 invocation examples. Scale category: 1G/2A/3R → 1G/3A/2R. Overall: 19G/22A/13R → 19G/23A/12R. Still AMBER overall — running in staging + capturing baseline is a user-operated step, not code.
 - **v1.12 (2026-04-19, autonomous session)** — Connection pooling row AMBER→GREEN. `app/database.py` configures `pool_size=10`, `max_overflow=20`, `pool_recycle=1800s`, `pool_timeout=30s`, `pool_pre_ping=True`. All overridable via `FORGE_DB_POOL_*` env vars. Scale category: 1G/3A/2R → 2G/2A/2R. Overall: 19G/23A/12R → 20G/22A/12R.
 - **v1.13 (2026-04-19, autonomous session)** — Deploy pipeline row RED→AMBER. `platform/Dockerfile` (multi-stage, non-root user, healthcheck) + `platform/docker-compose.prod.yml` (mandatory secrets via `${VAR:?err}`, resource limits, log rotation, healthchecks, persistent volumes) ship. CI/CD category: 0G/4A/1R → 0G/5A/0R (AMBER overall, was RED pre-v1.7). Overall: 20G/22A/12R → 20G/23A/11R.
+- **v1.14 (2026-04-19, autonomous session)** — N+1 query detection row RED→AMBER. `services/query_profiler.py` ships — SQLAlchemy event listener + contextvar-scoped counter + statement normalization + threshold env. 17 unit tests. Zero new deps. `scope()` context manager usable from handlers or tests. Wiring into request middleware deferred to avoid touching every handler at once. Scale category: 2G/2A/2R → 2G/3A/1R. Overall: 20G/23A/11R → 20G/24A/10R.
