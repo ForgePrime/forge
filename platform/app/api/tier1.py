@@ -1240,6 +1240,25 @@ def gdpr_export_user(user_id: int, request: Request, db: Session = Depends(get_d
     return export_user_data(db, user_id)
 
 
+@router.post("/projects/{slug}/export/skill-log")
+def export_skill_log(slug: str, request: Request, db: Session = Depends(get_db)):
+    """CGAID Artifact #8 — regenerate in-repo .ai/SKILL_CHANGE_LOG.md.
+
+    Aggregates ProjectLesson + AntiPattern (org-scope) + ProjectSkill
+    invocation stats into a markdown timeline.
+    """
+    _user(request)
+    proj = _project(db, slug, request)
+    from app.services.skill_log_exporter import export_skill_change_log
+    from app.config import settings as _settings
+    path = export_skill_change_log(db, proj, _settings.workspace_root)
+    return {
+        "project": slug,
+        "path": str(path) if path else None,
+        "ok": path is not None,
+    }
+
+
 class RetentionSweepBody(BaseModel):
     dry_run: bool = True
     entities: list[str] | None = None

@@ -144,7 +144,7 @@ location AND in-repo mirror for engineers without Forge UI access.
 | 5 | ADRs | `Decision` table (status=CLOSED) | `{workspace}/.ai/decisions/D-NNN-*.md` (auto) |
 | 6 | Edge-Case Test Plan | `AcceptanceCriterion.scenario_type` field | in Handoff and Plan exports above |
 | 7 | Business-Level DoD | `KeyResult.measurement_command` + Objective ACHIEVED state | exported per-objective in Plan |
-| 8 | Skill Change Log | `ProjectLesson` + `AntiPattern` tables | `forge_output/{slug}/lessons.json` (TODO: formal Skill Change Log with before/after metrics) |
+| 8 | Skill Change Log | `ProjectLesson` + `AntiPattern` + `ProjectSkill` tables | `{workspace}/.ai/SKILL_CHANGE_LOG.md` (auto via `services/skill_log_exporter.py` + `POST /api/v1/tier1/projects/{slug}/export/skill-log`). Before/after metric delta TODO — needs `SkillRevision` snapshot model. |
 | 9 | Framework Manifest | `CLAUDE.md` per-project + `.claude/forge.md` | **This document** (org-level) |
 
 ---
