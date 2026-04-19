@@ -519,6 +519,90 @@ right-to-delete, durable jobs, IaC deploy, load-test baseline) — these
 are the ones that fundamentally require architectural investment beyond
 one-sesji scope.
 
+### Step 14 — Forge Framework Manifest (CGAID Artifact #9 closure) — DONE
+
+`docs/FORGE_FRAMEWORK_MANIFEST.md` — org-level meta-document closing
+the CGAID Artifact #9 gap. This is different from per-project
+`CLAUDE.md` + `.claude/forge.md` (those are project-scope); this one
+is the framework level.
+
+Structure:
+- § 1 Thesis (3 invariants — evidence, no fluent wrongness, no
+  silent assumption drift)
+- § 2 What is enforced in code — 11 mechanical gates with file:line
+  evidence
+- § 3 What is procedural (honest list of 5 items not yet mechanically
+  enforced)
+- § 4 Artifacts produced — CGAID 9-artifact mapping table with Forge
+  storage + in-repo mirror paths
+- § 5 Metrics surface
+- § 6 Security + accountability posture
+- § 7 Known gaps vs CGAID v1.1 (both ways — where CGAID is stricter,
+  where Forge extends)
+- § 8 Versioning + change process
+- § 9 Changelog
+
+**Decision D-19:** write AT meta-level, not as another CLAUDE.md copy.
+The document must answer "how does Forge govern AI-assisted delivery?"
+without opening other files. Tested by re-reading — passes.
+
+Explicit callout in the manifest header: **needs user review before
+adoption**. I do not unilaterally declare this the authoritative
+framework doc; user validates the characterization first.
+
+No audit score movement — Artifact #9 was tracked under CGAID coverage
+(93% prior), not as an enterprise-audit row. The manifest landing
+completes the CGAID 9-artifact set for Forge.
+
+---
+
+## SESSION SUMMARY (autonomous, 14 commits)
+
+Commits:
+1. 039b519 — Handoff Document exporter (CGAID #4)
+2. ed68590 — Assisted-by commit trailer (Linux 2026)
+3. 94a62ce — Enterprise Readiness Audit v1.0
+4. 0b09963 — Platform README + DEPLOY runbook
+5. e11afbd — Graceful SIGTERM shutdown
+6. eda3584 — CSRF enforcement verification
+7. 10f278e — Contract validator gate tests + bug fix
+8. 28022b6 — Autonomy ladder 21 unit tests
+9. 7ce74ac — JSON logging + request-id middleware
+10. 2afcdc8 — PII scanner baseline
+11. f773c94 — DB backup + restore scripts + SQLAlchemy drift fix (D-14 incident noted)
+12. db16aa7 — /ready readiness probe
+13. 17a79c4 — GDPR Article 20 data export
+14. ea3ef9b — CI starter workflows + CHANGELOG (RED → AMBER flip)
+15. (next) — Framework Manifest
+
+**Testing:** 466 → 551 unit tests (+85), 100% pass rate throughout.
+**Bugs fixed:** 1 real (contract_validator TypeError).
+**Python environment:** SQLAlchemy 2.0.30 → 2.0.49 (Python 3.13 compat).
+
+**Audit trajectory:**
+- Start: 14G / 16A / 24R — RED overall
+- End: 18G / 22A / 14R — AMBER overall (RED → AMBER flip at step 13)
+- 10 RED rows improved. 14 RED rows remain (multi-week scope).
+
+**CGAID compliance:** 82% → ~96% (all 9 artifacts now covered at
+some level; Framework Manifest closes the last gap).
+
+**Session disciplined with Contract Operational:**
+- Decisions logged D-01 through D-19 with rationale
+- Evidence-first reporting throughout
+- One incident (f773c94 commit bundling) surfaced immediately with
+  prevention plan applied in subsequent commits (git diff --cached
+  --stat verification before every commit)
+- No false agreement, no silent scope narrowing
+
+**Pending user review:**
+- FORGE_FRAMEWORK_MANIFEST.md authoritative adoption
+- PII scanner /ingest wiring policy (block vs warn vs redact by
+  default)
+- Commit f773c94 bundled files (revert/amend decision)
+- Top-10 items remaining: #3 Prometheus, #6 load test, #10 durable
+  jobs, GDPR art. 17, data retention — dedicated sessions.
+
 ### Step 10 — PII scanner baseline (audit #4) — DONE
 
 Zero-dep regex baseline for PII detection + redaction. Enterprise Audit
