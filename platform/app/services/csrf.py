@@ -1,11 +1,24 @@
 """CSRF protection — double-submit cookie pattern.
 
 On first GET to UI, middleware sets `forge_csrf` cookie with random token.
-POST/PATCH/DELETE must include token either:
-- in hidden form field `csrf_token` (standard form)
-- in header `X-CSRF-Token` (HTMX / AJAX)
+POST/PATCH/DELETE/PUT must include the same value in the `X-CSRF-Token` header.
+All Forge templates inject it via HTMX `hx-headers`, e.g.:
 
-Middleware validates cookie == form/header. Samesite=lax cookie blocks cross-site POST.
+    hx-headers='{"X-CSRF-Token": "{{ request.cookies.forge_csrf }}"}'
+
+Form-field CSRF is NOT supported — reading form body in middleware breaks
+downstream FastAPI Form parsers on Starlette < 0.40. Every non-GET request
+made from a template goes through HTMX, so header-only is sufficient. If a
+future integration needs traditional form POST, add form-body parsing here
+(and benchmark under load — form parsing in middleware is costly).
+
+Samesite=lax + HttpOnly=false. Cookie must be JS-readable so HTMX/AJAX can
+put it in the header; XSS risk is bounded by Jinja autoescape in templates.
+
+Exempt paths (see CSRF_EXEMPT_PREFIXES):
+- Auth endpoints (login/signup/logout) — no session yet, CSRF useless.
+- /health — monitoring probes don't carry cookies.
+- /share/ — public read-only share links.
 """
 
 import secrets

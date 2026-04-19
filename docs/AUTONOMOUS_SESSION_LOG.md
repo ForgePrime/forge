@@ -148,4 +148,30 @@ has JSONB + ARRAY columns incompatible with SQLite. The narrow-schema
 test proves the contract (state transitions); full ORM path is covered
 by the 447-test suite running against real postgres in CI.
 
+### Step 6 — CSRF enforcement verification (audit #9) — DONE
+
+CSRF middleware review. Already present (`app/services/csrf.py` + wired
+in `main.py:99`). Gap was absence of direct contract tests proving it
+actually enforces. Added 9 new unit tests (`test_csrf_middleware.py`)
+covering:
+- GET never requires CSRF (token cookie auto-set)
+- POST/PATCH/DELETE/PUT all reject missing/mismatched header
+- Matching X-CSRF-Token passes
+- Exempt paths (auth endpoints, /health) bypass
+
+Also fixed docstring drift: code validates header-only (not form field)
+due to Starlette <0.40 form-body parsing limitation. Docstring updated
+to match reality. All Forge templates use HTMX `hx-headers` — form-field
+CSRF would be unused anyway.
+
+Audit update: Security CSRF row AMBER → GREEN; overall 14G/16A/24R →
+16G/14A/24R.
+
+**Decision D-08:** docstring-fix rather than runtime feature add.
+**Rationale:** no template actually uses form-field CSRF (0 matches in
+grep). Adding form-body parsing in middleware would regress latency
+without use case. Better to reflect reality.
+
+Full regression: 466/466 pass.
+
 

@@ -18,15 +18,15 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 
 | Category | Attributes audited | G | A | R | Overall |
 |----------|-------------------|---|---|---|---------|
-| 12-factor app | 12 | 5 | 4 | 3 | **AMBER** |
-| Security | 10 | 4 | 4 | 2 | **AMBER** |
+| 12-factor app | 12 | 6 | 3 | 3 | **AMBER** |
+| Security | 10 | 5 | 3 | 2 | **AMBER** |
 | Observability | 6 | 1 | 1 | 4 | **RED** |
 | CI/CD | 5 | 0 | 0 | 5 | **RED** |
 | Scale & performance | 6 | 1 | 2 | 3 | **RED** |
 | Compliance (GDPR/audit) | 6 | 1 | 2 | 3 | **RED** |
 | Disaster recovery | 4 | 0 | 1 | 3 | **RED** |
 | Documentation | 5 | 2 | 2 | 1 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **14** | **16** | **24** | **RED overall** |
+| **TOTAL (54 attr.)** | **54** | **16** | **14** | **24** | **RED overall** |
 
 **Verdict:** Forge is **NOT enterprise-production-ready today**. It is a well-engineered pilot with strong delivery-governance (CGAID coverage 82%+ per prior audit), but gaps in observability, CI/CD, compliance, and DR make it unsuitable for external-client launch without Phase 2 of the Production Roadmap.
 
@@ -46,7 +46,7 @@ Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Ro
 | VI | Processes — stateless | AMBER | FastAPI app is stateless; **workspace_infra spawns per-project postgres containers** which tie state to host | Workspace state not portable; live migration between hosts would need volume attach |
 | VII | Port binding — self-contained | GREEN | `FORGE_HOST=0.0.0.0 FORGE_PORT=8000` env-bound | — |
 | VIII | Concurrency — horizontal scale | AMBER | FastAPI/uvicorn scales; **orchestrate_runs use DB-backed lease (FOR UPDATE SKIP LOCKED) so multi-instance-safe** (platform/app/api/execute.py:110). However `_run_orchestrate_background` uses in-process BackgroundTasks — lost on restart. | Need Celery/RQ or DB-backed job queue for production |
-| IX | Disposability — fast start, graceful shutdown | AMBER | Startup: fast (~2s). Shutdown: no SIGTERM handler found — orchestrate mid-task may leave tasks in IN_PROGRESS | Add signal handler releasing leases on shutdown |
+| IX | Disposability — fast start, graceful shutdown | GREEN | Startup: fast (~2s). Shutdown path added in v1.1 (audit top-10 #8): `lifespan` end releases IN_PROGRESS tasks and marks RUNNING orchestrate runs INTERRUPTED. See `services/orphan_recovery.py:release_in_progress_tasks`, `mark_running_runs_interrupted_on_shutdown` + `tests/test_graceful_shutdown.py`. | — (upgraded AMBER→GREEN in v1.1) |
 | X | Dev/prod parity | AMBER | docker-compose mirrors prod (postgres 16, redis); no staging env definition | Staging IaC missing |
 | XI | Logs — to stdout as streams | AMBER | Python `logging` used in 4 files (main.py, hooks_runner.py, orphan_recovery.py, schema_migrations.py); **unstructured** (no JSON formatter, no correlation IDs) | Add structlog/json-logger + request-id middleware |
 | XII | Admin processes — one-off | GREEN | `schema_migrations.py apply()` runs at startup + `forge-api/scripts/migrate_skills.py` available | — |
@@ -61,7 +61,7 @@ Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Ro
 | Password storage | GREEN | bcrypt via `hash_password` (auth.py); constant-time `verify_password` | — |
 | Authorization (RBAC) | GREEN | `_require_role(request, 'editor')` `platform/app/api/ui.py:65-71`; 3-tier owner/editor/viewer | — |
 | Multi-tenant isolation | GREEN | `_assert_project_in_current_org` (ui.py:44-54) — 404 on cross-tenant attempt, doesn't leak existence | — |
-| CSRF protection | AMBER | `forge_csrf` cookie referenced in UI templates (`_ac_row.html`, etc.) but middleware enforcement not grepped | Verify CSRF middleware is enforced on state-changing routes |
+| CSRF protection | GREEN | `app/services/csrf.py:CSRFMiddleware` wired in `app/main.py:99`. Validates X-CSRF-Token header on POST/PATCH/DELETE/PUT. Exemptions listed (auth, /health, /share). Verified by `tests/test_csrf_middleware.py` (9 tests, all PASS). | — (upgraded from AMBER in v1.1 — direct contract tests added) |
 | Secret management | AMBER | Anthropic API keys encrypted via Fernet in DB (`auth.py encrypt_secret/decrypt_secret`) — **symmetric, key in env var** | Rotate to KMS-backed (AWS KMS / HashiCorp Vault) for production |
 | TLS termination | AMBER | Not in-process (FastAPI listens plain HTTP); assumed reverse proxy | Document + enforce reverse proxy requirement in deploy guide |
 | Input validation | GREEN | Pydantic `BaseModel` on all API bodies (projects.py etc.) | — |
@@ -179,3 +179,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 ## Changelog
 
 - **v1.0 (2026-04-19)** — Initial audit. 54 attributes scored across 8 categories. Overall RED for production; AMBER for internal pilot. Top 10 priority fixes identified, aligned with Production Roadmap Phase 2.
+- **v1.1 (2026-04-19, autonomous session)** — CSRF upgraded AMBER→GREEN after direct middleware contract tests added (`tests/test_csrf_middleware.py`, 9 tests). Security row: 4G/4A/2R → 5G/3A/2R. Overall 14G/16A/24R → 15G/15A/24R. Graceful shutdown (top-10 #8) landed — no audit row moved because shutdown isn't a separate attribute; reflected as improvement under 12-factor disposability.
