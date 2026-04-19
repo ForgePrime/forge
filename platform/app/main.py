@@ -12,6 +12,8 @@ from app.api.webhooks_api import router as webhooks_router
 from app.api.ai import router as ai_router
 from app.api.tier1 import router as tier1_router
 from app.api.skills import router as skills_router
+from app.api.lessons import router as lessons_router
+from app.api.search import router as search_router
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 
@@ -46,7 +48,54 @@ async def lifespan(app: FastAPI):
     _apply_alters(engine)
     # Bootstrap default org + assign existing projects (Phase 1 migration)
     _bootstrap_default_org()
+    # Seed forge-self anti-patterns (J5) so the system remembers its own incidents
+    from app.database import SessionLocal
+    from app.api.lessons import seed_self_anti_patterns
+    _db = SessionLocal()
+    try:
+        seed_self_anti_patterns(_db)
+    finally:
+        _db.close()
+    # P5.7 — flip orphaned RUNNING runs (worker thread killed by previous shutdown)
+    # to INTERRUPTED so the UI shows the truth instead of an eternal spinner.
+    from app.services.orphan_recovery import mark_orphan_runs_interrupted
+    _db = SessionLocal()
+    try:
+        touched = mark_orphan_runs_interrupted(_db)
+        if touched:
+            import logging
+            logging.getLogger(__name__).warning(
+                "P5.7 orphan recovery: marked %d run(s) INTERRUPTED at startup: %s",
+                len(touched), touched,
+            )
+    finally:
+        _db.close()
     yield
+    # ---- SHUTDOWN path (runs on SIGTERM / uvicorn graceful stop) ----
+    # Release IN_PROGRESS tasks back to TODO + mark RUNNING orchestrate runs
+    # INTERRUPTED. Prevents tasks from being stuck for the full lease duration
+    # after a restart. Best-effort — failures logged, never re-raised.
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    try:
+        from app.services.orphan_recovery import (
+            release_in_progress_tasks as _release_tasks,
+            mark_running_runs_interrupted_on_shutdown as _mark_runs,
+        )
+        _db = SessionLocal()
+        try:
+            released = _release_tasks(_db)
+            if released:
+                _log.info("graceful-shutdown: released %d IN_PROGRESS task(s): %s",
+                          len(released), released)
+            interrupted = _mark_runs(_db)
+            if interrupted:
+                _log.info("graceful-shutdown: marked %d orchestrate run(s) INTERRUPTED: %s",
+                          len(interrupted), interrupted)
+        finally:
+            _db.close()
+    except Exception as _e:  # pragma: no cover
+        _log.warning("graceful-shutdown cleanup failed: %s", _e)
 
 app = FastAPI(
     title="Forge Platform",
@@ -83,6 +132,8 @@ app.include_router(webhooks_router)
 app.include_router(ai_router)
 app.include_router(tier1_router)
 app.include_router(skills_router)
+app.include_router(lessons_router)
+app.include_router(search_router)
 app.include_router(ui_router)
 from app.api.ui import share_router
 app.include_router(share_router)

@@ -112,3 +112,40 @@ failed in full-suite run but PASSED when isolated. State-dependent on
 populated DB; not caused by this change. Suite-final count 420 passed /
 1 flaky — treat as green.
 
+### Step 3 — Enterprise Readiness Audit (docs/FORGE_ENTERPRISE_AUDIT.md) — DONE
+
+54 attributes across 8 categories. Overall RED for production, AMBER
+for internal pilot. Top 10 priority fixes identified. Commit 94a62ce.
+
+### Step 4 — Platform README + DEPLOY runbook — DONE
+
+Audit top-10 #7. Commit 0b09963. Two new docs: platform/README.md
+(5-min quickstart) + docs/DEPLOY.md (pilot deploy runbook including
+common failure modes, DB migration semantics, backup options).
+
+### Step 5 — Graceful shutdown + lease release (audit #8) — DONE
+
+FastAPI lifespan now has a shutdown path that:
+1. Releases every IN_PROGRESS task back to TODO (clears agent, started_at,
+   expires active execution leases).
+2. Marks every RUNNING/PAUSED/PENDING orchestrate run INTERRUPTED with
+   explanatory note.
+
+Complements existing startup-time `mark_orphan_runs_interrupted` (which
+uses a staleness threshold). Shutdown path knows for certain the worker
+is going away — no staleness check needed.
+
+services/orphan_recovery.py: 2 new functions with defensive try/except,
+never raise. tests/test_graceful_shutdown.py: 5 unit tests (3 via SQLite
+in-memory narrow-schema + 2 for error-path graceful degradation against
+a broken session).
+
+Full regression: 447/447 pass.
+
+**Decision D-07:** unit tests use SQLite in-memory with a narrow-schema
+table definition (not the real metadata) because the real Task model
+has JSONB + ARRAY columns incompatible with SQLite. The narrow-schema
+test proves the contract (state transitions); full ORM path is covered
+by the 447-test suite running against real postgres in CI.
+
+
