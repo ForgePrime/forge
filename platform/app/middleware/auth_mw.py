@@ -24,6 +24,7 @@ PUBLIC_PATHS = [
     "/",
     "/health",
     "/ready",
+    "/metrics",
     "/docs",
     "/openapi.json",
     "/redoc",

@@ -20,13 +20,13 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 |----------|-------------------|---|---|---|---------|
 | 12-factor app | 12 | 6 | 3 | 3 | **AMBER** |
 | Security | 10 | 6 | 2 | 2 | **AMBER** |
-| Observability | 6 | 3 | 1 | 2 | **AMBER** |
+| Observability | 6 | 4 | 1 | 1 | **AMBER** |
 | CI/CD | 5 | 0 | 5 | 0 | **AMBER** |
 | Scale & performance | 6 | 2 | 3 | 1 | **AMBER** |
 | Compliance (GDPR/audit) | 6 | 3 | 2 | 1 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 3 | 0 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **22** | **22** | **10** | **AMBER overall** |
+| **TOTAL (54 attr.)** | **54** | **23** | **22** | **9** | **AMBER overall** |
 
 **Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
 CGAID delivery-governance is strong (93% per prior audit), and the baseline
@@ -85,7 +85,7 @@ Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
 | Attribute | Status | Evidence | Gap |
 |-----------|--------|----------|-----|
 | Structured logs | AMBER | `app/services/logging_setup.py` (v1.2): stdlib JSON formatter opt-in via `FORGE_LOG_JSON=true`; `RequestIdMiddleware` assigns + echoes `X-Request-Id`; `RequestIdFilter` injects into every LogRecord. Tests: `tests/test_logging_setup.py` (14 tests). | Upgrade to AMBER from RED. Still stdlib (not structlog) — acceptable baseline; upgrade to structlog if processor chains needed. |
-| Metrics endpoint (Prometheus) | RED | No `/metrics` route found; no `prometheus_client` import | Add `starlette_prometheus` or equivalent |
+| Metrics endpoint (Prometheus) | GREEN | v1.17 (decision #1 A): `prometheus-client>=0.20` added to deps; `services/metrics.py` exposes `forge_http_requests_total` + latency histogram + `forge_llm_calls_total` + `forge_llm_cost_usd_total` + `forge_orchestrate_runs_total` + `forge_task_status`. `/metrics` endpoint scrape-able (public in auth middleware). Route-template labels prevent cardinality explosion. 14 unit tests. `MetricsMiddleware` counts every HTTP request automatically. | Wire `record_llm_call` / `record_orchestrate_transition` into pipeline.py hot paths (one-line addition each). |
 | Distributed tracing | RED | No `opentelemetry` import | Add OTel instrumentation (FastAPI + SQLAlchemy + httpx) |
 | Health endpoint | GREEN | `main.py:117-119` `@app.get('/health')` returns `{status, version}` | — |
 | Liveness vs readiness split | GREEN | v1.5: `/health` is pure process-alive (no backend checks); `/ready` checks DB via SELECT 1 + Redis via raw socket PING (zero-dep, no `redis` lib added). Returns 200 with `checks: {db: ok/fail:…, redis: ok/fail:…}` or 503. Both public (not auth-gated). Tests: `tests/test_health_ready.py` (5 tests). | — (upgraded RED→GREEN in v1.5) |

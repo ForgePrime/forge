@@ -136,6 +136,13 @@ app.add_middleware(AuthMiddleware)
 # response header for client/server log correlation.
 app.add_middleware(RequestIdMiddleware)
 
+# Prometheus metrics — always on, counters are cheap. /metrics endpoint
+# scrape-able by Prometheus/Datadog. Added BEFORE RequestIdMiddleware
+# so it wraps the request earlier (runs first on response path — last
+# chance to capture the final status code).
+from app.services.metrics import MetricsMiddleware
+app.add_middleware(MetricsMiddleware)
+
 # N+1 query profiler — OPT-IN via FORGE_PROFILE_NPLUS1=true env var.
 # When disabled (default) it's a no-op pass-through; zero overhead.
 # When enabled, wires sqlalchemy event listener + per-request scope.
@@ -174,6 +181,19 @@ def health():
     ability to answer HTTP is tested here.
     """
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus scrape endpoint (decision #1 A).
+
+    Public (no auth) — Prometheus servers don't carry session cookies.
+    Protect via network policy if scraping from outside the cluster.
+    """
+    from fastapi.responses import Response
+    from app.services.metrics import render_metrics
+    payload, content_type = render_metrics()
+    return Response(content=payload, media_type=content_type)
 
 
 @app.get("/ready")
