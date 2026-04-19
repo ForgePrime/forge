@@ -640,6 +640,151 @@ reset_key admin helper.
 No audit score row update (rate limiting is in the production roadmap
 not as a standalone audit attribute). Roadmap note amended.
 
+### Step 19 — k6 load test template — DONE
+
+`platform/scripts/loadtest.js` k6 starter. VUs/duration via env, ramp-
+up plan, checks /health + /ready + optional project-status, thresholds
+encoded (p95 100ms/300ms, <1% errors). docs/DEPLOY.md invocation recipes.
+Audit scale "Load test baseline" RED → AMBER.
+
+### Step 20 — DB connection pool tuning — DONE
+
+`app/database.py` adds pool_size=10, max_overflow=20, pool_recycle=1800s,
+pool_timeout=30s. All env-overridable (FORGE_DB_POOL_*). Audit
+"Connection pooling" AMBER → GREEN.
+
+### Step 21 — Production Dockerfile + docker-compose.prod.yml — DONE
+
+`platform/Dockerfile` multi-stage with non-root user, healthcheck.
+`platform/docker-compose.prod.yml` with mandatory-secrets-via-${VAR:?err},
+healthchecks, resource limits, log rotation, persistent volumes.
+Audit "Deploy pipeline" RED → AMBER. CI/CD category 0G/4A/1R → 0G/5A/0R.
+
+### Step 22 — N+1 query profiler — DONE
+
+`services/query_profiler.py` with SQLAlchemy event listener + contextvar-
+scoped counter + statement normalization + threshold env. 17 unit tests.
+Diagnostic only (log, never raise). `scope()` context manager for handlers
+or tests. Audit "N+1 query detection" RED → AMBER.
+
+### Step 23 — TLS termination documentation — DONE
+
+docs/DEPLOY.md gets TLS section: 3 proxy recipes (Caddy auto-LE /
+nginx + certbot / Traefik docker-compose) + required X-Forwarded-*
+headers contract + post-deploy sanity commands. No code change.
+Audit "TLS termination" AMBER → GREEN.
+
+---
+
+## AUTONOMOUS SESSION — FINAL COMMIT TABLE
+
+24 commits, chronological. Each landed with discipline: intent-
+matching commit message, `git diff --cached --stat` verification
+(after D-14 incident), unit tests where applicable, audit row update
+where applicable, session-log entry with rationale where the decision
+wasn't obvious.
+
+| # | Commit   | Step | Delta verdict                  | Artifact                    |
+|---|----------|------|--------------------------------|-----------------------------|
+| 1 | 039b519  | 1  | CGAID #4 ~85% → ~95%              | Handoff exporter            |
+| 2 | ed68590  | 2  | Security provenance             | Assisted-by trailer         |
+| 3 | 94a62ce  | 3  | Baseline audit v1.0             | ENTERPRISE_AUDIT.md         |
+| 4 | 0b09963  | 4  | Doc: AMBER row closed           | README + DEPLOY              |
+| 5 | e11afbd  | 5  | 12-factor disposability GREEN   | Graceful shutdown            |
+| 6 | eda3584  | 6  | Security CSRF GREEN             | CSRF tests + doc fix        |
+| 7 | 10f278e  | 7  | Validator gate coverage + fix   | Validator tests + fix       |
+| 8 | 28022b6  | 8  | Autonomy coverage               | Autonomy 21 tests            |
+| 9 | 7ce74ac  | 9  | Obs structured logs AMBER       | logging_setup + reqid MW     |
+| 10| 2afcdc8  | 10 | Compl PII AMBER                 | pii_scanner                  |
+| 11| f773c94  | 11 | DR AMBER + SQLAlchemy fix       | backup/restore scripts       |
+| 12| db16aa7  | 12 | Obs liveness GREEN              | /ready probe                 |
+| 13| 17a79c4  | 13 | Compl export GREEN              | GDPR Art. 20                 |
+| 14| ea3ef9b  | 14 | **RED → AMBER overall (flip)**  | CI workflows + CHANGELOG     |
+| 15| b31177d  | 15 | CGAID coverage 93→96%           | FRAMEWORK_MANIFEST.md        |
+| 16| 2725791  | 16 | Compl retention AMBER           | data_retention              |
+| 17| 7b46658  | 17 | Obs SLO GREEN                   | SLO.md                       |
+| 18| a39caac  | 18 | (service-only, no score)        | rate_limit                   |
+| 19| c0810e8  | 19 | Scale load test AMBER           | loadtest.js                  |
+| 20| 8a9c5e9  | 20 | Scale pool GREEN                | DB pool tuning              |
+| 21| a20c3de  | 21 | CI deploy AMBER                 | Dockerfile + prod compose    |
+| 22| 68e0aec  | 22 | Scale N+1 AMBER                 | query_profiler              |
+| 23| 6050ce0  | 23 | Security TLS GREEN              | TLS doc recipes              |
+| 24| 2e57c3a  | (pre)| Prevention                      | .gitignore cleanup (after f773c94) |
+
+**Tests:** 466 → 676 (+210 unit from this session, all passing).
+**Bugs fixed:** 1 real (contract_validator TypeError — commit 10f278e).
+**Dep changes:** SQLAlchemy 2.0.30 → 2.0.49 (Python 3.13 compat drift fix; same range as declared).
+**New zero-dep services:** 9 (handoff_exporter, logging_setup, pii_scanner,
+gdpr_export, data_retention, rate_limit, query_profiler, + plan/adr from
+prior sessions).
+**New docs:** 6 (SLO.md, FORGE_FRAMEWORK_MANIFEST.md, platform/README.md,
+DEPLOY.md, SESSION_LOG, ENTERPRISE_AUDIT.md).
+
+## Audit trajectory
+
+| Version | G  | A  | R  | Overall |
+|---------|----|----|----|---------|
+| v1.0 (start)  | 14 | 16 | 24 | RED   |
+| v1.1 CSRF     | 15 | 15 | 24 | RED   |
+| v1.2 logs     | 16 | 14 | 24 | RED   |
+| v1.3 PII      | 16 | 16 | 22 | RED   |
+| v1.4 DR       | 16 | 18 | 20 | RED   |
+| v1.5 /ready   | 17 | 18 | 19 | RED   |
+| v1.6 GDPR 20  | 18 | 17 | 19 | RED   |
+| v1.7 CI       | 18 | 22 | 14 | **AMBER** |
+| v1.8 Manifest | 18 | 22 | 14 | AMBER |
+| v1.9 retent   | 18 | 23 | 13 | AMBER |
+| v1.10 SLO     | 19 | 22 | 13 | AMBER |
+| v1.11 k6      | 19 | 23 | 12 | AMBER |
+| v1.12 pool    | 20 | 22 | 12 | AMBER |
+| v1.13 deploy  | 20 | 23 | 11 | AMBER |
+| v1.14 N+1     | 20 | 24 | 10 | AMBER |
+| v1.15 TLS     | 21 | 23 | 10 | AMBER |
+
+**Net movement:** 7 GREEN gained, 7 AMBER net gained, 14 RED closed.
+
+## What's REMAINING — all require user decisions beyond autonomy scope
+
+10 RED rows remain; each blocked on a user decision that autonomous
+work cannot make:
+
+1. **Prometheus `/metrics` endpoint** — requires `prometheus_client` dep
+   approval (user policy: add new deps vs stdlib-only).
+2. **OpenTelemetry tracing** — requires `opentelemetry-*` deps approval.
+3. **GDPR Article 17 right-to-delete** — design-heavy. User picks:
+   hard delete w/ FK cascade vs soft-delete w/ PII redaction.
+4. **Durable background jobs** — architectural: Celery or RQ; dep
+   approval + deployment strategy (separate worker pool).
+5. **KMS-backed secret store** — cloud-specific. User picks AWS Secrets
+   Manager / HashiCorp Vault / Azure Key Vault.
+6. **Workspace artifact object-storage** — cloud-specific (S3 / GCS /
+   Azure Blob). Today forge_output/ is host-local.
+7. **Mandatory PR review gate** — requires GitHub/GitLab API credentials
+   + webhook infra. User must provide token + target org.
+8. **PII scanner wiring into `/ingest`** — policy decision: block vs
+   warn vs redact-inline. User picks default posture.
+9. **Rate limiter wiring into middleware** — policy decision: global
+   or per-endpoint; tune limits with traffic measurement.
+10. **Security/lint CI strict mode** — currently continue-on-error
+    until baseline clean. User picks when to flip continue-on-error
+    to false after reviewing initial pip-audit + bandit + ruff output.
+
+## For user review on return
+
+1. **FORGE_FRAMEWORK_MANIFEST.md adoption** — I marked it "needs user
+   review". Read the § 7 "Known gaps vs CGAID v1.1" section first.
+2. **Commit f773c94 bundling incident** — 221 files bundled accidentally
+   due to staging accumulation. D-14 in log. No regression, but consider
+   reverting + re-committing as clean smaller patches if the history
+   shape matters.
+3. **19 decisions D-01 through D-21** — all in this log; read through
+   for anything that needs override.
+4. **4 standalone services awaiting wiring** — pii_scanner, rate_limit,
+   query_profiler, data_retention (endpoint is wired, but no scheduler).
+
+That's the end of autonomous work. 24 commits, RED → AMBER, 210 new
+unit tests, zero regressions introduced. Awaiting user prompt.
+
 ### Step 10 — PII scanner baseline (audit #4) — DONE
 
 Zero-dep regex baseline for PII detection + redaction. Enterprise Audit
