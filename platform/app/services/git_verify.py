@@ -69,13 +69,54 @@ def snapshot_head(workspace_dir: str) -> tuple[str | None, str | None]:
     return out, None
 
 
-def commit_all(workspace_dir: str, message: str) -> tuple[str | None, str | None]:
+def build_assisted_by_trailer(
+    model_used: str | None,
+    task_ext_id: str | None = None,
+    execution_id: int | None = None,
+    attempt: int | None = None,
+) -> str:
+    """Assemble a Linux-Kernel-2026-style `Assisted-by:` trailer block.
+
+    Forge is the delivery orchestrator; the AI model that wrote the code is
+    credited via `Assisted-by:`. Human accountability stays with the PR author
+    (Linux Kernel policy: AI cannot use legally binding Signed-off-by).
+
+    Returns an empty string when model_used is None (no AI was involved; e.g.
+    manual human commit through Forge workspace).
+    """
+    if not model_used:
+        return ""
+    trailer_lines = [f"Assisted-by: Forge orchestrator ({model_used})"]
+    meta_parts = []
+    if task_ext_id:
+        meta_parts.append(f"Task: {task_ext_id}")
+    if execution_id is not None:
+        meta_parts.append(f"Execution: E-{execution_id}")
+    if attempt is not None:
+        meta_parts.append(f"Attempt: {attempt}")
+    if meta_parts:
+        trailer_lines.append("Forge-context: " + " · ".join(meta_parts))
+    return "\n".join(trailer_lines)
+
+
+def commit_all(
+    workspace_dir: str,
+    message: str,
+    trailer: str | None = None,
+) -> tuple[str | None, str | None]:
     """Stage and commit all changes. Returns new HEAD sha (or None + err).
 
     If nothing to commit, returns current HEAD unchanged.
+
+    trailer: optional block appended to the message (separated by blank line).
+    Use build_assisted_by_trailer() to generate the standard Forge trailer
+    (Linux Kernel 2026 `Assisted-by:` precedent).
     """
     _run_git(workspace_dir, ["add", "-A"])
-    rc, out, err = _run_git(workspace_dir, ["commit", "-m", message])
+    full_message = message
+    if trailer:
+        full_message = f"{message}\n\n{trailer}"
+    rc, out, err = _run_git(workspace_dir, ["commit", "-m", full_message])
     if rc != 0 and "nothing to commit" not in (out + err).lower():
         return None, f"commit failed: {err or out}"
     head, head_err = snapshot_head(workspace_dir)

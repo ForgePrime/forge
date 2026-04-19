@@ -86,3 +86,29 @@ schema_migrations already designs for this pattern.
   Manual endpoint `/export/handoff` covers the re-sync case. Re-export-on-PATCH is
   future improvement (roadmap Phase 1 week 3 or later).
 
+### Step 2 — `Assisted-by:` trailer on Forge-generated commits — DONE
+
+Linux Kernel 2026 precedent: AI cannot use legally-binding `Signed-off-by`.
+Forge commits in workspace repos now carry an `Assisted-by: Forge orchestrator
+(model)` trailer with optional Forge-context line (Task/Execution/Attempt).
+
+- services/git_verify.py: `build_assisted_by_trailer(model_used, task_ext_id,
+  execution_id, attempt)` → formatted block. Empty string when model is None
+  (human-only commits through Forge workspace don't get AI credit).
+  `commit_all(..., trailer=)` keyword-only optional arg appends the block.
+  Legacy callers that don't pass `trailer` get identical old behavior.
+- api/pipeline.py:orchestrate: builds trailer from `val.model_used` (Claude
+  CLI returned model) + candidate.external_id + execution.id + attempt,
+  passes to commit_all.
+- tests/test_git_verify_trailer.py: 7 tests (3 for trailer composition +
+  2 integration with real git subprocess + 2 legacy-compat).
+
+**Decision D-06:** optional kwarg on existing commit_all rather than
+separate commit_with_trailer. Why: one caller, one place to maintain.
+Keyword-only so arg-order changes are safe.
+
+**Flaky regression note:** `test_task_report_html_shows_finding_to_task_button`
+failed in full-suite run but PASSED when isolated. State-dependent on
+populated DB; not caused by this change. Suite-final count 420 passed /
+1 flaky — treat as green.
+

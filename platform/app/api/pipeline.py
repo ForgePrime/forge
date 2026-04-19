@@ -907,7 +907,25 @@ def orchestrate(
                 verification_report: dict = {}
 
                 # 1. Git diff verify — commit + compare declared vs actual changes
-                head_after_sha, commit_err = commit_all(workspace, f"T-{candidate.external_id} attempt {attempt}")
+                # Assisted-by trailer (Linux Kernel 2026 precedent): AI cannot use
+                # legally-binding Signed-off-by; human accountability stays with the
+                # reviewer/merger. Forge credits the AI model that wrote the diff.
+                from app.services.git_verify import build_assisted_by_trailer
+                # BUGFIX (2026-04-19 autonomous session): was `val.model_used` but
+                # ValidationResult has no such attr — the CLIResult (cli) does.
+                # Never triggered before because round-1 never passed validation
+                # to reach this branch; P5.5 fix made the path reachable, exposing this.
+                _trailer = build_assisted_by_trailer(
+                    model_used=cli.model_used if cli else settings.claude_model,
+                    task_ext_id=candidate.external_id,
+                    execution_id=execution.id,
+                    attempt=attempt,
+                )
+                head_after_sha, commit_err = commit_all(
+                    workspace,
+                    f"T-{candidate.external_id} attempt {attempt}",
+                    trailer=_trailer,
+                )
                 if commit_err:
                     verification_issues.append(f"git_commit: {commit_err}")
                 if head_before_sha and head_after_sha:
