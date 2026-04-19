@@ -202,4 +202,61 @@ enforcement layer.
 Full regression: 482 passed / 2 flaky `test_p5_hook_timeout` (pass
 isolated, fail when suite state is populated — preexisting issue).
 
+### Step 8 — Direct unit tests for autonomy ladder (R9 from deep-risk) — DONE
+
+`services/autonomy.py` had zero direct unit tests. Logic tested indirectly
+via HTTP (tier1.py `/autonomy`, `/autonomy/promote` endpoints) but that
+obscured failure modes when the suite was busy.
+
+Added `tests/test_autonomy.py` — 21 unit tests covering:
+- `current_level` default and stored
+- `can_promote_to` rejection paths (unknown level, same/lower level,
+  skip-levels)
+- `can_promote_to` criteria enforcement (clean_runs gate, contract_md
+  length gate, L5 "zero re-opens" extra rule)
+- `can_promote_to` happy paths for L2, L3, L5
+- `promote` raises ValueError on blocked; commits + timestamps on OK
+- `veto_check` budget watermark (>80%), default flagged paths,
+  custom flagged paths, clean-path no-veto
+- Self-check: PROMOTION_CRITERIA monotone (higher L → stricter rules)
+
+Used FakeSession / FakeQuery duck-typed mocks — no DB spin-up. Full
+507/507 regression PASS after.
+
+**Decision D-10:** Duck-typed mocks rather than SQLAlchemy session
+fixture. **Rationale:** autonomy.py is pure Python calling 2 ORM
+methods (`db.query().filter().count()` and `.first()`); full ORM
+simulation overhead isn't justified. The HTTP integration tests
+(`test_tier1_backlog.py`) exercise the real ORM path; this file
+exercises the pure logic in isolation.
+
+---
+
+## Session summary (so far)
+
+Commits in this autonomous session, chronological:
+1. 039b519 — Handoff Document (CGAID artifact #4)
+2. ed68590 — Assisted-by commit trailer (Linux 2026 precedent)
+3. 94a62ce — Enterprise Readiness Audit doc
+4. 0b09963 — Platform README + DEPLOY runbook
+5. e11afbd — Graceful SIGTERM shutdown + lease release
+6. eda3584 — CSRF verification (AMBER → GREEN) + docstring fix
+7. 10f278e — Contract validator gate tests + bug fix (files_changed coercion)
+8. (next) — Autonomy ladder unit tests
+
+**Tests:** 466 → 507 (+41). No introduced regression.
+**Bugs fixed in-flight:** 1 (contract_validator TypeError on non-list
+files_changed).
+**CGAID compliance movement:** 82% → ~92% (Handoff #4 closed; exports
+landed in prior sessions for #3 and #5).
+**Enterprise Audit movement:** 14G/16A/24R → 16G/14A/24R (CSRF,
+disposability upgraded).
+
+Still OUT OF SCOPE this session (deferred):
+- CGAID v1.2 proposal for ITRP (separate dedicated session per user)
+- PR flow (needs GitHub/GitLab API credentials — user consent required)
+- Structured logging (structlog dep addition — user consent for deps)
+- Prometheus metrics (prometheus_client dep — same)
+- Durable background jobs (Celery/RQ — large architectural change)
+
 
