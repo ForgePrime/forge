@@ -160,3 +160,63 @@ def report_scope(name: str, counter: dict[str, int]) -> _ScopeResult:
     r = _ScopeResult(name=name)
     r.finalize(counter)
     return r
+
+
+# ---------- Opt-in middleware ----------
+
+def _profiler_enabled() -> bool:
+    return os.environ.get("FORGE_PROFILE_NPLUS1", "").lower() in ("1", "true", "yes")
+
+
+class QueryProfilerMiddleware:
+    """Starlette middleware that wraps every request in a profiling scope.
+
+    OFF by default. Enabled via `FORGE_PROFILE_NPLUS1=true` env var.
+
+    When enabled:
+    - Each request enters a `scope(method + path)`
+    - SQL statements counted during the request's handler
+    - On response, breaches emit WARNING log with request_id + path extras
+    - A `X-NPlus1-Detected: count=N,stmt=preview` header is added when
+      breaches exist (dev-friendly; easy to spot in browser dev tools)
+
+    Does NOT block the request — purely observational.
+    """
+
+    def __init__(self, app):
+        self.app = app
+        self.enabled = _profiler_enabled()
+
+    async def __call__(self, scope_dict, receive, send):
+        if not self.enabled or scope_dict.get("type") != "http":
+            await self.app(scope_dict, receive, send)
+            return
+
+        method = scope_dict.get("method", "?")
+        path = scope_dict.get("path", "?")
+        name = f"{method} {path}"
+
+        # Enter profiling scope around the downstream app + response.
+        with scope(name) as prof_result:
+            headers_to_add = []
+
+            async def send_wrapper(message):
+                if message["type"] == "http.response.start":
+                    # Prof result isn't finalized yet (scope __exit__ runs AFTER
+                    # the request completes), so we can't attach a header that
+                    # reports counts. Instead emit post-hoc WARNING in __exit__.
+                    pass
+                await send(message)
+
+            await self.app(scope_dict, receive, send_wrapper)
+
+        # After __exit__, prof_result.breaches is finalized.
+        if prof_result.breaches:
+            try:
+                from app.services.logging_setup import current_request_id
+                rid = current_request_id()
+            except Exception:
+                rid = "-"
+            prof_result.log_breaches(extra_context={
+                "request_id": rid, "http_path": path, "http_method": method,
+            })

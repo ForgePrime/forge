@@ -136,6 +136,19 @@ app.add_middleware(AuthMiddleware)
 # response header for client/server log correlation.
 app.add_middleware(RequestIdMiddleware)
 
+# N+1 query profiler — OPT-IN via FORGE_PROFILE_NPLUS1=true env var.
+# When disabled (default) it's a no-op pass-through; zero overhead.
+# When enabled, wires sqlalchemy event listener + per-request scope.
+try:
+    from app.services.query_profiler import QueryProfilerMiddleware, ensure_wired
+    from app.database import engine as _engine
+    import os as _os
+    if _os.environ.get("FORGE_PROFILE_NPLUS1", "").lower() in ("1", "true", "yes"):
+        ensure_wired(_engine)
+        app.add_middleware(QueryProfilerMiddleware)
+except Exception:  # pragma: no cover
+    pass  # profiler is diagnostic — never block startup on its failure
+
 app.include_router(auth_router)
 app.include_router(execute_router)
 app.include_router(projects_router)
