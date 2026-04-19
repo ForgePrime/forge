@@ -76,14 +76,129 @@ docker compose up -d
 docker compose logs -f forge-api        # watch for schema_migrations success + readiness
 ```
 
-### TLS termination
-docker-compose does NOT terminate TLS. Front with nginx/Caddy/Traefik:
+### TLS termination (mandatory for any public deployment)
+
+**Forge Platform does NOT terminate TLS in-process.** uvicorn listens on
+plain HTTP. This is a deliberate design — TLS operations (certificate
+renewal, SNI, ciphersuite policy) belong at the edge proxy, not in the
+application process.
+
+**Required architecture:** reverse proxy in front of Forge for any
+deployment reachable from anything other than localhost.
+
+#### Option A — Caddy (simplest, auto-renew via Let's Encrypt)
 
 ```
-# Caddyfile example
-forge.internal.example.com {
-  reverse_proxy localhost:8000
+# /etc/caddy/Caddyfile
+forge.example.com {
+    encode gzip
+    reverse_proxy localhost:8000 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    # Health probe bypass for internal monitoring (optional)
+    @health path /health /ready
+    handle @health {
+        reverse_proxy localhost:8000
+    }
 }
+```
+
+Run: `caddy run --config /etc/caddy/Caddyfile`. Caddy auto-provisions
+TLS certificates from Let's Encrypt on first request.
+
+#### Option B — nginx (if you already run it)
+
+```
+# /etc/nginx/sites-available/forge.conf
+server {
+    listen 443 ssl http2;
+    server_name forge.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/forge.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/forge.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 600s;    # orchestrate runs are long
+        proxy_send_timeout 600s;
+    }
+}
+
+server {
+    listen 80;
+    server_name forge.example.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+Certificates from `certbot --nginx -d forge.example.com`.
+
+#### Option C — Traefik (if you orchestrate with docker-compose)
+
+Add to `docker-compose.prod.yml` or a separate compose:
+
+```yaml
+traefik:
+  image: traefik:v3
+  command:
+    - --providers.docker
+    - --providers.docker.exposedbydefault=false
+    - --entrypoints.websecure.address=:443
+    - --certificatesresolvers.le.acme.httpchallenge=true
+    - --certificatesresolvers.le.acme.email=admin@example.com
+    - --certificatesresolvers.le.acme.storage=/acme/acme.json
+  ports:
+    - "443:443"
+    - "80:80"
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - traefik-acme:/acme
+
+forge-api:
+  # ...
+  labels:
+    - traefik.enable=true
+    - traefik.http.routers.forge.rule=Host(`forge.example.com`)
+    - traefik.http.routers.forge.entrypoints=websecure
+    - traefik.http.routers.forge.tls.certresolver=le
+```
+
+#### Whichever you pick — required headers to verify
+
+The proxy MUST forward these headers so Forge sees correct client info:
+- `X-Forwarded-For` — real client IP for audit log
+- `X-Forwarded-Proto` — scheme for redirect logic
+- `X-Forwarded-Host` — for URL generation
+- `X-Request-Id` — if present, Forge preserves it (see `RequestIdMiddleware`)
+
+Sanity test after deploy:
+```bash
+# TLS handshake sane
+openssl s_client -connect forge.example.com:443 -servername forge.example.com </dev/null | head -20
+
+# HSTS present + security headers
+curl -I https://forge.example.com/health
+
+# App actually reachable
+curl -s https://forge.example.com/ready | jq
 ```
 
 ### Firewall rules (recommended)

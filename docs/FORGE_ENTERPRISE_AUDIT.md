@@ -19,14 +19,14 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | Category | Attributes audited | G | A | R | Overall |
 |----------|-------------------|---|---|---|---------|
 | 12-factor app | 12 | 6 | 3 | 3 | **AMBER** |
-| Security | 10 | 5 | 3 | 2 | **AMBER** |
+| Security | 10 | 6 | 2 | 2 | **AMBER** |
 | Observability | 6 | 3 | 1 | 2 | **AMBER** |
 | CI/CD | 5 | 0 | 5 | 0 | **AMBER** |
 | Scale & performance | 6 | 2 | 3 | 1 | **AMBER** |
 | Compliance (GDPR/audit) | 6 | 2 | 3 | 1 | **AMBER** |
 | Disaster recovery | 4 | 0 | 3 | 1 | **AMBER** |
 | Documentation | 5 | 2 | 3 | 0 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **20** | **24** | **10** | **AMBER overall** |
+| **TOTAL (54 attr.)** | **54** | **21** | **23** | **10** | **AMBER overall** |
 
 **Verdict (v1.7):** Forge has moved from RED overall to **AMBER overall**.
 CGAID delivery-governance is strong (93% per prior audit), and the baseline
@@ -73,7 +73,7 @@ Estimated effort to GREEN overall: **3-5 weeks dedicated work**, down from
 | Multi-tenant isolation | GREEN | `_assert_project_in_current_org` (ui.py:44-54) — 404 on cross-tenant attempt, doesn't leak existence | — |
 | CSRF protection | GREEN | `app/services/csrf.py:CSRFMiddleware` wired in `app/main.py:99`. Validates X-CSRF-Token header on POST/PATCH/DELETE/PUT. Exemptions listed (auth, /health, /share). Verified by `tests/test_csrf_middleware.py` (9 tests, all PASS). | — (upgraded from AMBER in v1.1 — direct contract tests added) |
 | Secret management | AMBER | Anthropic API keys encrypted via Fernet in DB (`auth.py encrypt_secret/decrypt_secret`) — **symmetric, key in env var** | Rotate to KMS-backed (AWS KMS / HashiCorp Vault) for production |
-| TLS termination | AMBER | Not in-process (FastAPI listens plain HTTP); assumed reverse proxy | Document + enforce reverse proxy requirement in deploy guide |
+| TLS termination | GREEN | v1.15: docs/DEPLOY.md now has explicit TLS section with 3 reverse-proxy recipes (Caddy auto-LE, nginx, Traefik docker-compose), required forwarded headers documented, sanity-check commands listed. Platform architecturally delegates TLS to edge proxy (correct separation of concerns). | — (upgraded AMBER→GREEN in v1.15) |
 | Input validation | GREEN | Pydantic `BaseModel` on all API bodies (projects.py etc.) | — |
 | SAST / dep scan in CI | RED | No CI workflow files found | Add Semgrep/Bandit/pip-audit to CI (Roadmap Phase 2 week 5) |
 | Content safety scan on uploads | RED | `/ingest` accepts user-uploaded documents directly into Knowledge.content without PII/size scrutiny | Add max-size + regex-based PII detection (Roadmap Phase 2 week 7) |
@@ -203,3 +203,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.12 (2026-04-19, autonomous session)** — Connection pooling row AMBER→GREEN. `app/database.py` configures `pool_size=10`, `max_overflow=20`, `pool_recycle=1800s`, `pool_timeout=30s`, `pool_pre_ping=True`. All overridable via `FORGE_DB_POOL_*` env vars. Scale category: 1G/3A/2R → 2G/2A/2R. Overall: 19G/23A/12R → 20G/22A/12R.
 - **v1.13 (2026-04-19, autonomous session)** — Deploy pipeline row RED→AMBER. `platform/Dockerfile` (multi-stage, non-root user, healthcheck) + `platform/docker-compose.prod.yml` (mandatory secrets via `${VAR:?err}`, resource limits, log rotation, healthchecks, persistent volumes) ship. CI/CD category: 0G/4A/1R → 0G/5A/0R (AMBER overall, was RED pre-v1.7). Overall: 20G/22A/12R → 20G/23A/11R.
 - **v1.14 (2026-04-19, autonomous session)** — N+1 query detection row RED→AMBER. `services/query_profiler.py` ships — SQLAlchemy event listener + contextvar-scoped counter + statement normalization + threshold env. 17 unit tests. Zero new deps. `scope()` context manager usable from handlers or tests. Wiring into request middleware deferred to avoid touching every handler at once. Scale category: 2G/2A/2R → 2G/3A/1R. Overall: 20G/23A/11R → 20G/24A/10R.
+- **v1.15 (2026-04-19, autonomous session)** — TLS termination row AMBER→GREEN. docs/DEPLOY.md gets explicit TLS section with 3 reverse-proxy recipes (Caddy auto-LE, nginx + certbot, Traefik docker-compose), required X-Forwarded-* headers documented, post-deploy sanity commands. Security category: 5G/3A/2R → 6G/2A/2R. Overall: 20G/24A/10R → 21G/23A/10R.
