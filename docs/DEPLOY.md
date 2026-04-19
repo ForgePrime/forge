@@ -147,6 +147,34 @@ staging + smoke API tests. Document the date in an ops log.
 
 ---
 
+## Load testing
+
+`platform/scripts/loadtest.js` ships as a k6 starter script. Not bundled
+in CI (needs k6 binary); run manually in staging or on a load-test box.
+
+```bash
+# Baseline (20 VUs, 1 minute)
+k6 run platform/scripts/loadtest.js
+
+# Sustained load (50 VUs, 5 minutes)
+k6 run -e VUS=50 -e DURATION=5m platform/scripts/loadtest.js
+
+# Include authenticated project endpoint
+k6 run -e PROJECT_SLUG=warehouseflow platform/scripts/loadtest.js
+```
+
+Targets encoded in `options.thresholds`:
+- `/health` p95 < 100ms
+- `/ready` p95 < 300ms
+- total error rate < 1%
+- k6 exits non-zero if thresholds breached — CI-compatible
+
+First run establishes the baseline. Subsequent runs detect regression
+against that baseline. Coordinate with `docs/SLO.md` targets (SLO-1,
+SLO-2, SLO-3).
+
+---
+
 ## Rollback
 
 ### App rollback
