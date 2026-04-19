@@ -599,9 +599,46 @@ some level; Framework Manifest closes the last gap).
 - FORGE_FRAMEWORK_MANIFEST.md authoritative adoption
 - PII scanner /ingest wiring policy (block vs warn vs redact by
   default)
+- Rate limiter wiring policy (per-endpoint opt-in or global middleware)
 - Commit f773c94 bundled files (revert/amend decision)
 - Top-10 items remaining: #3 Prometheus, #6 load test, #10 durable
-  jobs, GDPR art. 17, data retention — dedicated sessions.
+  jobs, GDPR art. 17 — dedicated sessions.
+
+### Step 16 — Data retention sweep (GDPR Article 5(1)(e)) — DONE
+
+`services/data_retention.py` — sweep deletes rows older than per-entity
+TTL. Defaults: LLMCall 180d, AuditLog 365d, OrchestrateRun 365d.
+PromptElement excluded (needs TimestampMixin migration, noted inline).
+
+Dry-run default. Admin endpoint `POST /api/v1/tier1/gdpr/retention/sweep`.
+12 unit tests. Compliance row RED→AMBER.
+
+### Step 17 — SLO v1.0 doc — DONE
+
+`docs/SLO.md` — 7 aspirational SLOs (UI avail, API correctness,
+orchestrate p95, cost/task, **contract violation disclosure rate**
+for CGAID trust, DR RPO/RTO, CI green rate). Every target has metric
+source + breach action. Honest header: aspirational pending load test
+baseline. Observability SLO row AMBER→GREEN.
+
+### Step 18 — Rate limiting service (standalone tool) — DONE
+
+`services/rate_limit.py` — sliding-window counter on Redis. Zero new
+deps (redis 6.4.0 already in venv). Fail-open default (production
+preference — cache blip shouldn't block prod); `FORGE_RATE_LIMIT_FAIL_CLOSED=1`
+env flips to strict mode.
+
+**Decision D-21:** NOT wired into middleware. Global 429 rejection
+would break integration tests that hammer the API. Callers opt-in per
+endpoint via `check_rate_limit(key, max_per_window, window_sec)`.
+
+14 unit tests with in-process FakeRedis shim — no live Redis required.
+Covers happy path, over-limit raising with retry_after, key isolation,
+new-window reset, zero-limit disabled, fail-open + fail-closed paths,
+reset_key admin helper.
+
+No audit score row update (rate limiting is in the production roadmap
+not as a standalone audit attribute). Roadmap note amended.
 
 ### Step 10 — PII scanner baseline (audit #4) — DONE
 
