@@ -567,6 +567,25 @@ def export_adrs(slug: str, request: Request, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/projects/{slug}/export/handoff")
+def export_handoff(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Manually regenerate in-repo .ai/handoff/HANDOFF_T-NNN-*.md for every feature/bug task.
+
+    CGAID Artifact #4 — renders all 8 required handoff fields per task.
+    Idempotent — overwrites files.
+    """
+    _user(request)
+    proj = _project(db, slug, request)
+    from app.services.handoff_exporter import export_project_handoffs
+    from app.config import settings as _settings
+    paths = export_project_handoffs(db, proj, _settings.workspace_root)
+    return {
+        "project": slug,
+        "handoffs_exported": len(paths),
+        "paths": [str(p) for p in paths],
+    }
+
+
 @router.post("/projects/{slug}/findings/{external_id}/dismiss")
 def finding_dismiss(slug: str, external_id: str, body: FindingDismissBody,
                     request: Request, db: Session = Depends(get_db)):

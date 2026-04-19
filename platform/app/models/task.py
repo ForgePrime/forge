@@ -58,6 +58,11 @@ class Task(Base, TimestampMixin):
     fail_reason: Mapped[str | None] = mapped_column(Text)
     requirement_refs: Mapped[list[str] | None] = mapped_column(ARRAY(String))
     completes_kr_ids: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    # P2.1 — when this task was auto-created from a finding, track the link
+    origin_finding_id: Mapped[int | None] = mapped_column(ForeignKey("findings.id", ondelete="SET NULL"))
+    # CGAID Artifact #4 Handoff — explicit risks per task
+    # Shape: list[{risk: str, mitigation: str, severity: "LOW|MEDIUM|HIGH", owner: str|null}]
+    risks: Mapped[list[dict] | None] = mapped_column(JSONB)
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
     acceptance_criteria: Mapped[list["AcceptanceCriterion"]] = relationship(

@@ -44,6 +44,7 @@ class TaskCreate(BaseModel):
     exclusions: list[str] | None = None
     depends_on: list[str] = Field(default_factory=list)
     acceptance_criteria: list[ACCreate] = Field(default_factory=list)
+    risks: list[dict] | None = None  # CGAID Artifact #4 — [{risk, mitigation, severity, owner?}]
 
 
 class GuidelineCreate(BaseModel):
@@ -121,6 +122,7 @@ class TaskUpdate(BaseModel):
     scopes: list[str] | None = None
     requirement_refs: list[str] | None = None
     completes_kr_ids: list[str] | None = None
+    risks: list[dict] | None = None
 
 
 class ACUpdate(BaseModel):
@@ -260,6 +262,7 @@ def create_tasks(slug: str, tasks: list[TaskCreate], request: Request, db: Sessi
             instruction=t_data.instruction,
             type=t_data.type,
             scopes=t_data.scopes,
+            risks=t_data.risks,
             origin=t_data.origin,
             produces=t_data.produces,
             alignment=t_data.alignment,
@@ -303,6 +306,14 @@ def create_tasks(slug: str, tasks: list[TaskCreate], request: Request, db: Sessi
         from app.services.plan_exporter import export_project_plan
         from app.config import settings as _settings
         export_project_plan(db, proj, _settings.workspace_root)
+    except Exception:
+        pass
+
+    # CGAID artifact #4 — auto-export in-repo Handoff docs (feature/bug tasks only)
+    try:
+        from app.services.handoff_exporter import export_project_handoffs
+        from app.config import settings as _settings
+        export_project_handoffs(db, proj, _settings.workspace_root)
     except Exception:
         pass
 

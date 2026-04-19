@@ -41,6 +41,22 @@ PENDING_COLUMNS: list[tuple[str, str, str]] = [
     ("projects", "autonomy_promoted_at", "TIMESTAMP WITH TIME ZONE"),
     # I3 — objective-level watchlist opt-out
     ("objectives", "autonomy_optout", "BOOLEAN DEFAULT false"),
+    # Objective detail mockup 09 — first-class test scenarios + challenger checks
+    ("objectives", "test_scenarios", "JSONB"),
+    ("objectives", "challenger_checks", "JSONB"),
+    # Mockup 04 — pause orchestrate run
+    ("orchestrate_runs", "pause_requested", "BOOLEAN DEFAULT false"),
+    ("orchestrate_runs", "paused_at", "TIMESTAMP WITH TIME ZONE"),
+    ("orchestrate_runs", "resumed_at", "TIMESTAMP WITH TIME ZONE"),
+    # P2.1 — link chore tasks back to the finding that spawned them
+    ("tasks", "origin_finding_id", "INTEGER REFERENCES findings(id) ON DELETE SET NULL"),
+    # P3.4 — per-objective KB scoping (which sources matter for this objective)
+    ("objectives", "kb_focus_ids", "INTEGER[]"),
+    # P3.5 — per-source "last consulted" timestamp (audit + pruning hint)
+    ("knowledge", "last_read_at", "TIMESTAMP WITH TIME ZONE"),
+    # CGAID Artifact #4 Handoff — explicit risks list per task
+    # Shape: list[{risk: str, mitigation: str, severity: "LOW|MEDIUM|HIGH", owner: str|null}]
+    ("tasks", "risks", "JSONB"),
 ]
 
 
@@ -84,6 +100,12 @@ def apply(engine) -> None:
         _replace_check_constraint(
             conn, "findings", "valid_finding_status",
             "status IN ('OPEN', 'APPROVED', 'DEFERRED', 'REJECTED', 'DISMISSED', 'ACCEPTED')",
+        )
+        # P1.1 — include PAUSED. P5.6 — include PARTIAL_FAIL (run completed its
+        # task pool but at least one task FAILED, so DONE would be misleading).
+        _replace_check_constraint(
+            conn, "orchestrate_runs", "valid_orchestrate_run_status",
+            "status IN ('PENDING','RUNNING','PAUSED','DONE','FAILED','CANCELLED','BUDGET_EXCEEDED','PARTIAL_FAIL')",
         )
         try:
             conn.execute(text('ALTER TABLE findings ALTER COLUMN execution_id DROP NOT NULL'))
