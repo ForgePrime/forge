@@ -316,4 +316,64 @@ Still OUT OF SCOPE this session (deferred to dedicated sessions):
 - Skill Change Log formal artifact (medium code change, lower ROI today)
 - Load test baseline (requires test data generation, k6/Locust setup)
 
+### Step 10 — PII scanner baseline (audit #4) — DONE
+
+Zero-dep regex baseline for PII detection + redaction. Enterprise Audit
+item #4 (PII scrubbing before LLM call) — blocker for EU clients.
+
+`services/pii_scanner.py`:
+- `scan(text)` → list[PIIFinding] with type/match/start/end/severity
+- Types detected: EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD (Luhn-verified),
+  IP_ADDRESS, SSN
+- `redact(text)` — right-to-left replace, preserves text flow
+- `scan_then_decide(text)` — policy wrapper returning 'pass'|'warn'|'block'
+  (default: HIGH blocks, MEDIUM warns, LOW passes)
+
+30 unit tests covering all detectors + Luhn edge cases + redaction
+order safety + deterministic output.
+
+**Intentionally NOT wired into `/ingest`** — that's a policy decision.
+Default policy would block uploads containing IBAN/SSN/CC which might
+break existing test fixtures that use fake-but-Luhn-valid data. Wait
+for user to decide: block by default / warn / redact inline / per-
+project flag. The standalone tool + test coverage is ready; wiring
+is a follow-up.
+
+**Decision D-12:** Tool-first, wiring-later. **Rationale:**
+autonomous session should not silently change a data-ingestion
+policy. User needs to set the posture (especially for EU vs US vs
+mixed client base). Tool is zero-risk sitting alone; wiring carries
+product-policy weight.
+
+Audit v1.3:
+- PII scrubbing row RED → AMBER
+- Compliance category: 1G/2A/3R → 1G/3A/2R
+- Overall: 16G/15A/23R → 16G/16A/22R
+- Still RED overall.
+
+Full regression: 551/551 pass.
+
+---
+
+## Session end state (10 steps, 10 commits expected)
+
+Commits chronological:
+1. 039b519 — Handoff Document exporter (CGAID #4)
+2. ed68590 — Assisted-by commit trailer
+3. 94a62ce — Enterprise Readiness Audit v1.0 doc
+4. 0b09963 — Platform README + DEPLOY runbook
+5. e11afbd — Graceful SIGTERM shutdown + lease release
+6. eda3584 — CSRF enforcement verification (tests + docstring)
+7. 10f278e — Contract validator gate tests + bug fix
+8. 28022b6 — Autonomy ladder unit tests (21 new)
+9. 7ce74ac — JSON structured logging + request-id middleware
+10. (next) — PII scanner baseline + audit v1.3
+
+**Tests:** 466 → 551 (+85 new).
+**Bugs fixed in-flight:** 1 real (contract_validator TypeError).
+**New services:** 3 (logging_setup, pii_scanner, handoff_exporter + plan/adr from prior).
+**Docs:** 3 new (production roadmap, enterprise audit, platform README + DEPLOY).
+**CGAID compliance:** 82% → ~93%.
+**Enterprise Audit:** 14G/16A/24R → 16G/16A/22R (4 attributes improved).
+
 

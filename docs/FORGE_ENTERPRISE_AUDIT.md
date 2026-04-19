@@ -23,10 +23,10 @@ Evidence is cited inline as `file:line` — each claim is verifiable by grep.
 | Observability | 6 | 1 | 2 | 3 | **RED** |
 | CI/CD | 5 | 0 | 0 | 5 | **RED** |
 | Scale & performance | 6 | 1 | 2 | 3 | **RED** |
-| Compliance (GDPR/audit) | 6 | 1 | 2 | 3 | **RED** |
+| Compliance (GDPR/audit) | 6 | 1 | 3 | 2 | **RED** |
 | Disaster recovery | 4 | 0 | 1 | 3 | **RED** |
 | Documentation | 5 | 2 | 2 | 1 | **AMBER** |
-| **TOTAL (54 attr.)** | **54** | **16** | **15** | **23** | **RED overall** |
+| **TOTAL (54 attr.)** | **54** | **16** | **16** | **22** | **RED overall** |
 
 **Verdict:** Forge is **NOT enterprise-production-ready today**. It is a well-engineered pilot with strong delivery-governance (CGAID coverage 82%+ per prior audit), but gaps in observability, CI/CD, compliance, and DR make it unsuitable for external-client launch without Phase 2 of the Production Roadmap.
 
@@ -113,7 +113,7 @@ Estimated effort to GREEN overall: **5-8 weeks dedicated work** (aligned with Ro
 | Attribute | Status | Evidence | Gap |
 |-----------|--------|----------|-----|
 | Audit log (who/when/what) | GREEN | `AuditLog` model + `_audit(...)` helper used in execute.py/pipeline.py | — |
-| PII scrubbing before LLM call | RED | LLM prompt includes raw Knowledge.content from user-uploaded docs — no PII detection/redaction before send to Anthropic | **Enterprise-blocker for EU clients.** Add PII regex + optional redaction per-project flag |
+| PII scrubbing before LLM call | AMBER | v1.3: `services/pii_scanner.py` provides regex-based detection (EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD w/ Luhn, IP, SSN) + `redact()` + policy-wrapped `scan_then_decide()`. 30 unit tests. **NOT wired into `/ingest` yet** — standalone tool awaiting user policy decision (block vs warn vs redact by default). | Wire into ingest endpoint with project-level policy config. Optional upgrade to presidio/NER for higher recall. |
 | Data retention policy | RED | No code enforces retention limits; data accumulates indefinitely in DB | Add per-artifact retention config + scheduled cleanup |
 | Right-to-delete (GDPR art. 17) | RED | No endpoint to purge user/org data | Add admin endpoint + verified cascading delete |
 | Data export (GDPR art. 20) | AMBER | Manual via SQL / export_* endpoints we added | Formalize per-user/per-org export bundle |
@@ -181,3 +181,4 @@ Total estimated effort for top-10: **~5-7 weeks** for single developer, concentr
 - **v1.0 (2026-04-19)** — Initial audit. 54 attributes scored across 8 categories. Overall RED for production; AMBER for internal pilot. Top 10 priority fixes identified, aligned with Production Roadmap Phase 2.
 - **v1.1 (2026-04-19, autonomous session)** — CSRF upgraded AMBER→GREEN after direct middleware contract tests added (`tests/test_csrf_middleware.py`, 9 tests). Security row: 4G/4A/2R → 5G/3A/2R. Overall 14G/16A/24R → 15G/15A/24R. Graceful shutdown (top-10 #8) landed — no audit row moved because shutdown isn't a separate attribute; reflected as improvement under 12-factor disposability.
 - **v1.2 (2026-04-19, autonomous session)** — Structured logs upgraded RED→AMBER. `services/logging_setup.py` adds stdlib JsonFormatter (opt-in via `FORGE_LOG_JSON` env), RequestIdMiddleware assigning per-request UUID echoed as `X-Request-Id`, and RequestIdFilter injecting the ID into every LogRecord. Zero new deps (stdlib only). 14 unit tests. Observability row: 1G/1A/4R → 1G/2A/3R. Overall 16G/14A/24R → 16G/15A/23R.
+- **v1.3 (2026-04-19, autonomous session)** — PII scrubbing row RED→AMBER. `services/pii_scanner.py` (NEW, zero-dep regex): EMAIL, PHONE, IBAN, PESEL, CREDIT_CARD (Luhn-verified), IP_ADDRESS, SSN. `scan()` + `redact()` + policy wrapper `scan_then_decide()`. 30 unit tests. **Not yet wired into `/ingest`** — awaits per-project policy decision (block/warn/redact by default). Compliance row: 1G/2A/3R → 1G/3A/2R. Overall: 16G/15A/23R → 16G/16A/22R.
