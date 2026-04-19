@@ -327,9 +327,10 @@ def post_deliver(
             ))
 
         # Save decisions from delivery
+        created_decisions: list[Decision] = []
         for dec in delivery.get("decisions", []):
             ext_id = _next_external_id(db, task.project_id, "D")
-            db.add(Decision(
+            d_row = Decision(
                 project_id=task.project_id, execution_id=execution.id,
                 external_id=ext_id, task_id=task.id,
                 type=dec.get("type", "implementation"),
@@ -337,7 +338,9 @@ def post_deliver(
                 recommendation=dec.get("recommendation", ""),
                 reasoning=dec.get("reasoning"),
                 status="CLOSED",
-            ))
+            )
+            db.add(d_row)
+            created_decisions.append(d_row)
 
         # Save findings from delivery
         for f in delivery.get("findings", []):
@@ -360,6 +363,22 @@ def post_deliver(
                new_value={"ceremony": task.ceremony_level})
 
         db.commit()
+
+        # CGAID artifact #5 — auto-export CLOSED ADRs to in-repo .ai/decisions/
+        # Best-effort: filesystem is mirror, DB is source of truth.
+        if created_decisions:
+            try:
+                from app.models import Project
+                from app.services.adr_exporter import export_decision
+                from app.config import settings as _settings
+                proj = db.query(Project).filter(Project.id == task.project_id).first()
+                if proj:
+                    for d_row in created_decisions:
+                        db.refresh(d_row)  # ensure external_id + created_at populated post-commit
+                        export_decision(d_row, proj, _settings.workspace_root,
+                                        task_ext_id=task.external_id)
+            except Exception:
+                pass
 
         return {
             "status": "ACCEPTED",

@@ -296,6 +296,16 @@ def create_tasks(slug: str, tasks: list[TaskCreate], request: Request, db: Sessi
                         raise HTTPException(422, f"Dependency {dep_ext} not found for task {t_data.external_id}")
 
     db.commit()
+
+    # CGAID artifact #3 — auto-export in-repo PLAN.md after batch task creation
+    # Best-effort: filesystem is a mirror, DB remains source of truth.
+    try:
+        from app.services.plan_exporter import export_project_plan
+        from app.config import settings as _settings
+        export_project_plan(db, proj, _settings.workspace_root)
+    except Exception:
+        pass
+
     return {"created": created}
 
 

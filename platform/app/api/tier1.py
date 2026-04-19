@@ -525,6 +525,48 @@ class FindingDismissBody(BaseModel):
     dismissed_reason: str = Field(..., min_length=50, max_length=2000)
 
 
+# ===================================================================
+# CGAID in-repo artifact exports — Plan (#3) + ADRs (#5)
+# ===================================================================
+
+@router.post("/projects/{slug}/export/plan")
+def export_plan(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Manually regenerate in-repo .ai/PLAN.md + .ai/PLAN_{O-NNN}.md from current DB state.
+
+    Used for disaster recovery (files deleted) or initial sync on existing project.
+    Idempotent — overwrites files with current state.
+    """
+    _user(request)
+    proj = _project(db, slug, request)
+    from app.services.plan_exporter import export_project_plan
+    from app.config import settings as _settings
+    paths = export_project_plan(db, proj, _settings.workspace_root)
+    return {
+        "project": slug,
+        "files_written": len(paths),
+        "paths": [str(p) for p in paths],
+    }
+
+
+@router.post("/projects/{slug}/export/adrs")
+def export_adrs(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Manually regenerate in-repo .ai/decisions/D-NNN-*.md for every CLOSED Decision.
+
+    Used for disaster recovery or bulk sync on project with existing decisions
+    that predate the in-repo export hook. Idempotent — overwrites files.
+    """
+    _user(request)
+    proj = _project(db, slug, request)
+    from app.services.adr_exporter import export_all_closed_decisions
+    from app.config import settings as _settings
+    paths = export_all_closed_decisions(db, proj, _settings.workspace_root)
+    return {
+        "project": slug,
+        "decisions_exported": len(paths),
+        "paths": [str(p) for p in paths],
+    }
+
+
 @router.post("/projects/{slug}/findings/{external_id}/dismiss")
 def finding_dismiss(slug: str, external_id: str, body: FindingDismissBody,
                     request: Request, db: Session = Depends(get_db)):

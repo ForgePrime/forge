@@ -1113,6 +1113,15 @@ def orchestrate(
                         db.add(d_row)
                         db.flush()
                         extracted_decisions_ext.append(ext_id)
+                        # CGAID artifact #5 — auto-export CLOSED ADR to in-repo .ai/decisions/
+                        try:
+                            from app.services.adr_exporter import export_decision
+                            export_decision(
+                                d_row, proj, settings.workspace_root,
+                                task_ext_id=candidate.external_id,
+                            )
+                        except Exception:
+                            pass  # filesystem export is best-effort; DB is source of truth
 
                     for ef in extraction.findings:
                         ext_id = _next_external_id(db, proj.id, Finding, "F")
