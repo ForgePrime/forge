@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>09. Add scenario — non-happy-path for objective O-002</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 60px; min-height: 1300px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <a href="03v2-objectives-dag.html" class="hover:text-white">Objectives</a>
+      <span class="mx-2">/</span>
+      <a href="09-objective-detail.html" class="hover:text-white mono">O-002</a>
+      <span class="mx-2">/</span>
+      <span class="text-white">Add scenario</span>
+    </div>
+  </div>
+  <div class="ctx"><span class="kbd">⌘K</span></div>
+</nav>
+
+<div class="max-w-[1040px] mx-auto px-8 py-6">
+
+  <!-- Header -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <div class="flex items-start justify-between">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <span class="mono text-xs text-slate-400">O-002</span>
+          <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">⏸ BLOCKED</span>
+        </div>
+        <h1 class="text-xl font-bold">Add a test scenario to <span class="text-slate-600 font-normal">O-002 · Plan migration architecture</span></h1>
+        <p class="text-sm text-slate-600 mt-1">Non-happy-path scenarios force the plan + challenger to handle cases beyond the obvious. Added here, they flow into every develop task under this objective.</p>
+      </div>
+      <a href="09-objective-detail.html" class="text-sm text-slate-500 hover:text-slate-900">← Back to objective</a>
+    </div>
+  </div>
+
+  <!-- LLM assist callout -->
+  <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-5 flex items-center gap-4">
+    <div class="text-2xl">🪄</div>
+    <div class="flex-1">
+      <div class="font-bold text-indigo-900">Let Claude suggest 3 scenarios for this objective</div>
+      <div class="text-xs text-slate-600">Reads O-002 description + all 4 source docs + resolved ambiguities. Emphasizes failure-modes and edge cases not already covered.</div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="text-xs text-slate-500">cost preview: <b>$0.08</b> · ~25s</div>
+      <button class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-3 py-2 rounded-lg">🪄 Suggest 3 scenarios</button>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div class="bg-white rounded-xl shadow-sm p-6 mb-5">
+    <h2 class="font-bold text-sm mb-4">Scenario details</h2>
+
+    <div class="grid grid-cols-12 gap-5">
+
+      <!-- LEFT: fields -->
+      <div class="col-span-8 space-y-4">
+
+        <!-- Kind -->
+        <div>
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Kind *</label>
+          <div class="grid grid-cols-4 gap-2">
+            <label class="border-2 border-rose-400 bg-rose-50 rounded-lg p-3 cursor-pointer">
+              <input type="radio" name="kind" checked class="mr-1">
+              <div class="font-semibold text-sm text-rose-800">EDGE CASE</div>
+              <div class="text-xs text-slate-600">boundary input / NULL / empty / malformed</div>
+            </label>
+            <label class="border-2 border-slate-200 hover:border-slate-400 rounded-lg p-3 cursor-pointer">
+              <input type="radio" name="kind" class="mr-1">
+              <div class="font-semibold text-sm text-slate-800">FAILURE MODE</div>
+              <div class="text-xs text-slate-600">infra outage / partial failure / timeout</div>
+            </label>
+            <label class="border-2 border-slate-200 hover:border-slate-400 rounded-lg p-3 cursor-pointer">
+              <input type="radio" name="kind" class="mr-1">
+              <div class="font-semibold text-sm text-slate-800">SECURITY</div>
+              <div class="text-xs text-slate-600">authz bypass / data leak / injection</div>
+            </label>
+            <label class="border-2 border-slate-200 hover:border-slate-400 rounded-lg p-3 cursor-pointer">
+              <input type="radio" name="kind" class="mr-1">
+              <div class="font-semibold text-sm text-slate-800">REGRESSION</div>
+              <div class="text-xs text-slate-600">previously fixed bug class</div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Description *</label>
+          <textarea rows="3" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="Describe the scenario in one or two sentences. E.g., 'Legacy Oracle CDC feed lags &gt; 30s during cutover while reads are already routed to PostgreSQL.'">Legacy Oracle CDC feed lags &gt; 30s during cutover while reads are already routed to PostgreSQL.</textarea>
+          <div class="text-xs text-slate-500 mt-1">24 / 300 chars · plain text · no markdown</div>
+        </div>
+
+        <!-- Expected behavior -->
+        <div>
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Expected behavior *</label>
+          <textarea rows="3" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="What should happen when this scenario occurs? Be specific — this becomes a verifiable claim for the challenger.">Cutover pauses new writes to PostgreSQL, serves reads from Oracle as fallback. Reconciliation job runs. Alert fires when lag &gt; 30s. No data lost.</textarea>
+          <div class="text-xs text-slate-500 mt-1">This becomes part of challenger's verification claims for every develop task under O-002.</div>
+        </div>
+
+        <!-- Link to existing AC -->
+        <div>
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Link to existing AC (optional)</label>
+          <div class="bg-slate-50 border border-slate-200 rounded p-3">
+            <div class="space-y-1.5 text-sm">
+              <label class="flex items-start gap-2">
+                <input type="checkbox" checked class="mt-0.5">
+                <div>
+                  <span class="mono text-xs text-slate-400">AC-2</span>
+                  <span class="text-slate-700">Data model defined with CDC strategy specified (per Q-007 resolution)</span>
+                  <span class="bg-amber-100 text-xs text-amber-700 px-1 mono rounded ml-1">needs Q-007</span>
+                </div>
+              </label>
+              <label class="flex items-start gap-2">
+                <input type="checkbox" class="mt-0.5">
+                <div>
+                  <span class="mono text-xs text-slate-400">AC-4</span>
+                  <span class="text-slate-700">All hard constraints from SRC-004 explicitly addressed in the plan</span>
+                </div>
+              </label>
+              <label class="flex items-start gap-2">
+                <input type="checkbox" class="mt-0.5">
+                <div>
+                  <span class="mono text-xs text-slate-400">AC-5</span>
+                  <span class="text-slate-700">Plan output is DAG with &lt; 30 tasks; no task &gt; 5 AC</span>
+                </div>
+              </label>
+            </div>
+          </div>
+          <div class="text-xs text-slate-500 mt-1">Scenarios linked to AC will appear in the AC's "verification coverage" list in the deliverable view.</div>
+        </div>
+
+        <!-- Why this matters -->
+        <div>
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Why this matters (note for future you)</label>
+          <textarea rows="2" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="Why add this scenario now? e.g., 'Client's last audit flagged silent data loss during cutover — risk is proven, not hypothetical.'"></textarea>
+        </div>
+
+      </div>
+
+      <!-- RIGHT: coverage preview + scrutiny -->
+      <div class="col-span-4">
+        <div class="bg-slate-50 rounded-xl p-4 mb-4">
+          <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">📊 Coverage preview</h3>
+          <div class="text-xs text-slate-600 mb-2">Scenarios on O-002 by kind:</div>
+          <div class="space-y-1.5 text-xs">
+            <div class="flex items-center gap-2">
+              <span class="w-20">EDGE CASE</span>
+              <div class="flex-1 bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div class="bg-rose-500 h-full" style="width: 60%"></div>
+              </div>
+              <span class="font-semibold">2 + new</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-20">FAILURE</span>
+              <div class="flex-1 bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div class="bg-amber-500 h-full" style="width: 33%"></div>
+              </div>
+              <span class="font-semibold">1</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-20">SECURITY</span>
+              <div class="flex-1 bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div class="bg-purple-500 h-full" style="width: 33%"></div>
+              </div>
+              <span class="font-semibold">1</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-20">REGRESSION</span>
+              <div class="flex-1 bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div class="bg-slate-400 h-full" style="width: 0%"></div>
+              </div>
+              <span class="font-semibold text-slate-500">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-rose-50 border-l-4 border-rose-500 rounded p-3 text-xs">
+          <div class="font-bold text-slate-900 mb-1">🔎 What I did NOT add</div>
+          <p class="text-slate-700 mb-1">You've picked EDGE CASE, but this objective has <b>no REGRESSION scenarios</b>, <b>no load-related failure scenarios</b>, and <b>no compliance-specific security scenarios</b> (despite HIPAA scope).</p>
+          <p class="text-slate-700">Common gaps for migration objectives:</p>
+          <ul class="list-disc pl-4 text-slate-700 mt-0.5 space-y-0.5">
+            <li>load — N concurrent writes during cutover</li>
+            <li>security — authz bypass in dual-write window</li>
+            <li>regression — prior cutover incidents from org lessons</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="bg-slate-100 rounded-xl p-4 flex items-center justify-between">
+    <div class="text-sm text-slate-700">
+      <div><b>Will attach to:</b> O-002 · linked AC: AC-2</div>
+      <div class="text-xs text-slate-500">After save, scenario appears in O-002 scenarios list and flows into every develop task's challenger claims.</div>
+    </div>
+    <div class="flex gap-2">
+      <a href="09-objective-detail.html" class="text-sm text-slate-600 hover:text-slate-900 px-4 py-2">Cancel</a>
+      <button class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg" title="Save but don't apply to tasks yet — use when you want to queue scenarios for later review">Save as draft</button>
+      <button class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-lg">Add scenario</button>
+    </div>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="mt-5 bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=add-scenario</span>
+    <span class="mono bg-white px-1 rounded">entity=O-002</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[form draft, existing AC list, coverage stats]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">/generate-scenarios kind=security</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Is my description specific enough?</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Show scenarios from similar migrations</span>
+  </div>
+
+</div>
+
+<!-- Annotations -->
+<div class="annot" style="top: 140px; left: 30px;">1</div>
+<div class="annot" style="top: 275px; left: 30px;">2</div>
+<div class="annot" style="top: 400px; left: 30px;">3</div>
+<div class="annot" style="top: 820px; left: 30px;">4</div>
+<div class="annot" style="top: 380px; left: 730px;">5</div>
+<div class="annot" style="top: 680px; left: 730px;">6</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 280px;">
+  <h3>09-add-scenario · data sources</h3>
+  <ol>
+    <li><strong>Header</strong> ← <span class="mono">objective.id/title/status</span> from current context. Breadcrumbs resolve back.</li>
+    <li><strong>LLM assist button</strong> → POST <span class="mono">/scenario/suggest</span> with {objective_id, kinds, existing_scenarios[]}. Cost preview from <span class="mono">skill.cost_impact</span> (SK-scenario-gen-nonhappy · +$0.08).</li>
+    <li><strong>Kind</strong> ← enum <span class="mono">scenario.kind</span> = EDGE_CASE|FAILURE_MODE|SECURITY|REGRESSION. EDIT: radio writes to form state.</li>
+    <li><strong>Description + expected + why</strong> ← <span class="mono">scenario.description</span> / <span class="mono">scenario.expected_behavior</span> / <span class="mono">scenario.rationale</span>. Char counts client-side; server validates ≥20 chars on save.</li>
+    <li><strong>Linked AC</strong> ← <span class="mono">ac WHERE objective_id=O-002</span>. Multi-select stored in <span class="mono">scenario.linked_ac_ids[]</span>. On save, updates <span class="mono">ac.verification_coverage[]</span>.</li>
+    <li><strong>Coverage preview</strong> ← aggregate <span class="mono">scenario WHERE objective_id=O-002 GROUP BY kind</span> + +1 for new entry (client-only preview).</li>
+    <li><strong>Gap callout</strong> ← rule-based: flags "0 scenarios of kind X" + project-level hints (HIPAA scope → security recommended).</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> "Add scenario" → POST <span class="mono">/objective/O-002/scenarios</span> → redirect to <span class="mono">09-objective-detail.html#scenarios</span> (scenarios section scrolled + new item highlighted 3s). "Save as draft" → <span class="mono">scenario.status=DRAFT</span> (not injected into challenger until promoted). Cancel → <span class="mono">09-objective-detail.html</span>.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

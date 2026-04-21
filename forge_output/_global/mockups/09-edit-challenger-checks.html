@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>09. Edit challenger checks — per-objective rules</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 60px; min-height: 1500px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <a href="03v2-objectives-dag.html" class="hover:text-white">Objectives</a>
+      <span class="mx-2">/</span>
+      <a href="09-objective-detail.html" class="hover:text-white mono">O-002</a>
+      <span class="mx-2">/</span>
+      <span class="text-white">Challenger checks</span>
+    </div>
+  </div>
+  <div class="ctx">
+    <span class="text-xs text-slate-400">autonomy · L2</span>
+    <span class="kbd">⌘K</span>
+  </div>
+</nav>
+
+<div class="max-w-[1200px] mx-auto px-8 py-6">
+
+  <!-- Header -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5 border-l-4 border-orange-500">
+    <div class="flex items-start justify-between">
+      <div>
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded">CHALLENGER CHECKS</span>
+          <span class="mono text-xs text-slate-500">O-002 · Plan migration architecture</span>
+          <span class="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded">4 checks currently</span>
+        </div>
+        <h1 class="text-xl font-bold">Per-objective challenger rules for O-002</h1>
+        <p class="text-sm text-slate-600 mt-1">These checks are injected into the challenger's Phase C prompt on every DEVELOP task under O-002. They force the challenger (Opus) to explicitly answer each concern — not just re-state the executor's claims.</p>
+      </div>
+      <a href="09-objective-detail.html" class="text-sm text-slate-500 hover:text-slate-900">← Back to objective</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-5 mb-5">
+
+    <!-- LEFT — check list + add form -->
+    <div class="col-span-8 space-y-4">
+
+      <!-- Current checks list -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-sm">Current checks <span class="text-xs font-normal text-slate-500">(4 active · ordered by severity)</span></h2>
+          <div class="flex gap-2 text-xs">
+            <button class="text-slate-600 hover:text-slate-900 border border-slate-200 rounded px-2 py-1">↕ reorder</button>
+            <button class="text-slate-600 hover:text-slate-900 border border-slate-200 rounded px-2 py-1">import from O-003</button>
+          </div>
+        </div>
+
+        <!-- Check row 1 — mandatory -->
+        <div class="border border-rose-200 bg-rose-50/40 rounded-lg p-3 mb-2">
+          <div class="flex items-start gap-3">
+            <div class="text-xs text-slate-400 pt-1">1</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <span class="bg-rose-200 text-rose-800 text-xs font-bold px-2 py-0.5 rounded">MANDATORY</span>
+                <span class="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded mono">all develop tasks</span>
+                <span class="text-xs text-slate-500">fired 6 times · caught 2 issues</span>
+              </div>
+              <div class="text-sm text-slate-800">Confirm the CDC pipeline does NOT expose writes to legacy Oracle DB. Require explicit evidence (file path + line) where writes are gated off from Oracle.</div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <button class="text-xs text-slate-600 hover:text-slate-900 border border-slate-200 rounded px-2 py-0.5">edit</button>
+              <button class="text-xs text-rose-600 hover:text-rose-800 border border-rose-200 rounded px-2 py-0.5">remove</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Check row 2 — mandatory -->
+        <div class="border border-rose-200 bg-rose-50/40 rounded-lg p-3 mb-2">
+          <div class="flex items-start gap-3">
+            <div class="text-xs text-slate-400 pt-1">2</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <span class="bg-rose-200 text-rose-800 text-xs font-bold px-2 py-0.5 rounded">MANDATORY</span>
+                <span class="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded mono">develop · bug</span>
+                <span class="text-xs text-slate-500">fired 6 times · caught 1 issue</span>
+              </div>
+              <div class="text-sm text-slate-800">Verify that any new HTTP endpoint implements the HIPAA audit log entry (per SRC-004 §3.1). Require explicit evidence — test name or log excerpt showing the entry is emitted.</div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <button class="text-xs text-slate-600 hover:text-slate-900 border border-slate-200 rounded px-2 py-0.5">edit</button>
+              <button class="text-xs text-rose-600 hover:text-rose-800 border border-rose-200 rounded px-2 py-0.5">remove</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Check row 3 — recommended -->
+        <div class="border border-amber-200 bg-amber-50/40 rounded-lg p-3 mb-2">
+          <div class="flex items-start gap-3">
+            <div class="text-xs text-slate-400 pt-1">3</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <span class="bg-amber-200 text-amber-800 text-xs font-bold px-2 py-0.5 rounded">RECOMMENDED</span>
+                <span class="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded mono">develop</span>
+                <span class="text-xs text-slate-500">fired 6 times · 0 issues (low signal?)</span>
+              </div>
+              <div class="text-sm text-slate-800">Ensure all new Python modules follow the pattern in <span class="mono bg-white px-1 rounded">app/db/legacy.py</span> — connection pooling via <span class="mono bg-white px-1 rounded">SessionLocal</span>, no raw psycopg2 outside the wrapper.</div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <button class="text-xs text-slate-600 hover:text-slate-900 border border-slate-200 rounded px-2 py-0.5">edit</button>
+              <button class="text-xs text-rose-600 hover:text-rose-800 border border-rose-200 rounded px-2 py-0.5">remove</button>
+            </div>
+          </div>
+          <div class="text-xs text-amber-700 mt-2 italic pl-7">⚠ Low signal — 6 firings with 0 catches. Consider downgrading to advisory or removing.</div>
+        </div>
+
+        <!-- Check row 4 — advisory -->
+        <div class="border border-slate-200 bg-slate-50 rounded-lg p-3 mb-2">
+          <div class="flex items-start gap-3">
+            <div class="text-xs text-slate-400 pt-1">4</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <span class="bg-slate-300 text-slate-700 text-xs font-bold px-2 py-0.5 rounded">ADVISORY</span>
+                <span class="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded mono">all task types</span>
+                <span class="text-xs text-slate-500">fired 6 times · 3 low-severity nits</span>
+              </div>
+              <div class="text-sm text-slate-800">Prefer explicit Prometheus metric names over ad-hoc timers. Advisory only — not blocking.</div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <button class="text-xs text-slate-600 hover:text-slate-900 border border-slate-200 rounded px-2 py-0.5">edit</button>
+              <button class="text-xs text-rose-600 hover:text-rose-800 border border-rose-200 rounded px-2 py-0.5">remove</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add new check -->
+      <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-400">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-sm">+ Add new check</h2>
+          <button class="text-xs text-blue-600 hover:underline">🪄 Suggest check from scenarios (pull from TestScenario)</button>
+        </div>
+
+        <div class="mb-3">
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Check text <span class="text-rose-600">*</span></label>
+          <textarea rows="3" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="Write as an imperative + evidence requirement. Ex: 'Confirm X. Require Y as evidence (file path / test name / log excerpt).'">Confirm the CDC consumer re-processes events after a crash recovery without duplicates. Require evidence: test name that simulates crash + offset replay.</textarea>
+          <div class="text-xs text-slate-500 mt-1">145 chars · keep checks under 300 chars for prompt efficiency</div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Severity</label>
+            <select class="w-full border border-slate-300 rounded p-2 text-sm">
+              <option>mandatory — blocks DONE until challenger confirms</option>
+              <option selected>recommended — concern surfaces, user decides</option>
+              <option>advisory — nits only, never blocking</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Applies to task types</label>
+            <div class="flex flex-wrap gap-1 border border-slate-300 rounded p-1.5 bg-slate-50">
+              <label class="flex items-center gap-1 text-xs bg-white px-2 py-0.5 rounded border border-slate-200"><input type="checkbox" checked> develop</label>
+              <label class="flex items-center gap-1 text-xs bg-white px-2 py-0.5 rounded border border-slate-200"><input type="checkbox"> bug</label>
+              <label class="flex items-center gap-1 text-xs bg-white px-2 py-0.5 rounded border border-slate-200"><input type="checkbox"> analysis</label>
+              <label class="flex items-center gap-1 text-xs bg-white px-2 py-0.5 rounded border border-slate-200"><input type="checkbox"> planning</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2 rounded">Add check</button>
+        </div>
+      </div>
+
+      <!-- Suggested from scenarios modal-style inline -->
+      <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-indigo-700 mb-2">🪄 Suggested from existing scenarios</h3>
+        <p class="text-xs text-slate-600 mb-2">Scenarios already on O-002 that could be promoted into standing challenger checks.</p>
+        <div class="space-y-2 text-xs">
+          <div class="p-2 bg-white rounded border border-indigo-100 flex items-start gap-2">
+            <input type="checkbox" class="mt-1">
+            <div class="flex-1">
+              <div class="font-semibold text-slate-800">From S-007 (load test)</div>
+              <div class="text-slate-600">Confirm CDC lag under peak load stays below AC-2 target (5s). Require evidence: load-test output showing p99 lag.</div>
+            </div>
+          </div>
+          <div class="p-2 bg-white rounded border border-indigo-100 flex items-start gap-2">
+            <input type="checkbox" class="mt-1">
+            <div class="flex-1">
+              <div class="font-semibold text-slate-800">From S-009 (rollback)</div>
+              <div class="text-slate-600">Confirm the migration script has a tested rollback path. Require evidence: rollback test name.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT — prompt preview + cost -->
+    <div class="col-span-4 space-y-4">
+
+      <!-- Injected prompt preview -->
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">📝 Phase C prompt injection preview</h3>
+        <p class="text-xs text-slate-600 mb-2">How your 4 checks appear in the challenger's prompt:</p>
+        <div class="bg-slate-900 text-slate-100 rounded p-3 text-xs mono leading-relaxed max-h-[420px] overflow-y-auto">
+          <div class="text-slate-400">## CHALLENGER CHECKS — O-002</div>
+          <div class="text-slate-400">## (injected before Phase C verification pass)</div>
+          <br>
+          <div class="text-rose-300">[MANDATORY · blocks DONE]</div>
+          <div class="text-slate-300">1. Confirm the CDC pipeline does NOT expose writes to legacy Oracle DB. Require explicit evidence (file path + line) where writes are gated off from Oracle.</div>
+          <br>
+          <div class="text-rose-300">[MANDATORY · blocks DONE]</div>
+          <div class="text-slate-300">2. Verify that any new HTTP endpoint implements the HIPAA audit log entry (per SRC-004 §3.1). Require explicit evidence — test name or log excerpt showing the entry is emitted.</div>
+          <br>
+          <div class="text-amber-300">[RECOMMENDED · surfaces as concern]</div>
+          <div class="text-slate-300">3. Ensure all new Python modules follow the pattern in app/db/legacy.py — connection pooling via SessionLocal, no raw psycopg2 outside the wrapper.</div>
+          <br>
+          <div class="text-slate-400">[ADVISORY · nits only]</div>
+          <div class="text-slate-300">4. Prefer explicit Prometheus metric names over ad-hoc timers. Advisory only — not blocking.</div>
+          <br>
+          <div class="text-slate-400"># For each check above, you MUST:</div>
+          <div class="text-slate-400"># - State whether it applies to this diff</div>
+          <div class="text-slate-400"># - If applies: cite evidence or flag missing</div>
+          <div class="text-slate-400"># - If doesn't apply: state why</div>
+        </div>
+      </div>
+
+      <!-- Cost/budget -->
+      <div class="bg-amber-50 border-l-4 border-amber-500 rounded-xl p-4 text-xs">
+        <h3 class="font-bold text-amber-900 mb-2">💰 Challenger prompt cost</h3>
+        <div class="space-y-1 text-slate-700">
+          <div><b>Current:</b> 4 checks · +380 tokens per challenge · <b>+$0.06 per task</b></div>
+          <div class="text-slate-500 italic">Adding the 5th check would push to +$0.08/task.</div>
+        </div>
+        <div class="mt-3 pt-3 border-t border-amber-200 text-slate-700">
+          <b>Tradeoff:</b> too many checks → challenger prompt bloat → cost ↑ and <i>focus ↓</i> (Opus starts rubber-stamping low-signal checks). The check #3 has caught 0 issues in 6 firings — data says it's not pulling weight.
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs">
+        <h3 class="font-bold text-emerald-800 mb-2">📋 Summary</h3>
+        <ul class="text-slate-700 space-y-1 list-disc pl-4">
+          <li>4 active checks (2 mandatory, 1 recommended, 1 advisory)</li>
+          <li>Fires on every challenge for tasks under O-002</li>
+          <li>3 issues caught across 6 firings — 50% hit rate</li>
+          <li>1 low-signal check suggested for downgrade</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Scrutiny -->
+  <div class="bg-rose-50 border-l-4 border-rose-500 rounded-xl p-4 mb-5 text-xs">
+    <div class="flex items-start gap-3">
+      <div class="text-xl">🔎</div>
+      <div class="flex-1">
+        <h3 class="font-bold text-slate-900 mb-2">Challenger-check tradeoffs you should know</h3>
+        <ul class="text-slate-700 space-y-1 list-disc pl-5">
+          <li><b>More checks ≠ more safety.</b> Opus attention is finite. The 3rd+ check dilutes focus; the challenger starts writing "applies: yes, evidence: see above" for everything.</li>
+          <li><b>Mandatory = blocking.</b> If the challenger can't find evidence, the task cannot hit DONE. A poorly-worded mandatory check will block legitimate work.</li>
+          <li><b>Advisory is almost free to keep, but almost free to ignore.</b> Nits get captured in review, rarely acted upon. Use sparingly.</li>
+          <li><b>Checks are NOT tests.</b> A challenger can miss evidence that exists. Mandatory checks that NEED testing should have a companion Gate (see <a href="12-hooks-tab.html" class="text-blue-600 hover:underline">hooks tab</a>).</li>
+          <li><b>Scenarios vs checks vs AC.</b> Scenarios describe behavior. AC is what verifies behavior. Checks are <i>instructions to the challenger</i> about what to look at. Don't duplicate across all three.</li>
+          <li>Removing a check does NOT delete past challenger reports that cited it — those stay in task deliverables for audit.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="bg-slate-100 rounded-xl p-4 flex items-center justify-between">
+    <div class="text-sm text-slate-700">
+      <div><b>4 checks configured</b> · +$0.06 per challenge · will apply to the next DEVELOP task on O-002</div>
+      <div class="text-xs text-slate-500">Changes save instantly via inline edit/remove. "Add check" above commits when clicked.</div>
+    </div>
+    <div class="flex gap-2">
+      <a href="09-objective-detail.html" class="text-sm text-slate-600 hover:text-slate-900 px-4 py-2">Done — back to objective</a>
+      <button class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">Reset to org defaults</button>
+    </div>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="mt-5 bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=edit-challenger-checks</span>
+    <span class="mono bg-white px-1 rounded">entity=O-002</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[4 checks, firing stats, prompt preview]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Which check to downgrade?</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Import checks from O-003</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Explain why check #3 has 0 catches</span>
+  </div>
+
+</div>
+
+<!-- Annotations -->
+<div class="annot" style="top: 170px; left: 30px;">1</div>
+<div class="annot" style="top: 340px; left: 30px;">2</div>
+<div class="annot" style="top: 840px; left: 30px;">3</div>
+<div class="annot" style="top: 1120px; left: 30px;">4</div>
+<div class="annot" style="top: 340px; left: 870px;">5</div>
+<div class="annot" style="top: 950px; left: 870px;">6</div>
+<div class="annot" style="top: 1330px; left: 30px;">7</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 290px;">
+  <h3>09-edit-challenger-checks · data sources</h3>
+  <ol>
+    <li><strong>Header</strong> ← <span class="mono">objective.{id, title}</span> + count of <span class="mono">objective.challenger_checks[]</span>.</li>
+    <li><strong>Check rows</strong> ← <span class="mono">objective.challenger_checks[]</span> JSONB. Each check: <span class="mono">{id, text, severity, applies_to_task_types[], source: 'user'|'scenario'|'org'}</span>. Firing stats ← aggregation from <span class="mono">challenger_firing WHERE objective_id=O-002 GROUP BY check_id</span>.</li>
+    <li><strong>Add new check</strong> → PATCH <span class="mono">/objective/{id}/challenger-checks</span> appending new entry. "🪄 Suggest from scenarios" opens the indigo panel below, which queries <span class="mono">scenario WHERE objective_id=O-002</span>.</li>
+    <li><strong>Suggested from scenarios</strong> ← LLM-free: pattern-matches scenario's expected_behavior into a "Confirm ... Require evidence ..." template. User checks which to promote → batch PATCH.</li>
+    <li><strong>Prompt injection preview</strong> ← client-side render of how <span class="mono">objective.challenger_checks[]</span> serialize into the Phase C prompt template. Deterministic — no LLM call to render.</li>
+    <li><strong>Cost display</strong> ← computed: sum(token length of each check text) × avg challenger invocation cost per token. Updates live as user edits.</li>
+    <li><strong>Scrutiny — challenger tradeoffs</strong> ← enforced template. Always visible. Removing is a template violation.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> Each edit/remove → inline PATCH. "Add check" → PATCH then re-render. "Done" → back to <span class="mono">09-objective-detail.html</span>. "Reset to org defaults" → opens <span class="mono">16-preview-apply-modal</span> (destructive).
+    <br><br><b>NEW DB columns implied:</b> <span class="mono">objective.challenger_checks[]</span> already exists per CLAUDE.md. <span class="mono">challenger_firing</span> stats table (task_id, objective_id, check_id, fired_at, caught_issue) — may be new.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

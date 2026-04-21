@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>11. Skill edit — SK-security-owasp</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px; min-height: 1700px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <a href="11-skills-library.html" class="hover:text-white">Skills library</a>
+      <span class="mx-2">/</span>
+      <span class="text-white mono">SK-security-owasp</span>
+    </div>
+  </div>
+  <div class="ctx"><span class="kbd">⌘K</span></div>
+</nav>
+
+<div class="max-w-[1280px] mx-auto px-8 py-6">
+
+  <!-- Header -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <div class="flex items-start justify-between">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span>
+          <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">installed · auto-attach</span>
+          <span class="mono text-xs text-slate-400">SK-security-owasp · v4 · last edited 6d ago</span>
+        </div>
+        <h1 class="text-xl font-bold">Edit skill — Security OWASP sweep</h1>
+        <p class="text-sm text-slate-600 mt-1">Changes apply to <b>future tasks</b>. Past tasks keep the skill version they ran with — audit trail preserved.</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="11-skills-library.html" class="text-sm text-slate-500 hover:text-slate-900">← Back</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2-col form -->
+  <div class="grid grid-cols-12 gap-5 mb-5">
+
+    <!-- LEFT: fields -->
+    <div class="col-span-8 space-y-4">
+
+      <!-- Basic -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="font-bold text-sm mb-4">Basic</h2>
+
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Name *</label>
+            <input type="text" class="w-full border border-slate-300 rounded p-2 text-sm" value="Security OWASP sweep">
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">External ID *</label>
+            <input type="text" class="w-full border border-slate-300 rounded p-2 text-sm mono" value="SK-security-owasp">
+            <div class="text-xs text-slate-500 mt-1">Used in hook references + audit logs. Changing breaks links.</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <label class="border-2 border-blue-500 bg-blue-50/40 rounded p-3 text-center cursor-pointer">
+            <input type="radio" name="cat" checked class="mr-1">
+            <div class="font-bold text-blue-800 text-sm">SKILL</div>
+            <div class="text-xs text-slate-600">broad capability</div>
+          </label>
+          <label class="border-2 border-slate-200 hover:border-amber-400 rounded p-3 text-center cursor-pointer">
+            <input type="radio" name="cat" class="mr-1">
+            <div class="font-bold text-amber-800 text-sm">MICRO</div>
+            <div class="text-xs text-slate-600">narrow helper</div>
+          </label>
+          <label class="border-2 border-slate-200 hover:border-purple-400 rounded p-3 text-center cursor-pointer">
+            <input type="radio" name="cat" class="mr-1">
+            <div class="font-bold text-purple-800 text-sm">OPINION</div>
+            <div class="text-xs text-slate-600">persona-based</div>
+          </label>
+        </div>
+
+        <div>
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Description *</label>
+          <textarea rows="2" class="w-full border border-slate-300 rounded p-2 text-sm">Scans diff for SQL injection, XSS, broken auth, insecure deserialization, SSRF, broken access control, misconfig. Flags issues as findings with severity.</textarea>
+        </div>
+      </div>
+
+      <!-- Prompt text -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-sm">Prompt text</h2>
+          <div class="flex gap-2 text-xs">
+            <button class="text-blue-600 hover:underline">🪄 LLM: suggest improvements ($0.04)</button>
+            <button class="text-slate-600 hover:underline">Show diff vs v3</button>
+          </div>
+        </div>
+        <textarea rows="16" class="w-full border border-slate-300 rounded p-3 font-mono text-xs bg-slate-900 text-slate-100">You are a security reviewer. Inspect the diff attached and apply OWASP Top 10 (2024) checks.
+
+For each finding:
+1. SEVERITY: critical | high | medium | low
+2. CATEGORY: A01 Broken access · A02 Crypto · A03 Injection · A04 Insecure design · A05 Misconfig · A06 Vulnerable deps · A07 ID+Auth · A08 Software+Data integrity · A09 Logging/monitoring · A10 SSRF
+3. FILE: path + line
+4. EVIDENCE: the specific code pattern
+5. FIX: concrete suggestion (not "consider...")
+
+Scope limits you must declare in output:
+- Which OWASP categories did you NOT check (e.g., A06 needs dep scanner)
+- Whether you inspected runtime config or only source
+- Whether you can verify fixes by re-running
+
+If diff is empty or contains only test files, output NO_DIFF and stop.</textarea>
+        <div class="text-xs text-slate-500 mt-2">842 chars · monospace · variable substitution via <span class="mono bg-slate-100 px-1 rounded">{{diff}}</span>, <span class="mono bg-slate-100 px-1 rounded">{{task.instruction}}</span>, <span class="mono bg-slate-100 px-1 rounded">{{op_contract}}</span></div>
+      </div>
+
+      <!-- Applies to phases -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="font-bold text-sm mb-3">Applies to phases</h2>
+        <div class="grid grid-cols-5 gap-3">
+          <label class="border-2 border-slate-200 hover:border-blue-400 rounded p-3 text-center cursor-pointer">
+            <input type="checkbox" checked class="mr-1">
+            <div class="font-semibold text-blue-800 text-xs">ANALYSIS</div>
+          </label>
+          <label class="border-2 border-slate-200 hover:border-slate-400 rounded p-3 text-center cursor-pointer">
+            <input type="checkbox" class="mr-1">
+            <div class="font-semibold text-slate-800 text-xs">PLANNING</div>
+          </label>
+          <label class="border-2 border-emerald-500 bg-emerald-50/40 rounded p-3 text-center cursor-pointer">
+            <input type="checkbox" checked class="mr-1">
+            <div class="font-semibold text-emerald-800 text-xs">DEVELOP</div>
+          </label>
+          <label class="border-2 border-slate-200 hover:border-slate-400 rounded p-3 text-center cursor-pointer">
+            <input type="checkbox" class="mr-1">
+            <div class="font-semibold text-slate-800 text-xs">DOC</div>
+          </label>
+          <label class="border-2 border-rose-400 bg-rose-50/40 rounded p-3 text-center cursor-pointer">
+            <input type="checkbox" checked class="mr-1">
+            <div class="font-semibold text-rose-800 text-xs">CHALLENGER</div>
+          </label>
+        </div>
+        <div class="text-xs text-slate-500 mt-2">Skill will not attach to tasks outside these phases, even if an auto-rule matches.</div>
+      </div>
+
+      <!-- Tags -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="font-bold text-sm mb-3">Tags</h2>
+        <div class="bg-slate-50 border border-slate-200 rounded p-2">
+          <div class="flex flex-wrap gap-2 mb-2">
+            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">security<button class="text-blue-500 hover:text-blue-700">×</button></span>
+            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">owasp<button class="text-blue-500 hover:text-blue-700">×</button></span>
+            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">challenger<button class="text-blue-500 hover:text-blue-700">×</button></span>
+            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">web-api<button class="text-blue-500 hover:text-blue-700">×</button></span>
+          </div>
+          <input type="text" placeholder="+ add tag (press enter)..." class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs">
+        </div>
+      </div>
+
+      <!-- Auto-attach rule -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-sm">Auto-attach rule</h2>
+          <div class="flex gap-1 text-xs">
+            <button class="bg-blue-100 text-blue-700 font-semibold px-2 py-1 rounded">Visual builder</button>
+            <button class="text-slate-500 hover:text-slate-700 px-2 py-1 rounded">JSON editor</button>
+          </div>
+        </div>
+        <p class="text-xs text-slate-600 mb-3">Rule that decides when Forge auto-attaches this skill to a task (without user action). Returns boolean.</p>
+
+        <!-- Visual rule builder -->
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="font-bold">IF</span>
+            <select class="border border-slate-300 rounded p-1 text-xs">
+              <option>diff touches</option>
+              <option>task type is</option>
+              <option>objective has tag</option>
+              <option>phase is</option>
+            </select>
+            <input type="text" value="app/api/**, app/auth/**" class="flex-1 border border-slate-300 rounded p-1 text-xs mono">
+            <button class="text-rose-600 text-xs">×</button>
+          </div>
+          <div class="flex items-center gap-2 text-sm">
+            <span class="font-bold text-slate-500">OR</span>
+            <select class="border border-slate-300 rounded p-1 text-xs">
+              <option>diff touches</option>
+              <option selected>task type is</option>
+              <option>objective has tag</option>
+            </select>
+            <select class="flex-1 border border-slate-300 rounded p-1 text-xs">
+              <option selected>develop</option>
+              <option>analysis</option>
+              <option>planning</option>
+            </select>
+            <span class="text-xs text-slate-500">AND</span>
+            <select class="border border-slate-300 rounded p-1 text-xs">
+              <option>objective has tag</option>
+            </select>
+            <input type="text" value="security, auth" class="flex-1 border border-slate-300 rounded p-1 text-xs mono">
+            <button class="text-rose-600 text-xs">×</button>
+          </div>
+          <button class="text-xs text-blue-600 hover:underline font-semibold">+ Add condition</button>
+        </div>
+
+        <div class="mt-2 text-xs text-slate-500 mono">
+          JSON: <span class="bg-slate-100 px-1 rounded">{"any": [{"diff_touches": ["app/api/**", "app/auth/**"]}, {"all": [{"task_type": "develop"}, {"objective_has_tag": ["security", "auth"]}]}]}</span>
+        </div>
+      </div>
+
+      <!-- Cost impact (user estimate) -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="font-bold text-sm mb-3">Cost impact (estimate)</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">USD per call *</label>
+            <input type="text" class="w-full border border-slate-300 rounded p-2 text-sm mono" value="0.08">
+            <div class="text-xs text-slate-500 mt-1">Last 30d observed: $0.076 avg · $0.11 p95</div>
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Context token size</label>
+            <input type="text" class="w-full border border-slate-300 rounded p-2 text-sm mono" value="840">
+            <div class="text-xs text-slate-500 mt-1">Added to every prompt this skill is attached to</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: conflict check + history -->
+    <div class="col-span-4">
+
+      <!-- Conflict check -->
+      <div class="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-amber-800 mb-3">⚠ Conflict check for your rule edit</h3>
+        <p class="text-xs text-slate-600 mb-3">Comparing new auto-attach rule vs current behavior across 3 projects where this skill is installed.</p>
+
+        <div class="space-y-2 text-xs">
+          <div class="bg-white rounded p-2 border border-emerald-200">
+            <div class="font-semibold text-emerald-800">+ will now fire on 2 more tasks in acme-erp-migration</div>
+            <div class="text-slate-600">DT-004 (touches app/auth/) + PT-002 (develop type w/ auth tag)</div>
+          </div>
+
+          <div class="bg-white rounded p-2 border border-rose-200">
+            <div class="font-semibold text-rose-800">− will NO LONGER fire on 1 task in retail-analytics</div>
+            <div class="text-slate-600">DT-012 (touches app/billing/ — no longer matched by rule)</div>
+            <div class="text-rose-700 font-semibold mt-1">⚠ Consider: should app/billing/ also trigger security sweep?</div>
+          </div>
+
+          <div class="bg-white rounded p-2 border border-slate-200">
+            <div class="font-semibold text-slate-700">= no change in internal-tools project</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Version history -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">📜 Version history</h3>
+        <div class="space-y-2 text-xs">
+          <div class="flex items-start gap-2">
+            <span class="mono text-slate-400">v4</span>
+            <div class="flex-1">
+              <div class="font-semibold">current · 6d ago</div>
+              <div class="text-slate-600">Added A10 SSRF category · scope limit requirement</div>
+              <div class="text-slate-500">by hergati</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="mono text-slate-400">v3</span>
+            <div class="flex-1">
+              <div class="font-semibold">3 weeks ago</div>
+              <div class="text-slate-600">Reworded prompt, removed "be thorough"</div>
+              <div class="text-slate-500">by hergati</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="mono text-slate-400">v2</span>
+            <div class="flex-1">
+              <div class="font-semibold">2 months ago</div>
+              <div class="text-slate-600">Tightened auto-attach to web-API only</div>
+              <div class="text-slate-500">by hergati</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="mono text-slate-400">v1</span>
+            <div class="flex-1">
+              <div class="font-semibold">initial · 4 months ago</div>
+            </div>
+          </div>
+          <div class="pt-2 border-t border-slate-100 mt-2">
+            <a href="#" class="text-blue-600 hover:underline">View full history · compare versions →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrutiny -->
+      <div class="bg-rose-50 border-l-4 border-rose-500 rounded-xl p-4 text-xs">
+        <h3 class="font-bold text-rose-900 mb-2">🔎 What this edit does NOT do</h3>
+        <ul class="text-slate-700 space-y-1 list-disc pl-4">
+          <li>Does not re-run past tasks with the new skill version</li>
+          <li>Does not update hooks that reference this skill — if hook conditions conflict with the new auto-attach rule, they fire independently</li>
+          <li>Does not inform <b>other users</b> of this skill (if shared at org level) — they get v4 only on their next task</li>
+          <li>Does not check whether the new prompt text actually improves findings — you'd need to run <a href="#" class="text-blue-600 hover:underline">/replay on recent tasks</a> to validate</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="bg-slate-100 rounded-xl p-4 flex items-center justify-between">
+    <div class="text-sm text-slate-700">
+      <div>Saving creates version <b>v5</b>. Projects using auto-attach will pick up the new rule on next matching task.</div>
+      <div class="text-xs text-slate-500">Your org-level version stays on v4 until you "Publish to org" explicitly.</div>
+    </div>
+    <div class="flex gap-2">
+      <a href="11-skills-library.html" class="text-sm text-slate-600 hover:text-slate-900 px-4 py-2">Cancel</a>
+      <button class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">Save as draft (v5-draft)</button>
+      <button class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-lg">Save + publish (v5)</button>
+    </div>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="mt-5 bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=skill-edit</span>
+    <span class="mono bg-white px-1 rounded">entity=SK-security-owasp</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[fields, rule, conflict diff, history]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Show me v3 → v4 prompt diff</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">/replay on last 3 tasks with new prompt</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Is my rule too narrow?</span>
+  </div>
+
+</div>
+
+<!-- Annotations -->
+<div class="annot" style="top: 180px; left: 30px;">1</div>
+<div class="annot" style="top: 380px; left: 30px;">2</div>
+<div class="annot" style="top: 700px; left: 30px;">3</div>
+<div class="annot" style="top: 860px; left: 30px;">4</div>
+<div class="annot" style="top: 1050px; left: 30px;">5</div>
+<div class="annot" style="top: 1340px; left: 30px;">6</div>
+<div class="annot" style="top: 380px; left: 860px;">7</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 280px;">
+  <h3>11-skill-edit · data sources</h3>
+  <ol>
+    <li><strong>Name/ext ID/category/description</strong> ← <span class="mono">skill</span> row columns. Ext ID is primary lookup key — validator rejects changes if other entities reference it.</li>
+    <li><strong>Prompt text</strong> ← <span class="mono">skill.prompt_template</span> TEXT. Variable substitution happens at task-execution time via Jinja-style replacement.</li>
+    <li><strong>Applies_to_phases</strong> ← <span class="mono">skill.applies_to_phases[]</span> enum array. Enforced at runtime — skill won't attach outside these phases.</li>
+    <li><strong>Tags</strong> ← <span class="mono">skill.tags[]</span> JSONB array. Used for search/filter in library.</li>
+    <li><strong>Auto-attach rule</strong> ← <span class="mono">skill.auto_attach_rule</span> JSONB. Visual builder + JSON editor are two views of the same data. Saved rule is validated server-side (schema check).</li>
+    <li><strong>Cost impact</strong> ← <span class="mono">skill.cost_impact_usd</span> (user estimate) + <span class="mono">llm_call</span> aggregations (observed avg/p95) shown for comparison.</li>
+    <li><strong>Conflict check</strong> ← server-side: given new rule, simulate against <span class="mono">task WHERE status=DONE AND created_at &gt; NOW() - 30d</span> across all projects using this skill. Shows diff. Comes from endpoint <span class="mono">/skill/{id}/preview-rule-change</span>.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> Save + publish → POST <span class="mono">/skill/{id}</span>, writes <span class="mono">skill_version</span> row, updates <span class="mono">skill.current_version</span>. Redirect <span class="mono">11-skills-library.html#SK-security-owasp</span>. Save as draft → <span class="mono">skill_version.status=DRAFT</span>, no publish. Cancel → discard, redirect back.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>05v2. Close task — DT-009 with mandatory reason</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 60px; min-height: 1500px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <a href="03v2-objectives-dag.html" class="hover:text-white">Objectives</a>
+      <span class="mx-2">/</span>
+      <a href="09-objective-detail.html" class="hover:text-white mono">O-003</a>
+      <span class="mx-2">/</span>
+      <a href="05v2-task-deliverable.html" class="hover:text-white mono">DT-009</a>
+      <span class="mx-2">/</span>
+      <span class="text-white">Close</span>
+    </div>
+  </div>
+  <div class="ctx">
+    <span class="text-xs text-slate-400">autonomy · L2</span>
+    <span class="kbd">⌘K</span>
+  </div>
+</nav>
+
+<div class="max-w-[1200px] mx-auto px-8 py-6">
+
+  <!-- Header -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5 border-l-4 border-rose-500">
+    <div class="flex items-start gap-4">
+      <div class="text-3xl">✕</div>
+      <div class="flex-1">
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="bg-rose-100 text-rose-700 text-xs font-bold px-2 py-0.5 rounded">CLOSE TASK</span>
+          <span class="mono text-xs text-slate-500">DT-009</span>
+          <span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded">currently NOT_DONE</span>
+          <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">3 unresolved items</span>
+        </div>
+        <h1 class="text-xl font-bold mb-1">Close DT-009 — User profile edit endpoint</h1>
+        <p class="text-sm text-slate-600">Closing requires a reason because the challenger flagged 3 items that aren't addressed. Each must either be addressed or explicitly deferred.</p>
+      </div>
+      <a href="05v2-task-deliverable.html" class="text-sm text-slate-500 hover:text-slate-900">← Back to task</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-5 mb-5">
+
+    <!-- LEFT — checklist + reason + sign -->
+    <div class="col-span-8 space-y-4">
+
+      <!-- Unresolved items checklist -->
+      <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-amber-500">
+        <h2 class="font-bold text-sm mb-3">Unresolved items <span class="text-xs font-normal text-slate-500">(must address each — fix here, or defer with reason)</span></h2>
+
+        <!-- Item 1 -->
+        <div class="border border-slate-200 rounded-lg p-3 mb-2">
+          <div class="flex items-start gap-3">
+            <div class="text-amber-600 text-lg">⚠</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="bg-rose-100 text-rose-700 text-xs font-bold px-1.5 py-0.5 rounded">HIGH</span>
+                <span class="text-xs text-slate-500 mono">F-2 · from challenger</span>
+              </div>
+              <div class="text-sm text-slate-800 mb-2">No rate limit on the profile edit endpoint. A logged-in user can spam updates triggering the audit log + downstream notifications.</div>
+
+              <div class="bg-slate-50 rounded p-2 text-xs">
+                <label class="flex items-center gap-2 mb-1">
+                  <input type="radio" name="f2">
+                  <span>Address now (link to follow-up task or commit)</span>
+                </label>
+                <label class="flex items-center gap-2 mb-1">
+                  <input type="radio" name="f2" checked>
+                  <span>Defer — provide reason below</span>
+                </label>
+                <input type="text" placeholder="Reason for deferring F-2 (≥30 chars)..." class="w-full border border-slate-300 rounded p-1.5 text-xs mt-1" value="Will spawn follow-up task DT-012 to add ratelimit middleware globally — out of scope for this endpoint-only task.">
+                <div class="text-xs text-slate-500 mt-1">Defer is recorded in finding.history; finding stays OPEN, attribution goes to DT-009 close action.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 2 -->
+        <div class="border border-slate-200 rounded-lg p-3 mb-2">
+          <div class="flex items-start gap-3">
+            <div class="text-amber-600 text-lg">⚠</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MEDIUM</span>
+                <span class="text-xs text-slate-500 mono">F-3 · from challenger</span>
+              </div>
+              <div class="text-sm text-slate-800 mb-2">The audit log entry for profile edit doesn't include the diff (old vs new value) — only the user_id and timestamp. HIPAA reviewer may want the diff.</div>
+
+              <div class="bg-slate-50 rounded p-2 text-xs">
+                <label class="flex items-center gap-2 mb-1">
+                  <input type="radio" name="f3">
+                  <span>Address now</span>
+                </label>
+                <label class="flex items-center gap-2 mb-1">
+                  <input type="radio" name="f3" checked>
+                  <span>Defer — provide reason below</span>
+                </label>
+                <input type="text" placeholder="Reason for deferring F-3..." class="w-full border border-slate-300 rounded p-1.5 text-xs mt-1" value="Discussed w/ J. Patel 2026-04-17: HIPAA reviewer confirmed user_id+timestamp is sufficient; diff would log PHI which we explicitly avoid.">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 3 -->
+        <div class="border border-slate-200 rounded-lg p-3 mb-2">
+          <div class="flex items-start gap-3">
+            <div class="text-amber-600 text-lg">⚠</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="bg-slate-100 text-slate-700 text-xs font-bold px-1.5 py-0.5 rounded">LOW</span>
+                <span class="text-xs text-slate-500 mono">F-4 · from scrutiny</span>
+              </div>
+              <div class="text-sm text-slate-800 mb-2">Test scenario S-007 (load test) was not run for this endpoint — only existing endpoints were tested.</div>
+
+              <div class="bg-slate-50 rounded p-2 text-xs">
+                <label class="flex items-center gap-2 mb-1">
+                  <input type="radio" name="f4" checked>
+                  <span>Address now (S-007 will run before close)</span>
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="radio" name="f4">
+                  <span>Defer with reason</span>
+                </label>
+                <div class="text-xs text-emerald-700 mt-1">✓ Will run S-007 against /profile/edit before commit (~30s).</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Reason for closing -->
+      <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-rose-400">
+        <h2 class="font-bold text-sm mb-2">Close reason <span class="text-rose-600">*</span> <span class="text-xs font-normal text-slate-500">(≥100 chars · required for audit)</span></h2>
+        <p class="text-xs text-slate-600 mb-2">Why is this task being closed despite unresolved items? This text is preserved in the task audit + visible on the deliverable forever.</p>
+        <textarea rows="5" class="w-full border border-slate-300 rounded p-2 text-sm">DT-009 implements the user profile edit endpoint per AC-1, AC-2 and S-007 (load test will run before commit). Unresolved findings F-2 (rate limit) and F-3 (audit diff) are explicitly deferred with reasons recorded inline — F-2 spawns DT-012 next sprint; F-3 was reviewed by J. Patel and confirmed not needed. Closing now to unblock O-003 → O-005 UAT prep. Audit-trail preserved.</textarea>
+        <div class="text-xs text-emerald-700 mt-1">388 / 100 chars min · OK · references 4 entities</div>
+      </div>
+
+      <!-- Sign with name -->
+      <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-purple-400">
+        <h2 class="font-bold text-sm mb-2">Sign with your full name <span class="text-rose-600">*</span></h2>
+        <p class="text-xs text-slate-600 mb-2">Type your full name to confirm. Prevents accidental clicks on this destructive action. Stored in audit log alongside the close.</p>
+        <input type="text" placeholder="e.g. Alexandra Hergati" class="w-full border border-slate-300 rounded p-2 text-sm">
+        <div class="text-xs text-slate-500 mt-1">Logged-in user: <span class="mono">hergati@gmail.com</span> · expected to match account display name (case-insensitive).</div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT — impact, summary -->
+    <div class="col-span-4 space-y-4">
+
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-emerald-700 mb-2">📋 Summary</h3>
+        <div class="text-xs space-y-1 text-slate-700">
+          <div><b>Task:</b> DT-009 (develop)</div>
+          <div><b>Objective:</b> O-003</div>
+          <div><b>3 findings:</b> 2 deferred, 1 addressing</div>
+          <div><b>Reason:</b> 388 chars · OK</div>
+          <div><b>Signature:</b> <span class="text-amber-700">pending</span></div>
+        </div>
+      </div>
+
+      <!-- Impact -->
+      <div class="bg-amber-50 border-l-4 border-amber-500 rounded-xl p-4 text-xs">
+        <h3 class="font-bold text-amber-900 mb-2">📊 Close impact</h3>
+        <ul class="text-slate-700 space-y-1 list-disc pl-4">
+          <li><b>O-003 unblocks</b> — DT-009 was the last develop task on its blocker list. O-003 advances to AC verification + KR check.</li>
+          <li><b>F-2, F-3 stay OPEN</b> — but now unattributed to DT-009. They surface on the project's "open findings" digest until addressed.</li>
+          <li><b>F-4 closes</b> — once S-007 runs and passes (or fails — task can re-open if it fails).</li>
+          <li><b>O-005 UAT becomes reachable</b> next.</li>
+          <li>Cost incurred is final ($0.42 executor + $0.18 challenger).</li>
+        </ul>
+      </div>
+
+      <!-- Recent closes -->
+      <div class="bg-slate-50 rounded-xl p-4 text-xs">
+        <h3 class="font-bold text-slate-700 mb-2">🕒 Recent closes on this project</h3>
+        <div class="space-y-1 text-slate-700">
+          <div><span class="mono text-slate-500">DT-007</span> · 2026-04-15 · 1 deferred (LOW)</div>
+          <div><span class="mono text-slate-500">DT-005</span> · 2026-04-14 · 0 deferred</div>
+          <div><span class="mono text-slate-500">AT-005</span> · 2026-04-13 · 2 deferred (HIGH, MED)</div>
+          <div class="text-slate-500 italic mt-1">Average: 0.7 deferred per close on this project.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Scrutiny -->
+  <div class="bg-rose-50 border-l-4 border-rose-500 rounded-xl p-4 mb-5 text-xs">
+    <div class="flex items-start gap-3">
+      <div class="text-xl">🔎</div>
+      <div class="flex-1">
+        <h3 class="font-bold text-slate-900 mb-2">What closing this task does NOT do</h3>
+        <ul class="text-slate-700 space-y-1 list-disc pl-5">
+          <li><b>Does not dismiss the 2 deferred findings.</b> F-2 and F-3 stay OPEN in the project's findings tracker. They need separate triage — assign to a sprint, create follow-up tasks, or formally close them with their own reason.</li>
+          <li><b>Does not run S-007 retroactively for closed tasks.</b> If S-007 fails on this task's run, you'll need to re-open DT-009 with notes.</li>
+          <li><b>Does not notify J. Patel</b> that you cited his sign-off on F-3. If audit needs that proof, save the email/Slack URL into the close reason.</li>
+          <li><b>Does not enforce DT-012 spawn.</b> The follow-up task you mentioned is your promise — Forge does NOT auto-create it. Use <a href="05v2-create-followup-task.html" class="text-blue-600 hover:underline">create-followup-task</a> right after close.</li>
+          <li><b>Does not verify your signature against an external IdP.</b> "Alexandra Hergati" typed in the box is a soft check against your account display name only.</li>
+          <li><b>Does not retroactively prevent close-skip patterns.</b> If you defer findings often without addressing them, the project accumulates scrutiny debt that won't surface until a downstream regression.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="bg-slate-100 rounded-xl p-4 flex items-center justify-between">
+    <div class="text-sm text-slate-700">
+      <div><b>Cannot close yet</b> — signature pending</div>
+      <div class="text-xs text-slate-500">Type your full name to enable Close. All defer reasons are filled. 1 finding will run + auto-close on success.</div>
+    </div>
+    <div class="flex gap-2">
+      <a href="05v2-task-deliverable.html" class="text-sm text-slate-600 hover:text-slate-900 px-4 py-2">Cancel</a>
+      <a href="05v2-create-followup-task.html" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">Pre-create DT-012 follow-up first</a>
+      <button disabled class="bg-slate-300 text-slate-500 text-sm font-bold px-5 py-2.5 rounded-lg cursor-not-allowed" title="Sign with your full name to enable close.">Close task (audit-logged)</button>
+    </div>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="mt-5 bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=close-task</span>
+    <span class="mono bg-white px-1 rounded">entity=DT-009 · 3 unresolved</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[findings, defer reasons, close reason draft]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Draft DT-012 from F-2</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Find similar deferred findings closed-then-regressed</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">/audit show how many closes deferred F-3-like</span>
+  </div>
+
+</div>
+
+<!-- Annotations -->
+<div class="annot" style="top: 170px; left: 30px;">1</div>
+<div class="annot" style="top: 320px; left: 30px;">2</div>
+<div class="annot" style="top: 880px; left: 30px;">3</div>
+<div class="annot" style="top: 1080px; left: 30px;">4</div>
+<div class="annot" style="top: 320px; left: 870px;">5</div>
+<div class="annot" style="top: 530px; left: 870px;">6</div>
+<div class="annot" style="top: 1280px; left: 30px;">7</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 290px;">
+  <h3>05v2-close-task · data sources</h3>
+  <ol>
+    <li><strong>Header w/ unresolved count</strong> ← <span class="mono">task.{id, title, status}</span> + count of <span class="mono">finding WHERE task_id=DT-009 AND status=OPEN</span>. The 3 = 1 HIGH + 1 MED + 1 LOW.</li>
+    <li><strong>Unresolved items checklist</strong> ← each finding rendered with severity, source. Action choice "address now" vs "defer" stored in form state. Defer reason min 30 chars per finding.</li>
+    <li><strong>Close reason</strong> ← <span class="mono">task.close_reason</span>, min 100 chars server-validated. Stored verbatim, never auto-generated.</li>
+    <li><strong>Signature</strong> ← <span class="mono">task.close_signature</span>. Soft-checked client-side against <span class="mono">user.display_name</span> (case-insensitive). Server stores the typed string in <span class="mono">audit_log.signature</span>.</li>
+    <li><strong>Close impact</strong> ← deterministic graph walk: which objectives unblock, which findings stay open. Cost line ← sum of <span class="mono">llm_call WHERE task_id=DT-009</span>.</li>
+    <li><strong>Recent closes</strong> ← last N <span class="mono">audit_log WHERE action=close_task AND project_id=acme-erp-migration</span> with deferred-count.</li>
+    <li><strong>Scrutiny — does NOT do</strong> ← enforced template. Lists what close action does/doesn't side-effect.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> "Close task" → POST <span class="mono">/task/{id}/close</span> with body = {reason, signature, finding_actions[]}. Server validates reason length, signature match, every finding has action. On success: redirects to <span class="mono">05v2-task-deliverable.html</span> with CLOSED state. "Pre-create follow-up" → <span class="mono">05v2-create-followup-task.html?source_finding=F-2</span>. Cancel → back.
+    <br><br><b>NEW DB columns implied:</b> <span class="mono">task.close_reason</span>, <span class="mono">task.close_signature</span>, <span class="mono">finding.defer_reason</span>, <span class="mono">finding.deferred_by_task_id</span>.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

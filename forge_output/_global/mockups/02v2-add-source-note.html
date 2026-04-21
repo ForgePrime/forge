@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>02v2. Add source — manual note</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 60px; min-height: 1500px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">Knowledge base</a>
+      <span class="mx-2">/</span>
+      <span class="text-white">Add manual note</span>
+    </div>
+  </div>
+  <div class="ctx">
+    <span class="text-xs text-slate-400">autonomy · L2</span>
+    <span class="kbd">⌘K</span>
+  </div>
+</nav>
+
+<div class="max-w-[1200px] mx-auto px-8 py-6">
+
+  <!-- Header -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5 border-l-4 border-amber-500">
+    <div class="flex items-start justify-between">
+      <div>
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MANUAL NOTE</span>
+          <span class="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded">no external file · pure user content</span>
+        </div>
+        <h1 class="text-xl font-bold">Add a manual note to the knowledge base</h1>
+        <p class="text-sm text-slate-600 mt-1">Capture context that lives only in your head — meeting outcomes, undocumented constraints, "the real reason" behind a decision. This becomes a SRC-NNN that Claude consults like any other source.</p>
+      </div>
+      <a href="02v2-project-kb.html" class="text-sm text-slate-500 hover:text-slate-900">← Back to KB</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-5 mb-5">
+
+    <!-- LEFT — title, category, editor -->
+    <div class="col-span-8 space-y-4">
+
+      <!-- Title + category -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <div class="grid grid-cols-3 gap-3 mb-3">
+          <div class="col-span-2">
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Title <span class="text-rose-600">*</span></label>
+            <input type="text" class="w-full border border-slate-300 rounded p-2 text-sm" value="Architect call 2026-04-12: SRC-002 supersedes SRC-001 on DB sharing">
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Category <span class="text-rose-600">*</span></label>
+            <select class="w-full border border-slate-300 rounded p-2 text-sm">
+              <option>business-context</option>
+              <option>technical-context</option>
+              <option selected>domain-rules</option>
+              <option>meeting-notes</option>
+              <option>workaround</option>
+              <option>known-issue</option>
+              <option>policy</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Editor + preview side by side -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-bold text-sm">Note content <span class="text-xs font-normal text-slate-500">— markdown supported</span></h2>
+          <div class="flex gap-2 text-xs">
+            <button class="text-slate-600 hover:text-slate-900 px-2 py-1 border border-slate-200 rounded">B</button>
+            <button class="text-slate-600 hover:text-slate-900 px-2 py-1 border border-slate-200 rounded italic">I</button>
+            <button class="text-slate-600 hover:text-slate-900 px-2 py-1 border border-slate-200 rounded mono">code</button>
+            <button class="text-slate-600 hover:text-slate-900 px-2 py-1 border border-slate-200 rounded">link</button>
+            <button class="text-slate-600 hover:text-slate-900 px-2 py-1 border border-slate-200 rounded">list</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Edit</div>
+            <textarea rows="18" class="w-full border border-slate-300 rounded p-3 text-xs mono leading-relaxed">## Context
+Call with J. Patel (client SA) on 2026-04-12 14:30 UTC. Attended: hergati, J. Patel, M. Chen (PM).
+
+## Outcome
+J. Patel reaffirmed that **SRC-002 (migration-plan v3, 2026-02) is the binding spec** for Phase 1. The vendor docs (SRC-001) describe a generic strangler-fig pattern that does NOT apply here — client's compliance team explicitly forbids shared writes to the legacy Oracle DB beyond read-only audit access.
+
+## Reasoning (not in any source doc)
+- Oracle DB is in a separate VRF managed by Acme's compliance org. Granting write access to a new app would require quarterly SOC2 re-certification — not in budget for Phase 1.
+- The "shared DB" pattern from SRC-001 was tried in 2024 on a different acme project and was reverted after 4 months due to drift.
+
+## Decision
+Use SRC-002 strategy: separate PostgreSQL 16 + Debezium CDC. SRC-001 should be down-weighted in retrieval (still kept for general patterns reference).
+
+## Action
+- This note created so future analysis tasks know SRC-002 wins on DB-sharing question (Q-007).
+- Add a focus_hint to SRC-002: "binding for DB sharing — overrides SRC-001"</textarea>
+            <div class="flex items-center justify-between text-xs text-slate-500 mt-1">
+              <span>1,082 chars · 6 paragraphs</span>
+              <span>~270 tokens to embed</span>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Preview</div>
+            <div class="border border-slate-200 rounded p-3 bg-slate-50 text-xs leading-relaxed h-[394px] overflow-y-auto">
+              <h3 class="font-bold text-sm mt-0 mb-1">Context</h3>
+              <p class="mb-2">Call with J. Patel (client SA) on 2026-04-12 14:30 UTC. Attended: hergati, J. Patel, M. Chen (PM).</p>
+              <h3 class="font-bold text-sm mb-1">Outcome</h3>
+              <p class="mb-2">J. Patel reaffirmed that <b>SRC-002 (migration-plan v3, 2026-02) is the binding spec</b> for Phase 1. The vendor docs (SRC-001) describe a generic strangler-fig pattern that does NOT apply here — client's compliance team explicitly forbids shared writes to the legacy Oracle DB beyond read-only audit access.</p>
+              <h3 class="font-bold text-sm mb-1">Reasoning <span class="text-slate-500 font-normal">(not in any source doc)</span></h3>
+              <ul class="list-disc pl-4 mb-2">
+                <li>Oracle DB is in a separate VRF managed by Acme's compliance org. Granting write access to a new app would require quarterly SOC2 re-certification — not in budget for Phase 1.</li>
+                <li>The "shared DB" pattern from SRC-001 was tried in 2024 on a different acme project and was reverted after 4 months due to drift.</li>
+              </ul>
+              <h3 class="font-bold text-sm mb-1">Decision</h3>
+              <p class="mb-2">Use SRC-002 strategy: separate PostgreSQL 16 + Debezium CDC. SRC-001 should be down-weighted in retrieval (still kept for general patterns reference).</p>
+              <h3 class="font-bold text-sm mb-1">Action</h3>
+              <ul class="list-disc pl-4">
+                <li>This note created so future analysis tasks know SRC-002 wins on DB-sharing question (Q-007).</li>
+                <li>Add a focus_hint to SRC-002: "binding for DB sharing — overrides SRC-001"</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- "Describes" intent -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="font-bold text-sm mb-2">"Describes" — intent for Claude <span class="text-rose-600">*</span></h2>
+        <p class="text-xs text-slate-600 mb-2">A 1-sentence summary of what this note conveys. Read by every analysis task before consulting the body. Min 30 chars.</p>
+        <input type="text" class="w-full border border-slate-300 rounded p-2 text-sm" value="Tie-breaker: SRC-002 supersedes SRC-001 on DB sharing per architect's call 2026-04-12; cites compliance/budget reasoning not in source docs.">
+        <div class="text-xs text-emerald-700 mt-1">142 / 30 chars min · OK</div>
+      </div>
+
+      <!-- Tie to objective / decision -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="font-bold text-sm mb-2">Link to existing entities <span class="text-slate-400 font-normal">(optional)</span></h2>
+        <p class="text-xs text-slate-600 mb-2">If this note is the answer or context for a specific decision/objective, link them so Claude surfaces this note in their context.</p>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Linked decisions</label>
+            <div class="flex flex-wrap gap-1 mb-1">
+              <span class="bg-rose-100 text-rose-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">Q-007 (DB sharing) <button class="hover:text-rose-900">×</button></span>
+            </div>
+            <input type="text" placeholder="+ search decisions..." class="w-full bg-slate-50 border border-slate-200 rounded p-1.5 text-xs">
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Linked objectives</label>
+            <div class="flex flex-wrap gap-1 mb-1">
+              <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">O-002 (Plan migration) <button class="hover:text-blue-900">×</button></span>
+              <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">O-003 (Build CDC) <button class="hover:text-blue-900">×</button></span>
+            </div>
+            <input type="text" placeholder="+ search objectives..." class="w-full bg-slate-50 border border-slate-200 rounded p-1.5 text-xs">
+          </div>
+        </div>
+      </div>
+
+      <!-- Scopes -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="font-bold text-sm mb-2">Scopes</h2>
+        <div class="flex flex-wrap gap-2">
+          <span class="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">tie-breaker <button class="hover:text-amber-900">×</button></span>
+          <span class="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">database <button class="hover:text-amber-900">×</button></span>
+          <span class="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">compliance <button class="hover:text-amber-900">×</button></span>
+          <span class="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded mono flex items-center gap-1">meeting-derived <button class="hover:text-amber-900">×</button></span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT -->
+    <div class="col-span-4 space-y-4">
+
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-emerald-700 mb-2">📋 Summary</h3>
+        <div class="text-xs space-y-1 text-slate-700">
+          <div><b>Type:</b> manual note</div>
+          <div><b>Category:</b> domain-rules</div>
+          <div><b>Length:</b> 1,082 chars · ~270 tokens</div>
+          <div><b>Linked:</b> Q-007 · O-002, O-003</div>
+          <div><b>LLM cost:</b> <span class="text-emerald-700 font-bold">$0 (no LLM call)</span></div>
+          <div><b>Next ID:</b> <span class="mono">SRC-009</span></div>
+        </div>
+      </div>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 rounded-xl p-4 text-xs">
+        <h3 class="font-bold text-amber-900 mb-2">🔎 Source-of-truth scrutiny</h3>
+        <p class="text-slate-700 mb-2"><b>This note has no external source.</b> Your memory is the source — future-you may disagree. Forge will trust it the same as a vendor doc.</p>
+        <p class="text-slate-700 mb-2">Consider:</p>
+        <ul class="text-slate-700 space-y-0.5 list-disc pl-4">
+          <li>Cite anchors people can verify (call recording? meeting minutes URL?)</li>
+          <li>Name attendees so it's clear who agreed</li>
+          <li>State date — context decays</li>
+          <li>If it overrides another source, say so explicitly (you did — good)</li>
+        </ul>
+        <p class="text-slate-700 mt-2 italic">Without anchors, an analysis task 6 months from now will accept this as authoritative without anyone able to verify.</p>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-4 text-xs">
+        <h3 class="font-bold text-slate-700 mb-2">📥 What happens after save</h3>
+        <ul class="text-slate-700 space-y-1 list-disc pl-4">
+          <li>Note saved as <span class="mono">SRC-009</span> · status ACTIVE immediately</li>
+          <li>Embedded into the KB (one-time, no LLM call — embeddings only)</li>
+          <li>Linked decision <span class="mono">Q-007</span> gets a notification: "new context added"</li>
+          <li>Next analysis task on O-002 / O-003 reads this note first</li>
+          <li>Note is editable forever — no version history yet (Pass 4 will add diff)</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="bg-slate-100 rounded-xl p-4 flex items-center justify-between">
+    <div class="text-sm text-slate-700">
+      <div><b>Ready to save</b> as <span class="mono">SRC-009</span> · linked to Q-007, O-002, O-003</div>
+      <div class="text-xs text-slate-500">No LLM cost — purely your content. Embeddings happen async post-save (~$0.0001).</div>
+    </div>
+    <div class="flex gap-2">
+      <a href="02v2-project-kb.html" class="text-sm text-slate-600 hover:text-slate-900 px-4 py-2">Cancel</a>
+      <button class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg" title="Saves the note in DRAFT — not yet visible to analysis tasks. Useful when you want to revisit before publishing.">Save as draft</button>
+      <a href="02v2-project-kb.html" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold px-5 py-2.5 rounded-lg">Save note</a>
+    </div>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="mt-5 bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=add-source-note</span>
+    <span class="mono bg-white px-1 rounded">source_type=note · category=domain-rules</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[draft text, links Q-007/O-002/O-003]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Suggest anchors I should cite</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Compare with SRC-001 / SRC-002</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Will this auto-resolve Q-007?</span>
+  </div>
+
+</div>
+
+<!-- Annotations -->
+<div class="annot" style="top: 190px; left: 30px;">1</div>
+<div class="annot" style="top: 320px; left: 30px;">2</div>
+<div class="annot" style="top: 920px; left: 30px;">3</div>
+<div class="annot" style="top: 1050px; left: 30px;">4</div>
+<div class="annot" style="top: 1240px; left: 30px;">5</div>
+<div class="annot" style="top: 460px; left: 880px;">6</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 280px;">
+  <h3>02v2-add-source-note · data sources</h3>
+  <ol>
+    <li><strong>Title + category</strong> ← <span class="mono">source.title</span> + <span class="mono">source.category</span> (enum: business-context, technical-context, domain-rules, meeting-notes, workaround, known-issue, policy). Category drives default scopes.</li>
+    <li><strong>Markdown editor + preview</strong> ← <span class="mono">source.body_md</span>. Server-side render to HTML for storage. Embedding done on raw markdown text (~270 tokens).</li>
+    <li><strong>"Describes" field</strong> ← <span class="mono">source.description</span>. Required, min 30 chars. Read by every analysis task before consulting body.</li>
+    <li><strong>Linked decisions / objectives</strong> ← <span class="mono">source.linked_decisions[]</span> + <span class="mono">source.linked_objectives[]</span>. Establishes context boost — when those entities are loaded into LLM context, this note attaches automatically.</li>
+    <li><strong>Scopes</strong> ← <span class="mono">source.scopes[]</span>. Tag chips, same as other sources.</li>
+    <li><strong>Source-of-truth scrutiny</strong> ← always shown for note-type sources (others have author metadata; notes don't). Suggests citing anchors, naming attendees, dating.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> "Save note" → POST <span class="mono">/source</span> w/ <span class="mono">type=note</span>, redirect <span class="mono">02v2-project-kb.html?flash=SRC-009-saved</span>. "Save as draft" → POST w/ status=DRAFT (not visible to analysis until published). Cancel → discard.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

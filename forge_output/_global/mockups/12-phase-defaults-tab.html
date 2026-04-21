@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>12. Project config — Phase defaults tab</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px; min-height: 1500px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <span class="text-white">Project config</span>
+      <span class="mx-2">/</span>
+      <span class="text-white">Phase defaults</span>
+    </div>
+  </div>
+  <div class="ctx"><span class="kbd">⌘K</span></div>
+</nav>
+
+<div class="max-w-[1280px] mx-auto px-8 py-6">
+
+  <div class="mb-5">
+    <h1 class="text-2xl font-bold">Project configuration</h1>
+    <p class="text-sm text-slate-600">Default skills per phase. These run if the task-level config doesn't override. Organization-level defaults shown in grey — you can customize per project without changing org.</p>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex gap-1 border-b border-slate-200 mb-6">
+    <a href="12-project-config.html" class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">📜 Operational contract</a>
+    <a href="12-skills-tab.html" class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">🧩 Skills · 12</a>
+    <a href="12-hooks-tab.html" class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">🪝 Post-stage hooks · 4</a>
+    <a class="px-4 py-2.5 border-b-2 border-blue-600 font-semibold text-sm text-blue-700">⚙ Phase defaults</a>
+    <a class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">💰 Budget + limits</a>
+    <a class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">🔑 Integrations</a>
+  </div>
+
+  <!-- Scrutiny -->
+  <div class="bg-rose-50 border-l-4 border-rose-500 rounded-lg p-4 mb-5 text-sm">
+    <div class="font-bold text-rose-900 mb-1">🔎 What phase defaults do NOT override</div>
+    <ul class="text-slate-700 list-disc pl-5 space-y-0.5 text-xs">
+      <li>Skills with <b>auto-attach rules</b> that match — those still fire regardless of phase defaults</li>
+      <li>Skills attached <b>manually on a specific task</b> — task-level overrides phase-level</li>
+      <li><b>Post-stage hooks</b> — see separate <a href="12-hooks-tab.html" class="text-blue-600 hover:underline">hooks tab</a></li>
+      <li>Challenger's own skill pool — configured separately on the op contract tab</li>
+    </ul>
+    <div class="mt-2 text-xs text-slate-600">In other words: these are the "if nothing else fires, run these" defaults. Order of precedence: task-level &gt; auto-attach rule &gt; phase defaults &gt; org defaults.</div>
+  </div>
+
+  <!-- 4 columns -->
+  <div class="grid grid-cols-4 gap-4 mb-5">
+
+    <!-- ANALYSIS -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="bg-blue-100 text-blue-900 px-4 py-3 font-bold text-sm flex items-center justify-between">
+        <span>🔍 ANALYSIS</span>
+        <span class="text-xs font-normal">3 default skills</span>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="bg-white border border-blue-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-blue-100 text-blue-700 text-xs font-bold px-1.5 py-0.5 rounded">SKILL</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Non-happy-path scenarios</div>
+              <div class="text-xs text-slate-500 mono">SK-scenario-gen-nonhappy</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.15/task · forces edge-case coverage</div>
+        </div>
+
+        <div class="bg-white border border-blue-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MICRO</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Ambiguity detection</div>
+              <div class="text-xs text-slate-500 mono">MS-ambiguity-detect</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.03/task · flags HIGH/MEDIUM Q's</div>
+        </div>
+
+        <div class="bg-white border border-blue-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MICRO</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Source attribution enforcer</div>
+              <div class="text-xs text-slate-500 mono">MS-source-attribution</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.02/task · rejects unsourced claims</div>
+        </div>
+
+        <div class="opacity-50 text-center py-2 text-xs text-slate-500">
+          org default — not customized
+        </div>
+
+        <button class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 rounded">+ Add skill to analysis defaults</button>
+      </div>
+      <div class="bg-slate-50 border-t border-slate-200 px-4 py-2 text-xs text-slate-600">
+        <b>Est. cost overhead:</b> +$0.20/analysis task
+      </div>
+    </div>
+
+    <!-- PLANNING -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="bg-purple-100 text-purple-900 px-4 py-3 font-bold text-sm flex items-center justify-between">
+        <span>🎯 PLANNING</span>
+        <span class="text-xs font-normal">3 default skills</span>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="bg-white border border-purple-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MICRO</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">DAG acyclic check</div>
+              <div class="text-xs text-slate-500 mono">MS-dag-acyclic</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.01/task · deterministic</div>
+        </div>
+
+        <div class="bg-white border border-purple-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MICRO</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">AC coverage gate</div>
+              <div class="text-xs text-slate-500 mono">MS-ac-coverage-gate</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.02/task · every AC has a task</div>
+        </div>
+
+        <div class="bg-white border border-purple-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MICRO</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Task-size cap (≤5 AC)</div>
+              <div class="text-xs text-slate-500 mono">MS-task-size-cap</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.01/task · prevents monster tasks</div>
+        </div>
+
+        <div class="opacity-50 text-center py-2 text-xs text-slate-500">
+          org default — not customized
+        </div>
+
+        <button class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 rounded">+ Add skill to planning defaults</button>
+      </div>
+      <div class="bg-slate-50 border-t border-slate-200 px-4 py-2 text-xs text-slate-600">
+        <b>Est. cost overhead:</b> +$0.04/planning task
+      </div>
+    </div>
+
+    <!-- DEVELOP (customized) -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden border-2 border-emerald-400">
+      <div class="bg-emerald-100 text-emerald-900 px-4 py-3 font-bold text-sm flex items-center justify-between">
+        <span>⚙ DEVELOP</span>
+        <span class="text-xs font-normal bg-emerald-600 text-white px-2 py-0.5 rounded">customized</span>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="bg-white border border-emerald-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-blue-100 text-blue-700 text-xs font-bold px-1.5 py-0.5 rounded">SKILL</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Security OWASP sweep</div>
+              <div class="text-xs text-slate-500 mono">SK-security-owasp</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.08/call · if auth/API touched</div>
+        </div>
+
+        <div class="bg-white border border-emerald-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MICRO</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">pytest parametrize</div>
+              <div class="text-xs text-slate-500 mono">MS-pytest-parametrize</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.02/call · enforces edge cases</div>
+        </div>
+
+        <div class="bg-emerald-50 border-2 border-emerald-500 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-purple-100 text-purple-700 text-xs font-bold px-1.5 py-0.5 rounded">OPINION</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">HIPAA auditor (project-specific)</div>
+              <div class="text-xs text-slate-500 mono">OP-hipaa-auditor</div>
+              <span class="inline-block mt-1 bg-emerald-500 text-white text-xs font-bold px-2 py-0.5 rounded">added for this project</span>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.18/call · healthcare scope required</div>
+        </div>
+
+        <button class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 rounded">+ Add skill to develop defaults</button>
+      </div>
+      <div class="bg-slate-50 border-t border-slate-200 px-4 py-2 text-xs text-slate-600">
+        <b>Est. cost overhead:</b> +$0.28/develop task
+      </div>
+    </div>
+
+    <!-- DOC -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="bg-slate-200 text-slate-800 px-4 py-3 font-bold text-sm flex items-center justify-between">
+        <span>📄 DOCUMENTATION</span>
+        <span class="text-xs font-normal">2 default skills</span>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="bg-white border border-slate-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MICRO</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">ADR section extractor</div>
+              <div class="text-xs text-slate-500 mono">MS-adr-sections</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.03/call · deterministic Nygard format</div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded p-3">
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">MICRO</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Citation completeness</div>
+              <div class="text-xs text-slate-500 mono">MS-citation-check</div>
+            </div>
+            <button class="text-xs text-rose-600 hover:underline">×</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-1">+$0.02/call · every claim → SRC ref</div>
+        </div>
+
+        <div class="opacity-50 text-center py-2 text-xs text-slate-500">
+          org default — not customized
+        </div>
+
+        <button class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 rounded">+ Add skill to doc defaults</button>
+      </div>
+      <div class="bg-slate-50 border-t border-slate-200 px-4 py-2 text-xs text-slate-600">
+        <b>Est. cost overhead:</b> +$0.05/doc task
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer: reset + save -->
+  <div class="bg-slate-100 rounded-xl p-4 flex items-center justify-between">
+    <div class="text-sm text-slate-700">
+      <div>Phase defaults apply to <b>future tasks only</b>. Past tasks keep their original skill set.</div>
+      <div class="text-xs text-slate-500">Changes logged in config history.</div>
+    </div>
+    <div class="flex gap-2">
+      <button class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">↺ Reset to org defaults</button>
+      <button class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-lg">Save defaults</button>
+    </div>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="mt-5 bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=project-config-phase-defaults</span>
+    <span class="mono bg-white px-1 rounded">entity=project:acme-erp-migration</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[4 phases × default skills]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Explain precedence order</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Compare to org defaults</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Suggest skills for DEVELOP phase</span>
+  </div>
+
+</div>
+
+<!-- Annotations -->
+<div class="annot" style="top: 140px; left: 30px;">1</div>
+<div class="annot" style="top: 250px; left: 30px;">2</div>
+<div class="annot" style="top: 380px; left: 30px;">3</div>
+<div class="annot" style="top: 380px; left: 680px;">4</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 280px;">
+  <h3>12-phase-defaults-tab · data sources</h3>
+  <ol>
+    <li><strong>Scrutiny</strong> ← static. Teaches precedence order.</li>
+    <li><strong>4 columns</strong> = enum <span class="mono">phase</span> = [ANALYSIS, PLANNING, DEVELOP, DOCUMENTATION]. Each column lists skills where <span class="mono">phase_default.phase = X</span> AND <span class="mono">phase_default.project_id = acme-erp-migration</span>.</li>
+    <li><strong>Customized badge</strong> on DEVELOP column = <span class="mono">project_phase_default.overrides_org_default = true</span>. Shown only when project has edited defaults for that phase.</li>
+    <li><strong>"Added for this project" pill</strong> ← <span class="mono">phase_default.source = 'project'</span> (vs 'org'). Org-level ones can't be removed, only overridden.</li>
+    <li><strong>Cost overhead</strong> = <span class="mono">SUM(skill.cost_impact_per_call)</span> for the skills in that column.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> "+ Add skill to X defaults" → modal picker listing skills not yet in that phase's defaults. "×" on a skill → POST <span class="mono">/project/acme-erp-migration/phase-defaults/{phase}/remove/{skill_id}</span>. "Reset to org defaults" → confirmation modal → POST <span class="mono">/project/acme-erp-migration/phase-defaults/reset</span>. Save → POST bulk update.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

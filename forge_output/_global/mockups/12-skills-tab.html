@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>12. Project config — Skills tab</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px; min-height: 1500px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <span class="text-white">Project config</span>
+      <span class="mx-2">/</span>
+      <span class="text-white">Skills</span>
+    </div>
+  </div>
+  <div class="ctx"><span class="kbd">⌘K</span></div>
+</nav>
+
+<div class="max-w-[1280px] mx-auto px-8 py-6">
+
+  <div class="mb-5">
+    <h1 class="text-2xl font-bold">Project configuration</h1>
+    <p class="text-sm text-slate-600">Skills attached to this project. Every skill adds context + cost to every LLM call — more is not better.</p>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex gap-1 border-b border-slate-200 mb-6">
+    <a href="12-project-config.html" class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">📜 Operational contract</a>
+    <a class="px-4 py-2.5 border-b-2 border-blue-600 font-semibold text-sm text-blue-700">🧩 Skills · 12</a>
+    <a href="12-hooks-tab.html" class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">🪝 Post-stage hooks · 4</a>
+    <a href="12-phase-defaults-tab.html" class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">⚙ Phase defaults</a>
+    <a class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">💰 Budget + limits</a>
+    <a class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-900">🔑 Integrations</a>
+  </div>
+
+  <!-- Cost impact summary -->
+  <div class="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-5">
+    <div class="flex items-start gap-4">
+      <div class="text-2xl">📊</div>
+      <div class="flex-1">
+        <div class="font-bold text-slate-900 mb-1">Cost impact of your current skill selection</div>
+        <div class="grid grid-cols-4 gap-4 mt-2 text-sm">
+          <div>
+            <div class="text-xs text-slate-500 uppercase font-semibold">Context overhead</div>
+            <div class="text-xl font-bold text-amber-700">+38%</div>
+            <div class="text-xs text-slate-500">≈3,400 tokens injected</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 uppercase font-semibold">Avg cost per task</div>
+            <div class="text-xl font-bold text-amber-700">+$0.14</div>
+            <div class="text-xs text-slate-500">vs bare skills</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 uppercase font-semibold">Monthly projection</div>
+            <div class="text-xl font-bold text-slate-800">$42</div>
+            <div class="text-xs text-slate-500">at current run rate</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 uppercase font-semibold">Status</div>
+            <div class="text-xl font-bold text-emerald-700">within budget</div>
+            <div class="text-xs text-slate-500">of $100/mo cap</div>
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-col gap-2">
+        <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2 rounded-lg">🎚 Rebalance (suggest trims)</button>
+        <a href="11-skills-library.html" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg text-center">Browse library →</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scrutiny -->
+  <div class="bg-rose-50 border-l-4 border-rose-500 rounded-lg p-4 mb-5 text-sm">
+    <div class="font-bold text-rose-900 mb-1">🔎 What this tab does NOT control</div>
+    <ul class="text-slate-700 list-disc pl-5 space-y-0.5 text-xs">
+      <li>Auto-attach <b>rules</b> themselves (edit on the skill's detail page in <a href="11-skill-edit.html" class="text-blue-600 hover:underline">11-skill-edit</a>)</li>
+      <li>Which skills fire <b>after</b> a stage — see <a href="12-hooks-tab.html" class="text-blue-600 hover:underline">Post-stage hooks</a></li>
+      <li>Which skills are <b>default per phase</b> if no task-level overrides — see <a href="12-phase-defaults-tab.html" class="text-blue-600 hover:underline">Phase defaults</a></li>
+      <li>Whether <b>challenger</b> also uses these skills (challenger has its own skill pool, configured on the op contract tab)</li>
+    </ul>
+  </div>
+
+  <!-- Attached skills list -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-bold">Attached skills (12)</h2>
+      <div class="flex gap-2 text-xs">
+        <select class="border border-slate-300 rounded px-2 py-1.5 text-xs">
+          <option>All categories</option><option>SKILL</option><option>MICRO</option><option>OPINION</option>
+        </select>
+        <select class="border border-slate-300 rounded px-2 py-1.5 text-xs">
+          <option>All attachment modes</option><option>auto</option><option>default (phase)</option><option>manual</option>
+        </select>
+        <a href="11-skills-library.html" class="text-blue-600 hover:underline font-semibold px-2 py-1.5">+ Add from library</a>
+      </div>
+    </div>
+
+    <!-- Column headers -->
+    <div class="grid grid-cols-12 gap-3 text-xs font-bold text-slate-500 uppercase tracking-wide pb-2 border-b border-slate-200">
+      <div class="col-span-4">Skill</div>
+      <div class="col-span-2">Category</div>
+      <div class="col-span-2">Attachment</div>
+      <div class="col-span-2">Cost impact</div>
+      <div class="col-span-2 text-right">Actions</div>
+    </div>
+
+    <!-- Rows -->
+    <div class="divide-y divide-slate-100">
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">Security OWASP sweep</div>
+          <div class="text-xs text-slate-500 mono">SK-security-owasp</div>
+        </div>
+        <div class="col-span-2"><span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span></div>
+        <div class="col-span-2">
+          <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">auto</span>
+          <div class="text-xs text-slate-500 mt-0.5">if diff touches auth/API</div>
+        </div>
+        <div class="col-span-2 text-xs text-amber-700 font-semibold">+$0.08/call</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">Non-happy-path scenario generator</div>
+          <div class="text-xs text-slate-500 mono">SK-scenario-gen-nonhappy</div>
+        </div>
+        <div class="col-span-2"><span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span></div>
+        <div class="col-span-2">
+          <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">default · analysis</span>
+        </div>
+        <div class="col-span-2 text-xs text-amber-700 font-semibold">+$0.15/task</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">Risk-weighted verification</div>
+          <div class="text-xs text-slate-500 mono">SK-risk-weighted-verify</div>
+        </div>
+        <div class="col-span-2"><span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span></div>
+        <div class="col-span-2">
+          <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">default · risk</span>
+        </div>
+        <div class="col-span-2 text-xs text-amber-700 font-semibold">+0–40%/task</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">pytest parametrize helper</div>
+          <div class="text-xs text-slate-500 mono">MS-pytest-parametrize</div>
+        </div>
+        <div class="col-span-2"><span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MICRO</span></div>
+        <div class="col-span-2">
+          <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">auto</span>
+          <div class="text-xs text-slate-500 mt-0.5">if Python + pytest</div>
+        </div>
+        <div class="col-span-2 text-xs text-slate-600">+$0.02/call</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">ADR section extractor</div>
+          <div class="text-xs text-slate-500 mono">MS-adr-sections</div>
+        </div>
+        <div class="col-span-2"><span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MICRO</span></div>
+        <div class="col-span-2">
+          <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded">auto · DOC</span>
+        </div>
+        <div class="col-span-2 text-xs text-slate-600">+$0.03/call</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">"Best senior Django developer"</div>
+          <div class="text-xs text-slate-500 mono">OP-best-dev-django</div>
+        </div>
+        <div class="col-span-2"><span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">OPINION</span></div>
+        <div class="col-span-2">
+          <span class="bg-slate-100 text-slate-700 text-xs font-bold px-2 py-0.5 rounded">manual</span>
+          <div class="text-xs text-slate-500 mt-0.5">user opts in per task</div>
+        </div>
+        <div class="col-span-2 text-xs text-amber-700 font-semibold">+$0.12/call</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">HIPAA compliance auditor</div>
+          <div class="text-xs text-slate-500 mono">OP-hipaa-auditor</div>
+        </div>
+        <div class="col-span-2"><span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">OPINION</span></div>
+        <div class="col-span-2">
+          <span class="bg-slate-100 text-slate-700 text-xs font-bold px-2 py-0.5 rounded">manual (critical)</span>
+        </div>
+        <div class="col-span-2 text-xs text-amber-700 font-semibold">+$0.18/call</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">Cross-objective ambiguity scan</div>
+          <div class="text-xs text-slate-500 mono">SK-cross-obj-ambiguity</div>
+        </div>
+        <div class="col-span-2"><span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span></div>
+        <div class="col-span-2">
+          <span class="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded">hook · after analysis</span>
+        </div>
+        <div class="col-span-2 text-xs text-slate-600">+$0.05/hook</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="12-hooks-tab.html" class="text-blue-600 hover:underline">View hook</a>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">DAG lint + critical-path highlight</div>
+          <div class="text-xs text-slate-500 mono">SK-dag-lint</div>
+        </div>
+        <div class="col-span-2"><span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded">SKILL</span></div>
+        <div class="col-span-2">
+          <span class="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded">hook · after planning</span>
+        </div>
+        <div class="col-span-2 text-xs text-slate-600">+$0.04/hook</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="12-hooks-tab.html" class="text-blue-600 hover:underline">View hook</a>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">Stale-link scanner</div>
+          <div class="text-xs text-slate-500 mono">MS-broken-link-check</div>
+        </div>
+        <div class="col-span-2"><span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MICRO</span></div>
+        <div class="col-span-2">
+          <span class="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-0.5 rounded">hook · disabled</span>
+        </div>
+        <div class="col-span-2 text-xs text-slate-600">+$0.01/hook</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="12-hooks-tab.html" class="text-blue-600 hover:underline">Enable</a>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">Source attribution enforcer</div>
+          <div class="text-xs text-slate-500 mono">MS-source-attribution</div>
+        </div>
+        <div class="col-span-2"><span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MICRO</span></div>
+        <div class="col-span-2">
+          <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">default · analysis</span>
+        </div>
+        <div class="col-span-2 text-xs text-slate-600">+$0.02/call</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-3 items-center py-3">
+        <div class="col-span-4">
+          <div class="font-semibold text-sm">AC coverage gate</div>
+          <div class="text-xs text-slate-500 mono">MS-ac-coverage-gate</div>
+        </div>
+        <div class="col-span-2"><span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">MICRO</span></div>
+        <div class="col-span-2">
+          <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded">default · planning</span>
+        </div>
+        <div class="col-span-2 text-xs text-slate-600">+$0.02/call</div>
+        <div class="col-span-2 flex gap-2 justify-end text-xs">
+          <a href="11-skill-edit.html" class="text-blue-600 hover:underline">Edit</a>
+          <button class="text-rose-600 hover:underline">Detach</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-600">
+      💡 Detaching a skill only affects <b>future tasks</b>. Past tasks keep the skill set they ran with — audit trail preserved.
+    </div>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=project-config-skills</span>
+    <span class="mono bg-white px-1 rounded">entity=project:acme-erp-migration</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[12 skills, cost breakdown]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Which skills contribute most to cost?</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Suggest skills to detach</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Any redundant skills?</span>
+  </div>
+
+</div>
+
+<!-- Annotations -->
+<div class="annot" style="top: 140px; left: 30px;">1</div>
+<div class="annot" style="top: 210px; left: 30px;">2</div>
+<div class="annot" style="top: 300px; left: 30px;">3</div>
+<div class="annot" style="top: 460px; left: 30px;">4</div>
+<div class="annot" style="top: 580px; left: 30px;">5</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 280px;">
+  <h3>12-skills-tab · data sources</h3>
+  <ol>
+    <li><strong>Tab nav</strong> ← static HTML, active tab highlighted. Each tab is its own file: <span class="mono">12-project-config.html</span> (contract), <span class="mono">12-skills-tab.html</span> (this), <span class="mono">12-hooks-tab.html</span>, <span class="mono">12-phase-defaults-tab.html</span>.</li>
+    <li><strong>Cost impact summary</strong> ← aggregate: <span class="mono">SUM(skill.cost_impact_per_call)</span> × est call rate. Context overhead = <span class="mono">SUM(skill.context_token_size)</span> / avg call size.</li>
+    <li><strong>Scrutiny</strong> ← static (template requirement). Points to sibling tabs.</li>
+    <li><strong>Attached skills list</strong> ← <span class="mono">project_skill WHERE project_id=acme-erp-migration</span> JOIN <span class="mono">skill</span>. Attachment column = derived from skill.auto_attach_rule + project_skill.override_mode.</li>
+    <li><strong>Actions</strong> — "Edit" → <span class="mono">11-skill-edit.html?id={skill_id}&amp;project=acme-erp-migration</span>. "Detach" → POST <span class="mono">/project/acme-erp-migration/skill/{id}/detach</span>, with confirmation since detach affects future tasks. "Enable" (for disabled hooks) → redirect to <span class="mono">12-hooks-tab.html</span>.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> "+ Add from library" → <span class="mono">11-skills-library.html?mode=install&amp;project=acme-erp-migration</span>. Rebalance → opens sidebar suggestions panel (AI sidebar mockup 16).
+  </div>
+</div>
+
+</div>
+</body>
+</html>

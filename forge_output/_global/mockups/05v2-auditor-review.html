@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>05v2. Auditor review — AC-6 verdict + evidence</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px; min-height: 1900px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="05v2-auditor-inbox.html" class="hover:text-white">Auditor inbox</a>
+      <span class="mx-2">/</span>
+      <a href="05v2-auditor-inbox.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <span class="text-white mono">AC-6 on DT-009</span>
+    </div>
+  </div>
+  <div class="ctx">
+    <span class="text-xs text-slate-300">J. Patel · External Auditor</span>
+    <span class="kbd">⌘K</span>
+  </div>
+</nav>
+
+<div class="max-w-[1400px] mx-auto px-6 py-6">
+
+  <!-- Header -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5 border-l-4 border-rose-500">
+    <div class="flex items-start justify-between">
+      <div>
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="bg-rose-100 text-rose-800 text-xs font-bold px-2 py-0.5 rounded">HIGH PRIORITY</span>
+          <span class="mono text-xs font-bold text-slate-700">AC-6 · DT-009 · O-002</span>
+          <span class="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded font-semibold">⏱ due in 3 days · 2026-04-21</span>
+          <span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded">PENDING</span>
+        </div>
+        <h1 class="text-xl font-bold mb-1">Verify HIPAA audit log captures profile-edit events (patient-data read/write)</h1>
+        <p class="text-sm text-slate-600">Assigned by <b>hergati@gmail.com</b> on 2026-04-15 · Time est: ~90 min · Source: <span class="mono">SRC-004 §3.1</span></p>
+      </div>
+      <a href="05v2-auditor-inbox.html" class="text-sm text-slate-500 hover:text-slate-900">← Back to inbox</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-5">
+
+    <!-- LEFT — context (30%) -->
+    <div class="col-span-4 space-y-4">
+
+      <!-- Task summary -->
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2">📋 Task DT-009</h3>
+        <div class="text-sm font-semibold text-slate-900 mb-1">Add user profile edit endpoint</div>
+        <div class="text-xs text-slate-600 mb-2">Status: DONE · objective <a href="#" class="text-blue-600 hover:underline mono">O-002</a></div>
+        <div class="text-xs text-slate-700 italic border-l-2 border-slate-300 pl-2">"Implement POST /users/{id}/profile with HIPAA-compliant audit logging on patient-data fields. See ADR-001 for migration context."</div>
+        <a href="#" class="text-xs text-blue-600 hover:underline mt-2 inline-block">View task deliverable ↗ (read-only)</a>
+      </div>
+
+      <!-- AC text verbatim -->
+      <div class="bg-amber-50 border border-amber-300 rounded-xl p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-amber-800 mb-2">📜 AC-6 (verbatim — cannot edit)</h3>
+        <div class="text-sm text-slate-800 italic leading-relaxed">"Verify HIPAA audit log captures every read/write of PHI fields on /orders + /users/{id}/profile endpoints, with tamper-evident chaining (per SRC-004 §3.1 and SRC-009 architect-call notes)."</div>
+        <div class="text-xs text-slate-600 mt-2">verification: <b>manual</b> · sources: <span class="mono">SRC-004 §3.1</span>, <span class="mono">SRC-009</span> · can_audit role required ✓</div>
+      </div>
+
+      <!-- Assigner notes -->
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2">✏️ Assigner's instructions</h3>
+        <ol class="text-xs text-slate-700 space-y-1.5 list-decimal pl-4">
+          <li>Confirm every PHI read/write produces an audit-log entry within 200ms (Grafana dashboard "audit-log capture rate").</li>
+          <li>Verify hash chain intact for last 24h — run <span class="mono bg-slate-100 px-1 rounded">scripts/audit/verify-chain.sh</span> and capture output.</li>
+          <li>Cross-reference 10 sample order events from production-mirror against audit log (1:1 capture).</li>
+          <li>Note any cases where retention or tamper-evidence assumptions may fail under load (tested at 100 ev/sec, prod peak ~300/sec).</li>
+        </ol>
+        <div class="text-xs text-slate-500 mt-2 italic">Reference docs: SRC-004 §3.1, SRC-009, DOC-002.</div>
+      </div>
+
+      <!-- Challenger close-safety note -->
+      <div class="bg-rose-50 border border-rose-200 rounded-xl p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-rose-800 mb-2">🤝 Challenger's close-safety note</h3>
+        <div class="text-xs text-slate-700 italic leading-relaxed border-l-2 border-rose-300 pl-2">"AC-6 cannot be automated — it requires inspection of audit-log behavior in a context (PHI presence) that cannot be safely simulated. Production-mirror is the closest available environment. Tamper-evidence verification depends on chain hash continuity which a script can compute but a reviewer must interpret in context of any backfills."</div>
+        <div class="text-xs text-rose-700 mt-2"><b>What challenger did NOT verify:</b> production-mirror parity with prod, retention-policy enforcement, audit-log access-control RBAC.</div>
+      </div>
+
+      <!-- Code files -->
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2">📁 Relevant code files (read-only)</h3>
+        <div class="space-y-1 text-xs">
+          <a href="#" class="block p-2 bg-slate-50 hover:bg-slate-100 rounded mono text-slate-700">app/api/users.py:97-118</a>
+          <a href="#" class="block p-2 bg-slate-50 hover:bg-slate-100 rounded mono text-slate-700">app/audit/log.py</a>
+          <a href="#" class="block p-2 bg-slate-50 hover:bg-slate-100 rounded mono text-slate-700">scripts/audit/verify-chain.sh</a>
+          <a href="#" class="block p-2 bg-slate-50 hover:bg-slate-100 rounded mono text-slate-700">tests/test_audit_log.py</a>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">View only. You cannot modify.</p>
+      </div>
+
+    </div>
+
+    <!-- CENTER — review form (50%) -->
+    <div class="col-span-5 space-y-4">
+
+      <!-- Verdict picker -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="font-bold text-base mb-3">Your verdict</h2>
+
+        <div class="space-y-2">
+
+          <!-- PASSED_WITH_EVIDENCE -->
+          <label class="block border-2 border-emerald-400 bg-emerald-50/40 rounded-lg p-3 cursor-pointer">
+            <div class="flex items-start gap-3">
+              <input type="radio" name="verdict" checked class="mt-1">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="bg-emerald-200 text-emerald-900 text-xs font-bold px-2 py-0.5 rounded">PASSED_WITH_EVIDENCE</span>
+                  <span class="text-xs text-emerald-700 font-semibold">recommended for HIPAA AC</span>
+                </div>
+                <div class="text-xs text-slate-700">Verified + you have an artifact (file, log, screenshot, or pasted text ≥200 chars).</div>
+              </div>
+            </div>
+          </label>
+
+          <!-- PASSED_ATTESTATION -->
+          <label class="block border border-amber-300 bg-amber-50/40 rounded-lg p-3 cursor-pointer">
+            <div class="flex items-start gap-3">
+              <input type="radio" name="verdict" class="mt-1">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="bg-amber-200 text-amber-900 text-xs font-bold px-2 py-0.5 rounded">PASSED_ATTESTATION</span>
+                  <span class="text-xs text-amber-700 font-semibold">⚠ sign-off only — distinct in audit trail</span>
+                </div>
+                <div class="text-xs text-slate-700">You verified, but evidence cannot be captured (e.g., live demo). Will be tagged "auditor sign-off, no artifact" in permanent log.</div>
+              </div>
+            </div>
+          </label>
+
+          <!-- REJECTED -->
+          <label class="block border border-rose-300 bg-rose-50/40 rounded-lg p-3 cursor-pointer">
+            <div class="flex items-start gap-3">
+              <input type="radio" name="verdict" class="mt-1">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="bg-rose-200 text-rose-900 text-xs font-bold px-2 py-0.5 rounded">REJECTED</span>
+                </div>
+                <div class="text-xs text-slate-700">Verification failed. Task DT-009 auto-re-opens, finding F-NN created with your reason text.</div>
+              </div>
+            </div>
+          </label>
+
+          <!-- NEEDS_CLARIFICATION -->
+          <label class="block border border-blue-300 bg-blue-50/40 rounded-lg p-3 cursor-pointer">
+            <div class="flex items-start gap-3">
+              <input type="radio" name="verdict" class="mt-1">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="bg-blue-200 text-blue-900 text-xs font-bold px-2 py-0.5 rounded">NEEDS_CLARIFICATION</span>
+                </div>
+                <div class="text-xs text-slate-700">Question for the assigner. Decision Q-NNN auto-spawned. AC stays AWAITING_AUDITOR until they answer + you re-review.</div>
+              </div>
+            </div>
+          </label>
+
+        </div>
+      </div>
+
+      <!-- Active variant — PASSED_WITH_EVIDENCE form -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-sm">Evidence (PASSED_WITH_EVIDENCE)</h3>
+          <span class="text-xs text-rose-600 font-semibold">required: ≥1 file OR ≥200 chars pasted text</span>
+        </div>
+
+        <!-- Required: method -->
+        <div class="mb-3">
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Verification method <span class="text-rose-600">*</span></label>
+          <select class="w-full border border-slate-300 rounded p-2 text-sm">
+            <option>Select method...</option>
+            <option selected>Ran prescribed script + captured output</option>
+            <option>Manual walkthrough in staging environment</option>
+            <option>Code review only</option>
+            <option>Log inspection (production-mirror)</option>
+            <option>Other (describe in evidence text)</option>
+          </select>
+        </div>
+
+        <!-- Required: when -->
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">When executed <span class="text-rose-600">*</span></label>
+            <input type="datetime-local" class="w-full border border-slate-300 rounded p-2 text-sm" value="2026-04-18T14:30">
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Environment</label>
+            <select class="w-full border border-slate-300 rounded p-2 text-sm">
+              <option>staging</option>
+              <option selected>production-mirror</option>
+              <option>local dev</option>
+              <option>production (read-only)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Evidence upload -->
+        <div class="mb-3">
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Upload artifact(s)</label>
+          <div class="border-2 border-dashed border-slate-300 rounded-lg p-4 bg-slate-50 text-center text-xs text-slate-600">
+            <div class="text-2xl mb-1">📎</div>
+            <div class="font-semibold mb-1">Drop files or click to upload</div>
+            <div class="text-slate-500">Accepted: .png, .jpg, .log, .txt, .xml, .json, .pdf · max 25 MB each</div>
+          </div>
+          <!-- Uploaded files -->
+          <div class="mt-2 space-y-1 text-xs">
+            <div class="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded">
+              <span class="flex items-center gap-2"><span class="text-emerald-700">📄</span><span class="mono">verify-chain-output-2026-04-18.log</span><span class="text-slate-500">(8.4 KB)</span></span>
+              <button class="text-rose-600 hover:underline text-xs">remove</button>
+            </div>
+            <div class="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded">
+              <span class="flex items-center gap-2"><span class="text-emerald-700">🖼️</span><span class="mono">grafana-audit-capture-rate.png</span><span class="text-slate-500">(412 KB)</span></span>
+              <button class="text-rose-600 hover:underline text-xs">remove</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Evidence as text -->
+        <div class="mb-3">
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Evidence text — what passed, with details <span class="text-rose-600">*</span></label>
+          <textarea rows="6" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="Paste verify-chain.sh output. Describe what you saw. Reference attached artifacts.">Ran scripts/audit/verify-chain.sh against production-mirror at 14:30 UTC 2026-04-18. Output (attached: verify-chain-output-2026-04-18.log) confirms hash chain intact for last 24h — 14,283 events, 0 chain breaks, 0 tamper warnings.
+
+Cross-referenced 10 random order events from production-mirror against audit log table — 10 of 10 1:1 capture confirmed. Sample event IDs: ord_8a91, ord_8a93, ord_8b04, ord_8b07, ord_8b12, ord_8b18, ord_8b21, ord_8b34, ord_8b41, ord_8b55.
+
+Grafana dashboard "audit-log capture rate" (attached: grafana-audit-capture-rate.png) shows 99.97% capture in last 24h with p95 latency 142ms — within the 200ms threshold per AC.
+
+Caveat: production peak is ~300 ev/sec; verified at production-mirror peak 95 ev/sec. Recommend re-verification under load before next quarter audit cycle.</textarea>
+          <div class="text-xs text-emerald-700 mt-1">812 chars · ≥200 minimum met ✓</div>
+        </div>
+      </div>
+
+      <!-- Variant: PASSED_ATTESTATION (collapsed alt) -->
+      <details class="bg-amber-50 border border-amber-300 rounded-xl p-4">
+        <summary class="cursor-pointer text-xs font-bold text-amber-900">▶ Show alternate form: PASSED_ATTESTATION (sign-off only)</summary>
+        <div class="mt-3 space-y-3">
+          <div class="bg-amber-100 border-l-4 border-amber-600 rounded p-3 text-xs text-amber-900">
+            <b>⚠ Skeptical-UX warning.</b> Attestation-only will appear in the audit trail as <span class="mono">"auditor sign-off, no artifact"</span>. Anyone reading the audit log later will see no evidence backing your claim. Use ONLY when evidence is genuinely impossible — for example, a real-time client demo with no recording. Consider whether you can take a screenshot or capture log output instead.
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Why evidence cannot be captured <span class="text-rose-600">* min 100 chars</span></label>
+            <textarea rows="4" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="e.g., 'Verified during a live walkthrough with the client compliance officer present, who refused recording. Witnessed correct behavior on Grafana but no permission to screenshot client-facing dashboard.'"></textarea>
+            <div class="text-xs text-slate-500 mt-1">0 / 100 chars min</div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Variant: REJECTED -->
+      <details class="bg-rose-50 border border-rose-300 rounded-xl p-4">
+        <summary class="cursor-pointer text-xs font-bold text-rose-900">▶ Show alternate form: REJECTED</summary>
+        <div class="mt-3 space-y-3">
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Reason for rejection <span class="text-rose-600">* min 100 chars</span></label>
+            <textarea rows="4" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="What failed? Be specific — this becomes the F-NN finding text on DT-009."></textarea>
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Suggested fix (optional)</label>
+            <textarea rows="3" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="What should the assigner change before re-submitting?"></textarea>
+          </div>
+        </div>
+      </details>
+
+      <!-- Variant: NEEDS_CLARIFICATION -->
+      <details class="bg-blue-50 border border-blue-300 rounded-xl p-4">
+        <summary class="cursor-pointer text-xs font-bold text-blue-900">▶ Show alternate form: NEEDS_CLARIFICATION</summary>
+        <div class="mt-3">
+          <label class="text-xs font-bold uppercase tracking-wide text-slate-600 block mb-1">Question for the assigner</label>
+          <textarea rows="4" class="w-full border border-slate-300 rounded p-2 text-sm" placeholder="What do you need clarified? Spawns Q-NNN; AC stays AWAITING_AUDITOR until they answer."></textarea>
+        </div>
+      </details>
+
+    </div>
+
+    <!-- RIGHT — evidence preview (20%) -->
+    <div class="col-span-3 space-y-4">
+
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-600 mb-3">🔍 Evidence preview</h3>
+        <div class="text-xs text-slate-700 mb-3">2 files attached · 812 chars text</div>
+
+        <div class="space-y-2 text-xs">
+          <div class="border border-slate-200 rounded p-2">
+            <div class="font-semibold mono text-slate-800 mb-1">verify-chain-output...log</div>
+            <div class="bg-slate-900 text-slate-100 p-2 rounded text-[10px] leading-tight mono overflow-hidden" style="max-height: 70px;">
+              [verify-chain v2.1] start 14:30:01<br/>
+              chain-head: a91f...c2d8<br/>
+              events scanned: 14283<br/>
+              breaks: 0<br/>
+              tampers: 0<br/>
+              backfills detected: 0<br/>
+              [OK] chain integrity 100%
+            </div>
+            <div class="text-slate-500 mt-1">8.4 KB · sha256 abc...def</div>
+          </div>
+
+          <div class="border border-slate-200 rounded p-2">
+            <div class="font-semibold mono text-slate-800 mb-1">grafana-audit...png</div>
+            <div class="bg-slate-100 rounded h-16 flex items-center justify-center text-slate-400 text-[10px]">[image 412 KB]</div>
+            <div class="text-slate-500 mt-1">sha256 9f1...bb3</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Forensic capture -->
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2">🔒 Forensic capture (auto)</h3>
+        <div class="space-y-1 text-xs text-slate-700">
+          <div><b>Auditor:</b> J. Patel</div>
+          <div><b>Email:</b> <span class="mono">jpatel@acme.com</span></div>
+          <div><b>Timestamp on submit:</b> auto (UTC)</div>
+          <div><b>IP / user-agent:</b> auto</div>
+          <div><b>Evidence hashes:</b> sha256 per file + per text-block</div>
+          <div><b>Audit log entry:</b> permanent + signed by Forge service key</div>
+        </div>
+      </div>
+
+      <!-- Live word count meter -->
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs">
+        <h3 class="font-bold text-emerald-900 mb-1">✓ Submission requirements</h3>
+        <ul class="space-y-1 text-slate-700">
+          <li class="text-emerald-700">✓ Verdict picked</li>
+          <li class="text-emerald-700">✓ Method selected</li>
+          <li class="text-emerald-700">✓ Timestamp set</li>
+          <li class="text-emerald-700">✓ ≥1 file uploaded (2)</li>
+          <li class="text-emerald-700">✓ Evidence text ≥200 chars (812)</li>
+        </ul>
+        <div class="mt-2 text-emerald-900 font-semibold">All requirements met. Ready to submit.</div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ============ CLOSE-SAFETY + SUBMIT ============ -->
+  <div class="bg-amber-50 border-l-4 border-amber-500 rounded-xl p-4 mt-5 text-sm">
+    <div class="font-bold text-amber-900 mb-2">🔒 Close-safety on submit</div>
+    <ul class="text-slate-700 space-y-1 list-disc pl-5">
+      <li>Your review is <b>final</b> for verdicts <b>PASSED_WITH_EVIDENCE</b> + <b>PASSED_ATTESTATION</b>. You cannot edit your verdict afterward (only the assigner can re-open the AC).</li>
+      <li>For <b>REJECTED</b> + <b>NEEDS_CLARIFICATION</b>: the AC bounces back to the assigner; they iterate, then you re-review — the loop can repeat N times.</li>
+      <li>Your name + timestamp + evidence hash + IP will be logged <b>permanently</b> in the audit trail. This is for forensic integrity, not surveillance.</li>
+      <li>Your verdict feeds the AC status but does NOT close DT-009 by itself — only the project owner can close tasks.</li>
+    </ul>
+  </div>
+
+  <!-- Submit footer -->
+  <div class="bg-slate-100 rounded-xl p-4 mt-5 flex items-center justify-between">
+    <div class="text-sm text-slate-700">
+      <div><b>Ready to submit:</b> PASSED_WITH_EVIDENCE on AC-6 / DT-009 / O-002</div>
+      <div class="text-xs text-slate-500">2 files + 812 chars evidence will be hashed and logged permanently.</div>
+    </div>
+    <div class="flex gap-2">
+      <a href="05v2-auditor-inbox.html" class="text-sm text-slate-600 hover:text-slate-900 px-4 py-2">Cancel</a>
+      <button class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg" title="Save without submitting — visible only to you, no notification fires">Save as draft</button>
+      <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-lg" title="Show confirmation modal w/ exact data before final submit">Submit review</button>
+    </div>
+  </div>
+
+  <!-- Confirmation modal preview (visible illustration) -->
+  <div class="bg-white rounded-xl shadow-md p-5 mt-5 border-l-4 border-emerald-500">
+    <div class="text-xs uppercase tracking-wide text-slate-500 mb-2">↓ Confirmation modal preview (shown on Submit click)</div>
+    <h3 class="font-bold mb-2">Confirm + sign your review</h3>
+    <p class="text-sm text-slate-700 mb-3">The following will be permanently logged:</p>
+    <div class="bg-slate-50 border border-slate-200 rounded p-3 text-xs space-y-1 text-slate-700">
+      <div><b>Auditor:</b> J. Patel · <span class="mono">jpatel@acme.com</span></div>
+      <div><b>AC:</b> AC-6 on DT-009 (objective O-002, project acme-erp-migration)</div>
+      <div><b>Verdict:</b> <span class="bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-bold">PASSED_WITH_EVIDENCE</span></div>
+      <div><b>Method:</b> Ran prescribed script + captured output</div>
+      <div><b>Environment:</b> production-mirror</div>
+      <div><b>Executed at:</b> 2026-04-18 14:30 UTC</div>
+      <div><b>Evidence:</b> 2 files (sha256 captured), 812 chars text (sha256 captured)</div>
+      <div><b>Submitted at:</b> [auto] UTC · IP/UA: [auto]</div>
+    </div>
+    <div class="text-xs text-slate-500 mt-2">Type your name <b>J. Patel</b> below to sign + submit.</div>
+    <div class="flex gap-3 mt-2">
+      <input type="text" placeholder="Type 'J. Patel' to sign" class="flex-1 border border-slate-300 rounded p-2 text-sm">
+      <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded">Sign + submit</button>
+    </div>
+  </div>
+
+  <!-- ============ COUNTERWEIGHT ============ -->
+  <div class="bg-rose-50 border-l-4 border-rose-500 rounded-xl p-4 mt-5 text-sm">
+    <div class="font-bold text-rose-900 mb-2">🔎 What this review does NOT do</div>
+    <ul class="text-slate-700 space-y-1 list-disc pl-5">
+      <li><b>Does NOT prove the code is correct.</b> Your verdict is on the AC behavior in your sample. Other code paths (regression, edge cases) are not in scope.</li>
+      <li><b>Does NOT validate the evidence is authentic.</b> Forge stores hashes; it does not check if a screenshot was tampered with or a log file forged. Your professional integrity is what makes this trustworthy.</li>
+      <li><b>Does NOT bind the assigner.</b> The project owner can override your PASSED in exceptional cases (e.g., new info surfaces) — overrides are themselves logged with mandatory reason.</li>
+      <li><b>Does NOT re-verify in the future.</b> If code changes after your PASSED, AC-6 doesn't auto-re-open. The assigner must spawn a re-audit task.</li>
+      <li><b>Does NOT cover compliance certification.</b> Your verdict is one input to compliance evidence — not a substitute for SOC2 / HIPAA formal audit.</li>
+      <li><b>Does NOT capture your reasoning chain</b> beyond what you typed. If you applied judgment from your training, only the conclusion is preserved.</li>
+    </ul>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="mt-5 bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=auditor-review</span>
+    <span class="mono bg-white px-1 rounded">user=jpatel · ac=AC-6 · task=DT-009</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[ac_text, evidence, verdict_form]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">/explain HIPAA tamper-evidence chain</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Draft rejection text from script output</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">/check for similar past audits</span>
+  </div>
+
+</div>
+
+<!-- ANNOTATIONS -->
+<div class="annot" style="top: 100px; left: 30px;">1</div>
+<div class="annot" style="top: 290px; left: 30px;">2</div>
+<div class="annot" style="top: 290px; left: 470px;">3</div>
+<div class="annot" style="top: 670px; left: 470px;">4</div>
+<div class="annot" style="top: 290px; left: 1100px;">5</div>
+<div class="annot" style="top: 1340px; left: 30px;">6</div>
+<div class="annot" style="top: 1500px; left: 30px;">7</div>
+<div class="annot" style="top: 1700px; left: 30px;">8</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 290px;">
+  <h3>05v2-auditor-review · data sources</h3>
+  <ol>
+    <li><strong>Header w/ AC + task + objective context</strong> ← <span class="mono">manual_verification_task WHERE id=...</span> joined to <span class="mono">ac</span> + <span class="mono">task</span> + <span class="mono">objective</span>. URL <span class="mono">?assignment_id=...&amp;ac=AC-6</span>.</li>
+    <li><strong>Left context panel</strong> ← read-only views: <span class="mono">task.summary</span>, <span class="mono">ac.text</span>, <span class="mono">manual_verification_task.instructions</span>, <span class="mono">ac.close_safety_note</span> (from challenger), <span class="mono">task.code_files[]</span> (read-only).</li>
+    <li><strong>Verdict picker</strong> ← form state. 4 options. Selecting changes which evidence form is active.</li>
+    <li><strong>Evidence form (PASSED_WITH_EVIDENCE)</strong> ← required: method, when, ≥1 file OR ≥200 chars text. Files uploaded → server-side hash + s3 storage. Text → hash + DB.</li>
+    <li><strong>Evidence preview panel</strong> ← live render of attached files (image preview, log first lines) + sha256 displayed.</li>
+    <li><strong>Forensic capture</strong> ← server-injected fields: timestamp, IP, UA, signed by Forge service key. Visible to auditor for transparency.</li>
+    <li><strong>Submission requirements checklist</strong> ← live JS validation. Submit button disabled until all green.</li>
+    <li><strong>Confirmation modal</strong> ← shown on Submit click. Requires typing display_name to sign. Final POST creates audit_log entry.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> Submit → POST <span class="mono">/manual-verification/{id}/submit</span> with verdict + evidence + signature → redirect <span class="mono">05v2-auditor-inbox.html?flash=AC-6-submitted</span>. Save draft → POST status=DRAFT, no notification. Cancel → back to inbox. REJECTED → triggers task re-open + finding F-NN. NEEDS_CLARIFICATION → spawns decision Q-NNN, notification to assigner.
+    <br><br><b>NEW DB columns implied (HIGH-risk #4 mitigation):</b> <span class="mono">manual_verification_task.verdict</span> ENUM (PASSED_WITH_EVIDENCE, PASSED_ATTESTATION, REJECTED, NEEDS_CLARIFICATION), <span class="mono">manual_verification_task.evidence_artifacts[]</span> JSONB ({url, sha256, mime, size, uploaded_at}), <span class="mono">manual_verification_task.evidence_text</span>, <span class="mono">manual_verification_task.evidence_text_hash</span>, <span class="mono">manual_verification_task.method</span>, <span class="mono">manual_verification_task.executed_at</span>, <span class="mono">manual_verification_task.environment</span>, <span class="mono">manual_verification_task.signature_text</span>, <span class="mono">manual_verification_task.signature_ip</span>, <span class="mono">manual_verification_task.signature_user_agent</span>, <span class="mono">manual_verification_task.attestation_reason</span> (only for PASSED_ATTESTATION, ≥100 chars).
+  </div>
+</div>
+
+</div>
+</body>
+</html>

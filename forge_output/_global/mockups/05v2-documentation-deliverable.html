@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>05v2. Documentation deliverable — DOC-001 report</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="mockup-frame" style="padding-bottom: 40px; min-height: 2400px;">
+
+<nav class="nav">
+  <div class="flex items-center gap-6">
+    <div class="brand">⚒ Forge</div>
+    <div class="crumbs">
+      <a href="01-dashboard.html" class="hover:text-white">Projects</a>
+      <span class="mx-2">/</span>
+      <a href="02v2-project-kb.html" class="hover:text-white">acme-erp-migration</a>
+      <span class="mx-2">/</span>
+      <a href="03v2-objectives-dag.html" class="hover:text-white">Objectives</a>
+      <span class="mx-2">/</span>
+      <a href="09-objective-detail.html" class="hover:text-white mono">O-002</a>
+      <span class="mx-2">/</span>
+      <span class="text-white mono">DOC-001</span>
+    </div>
+  </div>
+  <div class="ctx"><span class="text-xs text-slate-400">autonomy · L2</span><span class="kbd">⌘K</span></div>
+</nav>
+
+<div class="max-w-[1280px] mx-auto px-8 py-6">
+
+  <!-- Narrative header -->
+  <div class="bg-gradient-to-r from-slate-50 to-white rounded-xl shadow-sm border-l-4 border-slate-500 p-6 mb-5">
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <div class="flex items-center gap-3 mb-2 flex-wrap">
+          <span class="bg-slate-200 text-slate-800 text-xs font-bold px-2 py-0.5 rounded">DOC</span>
+          <span class="mono font-bold text-slate-500">DOC-001</span>
+          <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded" title="Executed in prompt-crafted mode">🎯 crafted</span>
+          <h1 class="text-xl font-bold">Write architecture overview for O-002</h1>
+          <span class="bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold px-3 py-1 rounded-full">DONE — awaiting your scrutiny</span>
+        </div>
+        <p class="text-sm text-slate-600">from objective <a href="09-objective-detail.html" class="text-blue-600 hover:underline font-semibold mono">O-002</a> Plan migration architecture · <b>3 artifacts produced</b> · <span class="text-rose-700 font-semibold">2 unsourced claims need review</span></p>
+      </div>
+      <div class="flex gap-2 items-start flex-col">
+        <div class="flex gap-2">
+          <button class="bg-slate-700 hover:bg-slate-800 text-white font-semibold px-3 py-1.5 rounded text-sm" title="Open architecture.md in editor">Edit architecture.md</button>
+          <button class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded text-sm" title="Generate shareable client link → 10-share-link.html">→ Share link for client</button>
+        </div>
+        <div class="flex gap-2 mt-1">
+          <button class="bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 px-3 py-1 rounded text-xs font-semibold">↻ Regenerate ADR-001 w/ different template</button>
+          <button class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded text-xs" title="Doc closing does NOT freeze artifacts. They remain regeneratable.">Close task (reason required)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-base text-slate-800 leading-relaxed mb-4 p-4 bg-amber-50 rounded-lg border-l-4 border-amber-500">
+      <div class="font-bold text-slate-900 mb-2 flex items-center gap-2"><span class="text-xl">📖</span> What DOC-001 produced, in one sentence</div>
+      <div class="text-sm text-slate-700 mb-2"><b>DOC-001 read O-002's deliverables + 4 KB sources</b> and produced <b>3 artifacts</b>: <span class="mono">architecture.md</span> (2,400 words, 18 citations), <b>ADR-001</b> "Strangler-fig migration" (accepted, 7 citations), and a <b>README section update</b> (4 citations). Total reading time: ~9 min. <b>2 paragraphs in <span class="mono">architecture.md</span> have unsourced claims.</b></div>
+      <div class="text-sm text-slate-700">Before considering close:</div>
+      <ul class="text-sm text-slate-700 list-disc pl-5 mt-1 space-y-0.5">
+        <li>Are the 2 unsourced claims defensible from your own knowledge, or should they be cut?</li>
+        <li>Does ADR-001 capture the trade-offs the team actually argued about (or only what made it into KB)?</li>
+        <li>Will the audience (internal devs) actually read 2,400 words, or do they need a 1-page TL;DR?</li>
+      </ul>
+    </div>
+
+    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">What to scrutinize</div>
+    <div class="grid grid-cols-5 gap-3">
+      <div class="bg-white rounded-lg border border-slate-200 p-3">
+        <div class="text-xs font-semibold text-slate-500 uppercase">Artifacts</div>
+        <div class="text-xl font-bold text-slate-800 my-1">3 produced</div>
+        <div class="text-xs text-slate-500">md + ADR + README</div>
+      </div>
+      <div class="bg-white rounded-lg border border-slate-200 p-3">
+        <div class="text-xs font-semibold text-slate-500 uppercase">Citations</div>
+        <div class="text-xl font-bold text-slate-800 my-1">29 total</div>
+        <div class="text-xs text-slate-500">arch:18 / ADR:7 / readme:4</div>
+      </div>
+      <div class="bg-white rounded-lg border border-rose-300 p-3">
+        <div class="text-xs font-semibold text-slate-500 uppercase">Unsourced claims</div>
+        <div class="text-xl font-bold text-rose-700 my-1">2 flagged</div>
+        <div class="text-xs text-rose-700">in architecture.md ¶4 + ¶12</div>
+      </div>
+      <div class="bg-white rounded-lg border border-emerald-300 p-3">
+        <div class="text-xs font-semibold text-slate-500 uppercase">Stale links</div>
+        <div class="text-xl font-bold text-emerald-700 my-1">0 broken</div>
+        <div class="text-xs text-emerald-700">all citations resolve</div>
+      </div>
+      <div class="bg-white rounded-lg border border-slate-200 p-3">
+        <div class="text-xs font-semibold text-slate-500 uppercase">Reading time</div>
+        <div class="text-xl font-bold text-slate-800 my-1">~9 min</div>
+        <div class="text-xs text-slate-500">avg reader, all 3 docs</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ARTIFACT 1 — architecture.md ============ -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <h2 class="font-bold text-base">📄 architecture.md</h2>
+          <span class="mono text-xs bg-slate-100 px-2 py-0.5 rounded">docs/architecture.md</span>
+          <span class="text-xs text-slate-500">2,400 words · ~6 min read · 18 citations</span>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1 rounded">Open in editor</button>
+        <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1 rounded">View raw</button>
+        <button class="bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-semibold px-3 py-1 rounded border border-amber-300">↻ Regenerate</button>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-3 text-xs leading-relaxed text-slate-700">
+      <div class="font-bold text-slate-900 mb-1">Preview (first 300 chars)</div>
+      <div class="font-serif italic text-slate-600">"This document describes the target architecture for the acme-erp legacy migration. We pursue a strangler-fig pattern (per architect notes, SRC-002) replacing /orders and /users endpoints incrementally over a 6-month grace window during which v1 and v2 coexist behind a routing proxy..."</div>
+    </div>
+
+    <div class="mb-3">
+      <div class="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Citation density heatmap (per paragraph)</div>
+      <div class="flex gap-1 flex-wrap">
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶1 — 3 citations">¶1</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶2 — 4 citations">¶2</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶3 — 2 citations">¶3</div>
+        <div class="w-7 h-7 bg-rose-200 border border-rose-500 rounded text-[10px] flex items-center justify-center text-rose-900 font-bold" title="¶4 — UNSOURCED claim about PostgreSQL 16">¶4</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶5 — 2 citations">¶5</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶6 — 1 citation">¶6</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶7 — 2 citations">¶7</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶8 — 1 citation">¶8</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶9 — 1 citation">¶9</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶10 — 1 citation">¶10</div>
+        <div class="w-7 h-7 bg-emerald-200 border border-emerald-400 rounded text-[10px] flex items-center justify-center text-emerald-900 font-bold" title="¶11 — 1 citation">¶11</div>
+        <div class="w-7 h-7 bg-rose-200 border border-rose-500 rounded text-[10px] flex items-center justify-center text-rose-900 font-bold" title="¶12 — UNSOURCED claim about industry-standard observability">¶12</div>
+      </div>
+      <div class="text-[11px] text-slate-500 mt-2">Hover for citation count. <span class="text-rose-700 font-semibold">Red = no SRC/decision/ADR backing</span> — review before publish.</div>
+    </div>
+
+    <div class="bg-rose-50 border-l-4 border-rose-500 rounded p-3 text-xs text-slate-700">
+      <b>Unsourced claim ¶4:</b> "PostgreSQL 16 is the production standard." Not in SRC-001..004 nor in any closed decision. Looks like LLM filler from training data. Either cite an actual ADR / decision, or rewrite as "we chose PostgreSQL 16 because [your reason]".
+      <br><br><b>Unsourced claim ¶12:</b> "Observability follows industry-standard SRE patterns." Vague + ungrounded. Either cite the team's runbook or remove.
+    </div>
+  </div>
+
+  <!-- ============ ARTIFACT 2 — ADR-001 ============ -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <h2 class="font-bold text-base">📑 ADR-001 — Strangler-fig migration</h2>
+          <span class="mono text-xs bg-slate-100 px-2 py-0.5 rounded">docs/adr/0001-strangler-fig.md</span>
+          <span class="bg-emerald-100 text-emerald-700 text-xs font-semibold px-2 py-0.5 rounded">accepted</span>
+          <span class="text-xs text-slate-500">~2 min read · 7 citations</span>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1 rounded">Open in editor</button>
+        <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1 rounded">View raw</button>
+        <button class="bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-semibold px-3 py-1 rounded border border-amber-300">↻ Regenerate</button>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs leading-relaxed text-slate-700">
+      <div class="font-bold text-slate-900 mb-1">Preview (first 300 chars)</div>
+      <div class="font-serif italic text-slate-600">"# ADR-001 — Strangler-fig migration<br/>**Status:** accepted<br/>**Date:** 2026-04-18<br/>**Context:** acme-erp v1 has 47 tables and 200+ endpoints. A big-bang cutover risks customer-visible downtime + post-deploy rollback (SRC-001 §1, SRC-002 architect notes)..."</div>
+    </div>
+
+    <div class="mt-3">
+      <div class="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">ADR section completeness</div>
+      <div class="grid grid-cols-5 gap-1 text-[11px]">
+        <div class="bg-emerald-100 border border-emerald-300 rounded px-2 py-1 text-center text-emerald-900 font-semibold">✓ Status</div>
+        <div class="bg-emerald-100 border border-emerald-300 rounded px-2 py-1 text-center text-emerald-900 font-semibold">✓ Context</div>
+        <div class="bg-emerald-100 border border-emerald-300 rounded px-2 py-1 text-center text-emerald-900 font-semibold">✓ Decision</div>
+        <div class="bg-emerald-100 border border-emerald-300 rounded px-2 py-1 text-center text-emerald-900 font-semibold">✓ Consequences</div>
+        <div class="bg-emerald-100 border border-emerald-300 rounded px-2 py-1 text-center text-emerald-900 font-semibold">✓ Alternatives</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ARTIFACT 3 — README update ============ -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <h2 class="font-bold text-base">📝 README section update</h2>
+          <span class="mono text-xs bg-slate-100 px-2 py-0.5 rounded">README.md (Architecture section)</span>
+          <span class="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded">modified</span>
+          <span class="text-xs text-slate-500">~1 min read · 4 citations</span>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1 rounded">Open in editor</button>
+        <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1 rounded">View diff</button>
+        <button class="bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-semibold px-3 py-1 rounded border border-amber-300">↻ Regenerate</button>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs leading-relaxed text-slate-700">
+      <div class="font-bold text-slate-900 mb-1">Preview of inserted section</div>
+      <div class="font-serif italic text-slate-600">"## Architecture<br/><br/>This service is migrating from acme-erp legacy v1 to v2 via the strangler-fig pattern. See [docs/architecture.md](docs/architecture.md) for full design and [ADR-001](docs/adr/0001-strangler-fig.md) for the migration decision rationale. Operational runbook: [docs/deployment.md](docs/deployment.md). Open ambiguities: Q-007 (HIPAA retention), Q-008 (PHI minimization)..."</div>
+    </div>
+
+    <div class="mt-3 p-2 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-900">
+      ✓ Cross-links to <span class="mono">architecture.md</span>, <span class="mono">ADR-001</span>, <span class="mono">deployment.md</span>, and the open-Q tracker. All resolve. ✓ Backward-compatible: prior README content preserved.
+    </div>
+  </div>
+
+  <!-- ============ CHALLENGER REVIEW ============ -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold">🤝 Challenger review — documentation verification</h2>
+      <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1 rounded">+ Ask challenger specific aspect</button>
+    </div>
+
+    <div class="bg-rose-50 rounded-lg p-4 mb-4 border-l-4 border-rose-500">
+      <div class="font-bold text-slate-900 mb-2">What the challenger REFUSED to verify</div>
+      <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+        <li><b>Whether the documentation will actually be read.</b> Challenger doesn't measure team behavior.</li>
+        <li><b>Whether tone matches team voice / style guide.</b> If your team writes terse, this 2,400-word essay reads like an outsider wrote it.</li>
+        <li><b>Whether code examples (if any) compile / run.</b> Markdown blocks aren't executed — they could be syntactically wrong.</li>
+        <li><b>Whether the audience-fit choice (devs vs PMs vs client) was the right one.</b> DOC-001 assumed internal devs; if this gets shared with the client, register/density may be off.</li>
+        <li><b>Whether the docs accidentally leak info marked as internal-only.</b> No PII/secret scan was run on the output.</li>
+      </ul>
+    </div>
+
+    <div class="text-xs font-semibold text-slate-700 mb-2">Per-claim verification</div>
+    <div class="space-y-1.5 text-xs mb-4">
+      <div class="flex items-center gap-2"><span class="text-emerald-600 font-bold">✓ verified</span><span class="text-slate-700">Every ADR section (Status, Context, Decision, Consequences, Alternatives) is present in ADR-001.</span></div>
+      <div class="flex items-center gap-2"><span class="text-emerald-600 font-bold">✓ verified</span><span class="text-slate-700">README section links to <span class="mono">deployment.md</span> (file exists; link resolves).</span></div>
+      <div class="flex items-center gap-2"><span class="text-emerald-600 font-bold">✓ verified</span><span class="text-slate-700">29 of 29 citation markers resolve to a real SRC chunk or decision id.</span></div>
+      <div class="flex items-center gap-2"><span class="text-rose-600 font-bold">✗ flagged</span><span class="text-slate-700">2 paragraphs in architecture.md make claims with no SRC/decision backing (¶4, ¶12).</span></div>
+      <div class="flex items-center gap-2"><span class="text-emerald-600 font-bold">✓ verified</span><span class="text-slate-700">Open ambiguities (Q-007, Q-008) are surfaced in the README architecture section so future readers see them.</span></div>
+    </div>
+
+    <div class="text-xs font-semibold text-slate-700 mb-2">Concerns raised (1 MEDIUM)</div>
+    <div class="space-y-2">
+      <div class="flex items-start gap-2 p-3 bg-amber-50 rounded border border-amber-200">
+        <span class="bg-amber-200 text-amber-800 text-xs font-bold px-1.5 py-0.5 rounded">MEDIUM</span>
+        <div class="flex-1">
+          <div class="font-semibold text-sm">architecture.md ¶4 claims "PostgreSQL 16 is production standard" — no source</div>
+          <div class="text-xs text-slate-600 mt-1">Not in SRC-001..004. Not in any CLOSED decision. Reads like LLM filler. If this is true, cite an ADR; if not, drop it. Documentation that asserts things without backing erodes trust in the rest.</div>
+          <div class="flex gap-2 mt-2">
+            <button class="text-xs text-blue-600 hover:underline font-semibold">→ Open architecture.md at ¶4</button>
+            <button class="text-xs text-slate-500 hover:underline">Accept (will mark as INVENTED)</button>
+            <button class="text-xs text-slate-500 hover:underline">Re-source from KB</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4 pt-4 border-t border-slate-200 text-sm bg-amber-50 rounded p-3">
+      <div class="font-bold text-amber-900 mb-1">Challenger's close-safety note for documentation</div>
+      <div class="text-slate-700 text-sm">
+        Citation completeness is high (29 markers resolve), section structure is sound. <b>But documentation that goes outside the team needs human authorial intent in places I can't add</b> — examples that mean something to your team, names of systems known internally, the actual reason a decision was made (vs. the post-hoc rationale I generated). Treat my output as a strong first draft, not a publishable artifact.
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ NEXT ACTIONS ============ -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
+    <h2 class="font-bold mb-3">→ What to do next</h2>
+    <div class="grid grid-cols-2 gap-3">
+      <a href="#" class="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg">
+        <div class="font-semibold text-sm text-slate-900">→ Edit architecture.md inline</div>
+        <div class="text-xs text-slate-600 mt-1">Address ¶4 and ¶12 unsourced claims. Touch-ups stay in this DOC artifact.</div>
+      </a>
+      <a href="#" class="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg">
+        <div class="font-semibold text-sm text-slate-900">↻ Regenerate ADR-001 with different template</div>
+        <div class="text-xs text-slate-600 mt-1">If your team uses a custom ADR template (Lightweight, Y-statement, etc.), pick it; ADR-001 re-renders.</div>
+      </a>
+      <a href="10-post-exec-docs.html" class="p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg">
+        <div class="font-semibold text-sm text-blue-900">→ Generate share link for client</div>
+        <div class="text-xs text-slate-600 mt-1">Read-only client view of architecture.md + ADR-001. No internal Q's surfaced. Expires in 14 days.</div>
+      </a>
+      <a href="#" class="p-3 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg">
+        <div class="font-semibold text-sm text-amber-900">+ Spawn DOC-002 for a sibling artifact</div>
+        <div class="text-xs text-slate-600 mt-1">e.g., API reference, deployment runbook, ops migration guide — not produced by DOC-001 because not requested.</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- ============ CLOSE-SAFETY NOTE ============ -->
+  <div class="bg-amber-50 border-l-4 border-amber-500 rounded-xl p-4 mb-5 text-sm">
+    <div class="font-bold text-amber-900 mb-2">🔒 Close-safety note for DOC tasks</div>
+    <p class="text-slate-700 mb-2"><b>DOC closing does NOT freeze artifacts.</b> The 3 files remain in the workspace and will <em>regenerate on next DOC task run</em> if you spawn DOC-002 with overlapping scope. If you want the current architecture.md to be permanent (e.g., a contractually-frozen client deliverable), use:</p>
+    <ul class="text-slate-700 list-disc pl-5 space-y-0.5">
+      <li><b>ADR status = accepted</b> + commit to a release tag — Forge won't regenerate accepted ADRs unless you explicitly ask.</li>
+      <li><b>Export to PDF</b> via the share-link flow — produces a snapshot with timestamp + signature.</li>
+      <li><b>Move to <span class="mono">docs/frozen/</span></b> — Forge respects per-folder freeze rules.</li>
+    </ul>
+  </div>
+
+  <!-- ============ COUNTERWEIGHT ============ -->
+  <div class="bg-rose-50 border-l-4 border-rose-500 rounded-xl p-4 mb-5 text-sm">
+    <div class="font-bold text-rose-900 mb-2">🔎 What DOC-001 did NOT do</div>
+    <ul class="text-slate-700 space-y-1 list-disc pl-5">
+      <li>Did <b>NOT run a spellcheck</b> — typos in 2,400 words may exist; Forge doesn't lint prose.</li>
+      <li>Did <b>NOT validate examples compile</b> — code blocks in markdown are inert; if you have a Python snippet, it might be wrong.</li>
+      <li>Did <b>NOT test client-persona comprehension</b> — no readability score, no audience-fit check.</li>
+      <li>Did <b>NOT update external wiki / Confluence / SharePoint</b> — files live in the workspace only; manual sync needed.</li>
+      <li>Did <b>NOT verify the 4 KB sources are still current</b> — if SRC-002 architect notes are 6 months old, the doc may already be stale on day 1.</li>
+      <li>Did <b>NOT generate diagrams</b> — text-only output. For architecture diagrams, attach a diagram-generation skill.</li>
+    </ul>
+  </div>
+
+  <!-- AI sidebar hint -->
+  <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-slate-700">
+    <b class="text-indigo-700">🤖 AI sidebar on this page knows:</b>
+    <span class="mono bg-white px-1 rounded">page.id=doc-deliverable</span>
+    <span class="mono bg-white px-1 rounded">task=DOC-001 · objective=O-002 · artifacts=3</span>
+    <span class="mono bg-white px-1 rounded">visible_data=[citations, unsourced_claims, artifacts]</span>
+    · suggested:
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Suggest source for ¶4 PostgreSQL claim</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">Generate diagram for §3</span>
+    <span class="bg-white border border-indigo-200 px-2 py-0.5 rounded">/share read-only with client</span>
+  </div>
+
+</div>
+
+<!-- ANNOTATIONS -->
+<div class="annot" style="top: 120px; left: 460px;">1</div>
+<div class="annot" style="top: 340px; left: 30px;">2</div>
+<div class="annot" style="top: 700px; left: 30px;">3</div>
+<div class="annot" style="top: 1100px; left: 30px;">4</div>
+<div class="annot" style="top: 1290px; left: 30px;">5</div>
+<div class="annot" style="top: 1480px; left: 30px;">6</div>
+<div class="annot" style="top: 1900px; left: 30px;">7</div>
+<div class="annot" style="top: 2120px; left: 30px;">8</div>
+
+<div class="annot-panel" style="top: 80px; right: 12px; width: 290px;">
+  <h3>05v2-documentation-deliverable · data sources</h3>
+  <ol>
+    <li><strong>Header + scrutiny strip</strong> ← <span class="mono">task.artifacts[]</span>: per-artifact {path, word_count, citation_count, unsourced_para_indices[]}.</li>
+    <li><strong>architecture.md card + heatmap</strong> ← <span class="mono">artifact.paragraphs[]</span> with <span class="mono">paragraph.citations[]</span> + <span class="mono">paragraph.has_unsourced_claim</span>.</li>
+    <li><strong>ADR-001 card</strong> ← <span class="mono">artifact.kind='adr'</span> with <span class="mono">artifact.adr_sections[]</span> presence check.</li>
+    <li><strong>README update card</strong> ← <span class="mono">artifact.kind='modify'</span> with diff stored as <span class="mono">artifact.diff_patch</span>.</li>
+    <li><strong>Challenger review</strong> ← <span class="mono">challenger_run WHERE task_id=DOC-001</span>. DOC-specific checks: section completeness, citation resolution, unsourced detection.</li>
+    <li><strong>Next actions</strong> ← static template. Share link → <span class="mono">10-post-exec-docs.html</span>.</li>
+    <li><strong>Close-safety</strong> ← DOC-specific: artifacts regenerable, freeze paths.</li>
+    <li><strong>Counterweight</strong> ← DOC-type "what NOT done" template.</li>
+  </ol>
+  <div class="mt-3 pt-3 border-t border-amber-200 text-xs">
+    <strong>Destinations:</strong> Edit → opens IDE / web editor at file path. Regenerate → re-runs DOC-001 for that artifact only. Share → <span class="mono">10-post-exec-docs.html?task=DOC-001</span>. Spawn DOC-002 → <span class="mono">07-new-task.html?type=doc&amp;objective=O-002</span>.
+    <br><br><b>NEW DB columns implied:</b> <span class="mono">artifact</span> table (id, task_id, path, kind, word_count, citations[], paragraphs[], adr_sections[], unsourced_paras[]), <span class="mono">artifact.diff_patch</span> for modify-kind, <span class="mono">artifact.is_frozen</span> + <span class="mono">artifact.freeze_kind</span>.
+  </div>
+</div>
+
+</div>
+</body>
+</html>
