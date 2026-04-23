@@ -53,6 +53,13 @@ platform/docs/
 | [`ROADMAP.md`](ROADMAP.md) | DRAFT | no | Unified plan; phases + tests + stages. |
 | [`DEEP_RISK_REGISTER.md`](DEEP_RISK_REGISTER.md) | LIVING | tracking | 29 risks, status per-risk. |
 | [`AUTONOMOUS_AGENT_FAILURE_MODES.md`](AUTONOMOUS_AGENT_FAILURE_MODES.md) | DRAFT | no | Failure analysis for autonomous agent executing ROADMAP. Source for Phase F.7–F.9 structural requirements. |
+| **Functional execution plans (soundness-theorem-driven)** | | | |
+| [`PLAN_PRE_FLIGHT.md`](PLAN_PRE_FLIGHT.md) | DRAFT | no | Stage 0: ADR-003 ratification, calibration ADRs, tracker smoke. Meta-conditions for all 7 soundness conditions. |
+| [`PLAN_GATE_ENGINE.md`](PLAN_GATE_ENGINE.md) | DRAFT | no | Phase A: VerdictEngine, GateRegistry, EvidenceSet, idempotency. Closes conditions **5** + **6**. |
+| [`PLAN_MEMORY_CONTEXT.md`](PLAN_MEMORY_CONTEXT.md) | DRAFT | no | Phase B: CausalEdge DAG, CausalGraph, ContextProjector. Closes conditions **1** + **3**. |
+| [`PLAN_QUALITY_ASSURANCE.md`](PLAN_QUALITY_ASSURANCE.md) | DRAFT | no | Phases C+D: ImpactClosure, Reversibility, property/metamorphic/adversarial tests, CI α-gate. Strengthens **5**, closes **3** (full). |
+| [`PLAN_CONTRACT_DISCIPLINE.md`](PLAN_CONTRACT_DISCIPLINE.md) | DRAFT | no | Phases E+F: ContractSchema, Invariants, Autonomy, assumption enforcement, BLOCKED state. Closes conditions **2** + **4** + **7**. |
+| [`PLAN_GOVERNANCE.md`](PLAN_GOVERNANCE.md) | DRAFT | no | Phase G: CGAID capstone. Terminal gate — verifies all 7 conditions hold at system level. |
 | [`FORMAL_PROPERTIES_v2.md`](FORMAL_PROPERTIES_v2.md) | DRAFT | no | 25 atomic properties (v2.1 patch). |
 | [`GAP_ANALYSIS_v2.md`](GAP_ANALYSIS_v2.md) | DRAFT | no | Every file:line must be re-verified by reviewer. |
 | [`CHANGE_PLAN_v2.md`](CHANGE_PLAN_v2.md) | DRAFT | no | Seven-phase (A→G) with rationale. |
