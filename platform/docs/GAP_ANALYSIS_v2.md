@@ -4,7 +4,7 @@
 **Date:** 2026-04-22 (status demotion 2026-04-23).
 **Audit method:** direct code read (`Grep`, `Read`) of `platform/app/`, `platform/tests/`, `platform/IMPLEMENTATION_TRACKER.md`. Every citation verified against current code.
 **Evidence caveat** (deep-risk R-GAP-02, composite 15 HIGH): `platform/IMPLEMENTATION_TRACKER.md` is self-reported evidence from a prior Claude session (dated 2026-04-15/16). Per CONTRACT §B.8 transitivity, those claims are [ASSUMED] at this level until independently re-verified via HTTP smoke test against running platform. Any v2 gap binding on an [EXECUTED] tracker claim should be re-checked before Phase A.
-**Measured against:** [`FORMAL_PROPERTIES_v2.md`](FORMAL_PROPERTIES_v2.md). Supersedes [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md) v1.
+**Measured against:** [`FORMAL_PROPERTIES_v2.md`](FORMAL_PROPERTIES_v2.md). Supersedes [`archive/GAP_ANALYSIS.md`](archive/GAP_ANALYSIS.md) v1.
 **Scope:** `platform/` only.
 
 ## 0. Corrections from v1 (before new analysis)

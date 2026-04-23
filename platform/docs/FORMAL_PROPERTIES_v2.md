@@ -1,7 +1,7 @@
 # Forge Platform — Formal Properties (v2, consolidated)
 
 **Status:** **DRAFT** — pending distinct-actor peer review per [ADR-003](decisions/ADR-003-human-reviewer-normative-transition.md). Authored by a single actor in one session (2026-04-22); §B.8 Solo-verifier violation tracked as risk **R-GOV-01 (composite 19, CRITICAL)** in deep-risk audit 2026-04-23. Not binding until reviewed + ratified. Phase A PR referencing this document as NORMATIVE is blocked until transition.
-**Supersedes:** [`FORMAL_PROPERTIES.md`](FORMAL_PROPERTIES.md) (v1 retained append-only for audit) — same DRAFT constraint applies to v1.
+**Supersedes:** [`archive/FORMAL_PROPERTIES.md`](archive/FORMAL_PROPERTIES.md) (v1 retained append-only for audit) — same DRAFT constraint applies to v1.
 **Version:** 2026-04-22-v2 + 2026-04-22-v2.1 patch (§11) + 2026-04-23 status demotion.
 **Scope:** `platform/` only.
 

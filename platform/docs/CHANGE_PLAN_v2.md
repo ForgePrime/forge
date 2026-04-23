@@ -1,11 +1,17 @@
 # Forge Platform — Change Plan (v2)
 
 **Status:** **DRAFT** — pending distinct-actor peer review per [ADR-003](decisions/ADR-003-human-reviewer-normative-transition.md). Phase exit gates and blast-radius estimates authored solo — each phase's entry requires reviewer confirmation of its exit-gate feasibility. **Phase A may not begin** until this document + `FORMAL_PROPERTIES_v2.md` + `GAP_ANALYSIS_v2.md` transition to NORMATIVE.
-**Date:** 2026-04-22 (status demotion 2026-04-23).
+**Date:** 2026-04-22 (status demotion 2026-04-23, deduplication vs ROADMAP 2026-04-23).
 **Source of truth:** [`FORMAL_PROPERTIES_v2.md`](FORMAL_PROPERTIES_v2.md).
 **Gap input:** [`GAP_ANALYSIS_v2.md`](GAP_ANALYSIS_v2.md).
 **Scope:** `platform/` only.
-**Supersedes:** [`CHANGE_PLAN.md`](CHANGE_PLAN.md) v1 (retained append-only).
+**Supersedes:** [`archive/CHANGE_PLAN.md`](archive/CHANGE_PLAN.md) v1 (retained append-only).
+
+> **Division of concerns (updated 2026-04-23 deduplication):**
+> - **This doc** — phase **rationale**, alternatives considered, blast-radius analysis, reversal plan, divergences from v1, Phase G compliance detail.
+> - **[`ROADMAP.md`](ROADMAP.md)** — **operational view**: stages × entry/exit tests per phase, Pre-flight, test strategy, First PR, progress tracking.
+>
+> Where both documents say the same thing (phase overview, dependency graph, non-goals, First PR), **ROADMAP is canonical** — this doc links there.
 
 v2 closes 24 atomic gaps (v1 addressed 15). New phase F introduces decision-discipline enforcement (P16–P24). Phases A–E retained, tightened, fixed for three concrete v1 issues: rule-adapter mismatch, impact-closure vs estimator, refactor impact subplan.
 
@@ -19,18 +25,9 @@ Each of these maps to a v2 atomic property: P1, P2+P3, P5, P11, P12, P9, P14. Th
 
 ---
 
-## 1. Phase overview (v2)
+## 1. Phase overview
 
-| Phase | Goal | Closes atomic properties | Dur. (est.) | Depends on |
-|---|---|---|---|---|
-| **A** | Deterministic gate fundament | P1, P6, P7, P8, P16 | 2–3 sprints | — |
-| **B** | Causal memory + context projection | P14, P15, partial P4 | 3 sprints | A |
-| **C** | Impact closure + reversibility | P3, P5, P2 | 2–3 sprints | A |
-| **D** | Failure-oriented testing + risk-weighted coverage | P10, partial P18 | 2–3 sprints | A, B |
-| **E** | Self-adjoint contract + diagonalization + invariants + autonomy | P4, P9, P11, P12, P13 | 3–4 sprints | A, B, C, D |
-| **F** *(new in v2)* | Decision discipline: evidence constraints, uncertainty blocking, disclosure, independence, transitivity, root-cause | P17, P18, P19, P20, P21, P22, P23, P24 | 3 sprints | A, B |
-
-B, C, D can be parallel after A. F depends on A+B (needs `VerdictEngine` + `CausalEdge`). E is last because it touches everything and closes long-tail structural work.
+Canonical phase table lives in **[`ROADMAP.md §1`](ROADMAP.md)** (adds Pre-flight + stages + durations per phase). Read that for execution view. This document contains the **rationale per phase** in §2–§7 + §13.
 
 ---
 
@@ -389,59 +386,19 @@ Validator rules behind feature flags (`P19_ENFORCE`, `P20_BLOCK`, etc.) — each
 
 ## 8. What v2 still does not do
 
-Same as v1 + a few additions:
-- No LangGraph migration.
-- No multi-agent for cohesive tasks.
-- No new CLAUDE.md framework.
-- No Logfire/Langfuse integration in this plan.
-- No UI overhaul.
-- **No automatic `[UNKNOWN]` resolution** — P20 requires human ACK. The platform never auto-converts UNKNOWN to ASSUMED/CONFIRMED.
-- **No autonomous approval of root-cause Decisions** (P21) — always requires human review when `severity in {HIGH, CRITICAL}`.
+Canonical non-goals list in **[`ROADMAP.md §16`](ROADMAP.md)**. Same content; maintained there.
 
 ---
 
-## 9. First PR (unchanged target, refined scope)
+## 9. First PR
 
-**PR title:** Phase A bootstrap — `EvidenceSet` entity + `VerdictEngine` shadow + `Decision` evidence invariant
-
-**Scope:**
-1. Alembic migration: `evidence_sets`, `verdict_divergences`, `idempotent_calls` (with down).
-2. `app/validation/verdict_engine.py` — pure evaluator, with `RuleAdapter` wrapping `plan_gate` + `contract_validator`.
-3. `app/validation/gate_registry.py` — static dict of allowed transitions.
-4. `app/validation/rule_adapter.py` — adapter protocol. Wraps existing validators without rewrite.
-5. Feature flag `VERDICT_ENGINE_MODE=shadow` default.
-6. In `execute.py` and `pipeline.py`, *add* shadow calls alongside existing `.status = "..."` (no replacement).
-7. MCP idempotency middleware stub (wiring without enforcement yet).
-8. `tests/property/test_verdict_determinism.py` — 1 `hypothesis` test to seed the folder.
-9. Trigger/validator: `Decision.insert` requires ≥ 1 `EvidenceSet` link (shadow-mode; log-only).
-10. `platform/docs/INDEX.md` updated (v1 vs v2).
-
-**Acceptance:**
-- All existing tests green.
-- New property test green.
-- 24 hours of real traffic in shadow: divergence count == 0.
-- Zero `Decision` insert blocked (because shadow).
-
-**Size:** ~500 LOC additive, 0 LOC removed. Reversible via migration down + flag off.
+Canonical First PR scope in **[`ROADMAP.md §13`](ROADMAP.md)** — Phase A Stage A.1 `EvidenceSet` bootstrap (~500 LOC additive, shadow mode, zero production impact). Read there for exact file list + acceptance tests.
 
 ---
 
-## 10. Dependency graph (v2)
+## 10. Dependency graph
 
-```
-             ┌── B (causal + projection) ──┐
-             │                             │
-A (gates) ───┼── C (impact closure + rev.) ┼── E (self-adjoint + modes + invariants + autonomy)
-             │                             │
-             └── D (failure-oriented tests)┘
-                      ↑                    │
-                 (tests A, B, C)           │
-             ┌── F (decision discipline) ──┘
-             │   (needs VerdictEngine + CausalEdge)
-A ───────────┘
-```
-
-Phases B, C, D parallel after A. F parallel after A+B. E last.
+Canonical dependency graph in **[`ROADMAP.md §2`](ROADMAP.md)** — includes Phase G post-v2.1 patch.
 
 ---
 
@@ -562,7 +519,7 @@ Separate document `platform/docs/FRAMEWORK_MAPPING.md` records the 1:1 binding. 
 | 6 | Edge-Case Test Plan | `AcceptanceCriterion` with `scenario_type` | aggregation view per task |
 | 7 | Business-Level DoD | NEW field `Objective.business_dod` JSONB | migration; rendered in Master Plan |
 | 8 | Skill Change Log | `MicroSkill` version + `skill_log_exporter.py` | **exists** — verify CGAID format |
-| 9 | Framework Manifest & Changelog | `platform/docs/FRAMEWORK_MAPPING.md` + `FORMAL_PROPERTIES_v2.md` + `INDEX.md` | this doc set |
+| 9 | Framework Manifest & Changelog | `platform/docs/FRAMEWORK_MAPPING.md` + `FORMAL_PROPERTIES_v2.md` + `README.md` | this doc set |
 | 10 | Data Classification Rubric | G1 entity + `data_classification_rubric.md` | done by G1 |
 | 11 | Side-Effect Map | Phase C `SideEffectRegistry` + per-task view | aggregation view per task; tie-in with `ImpactClosure` output |
 
@@ -632,19 +589,6 @@ Alternative considered: fold G content into E (modes refactor + invariants). Rej
 
 So G is the last phase. Its exit is Forge's CGAID compliance acceptance.
 
-### 13.8 Dependency graph (updated for G)
+### 13.8 Dependency graph
 
-```
-             ┌── B (causal + projection) ──┐
-             │                             │
-A (gates) ───┼── C (impact closure + rev.) ┼── E (self-adjoint + modes + invariants) ──→ G (CGAID compliance)
-             │                             │
-             └── D (failure-oriented tests)┘
-                      ↑                    │
-                 (tests A, B, C)           │
-             ┌── F (decision discipline) ──┘
-             │
-A ───────────┘
-```
-
-Phases B, C, D parallel after A. F parallel after A+B. E after A-D. G after E+F.
+Canonical dependency graph (including Phase G) in **[`ROADMAP.md §2`](ROADMAP.md)**.

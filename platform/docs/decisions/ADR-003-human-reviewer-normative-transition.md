@@ -84,7 +84,7 @@ All of the following are currently DRAFT and must transition before binding:
 | `ADR-001` (scenario_type extension) | CLOSED-decision / DRAFT-content | review: rationale + alternatives + consequences only. Decision itself ratified by user approval 2026-04-22. |
 | `ADR-002` (ceremony mapping) | CLOSED-decision / DRAFT-content | same |
 | `ADR-003` (this file) | OPEN | self-referential — cannot be self-ratified. Transitions only when distinct actor accepts. |
-| `INDEX.md` | DRAFT | low depth (factual pointers only) |
+| `README.md` | DRAFT | low depth (factual pointers only) |
 
 ### Phase A entry gate amendment
 
@@ -130,7 +130,7 @@ Phases B–G inherit the same pre-condition.
 ### Immediate (on ADR ratification)
 
 1. `FORMAL_PROPERTIES_v2.md:2` — `**Status:** normative` → `**Status:** DRAFT — pending peer review per ADR-003`. Same for other three main docs.
-2. `INDEX.md` gains Review Status column (DRAFT / PEER-REVIEWED / NORMATIVE).
+2. `README.md` gains Review Status column (DRAFT / PEER-REVIEWED / NORMATIVE).
 3. `platform/docs/reviews/` folder created (initially empty).
 4. `CHANGE_PLAN_v2.md` Phase A entry gate gains peer-review pre-condition.
 

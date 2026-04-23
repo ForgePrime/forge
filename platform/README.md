@@ -20,15 +20,18 @@ uv run uvicorn app.main:app --reload --port 8000
 
 Open http://localhost:8000/ui/signup → create user → create first project → type `/plan …` in the AI sidebar.
 
-See **docs/DEPLOY.md** for production deployment (IaC, TLS, backup, secret rotation).
+See [`docs/platform/ARCHITECTURE.md`](docs/platform/ARCHITECTURE.md) for system overview and [`docs/platform/ONBOARDING.md`](docs/platform/ONBOARDING.md) for first-contribution tutorial. (Production deploy doc `docs/DEPLOY.md` pending — tracked as doc gap.)
 
-## Status (2026-04-19)
+## Status (2026-04-23)
 
-- **CGAID compliance:** ~82% (audit: docs/FORGE_PRODUCTION_ROADMAP.md)
-- **Enterprise readiness:** RED for production, AMBER for internal pilot (audit: docs/FORGE_ENTERPRISE_AUDIT.md)
-- **Tests:** ~420 unit + integration, run via `uv run pytest tests/`
+- **Governance:** v2.1 spec in [`docs/`](docs/) — **DRAFT** pending peer review per [ADR-003](docs/decisions/ADR-003-human-reviewer-normative-transition.md). Start at [`docs/README.md`](docs/README.md).
+- **CGAID compliance:** partial — see [`docs/FRAMEWORK_MAPPING.md`](docs/FRAMEWORK_MAPPING.md) for binding to MANIFEST principles / OM layers / 11 artifacts / 7 metrics. Phase G (`docs/CHANGE_PLAN_v2.md §13`) closes remaining gaps.
+- **Gaps vs spec:** 4 CRITICAL + 15 HIGH + 15 MEDIUM + 1 LOW per [`docs/GAP_ANALYSIS_v2.md`](docs/GAP_ANALYSIS_v2.md).
+- **Known risks (29 enumerated):** see [`docs/DEEP_RISK_REGISTER.md`](docs/DEEP_RISK_REGISTER.md). **2 CRITICAL** (R-FW-02 Stage 0 policy-only; R-GOV-01 solo-authored spec).
+- **Enterprise readiness:** NOT ready for Confidential+ processing without deployed DLP (see R-FW-02). Internal pilot acceptable.
+- **Tests:** ~420 unit + integration, run via `uv run pytest tests/`. Property-based / metamorphic / adversarial suites planned (Phase D per ROADMAP).
 
-Before any client-facing launch, review **docs/FORGE_ENTERPRISE_AUDIT.md** top-10 fix list.
+Before any client-facing launch: review [`docs/DEEP_RISK_REGISTER.md`](docs/DEEP_RISK_REGISTER.md) top-10 and complete Phase A (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
 
 ## Where things live
 
@@ -59,4 +62,4 @@ Before any client-facing launch, review **docs/FORGE_ENTERPRISE_AUDIT.md** top-1
 - Commits from orchestrate carry `Assisted-by: Forge orchestrator (<model>)` trailer (Linux Kernel 2026 precedent)
 - 3 epistemic tags are a contract violation when missing — `contract_validator.py:158-175`
 
-For CGAID alignment: see `docs/FORGE_PRODUCTION_ROADMAP.md`.
+For full governance (spec, gaps, change plan, framework mapping, ADRs, deep-risk register): see [`docs/README.md`](docs/README.md).

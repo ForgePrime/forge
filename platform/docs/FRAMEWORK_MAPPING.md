@@ -123,7 +123,7 @@ Stage semantics fit Forge's existing `Task.type` + `Execution.status` without re
 | 6 | Edge-Case Test Plan | `AcceptanceCriterion` with `scenario_type` enum | PARTIAL — enum needs expansion (v2.1 P10); aggregation view needed | v2.1 P10 + G6 |
 | 7 | Business-Level DoD | NEW field `Objective.business_dod` JSONB | ABSENT | G6 |
 | 8 | Skill Change Log | `MicroSkill` version + `skill_log_exporter.py` | EXISTS | G6 (format alignment) |
-| 9 | Framework Manifest & Changelog | this doc + `FORMAL_PROPERTIES_v2.md` + `INDEX.md` | EXISTS (this doc set) | done |
+| 9 | Framework Manifest & Changelog | this doc + `FORMAL_PROPERTIES_v2.md` + `README.md` | EXISTS (this doc set) | done |
 | 10 | Data Classification Rubric | `DataClassification` + routing matrix config | ABSENT | G1 |
 | 11 | Side-Effect Map | `SideEffectRegistry` (Phase C) + per-task view | PLANNED in Phase C | Phase C + G6 integration |
 
