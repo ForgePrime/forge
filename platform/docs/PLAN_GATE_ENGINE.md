@@ -299,6 +299,22 @@ G_A = PASS iff:
 
 ---
 
+## Failure scenarios (ASPS Clause 11)
+
+| # | Scenario | Status | Mechanism / Justification |
+|---|---|---|---|
+| 1 | null_or_empty_input | Handled | A.1 DB constraint rejects `EvidenceSet.kind='null'`; VerdictEngine.evaluate() with empty EvidenceSet → REJECTED verdict (pure function, no implicit defaults). Empty rules list → REJECTED not PASS. |
+| 2 | timeout_or_dependency_failure | Handled | VerdictEngine is pure function, zero external calls — no timeout surface. A.4 cutover: pre-commit hook raises synchronously if direct `.status=` found; no silent failure path. A.3 shadow mode comparison report exits deterministically. |
+| 3 | repeated_execution | Handled | A.5 MCP idempotency — `(execution_id, tool_call_id)` unique; second call with same key returns cached Verdict with zero additional state change (T_{A.5} T2). |
+| 4 | missing_permissions | Handled | GateRegistry is a static dict of transition rules — not per-user; authentication enforced upstream (request layer). Unauthorized caller cannot reach VerdictEngine because FastAPI dependency chain blocks earlier. |
+| 5 | migration_or_old_data_shape | Handled | A.1 `evidence_sets` migration with alembic upgrade→downgrade→upgrade round-trip (T1). Existing rows validated against new schema — non-conforming → Finding filed (not silent drop). |
+| 6 | frontend_not_updated | JustifiedNotApplicable | Phase A is backend-only; no UI change. Status transitions reflected in existing API responses without new frontend work. If downstream plan adds UI for BLOCKED state → revisit in that plan. |
+| 7 | rollback_or_restore | Handled | A.4 cutover has canary sign-off (T4) + regression (T5); if regression → `VERDICT_ENGINE_MODE=off` env flag disables engine without migration rollback (feature-flag rollback). A.1 migration has `down_revision` for schema rollback. |
+| 8 | monday_morning_user_state | Handled | A.3 shadow mode runs ≥ 7 days producing comparison reports; period spans at least one Monday-after-Sunday-deploy window by construction. No per-day special casing. |
+| 9 | warsaw_missing_data | JustifiedNotApplicable | Gate Engine operates on Execution/Decision/Change entities; does not ingest geographic or regional data. Scenario does not apply. |
+
+---
+
 ## Open questions (UNKNOWN — condition 7 applies, block execution if not resolved)
 
 | # | Question | Blocks |

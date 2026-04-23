@@ -398,6 +398,22 @@ G_QA = PASS iff:
 
 ---
 
+## Failure scenarios (ASPS Clause 11)
+
+| # | Scenario | Status | Mechanism / Justification |
+|---|---|---|---|
+| 1 | null_or_empty_input | Handled | D.2 property tests use `hypothesis` which generates empty/None inputs by default (see `test_verdict_determinism.py`); D.4 adversarial fixtures from PRACTICE_SURVEY include empty-input incidents; C.3 ImpactClosure on empty change → deterministic empty Set (not crash). |
+| 2 | timeout_or_dependency_failure | Handled | D.1 deterministic harness uses `freezegun` + hermetic DB (no external network); pytest has explicit `--timeout` flag — over-limit → test fails explicitly. No background coroutines; no implicit retry. |
+| 3 | repeated_execution | Handled | D.1 T1 asserts 3 consecutive runs produce bit-identical outcomes (elapsed-time stripped); D.5 mutation_smoke.py uses named rule + SHA-256 checksum restore (deterministic); C.2 SideEffectRegistry flags non-idempotent side effects for explicit review. |
+| 4 | missing_permissions | Handled | C.2 `@side_effect(kind='external_api')` identifies functions requiring auth; test harness uses test-scope credentials only; production credentials never imported into test code (CI grep-gate enforces). |
+| 5 | migration_or_old_data_shape | Handled | D.5 `failure_modes` migration alembic round-trip (T1); C.4 `Change.reversibility_class` ENUM + `rollback_ref` migration round-trip (T1); D.4 adversarial `manifest.json` schema validated before suite runs. |
+| 6 | frontend_not_updated | JustifiedNotApplicable | Quality Assurance is a backend test infrastructure plan (ImportGraph, tests, CI α-gate). No UI surface. If future plan adds a coverage dashboard UI → revisit. |
+| 7 | rollback_or_restore | Handled | C.4 Reversibility classification + Rollback service is the *feature* of this plan; disaster drill T3 validates 5 REVERSIBLE historical changes restore byte-identical. Plan includes IRREVERSIBLE fail-safe default. |
+| 8 | monday_morning_user_state | Handled | D.1 hermetic DB fixture (fresh per test session); CI runs start with clean DB state regardless of day. No test depends on accumulated cross-run state. |
+| 9 | warsaw_missing_data | JustifiedNotApplicable | QA operates on code + tests + mutation smoke; no geographic or regional data in scope. |
+
+---
+
 ## Open questions (UNKNOWN — condition 7 applies)
 
 | # | Question | Blocks |

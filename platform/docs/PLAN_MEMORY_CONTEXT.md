@@ -361,6 +361,22 @@ G_B = PASS iff:
 
 ---
 
+## Failure scenarios (ASPS Clause 11)
+
+| # | Scenario | Status | Mechanism / Justification |
+|---|---|---|---|
+| 1 | null_or_empty_input | Handled | B.1 insert gate rejects Decision/Change/Finding without ancestor edge (unless `is_objective_root=true`); B.4 ContextProjector with empty DAG produces empty `ContextProjection` → B.5 TimelyDeliveryGate blocks pending→IN_PROGRESS transition; B.6 AC validator emits Finding when requirement+risk edges both empty. |
+| 2 | timeout_or_dependency_failure | Handled | B.3 CausalGraph is pure Python over DB; BFS bounded by `max_depth` (Q3); slow projection → Execution stays in `pending`, TimelyDeliveryGate (B.5) prevents LLM call. No external network dependency. |
+| 3 | repeated_execution | Handled | B.2 backfill idempotent (T1 explicit — INSERT ... ON CONFLICT DO NOTHING); B.4 ContextProjector deterministic (T3: same task+budget+DAG → identical projection byte-for-byte); B.6 backfill script idempotent on re-run (T2). |
+| 4 | missing_permissions | JustifiedNotApplicable | CausalGraph queries are DB reads scoped by `project_id` via application-layer auth already enforced upstream. CausalEdge table has no user-level permission model; cross-project isolation at query layer. If cross-project CausalEdge exposure becomes concern → new ADR. |
+| 5 | migration_or_old_data_shape | Handled | Every B-stage with schema change has alembic upgrade→downgrade→upgrade round-trip (B.1 T1, B.4 T4-audit, B.5 T1, B.6 T1). B.1 `is_objective_root` column added with `DEFAULT false` to backward-fill existing rows; B.6 `relation_semantic` NULL-allowed with Finding on unmappable TEXT. |
+| 6 | frontend_not_updated | JustifiedNotApplicable | Memory/Context is backend-internal: CausalEdge table, CausalGraph service, ContextProjector, gates. No UI surface in Phase B. If future stage exposes projection-view UI → revisit. |
+| 7 | rollback_or_restore | Handled | B.4 `CAUSAL_PROJECTION=off` env flag disables projector without migration rollback (feature-flag rollback). B.5 `TIMELY_DELIVERY_MODE=WARN` reverts REJECT mode. B.6 feature flag promotion WARN→REJECT reversible by flipping flag. All alembic migrations have `down_revision`. |
+| 8 | monday_morning_user_state | Handled | ContextProjector is stateless per call — no overnight accumulation. `context_projections` table stores audit trail but is read-only; Monday-morning invocation produces identical projection given identical DAG. B.5 `executions.context_projection_id` NOT NULL constraint at IN_PROGRESS transition survives process restart. |
+| 9 | warsaw_missing_data | JustifiedNotApplicable | Memory/Context operates on CausalEdge DAG (Decision/Change/Finding entities); no geographic or regional data in scope. |
+
+---
+
 ## Open questions (UNKNOWN — condition 7 applies)
 
 | # | Question | Blocks |

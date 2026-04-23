@@ -562,6 +562,22 @@ G_CD = PASS iff:
 
 ---
 
+## Failure scenarios (ASPS Clause 11)
+
+| # | Scenario | Status | Mechanism / Justification |
+|---|---|---|---|
+| 1 | null_or_empty_input | Handled | F.1 schema constraint rejects `EvidenceSet.kind='assumption'`/`null`; F.3 non-trivial untagged claim → REJECTED (not WARN); F.4 non-empty `uncertainty_state.uncertain` → BLOCKED; F.10 NL-only ContextProjection → BLOCKED; E.7 zero epistemic deltas → REJECTED. Every validator has an explicit empty-input branch. |
+| 2 | timeout_or_dependency_failure | Handled | E.1 ContractSchema validation is structural (no external calls); E.3 autonomy `demote()` runs on window-close event (not network); F.6 `forge_challenge` timeout → Execution stays pending (F.4 BLOCKED takes over); F.10 structural check is synchronous, raise-not-warn. |
+| 3 | repeated_execution | Handled | F.4 `POST /resolve-uncertainty` idempotent (re-POST with same `accepted-by` → no-op via unique constraint on `(execution_id, resolution_id)`); E.2 `Invariant.check_fn` is pure function (same state → same verdict); E.7 `epistemic_snapshot_before` captured once at B.5 transition (immutable after). |
+| 4 | missing_permissions | Handled | F.9 distinct-actor gate: `Execution.verified_by ≠ Execution.agent` enforced at DB level; unauthorized actor cannot self-ratify. F.4 resolve-uncertainty requires `accepted-by=<role>` from authorized role list (joined against `users.steward_role` when Critical tier). |
+| 5 | migration_or_old_data_shape | Handled | E.1 `Task.produces` migration dry-run reports non-conforming row count as Finding (not silent drop); E.2 invariants table alembic round-trip; F.4 `Execution.uncertainty_state` JSONB backward-compatible (`DEFAULT '{}'::jsonb`); E.7 `epistemic_snapshot_before` same default; F.10 `ContextProjection` pydantic fields optional for historical rows. |
+| 6 | frontend_not_updated | JustifiedNotApplicable | Contract Discipline is backend validator infrastructure + CI grep-gates. BLOCKED status surfaced through existing Execution API response field; no new UI required in Phase E+F. |
+| 7 | rollback_or_restore | Handled | E.5 services→modes refactor uses `git mv` (blame preserved) + re-export shims for one-sprint backward-compat window; F.10 feature flag `STRUCTURED_TRANSFER_REJECT` reversible; E.7 REJECT can be reverted via env flag `EPISTEMIC_PROGRESS_MODE=off` (same pattern as B.5 phased rollout). All migrations have `down_revision`. |
+| 8 | monday_morning_user_state | Handled | E.3 autonomy window `W` (per ADR-004) is stateless per-capability; Q_n recomputed from persistent event log, no in-memory session state. Monday vs Friday autonomy level computed identically. F.4 BLOCKED status survives process restart (DB-persisted). |
+| 9 | warsaw_missing_data | JustifiedNotApplicable | Contract Discipline operates on Task/Decision/Execution entities; no geographic or regional data in scope. |
+
+---
+
 ## Open questions (UNKNOWN — condition 7 applies)
 
 | # | Question | Blocks (hard — stage cannot start until resolved per CONTRACT §B.2) |

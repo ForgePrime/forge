@@ -163,6 +163,22 @@ G_0 = PASS iff:
 
 ---
 
+## Failure scenarios (ASPS Clause 11)
+
+| # | Scenario | Status | Mechanism / Justification |
+|---|---|---|---|
+| 1 | null_or_empty_input | Handled | Stage 0.3 T1 rejects `smoke_results.json` with any status=UNCHECKED; empty review record at Stage 0.1 → gate fails (grep finds no `reviewed_by:` field). |
+| 2 | timeout_or_dependency_failure | Handled | ADR review has no auto-close; if distinct actor never files review → Stage 0.1 stays BLOCKED (explicit, not silent). ADR-004 domain-expert timeout handled same way — no default values substituted. |
+| 3 | repeated_execution | Handled | ADR ratification is an idempotent file-state change (`Status: RATIFIED` set-once via PR + review record; re-application is no-op). Smoke test re-runs deterministic (SHA-256 of implementation files checked). |
+| 4 | missing_permissions | Handled | Stage 0.1 T1 requires reviewer listed in `docs/decisions/README.md` eligible-reviewers set; CI checks via git commit author; unauthorized reviewer → gate fails. |
+| 5 | migration_or_old_data_shape | JustifiedNotApplicable | Pre-flight produces only ADR markdown + smoke-result JSON; no DB schema changes. If a future Pre-flight stage adds data migration → revisit this row. |
+| 6 | frontend_not_updated | JustifiedNotApplicable | Pre-flight artifacts are governance documents (ADRs) and CI reports; Forge has no end-user frontend in scope at this phase. |
+| 7 | rollback_or_restore | Handled | ADR ratification reversible via Status transition back to `OPEN` per ADR-003 §5 process. Calibration ADRs (004-006) reversible by superseding ADR with `supersedes-by` reference. |
+| 8 | monday_morning_user_state | JustifiedNotApplicable | Pre-flight has no per-user or per-session state; all state in version-controlled ADR files + smoke-results artifact. Day-of-week irrelevant. |
+| 9 | warsaw_missing_data | JustifiedNotApplicable | Forge is an LLM-orchestration platform, not a geographic or data-ingestion system; scenario imported from sibling ITRP context does not apply. |
+
+---
+
 ## Open questions (UNKNOWN — condition 7 applies)
 
 | # | Question | Blocks |

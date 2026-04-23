@@ -436,6 +436,22 @@ When G_GOV = PASS, the platform satisfies the seven soundness conditions **struc
 
 ---
 
+## Failure scenarios (ASPS Clause 11)
+
+| # | Scenario | Status | Mechanism / Justification |
+|---|---|---|---|
+| 1 | null_or_empty_input | Handled | G.1 pre-ingest gate rejects Confidential+ without DLP record; G.2 `ContractViolation.violation_type` NOT NULL; G.3 metrics collectors T1 asserts every collector returns numeric (not None, not error); G.9 `proof_trail_audit.py` emits Finding on any missing link in 10-link chain. |
+| 2 | timeout_or_dependency_failure | Handled | G.3 scheduled metrics job has retry-on-failure semantics (cron + exponential backoff); G.9 `proof_trail_audit.py` uses `SET TRANSACTION SNAPSHOT` to avoid partial-DAG reads under concurrent writes; G.4 `rule_prevention_log` writes synchronous during REJECT flow (not fire-and-forget). |
+| 3 | repeated_execution | Handled | G.1 DataClassification insert idempotent (same source+tier → upsert no-op); G.2 `ContractViolation` unique on `(execution_id, rule_id)`; G.9 audit re-runnable (deterministic BFS traversal; same DAG state → same Findings). |
+| 4 | missing_permissions | Handled | G.5 Steward sign-off required for Critical tier (`AuditLog.reviewed_by_steward` and `Decision.steward_sign_off_by` NOT NULL at tier=Critical); G.1 Confidential+ ingest requires Steward sign-off pre-write; G.6 ACKNOWLEDGED_GAP entries require Steward sign-off record on file. |
+| 5 | migration_or_old_data_shape | Handled | Every G-stage with schema change has alembic round-trip (G.1 T1, G.2 T1, G.5 T1). G.1 ADR-008 (pending) specifies retroactive Stage 0 strategy for pre-existing unclassified Knowledge rows; G.6 11 artifacts accounting accepts EXISTS + ACKNOWLEDGED_GAP + Steward sign-off for legacy state. |
+| 6 | frontend_not_updated | Handled | G.6 `11 Artifacts mapping` explicitly includes UI-surfaced artifacts (endpoint/view per each of 11); Artifact #11 Side-Effect Map linked to C.3 `SideEffectRegistry` output with admin UI binding; G.1 adds UI banner for Confidential+ data without DLP record. Frontend updates tracked as part of each artifact status check. |
+| 7 | rollback_or_restore | Handled | G.9 feature flags `CAUSAL_RELATION_SEMANTIC_REJECT` and `STRUCTURED_TRANSFER_REJECT` reversible (WARN←REJECT via flag flip); G.4 rule retirement uses proposal→Steward review→archive workflow (not destructive delete — archived rules recoverable). All G-stage migrations have `down_revision`. |
+| 8 | monday_morning_user_state | Handled | G.1 kill-criteria trigger is durable (`SecurityIncident.confirmed_at IS NOT NULL` persists across restarts); system-wide BLOCKED state survives process restart. G.3 metrics aggregator uses persistent `metrics_snapshots` table, not in-memory; Monday/Friday same baseline. G.5 Steward sign-off records are DB rows not session-bound. |
+| 9 | warsaw_missing_data | JustifiedNotApplicable | Governance operates on platform-level compliance (CGAID Stage 0, Steward role, 7 metrics, Rule lifecycle, 11 artifacts, snapshot validation, proof trail). No geographic or regional data dimension. |
+
+---
+
 ## Open questions (UNKNOWN — condition 7 applies)
 
 | # | Question | Blocks (hard — stage cannot start until resolved per CONTRACT §B.2) |
