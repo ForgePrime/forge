@@ -18,6 +18,9 @@
 | **4** — A_i explicit and propagated until resolved | CCEGAP | Assumption tags (CONFIRMED/ASSUMED/UNKNOWN) become REJECT conditions — not warnings; ambiguities tracked in `Execution.uncertainty_state` | Stage F.3 + F.4 exit |
 | **7** — Missing(C_i) → Stop or Escalate, not Guess | CCEGAP | BLOCKED state on Execution; UNKNOWN items halt pipeline until resolved by human ACK via `POST /resolve-uncertainty` | Stage F.4 exit |
 | **C8** — Additive epistemic progression | ECITP | EpistemicProgressCheck evaluates 6 deltas (new evidence / reduced ambiguity / new failure mode / narrowed scope / tightened schema / new AC with source); zero deltas → REJECTED with reason=epistemically_null_stage | Stage E.7 exit |
+| **§2.7** — Explicit invalidation (legitimate K drop) | ECITP | `Execution.invalidated_evidence_refs` records any prior evidence drop + reason_code; silent drop → REJECTED with reason=silent_invalidation_violation_§2.7 | Stage E.7 exit |
+| **§2.3** — Evidence continuity (cross-stage propagation) | ECITP | B.4 T2b property test over 10,000 random DAG+task pairs asserts every decision-relevant ancestor edge appears in ContextProjection | MEMORY Stage B.4 exit |
+| **§2.4** — Ambiguity continuity (cross-stage persistence) | ECITP | F.4 T5 property test over 10,000 random execution chains asserts UNKNOWN persists until resolved-uncertainty record exists | Stage F.4 exit |
 | **C11** — Downstream inheritance (no NL-only transfer) | ECITP | StructuredTransferGate rejects ContextProjection that is NL-only or missing any of 6 structural categories (requirements, evidence_refs, ambiguity_state, test_obligations, dependency_relations, hard_constraints); no fallback path in codebase (grep-gate) | Stage F.10 exit |
 
 CCEGAP conditions 1, 3, 5, 6 are closed by PLAN_MEMORY_CONTEXT and PLAN_GATE_ENGINE. ECITP conditions C3, C6 are closed by PLAN_MEMORY_CONTEXT B.5/B.6. ECITP C12 is closed by PLAN_GOVERNANCE G.9.
@@ -36,6 +39,8 @@ G_i = all T_i pass + regression green + distinct-actor review where noted
 ```
 
 **Condition 7 mechanism:** `Execution.uncertainty_state.uncertain` non-empty with non-trivial classification → status = BLOCKED. Only `POST /executions/{id}/resolve-uncertainty` with `[ASSUMED: accepted-by=<role>]` unblocks. No auto-fill, no default resolution. This is the structural enforcement of condition 7 — not a convention.
+
+**Ambiguity continuity mechanism (ECITP §2.4):** resolve-uncertainty calls write durable rows to `resolved_uncertainty(ambiguity_id, execution_id, resolved_by, accepted_role, resolved_at)`. F.4 T5 property test asserts that every unresolved ambiguity persists across downstream executions in the dependency closure until a matching resolution record exists. Silent drop → test failure.
 
 ---
 
@@ -264,9 +269,10 @@ pytest tests/execution/contract/ tests/validation/contract/ -x  # with execution
    - Δ4: `set(execution.scope_tags) ⊊ set(execution.epistemic_snapshot_before.scope_tags)` (strict subset).
    - Δ5: `ContractSchema.version(task) > epistemic_snapshot_before.contract_schema_version`.
    - Δ6: new AcceptanceCriterion rows with `source_ref IS NOT NULL`.
-2. Alembic migration: `Execution.epistemic_snapshot_before JSONB NOT NULL DEFAULT '{}'::jsonb`, `Execution.epistemic_delta JSONB NULL` (populated at commit).
+2. Alembic migration: `Execution.epistemic_snapshot_before JSONB NOT NULL DEFAULT '{}'::jsonb`, `Execution.epistemic_delta JSONB NULL` (populated at commit), `Execution.invalidated_evidence_refs JSONB NOT NULL DEFAULT '[]'::jsonb` (list of `{evidence_set_id, reason_code}` records).
 3. GateRegistry: `(Execution, IN_PROGRESS, COMMITTED) → [..., EpistemicProgressCheck]` — added to existing Execution commit chain after F.3/F.4 checks.
-4. Failure diagnostic: on REJECT, reason="epistemically_null_stage: no delta in [Δ1..Δ6]"; written to Finding with severity=HIGH.
+4. Failure diagnostic: on REJECT, reason includes `epistemically_null_stage` (no delta) OR `silent_invalidation_violation_§2.7` (prior K dropped without explicit invalidation record); written to Finding with severity=HIGH.
+5. Invalidation validator: before EpistemicProgressCheck accepts a drop of any `E_old ∈ epistemic_snapshot_before.evidence_refs`, require matching entry in `execution.invalidated_evidence_refs` with `reason_code ∈ {superseded_by_newer, retracted_at_source, rejected_by_independent_check, made_obsolete_by_decision}`. Missing match → REJECTED per T7.
 
 **Exit test T_{E.7} (deterministic):**
 ```bash
@@ -291,11 +297,26 @@ pytest tests/test_epistemic_progress.py::test_paraphrase_rejected -x
 pytest tests/test_epistemic_progress.py::test_baseline_at_transition -x
 # PASS: Execution.epistemic_snapshot_before non-empty immediately after pending→IN_PROGRESS
 
-# T7: regression
+# T7: explicit-invalidation mechanism (closes ECITP §2.7 legitimate K_i drop)
+pytest tests/test_epistemic_progress.py::test_explicit_invalidation -x
+# ECITP §2.7 requires: "K_{i+1} contains K_i preserved or refined UNLESS explicit invalidation is recorded."
+# Implementation: Execution.invalidated_evidence_refs JSONB — agent must list evidence_set_ids
+# being invalidated PLUS a reason_code ∈ {superseded_by_newer, retracted_at_source,
+# rejected_by_independent_check, made_obsolete_by_decision}. Silent drop → REJECTED.
+# PASS cases:
+#   (a) new Execution preserves all prior K (no drop) → EpistemicProgressCheck PASS
+#   (b) new Execution drops evidence E_old AND invalidated_evidence_refs includes E_old
+#       with a valid reason_code → EpistemicProgressCheck PASS
+# FAIL cases:
+#   (c) new Execution drops E_old with empty invalidated_evidence_refs → REJECTED
+#       with reason="silent_invalidation_violation_§2.7"
+#   (d) invalidated_evidence_refs references non-existent evidence_set_id → REJECTED
+
+# T8: regression
 pytest tests/ -x
 ```
 
-**Gate G_{E.7}:** T1–T7 pass → PASS. **ECITP C8 closed** structurally.
+**Gate G_{E.7}:** T1–T8 pass → PASS. **ECITP C8 closed** structurally (additive progression via 6 deltas). **ECITP §2.7 closed** (legitimate invalidation requires explicit record; silent drop rejected).
 
 **ESC-4 impact:** `executions` table (+2 JSONB columns), VerdictEngine commit chain (+1 check), PLAN_GOVERNANCE G.3 metrics (adds Δ-count telemetry per capability). Adds upstream dependency on B.5 (snapshot capture). **ESC-5 invariants preserved:** F.3 assumption tags still REJECT (pre-check, runs before E.7); F.4 BLOCKED still halts (pre-check). **ESC-6 evidence completeness:** each REJECT carries `reason` field with specific deltas evaluated — reviewer can verify decision. **ESC-7 failure modes:** (a) snapshot corruption → NOT NULL default `{}::jsonb` forces explicit baseline; (b) Δ2 false positive on set identity with different ordering → explicit strict-subset semantics (⊊, not ≠); (c) stage that SHOULD be null (e.g. pure rename refactor) — by design rejected; this is a feature, forcing rename to carry at least a Finding or new test.
 
@@ -373,8 +394,24 @@ pytest tests/test_uncertainty_blocked.py::test_no_accept_while_blocked -x
 # T4: resolve-uncertainty endpoint unblocks
 pytest tests/test_uncertainty_blocked.py::test_resolve_unblocks -x
 # PASS: POST /executions/{id}/resolve-uncertainty with accepted-by → status BLOCKED→IN_PROGRESS
+
+# T5: ambiguity continuity — cross-stage persistence (closes ECITP §2.4)
+pytest tests/property/test_ambiguity_continuity.py -x --hypothesis-seed=0
+# Property: for a random chain of executions exec_1 → exec_2 → ... → exec_k where
+# exec_{n+1}.task is in dependency closure of exec_n.task:
+#   for every a ∈ exec_n.uncertainty_state.uncertain where NOT Resolved(a)
+#   (no matching row in resolved_uncertainty table with resolution.execution_id >= n):
+#     assert a ∈ exec_{n+1}.uncertainty_state.uncertain
+# Hypothesis: 10,000 random chains of length 2..5. Zero instances where UNKNOWN
+# silently disappears between stages without explicit resolve-uncertainty call.
+# Closes ECITP §2.4 Ambiguity continuity and mitigates §7 Lemma 1 (false determinacy).
+
+# T6: resolve-uncertainty creates durable resolution record (supports T5)
+pytest tests/test_uncertainty_blocked.py::test_resolution_persisted -x
+# PASS: POST /resolve-uncertainty → row in resolved_uncertainty(ambiguity_id, execution_id,
+# resolved_by, resolved_at) so T5 can check resolution history across executions.
 ```
-**Gate G_{F.4}:** T1–T4 pass → PASS. **Condition 7 closed**: Missing(C_i) → Stop — enforced structurally.
+**Gate G_{F.4}:** T1–T6 pass → PASS. **CCEGAP Condition 7 closed**: Missing(C_i) → Stop — enforced structurally. **ECITP §2.4 Ambiguity continuity closed**: unresolved A_i persists through downstream executions via property test over 10,000 random chains.
 
 ---
 
@@ -558,7 +595,9 @@ G_CD = PASS iff:
 - **CCEGAP Condition 4** — A_i explicit + propagated: assumption tags enforced as REJECT, not warning. [T_{F.3} T1]
 - **CCEGAP Condition 7** — Missing(C_i) → Stop OR Escalate: BLOCKED state enforced (Stop) + `POST /resolve-uncertainty` requires explicit `[ASSUMED: accepted-by=<role>]` (Escalate); no auto-fill, no default resolution. [T_{F.4} T2, T3, T4]
 - **ECITP C8** — Additive progression: EpistemicProgressCheck rejects epistemically-null stages (paraphrase-only outputs) structurally. [T_{E.7} T2, T5]
+- **ECITP §2.7** — Explicit invalidation: silent K_i drop → REJECTED; legitimate drop requires `invalidated_evidence_refs` record with reason_code. [T_{E.7} T7]
 - **ECITP C11** — Structured transfer: NL-only ContextProjection → BLOCKED; six structural categories enforced at producer boundary. [T_{F.10} T1, T2, T4]
+- **ECITP §2.4** — Ambiguity continuity: unresolved UNKNOWN persists across executions until `resolved_uncertainty` record exists (property test over 10,000 chains). [T_{F.4} T5]
 
 ---
 

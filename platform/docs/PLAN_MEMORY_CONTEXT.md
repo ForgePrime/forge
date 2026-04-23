@@ -18,6 +18,7 @@
 | **3** — O_i derived from C_i, R_i, E_<i | CCEGAP | B.1 establishes the DAG structure (necessary condition only — ancestor edge exists); condition 3 proper — the agent's output is actually *derived from* E_<i at generation time — is only closed at B.4 when ContextProjector delivers E_<i into C_i. B.1 alone guarantees only presence of ancestor edges, not derivation. | Stage B.4 exit (B.1 is a prerequisite, not a closure point) |
 | **C3** — Timely delivery | ECITP | All required info materialized in P_i BEFORE F_i executes; no post-hoc compensation. Enforced at Execution state transition (pending → IN_PROGRESS). | Stage B.5 exit (WARN); auto-promotes to REJECT at G_{E.1} |
 | **C6** — Topology preservation | ECITP | Semantic dependency relations (requirement ↔ risk ↔ AC ↔ test) survive transfer via `causal_edges.relation_semantic` ENUM; CausalGraph exposes relation-typed queries. | Stage B.6 exit (WARN); promotes to REJECT at G.9 |
+| **§2.3** — Evidence continuity | ECITP | B.4 T2b property test over 10,000 random DAG+task pairs: every decision-relevant ancestor edge in `Relevant(E_i)` appears in `ContextProjection(task_j)` for j > i. Not just spot-check on 10 historical — structural propagation enforced. | Stage B.4 exit (strengthened from T2 spot-check) |
 
 Conditions 2 (Suff), 4 (A_i propagated), 5 (deterministic T_i), 6 (gate), 7 (Missing→Stop) are NOT closed by this plan. They depend on PLAN_GATE_ENGINE (5, 6) and PLAN_CONTRACT_DISCIPLINE (2, 4, 7).
 
@@ -196,10 +197,22 @@ pytest tests/ -x
 pytest tests/test_context_projector.py::test_budget_compliance -x
 # PASS: projection token count ≤ budget_tokens for all 10 fixtures
 
-# T2: fidelity — 10 historical executions
+# T2: fidelity — 10 historical executions (spot-check)
 pytest tests/test_context_projector.py::test_fidelity -x
 # PASS: for each historical execution, projection contains every Decision the agent's
 # reasoning referenced (spot-check via parsing stored reasoning text)
+# [ASSUMED: systematic coverage gap for novel task types — mitigated by T2b below]
+
+# T2b: evidence continuity — property-based test (closes ECITP §2.3)
+pytest tests/property/test_evidence_continuity.py -x --hypothesis-seed=0
+# PASS: for a random valid CausalEdge DAG G and random task t:
+#   let E_rel = {e | e ∈ ancestors(t, G) AND e.relation_semantic ∈ decision_relevant_set}
+#   let P = ContextProjector.project(t, budget_tokens=large_enough_to_fit_all)
+#   assert E_rel ⊆ P.structured_fields (every decision-relevant ancestor edge
+#   appears in projection; no silent drop).
+# Hypothesis strategy: generate 10,000 DAG+task pairs; zero false-negatives allowed.
+# Closes ECITP §2.3 Evidence continuity and mitigates §5 Degradation by preventing
+# prior substitution due to unpropagated evidence.
 
 # T3: determinism
 pytest tests/test_context_projector.py::test_determinism -x
@@ -218,8 +231,9 @@ pytest tests/test_context_projector_integration.py -x  # with CAUSAL_PROJECTION=
 # PASS: prompt assembly uses projection, not raw session context
 ```
 
-**Gate G_{B.4}:** T1–T6 pass → PASS.
-**Condition 1 achieved:** C_i is now formally `ContextProjector.project(task, budget_tokens)` — RequiredInfo(i) is bounded by the DAG projection, not session priors. [ASSUMED: projection fidelity T2 uses spot-check on 10 historical executions; systematic coverage gap for novel task types remains — disclosed per AUTONOMOUS_AGENT_FAILURE_MODES.md §2.2].
+**Gate G_{B.4}:** T1–T2, T2b, T3–T6 pass → PASS.
+**CCEGAP Condition 1 achieved:** C_i is now formally `ContextProjector.project(task, budget_tokens)` — RequiredInfo(i) is bounded by the DAG projection, not session priors.
+**ECITP §2.3 Evidence continuity closed:** T2b property test proves `Relevant(E_i) ⊆ P_j for all j > i where relevant` over 10,000 random DAG+task pairs, not just 10 historical spot-check. Systematic coverage gap from v1 closed.
 
 ---
 

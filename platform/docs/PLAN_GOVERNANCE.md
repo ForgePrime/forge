@@ -398,7 +398,7 @@ pytest tests/ -x
 
 ---
 
-## Phase G exit gate (G_GOV) — Terminal gate for 7 CCEGAP + 6 ECITP soundness conditions
+## Phase G exit gate (G_GOV) — Terminal gate for 7 CCEGAP + 6 ECITP conditions + 3 ECITP continuity definitions (16 total)
 
 ```
 G_GOV = PASS iff:
@@ -414,7 +414,7 @@ G_GOV = PASS iff:
   AND feature_flags STRUCTURED_TRANSFER_REJECT=true (G.9 promotes F.10)
 ```
 
-**Final soundness validation — CCEGAP 7 conditions + ECITP 6 additional conditions:**
+**Final soundness validation — CCEGAP 7 + ECITP 6 conditions (C3, C6, C7, C8, C11, C12) + ECITP 3 continuity definitions (§2.3, §2.4, §2.7) = 16 mechanical checks:**
 
 | # | Theorem / Condition | Mechanism at G_GOV | Evidence |
 |---|---|---|---|
@@ -431,6 +431,9 @@ G_GOV = PASS iff:
 | 11 | ECITP C8 — Additive progression | EpistemicProgressCheck rejects null stages (6 deltas) | T_{E.7} T2, T5 |
 | 12 | ECITP C11 — Structured transfer | StructuredTransferGate: NL-only projection → BLOCKED; grep-gate on fallback paths | T_{F.10} T1, T4 |
 | 13 | ECITP C12 — End-to-end proof trail | proof_trail_audit.py: every Change has complete 10-link chain | T_{G.9} T1, T3 |
+| 14 | ECITP §2.3 — Evidence continuity | Property test: 10,000 random DAG+task pairs; every decision-relevant ancestor edge in projection | T_{B.4} T2b |
+| 15 | ECITP §2.4 — Ambiguity continuity | Property test: 10,000 random execution chains; UNKNOWN persists until `resolved_uncertainty` record exists | T_{F.4} T5 |
+| 16 | ECITP §2.7 — Explicit invalidation | Silent prior-K drop → REJECTED; explicit `invalidated_evidence_refs` with reason_code → PASS | T_{E.7} T7 |
 
 When G_GOV = PASS, the platform satisfies the seven soundness conditions **structurally at the per-execution level** via enforced mechanical constraints (not by convention, not by LLM discipline). **System-level soundness** (across sessions, under concurrency, with novel task types not seen during development) is **NOT** established by G_GOV and requires separate post-G_GOV work: soak tests, multi-agent concurrency tests, fidelity-at-scale tests, and empirical coverage of the RequiredInfo projection beyond the 10 historical fixtures in T_{B.4} T2. See AUTONOMOUS_AGENT_FAILURE_MODES.md §2.2, §2.4.
 

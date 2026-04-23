@@ -213,6 +213,7 @@ Pre-flight ─── A ─── B ─────────────┘
 **Stage tests:**
 - [ ] `ContextProjector.project(task, budget)` respects budget for 10 canonical fixtures.
 - [ ] For 10 historical executions, projection contains every decision the reasoning referenced (spot-check).
+- [ ] **Evidence continuity property test (ECITP §2.3):** hypothesis-based — for 10,000 random DAG+task pairs, every decision-relevant ancestor edge appears in `ContextProjection`; zero false-negatives allowed.
 - [ ] Persisted in `context_projections` table for audit.
 
 **Exit:** `CAUSAL_PROJECTION=on` behind flag; `prompt_parser` uses projector.
@@ -419,16 +420,17 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] Each mode has `tests/{mode}/contract/`.
 - [ ] Stubbing `execution/` module → `validation/` tests still green.
 
-### Stage E.7 — EpistemicProgressGate (ECITP C8)
+### Stage E.7 — EpistemicProgressGate (ECITP C8 + §2.7 explicit invalidation)
 
 **Entry:** E.1 + E.2 + F.3.
 
 **Stage tests:**
-- [ ] Alembic migration (`executions.epistemic_snapshot_before`, `executions.epistemic_delta`).
+- [ ] Alembic migration (`executions.epistemic_snapshot_before`, `executions.epistemic_delta`, `executions.invalidated_evidence_refs`).
 - [ ] Execution with zero deltas from {new_evidence, reduced_ambiguity, new_failure_mode, narrowed_scope, tightened_schema, new_ac_with_source} → REJECTED with reason=`epistemically_null_stage`.
 - [ ] Execution with only Δ1 (new EvidenceSet) → PASS (single delta sufficient per ECITP C8).
 - [ ] Paraphrase-only Decision (no new Evidence, same uncertainty, same schema) → REJECTED.
 - [ ] Baseline snapshot captured at pending→IN_PROGRESS transition (integrates with B.5).
+- [ ] **Explicit invalidation test (ECITP §2.7):** silent drop of prior `E_old` → REJECTED with reason=`silent_invalidation_violation_§2.7`; drop with valid `{evidence_set_id, reason_code}` entry in `invalidated_evidence_refs` → PASS. Valid reason_codes: `{superseded_by_newer, retracted_at_source, rejected_by_independent_check, made_obsolete_by_decision}`.
 
 ### Phase E exit gate
 
@@ -462,12 +464,14 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] Validator rejects non-trivial claims without tag.
 - [ ] Promote existing 3 WARNINGs to FAIL.
 
-### Stage F.4 — Uncertainty blocks execution (P20)
+### Stage F.4 — Uncertainty blocks execution (P20) + Ambiguity continuity (ECITP §2.4)
 
 - [ ] `BLOCKED` added to `Execution.status` enum (migration up/down).
 - [ ] `Execution.uncertainty_state` JSONB.
 - [ ] `POST /executions/{id}/resolve-uncertainty` endpoint.
 - [ ] Synthetic test: non-empty `uncertain` → BLOCKED; cannot ACCEPTED until resolved.
+- [ ] `resolved_uncertainty(ambiguity_id, execution_id, resolved_by, accepted_role, resolved_at)` durable resolution-record table (migration up/down).
+- [ ] **Ambiguity continuity property test (ECITP §2.4):** hypothesis-based — for 10,000 random execution chains (length 2..5), every unresolved UNKNOWN at step n persists in uncertainty_state of step n+1 unless matching `resolved_uncertainty` row exists with `execution_id ≥ n`.
 
 ### Stage F.5 — Root cause uniqueness (P21) + Disclosure protocol (P22)
 
