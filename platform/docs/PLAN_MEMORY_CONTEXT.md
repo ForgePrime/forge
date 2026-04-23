@@ -12,10 +12,12 @@
 
 ## Soundness conditions addressed
 
-| Theorem condition | What "addressed" means | Closed in |
-|---|---|---|
-| **1** — RequiredInfo(i) ⊆ C_i | ContextProjector delivers the minimal justification frontier to the agent — C_i is now formally computed, not session-dependent | Stage B.4 exit |
-| **3** — O_i derived from C_i, R_i, E_<i | B.1 establishes the DAG structure (necessary condition only — ancestor edge exists); condition 3 proper — the agent's output is actually *derived from* E_<i at generation time — is only closed at B.4 when ContextProjector delivers E_<i into C_i. B.1 alone guarantees only presence of ancestor edges, not derivation. | Stage B.4 exit (B.1 is a prerequisite, not a closure point) |
+| Theorem condition | Source theorem | What "addressed" means | Closed in |
+|---|---|---|---|
+| **1** — RequiredInfo(i) ⊆ C_i | CCEGAP | ContextProjector delivers the minimal justification frontier to the agent — C_i is now formally computed, not session-dependent | Stage B.4 exit |
+| **3** — O_i derived from C_i, R_i, E_<i | CCEGAP | B.1 establishes the DAG structure (necessary condition only — ancestor edge exists); condition 3 proper — the agent's output is actually *derived from* E_<i at generation time — is only closed at B.4 when ContextProjector delivers E_<i into C_i. B.1 alone guarantees only presence of ancestor edges, not derivation. | Stage B.4 exit (B.1 is a prerequisite, not a closure point) |
+| **C3** — Timely delivery | ECITP | All required info materialized in P_i BEFORE F_i executes; no post-hoc compensation. Enforced at Execution state transition (pending → IN_PROGRESS). | Stage B.5 exit (WARN); auto-promotes to REJECT at G_{E.1} |
+| **C6** — Topology preservation | ECITP | Semantic dependency relations (requirement ↔ risk ↔ AC ↔ test) survive transfer via `causal_edges.relation_semantic` ENUM; CausalGraph exposes relation-typed queries. | Stage B.6 exit (WARN); promotes to REJECT at G.9 |
 
 Conditions 2 (Suff), 4 (A_i propagated), 5 (deterministic T_i), 6 (gate), 7 (Missing→Stop) are NOT closed by this plan. They depend on PLAN_GATE_ENGINE (5, 6) and PLAN_CONTRACT_DISCIPLINE (2, 4, 7).
 
@@ -221,6 +223,116 @@ pytest tests/test_context_projector_integration.py -x  # with CAUSAL_PROJECTION=
 
 ---
 
+## Stage B.5 — TimelyDeliveryGate
+
+**Closes:** ECITP C3 (Timely delivery — all required info present in P_i BEFORE F_i executes). Source: `.ai/theorems/Epistemic_Continuity_and_Information_Topology_Preservation_for_AI_Agent_Systems.md` §3 C3.
+
+**Rationale (ESC-3 root-cause uniqueness):** ECITP C3 requires that "all information required by stage i is delivered before F_i is executed — no stage may compensate after the fact." Three candidate enforcement points were considered:
+1. Inline check in `prompt_parser.py` before LLM call — **rejected**: too late; Execution has already transitioned to IN_PROGRESS, so gate-failure would require rollback, contradicting F.4 no-auto-fill and violating ECITP Lemma 4 (broken continuity amplifies revision cost).
+2. Gate at `Execution.status` transition (pending → IN_PROGRESS) — **chosen**: atomic with state machine; failure prevents transition, preserving invariant "IN_PROGRESS implies materialized P_i"; consistent with F.4 BLOCKED pattern.
+3. Both 1 + 2 — **rejected**: duplicated enforcement, higher maintenance cost, no additional guarantee because (2) subsumes (1).
+
+**Entry conditions:**
+- G_{B.4} = PASS (ContextProjector exists and produces `ContextProjection` rows).
+- G_{E.1} = PASS for full enforcement (ContractSchema.required_context(task) needed to define what counts as "required"). **Phased rollout:** B.5 may start in WARN mode before E.1; promotes to REJECT at G_{E.1} = PASS.
+
+**A_{B.5}:**
+- Required-context schema source: `ContractSchema.required_context(task) → Set[FieldRef]` per task type — [UNKNOWN: schema not yet defined; depends on E.1 ContractSchema. B.5 enforcement is WARN-only until G_{E.1} = PASS, then promotes to REJECT]. Mitigation: seed minimum required_context = `{scope_tags, requirement_refs, ancestor_findings}` for all task types until ContractSchema arrives.
+
+**Work:**
+1. `app/validation/timely_delivery_gate.py`:
+   - `TimelyDeliveryGate.check(execution) → Verdict` — returns PASS iff `execution.context_projection_id IS NOT NULL` AND for every `FieldRef f ∈ ContractSchema.required_context(execution.task)`: `f ∈ execution.context_projection.structured_fields`.
+2. Alembic migration: `executions.context_projection_id UUID FK NOT NULL constraint deferred` (SET NULL allowed in pending state; enforced at IN_PROGRESS transition).
+3. GateRegistry entry: `(Execution, pending, IN_PROGRESS) → [TimelyDeliveryGate]`.
+4. Phase toggle: env var `TIMELY_DELIVERY_MODE ∈ {WARN, REJECT}`; default WARN; switches to REJECT when G_{E.1} = PASS is recorded in `feature_flags` table.
+
+**Exit test T_{B.5} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: transition blocked without projection (REJECT mode)
+pytest tests/test_timely_delivery_gate.py::test_no_projection_blocks -x
+# PASS: Execution.status=pending, context_projection_id=NULL, transition to IN_PROGRESS → blocked
+
+# T3: transition blocked when projection missing required field (REJECT mode)
+pytest tests/test_timely_delivery_gate.py::test_missing_field_blocks -x
+# PASS: projection lacking 'requirement_refs' when task.requirement_refs non-empty → blocked
+
+# T4: WARN mode emits Finding but allows transition
+pytest tests/test_timely_delivery_gate.py::test_warn_mode_emits_finding -x
+# PASS: WARN mode → Finding inserted, Execution.status advances to IN_PROGRESS
+
+# T5: no NL-only fallback in prompt_parser
+grep -nE "session_context|raw_prompt_fallback|fallback.*projection" app/prompt_parser.py
+# exits 1 (no matches — fallback path explicitly removed)
+
+# T6: regression
+pytest tests/ -x
+```
+
+**Gate G_{B.5}:** T1–T6 pass → PASS. **ECITP C3 closed** in WARN mode at G_{B.5}; auto-promotes to REJECT at G_{E.1}.
+
+**ESC-4 impact completeness:** touches `executions` table (new NOT NULL FK), `prompt_parser.py` (removes fallback), `GateRegistry`, `ContextProjector` (no changes — consumer-side), and adds dependency from Phase F.10 (StructuredTransferGate reuses same `required_context` schema). **ESC-5 invariants preserved:** F.4 BLOCKED semantic unchanged; B.4 ContextProjector interface unchanged (additive). **ESC-7 failure modes:** (a) novel task type with empty `required_context` → defaults to minimum seed; (b) race between projection compute and transition → FK NOT NULL constraint serializes; (c) WARN→REJECT promotion before ContractSchema ready → env-flag gated on G_{E.1} recorded state.
+
+---
+
+## Stage B.6 — SemanticRelationTypes on CausalEdge
+
+**Closes:** ECITP C6 (topology preservation — requirement/risk/AC/test dependency relations survive transfer). Source: `.ai/theorems/Epistemic_Continuity_and_Information_Topology_Preservation_for_AI_Agent_Systems.md` §3 C6.
+
+**Rationale (ESC-3 root-cause uniqueness):** ECITP C6 requires that semantic dependency relations survive decomposition. Current `causal_edges.relation TEXT` field is free-form; two candidate schemas were considered:
+1. Separate relation-type table `causal_relation_types(id, code, semantic_class)` — **rejected**: adds join overhead to every CausalGraph traversal; breaks simple `relation='depends_on'` backward compatibility; requires re-tagging all B.2 backfilled rows.
+2. `causal_edges.relation_semantic ENUM` column alongside existing `relation TEXT` — **chosen**: backward compatible (existing TEXT preserved); deterministic mapping script; ENUM constraint at DB level enforces completeness.
+3. Polymorphic relation via JSONB metadata — **rejected**: not queryable with indexed lookups; violates ESC-1 determinism (JSONB ordering is not guaranteed across PG versions).
+
+**Entry conditions:**
+- G_{B.2} = PASS (backfilled edges exist in DB).
+
+**A_{B.6}:**
+- ENUM values — [ASSUMED: `{requirement_of, risk_of, ac_of, test_of, mitigates, derives_from, produces, blocks, verifies}` per FORMAL_PROPERTIES_v2 P14 binding + ECITP C6 semantic classes. Missing values → Finding, not silent fallback].
+- Backfill mapping: `relation TEXT → relation_semantic ENUM` per deterministic script — [UNKNOWN: canonical mapping table must be authored before this stage; Q4 blocks B.6].
+
+**Work:**
+1. Alembic migration: add `causal_edges.relation_semantic ENUM(...) NULL` (NOT NULL defered); index on `(dst_type, dst_id, relation_semantic)`.
+2. `scripts/backfill_relation_semantic.py` — deterministic map from `relation TEXT` values to ENUM; unmappable → `NULL` + Finding.
+3. `app/evidence/causal_graph.py` extension:
+   - `requirements_of(ac) → List[CausalEdge]` — edges WHERE `dst_id = ac.id AND relation_semantic = 'requirement_of'`.
+   - `risks_of(ac) → List[CausalEdge]` — same pattern, `relation_semantic = 'risk_of'`.
+   - `tests_of(ac) → List[CausalEdge]` — same pattern, `relation_semantic = 'test_of'`.
+4. Validator (WARN phase; promotes to REJECT at G.9): `AcceptanceCriterion insert` → emit Finding if `requirements_of(ac)` empty AND `risks_of(ac)` empty.
+
+**Exit test T_{B.6} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: backfill deterministic (ESC-1)
+python scripts/backfill_relation_semantic.py && python scripts/backfill_relation_semantic.py
+# row count identical; no duplicate mappings
+
+# T3: unmappable edges reported as Findings
+pytest tests/test_relation_semantic_backfill.py::test_unmappable_finding -x
+# PASS: TEXT relation with no ENUM mapping → Finding emitted, relation_semantic=NULL
+
+# T4: CausalGraph query methods
+pytest tests/test_causal_graph_semantic.py -x
+# PASS: requirements_of/risks_of/tests_of return expected edges on fixture DAG
+
+# T5: AC validator emits Finding when requirement AND risk both absent (WARN mode)
+pytest tests/test_ac_topology_warn.py -x
+# PASS: AC insert with no 'requirement_of' and no 'risk_of' edge → Finding inserted
+
+# T6: regression
+pytest tests/ -x
+```
+
+**Gate G_{B.6}:** T1–T6 pass → PASS. **ECITP C6 closed (WARN mode)**; REJECT promotion handled at G.9 ProofTrailCompleteness.
+
+**ESC-4 impact:** `causal_edges` schema (+1 column, +1 index); `CausalGraph` (+3 methods — additive); `AcceptanceCriterion` validator (WARN phase). **ESC-5 invariants preserved:** B.1 unique constraint on (src_type, src_id, dst_type, dst_id, relation) unchanged (relation_semantic is additional, not part of uniqueness). **ESC-7 failure modes:** (a) unmappable historical TEXT → Finding not silent NULL default; (b) new relation class introduced → ENUM type check raises at insert; (c) partial backfill coverage → T3 catches.
+
+---
+
 ## Phase B exit gate (G_B)
 
 ```
@@ -229,6 +341,8 @@ G_B = PASS iff:
   AND G_{B.2} = PASS  (backfill idempotent, FK coverage, distinct-actor spot-check)
   AND G_{B.3} = PASS  (CausalGraph service pure + correct)
   AND G_{B.4} = PASS  (ContextProjector live behind flag, fidelity + determinism confirmed)
+  AND G_{B.5} = PASS  (TimelyDeliveryGate — ECITP C3 closed in WARN, auto-promotes to REJECT at G_{E.1})
+  AND G_{B.6} = PASS  (SemanticRelationTypes — ECITP C6 closed in WARN, promotes at G.9)
   AND pytest tests/ -x → all existing + Gate Engine + Memory tests green
   AND every new Decision|Change|Finding has ≥ 1 CausalEdge OR is flagged as an objective-root (e.g. Decision.is_objective_root = true) — DB invariant query:
       SELECT count(*) FROM (decisions UNION changes UNION findings) d
@@ -238,8 +352,10 @@ G_B = PASS iff:
 ```
 
 **Soundness conditions closed at G_B:**
-- **Condition 1** — RequiredInfo(i) ⊆ C_i: ContextProjector delivers formally computed C_i. [T_{B.4} T2, T3]
-- **Condition 3 (full)** — O_i derived from E_<i: CausalEdge enforces ancestry; ContextProjector delivers that ancestry to the agent. [T_{B.1} T4, T_{B.4} T6]
+- **CCEGAP Condition 1** — RequiredInfo(i) ⊆ C_i: ContextProjector delivers formally computed C_i. [T_{B.4} T2, T3]
+- **CCEGAP Condition 3 (full)** — O_i derived from E_<i: CausalEdge enforces ancestry; ContextProjector delivers that ancestry to the agent. [T_{B.1} T4, T_{B.4} T6]
+- **ECITP C3 (WARN→REJECT)** — timely delivery enforced at Execution state transition; no F_i runs without P_i materialized. [T_{B.5} T2, T3, T5]
+- **ECITP C6 (WARN; REJECT at G.9)** — semantic relation topology (requirement/risk/AC/test) survives transfer via relation_semantic ENUM. [T_{B.6} T4, T5]
 
 **Residual gap (disclosed):** projection fidelity tested on 10 historical executions (spot-check). Novel task types not covered by fidelity test. Full coverage requires Phase E ContractSchema (typed `Task.produces` → typed `RequiredInfo`).
 
@@ -251,4 +367,6 @@ G_B = PASS iff:
 |---|---|---|
 | Q1 | ADR-004 clock-skew tolerance value — read from ADR-004 before implementing acyclicity trigger | Stage B.1 |
 | Q2 | Do `task.scope_tags` and `task.requirement_refs` fields exist in current schema? Grep `app/models/task.py` before implementing projector filter | Stage B.4 |
-| Q3 | BFS depth limit default — decide before implementing `ancestors()`; currently [ASSUMED: 10] | Stage B.3 |
+| Q3 | BFS depth limit default — decide before implementing `ancestors()`; currently [UNKNOWN: strawman=10] | Stage B.3 |
+| Q4 | Canonical mapping table `relation TEXT → relation_semantic ENUM` — must be authored as part of ADR-017 (proposed, per ROADMAP §12) before B.6 backfill runs | Stage B.6 |
+| Q5 | Seed list for `ContractSchema.required_context(task)` per task type when E.1 not yet complete — minimum viable set to unblock B.5 WARN mode | Stage B.5 |

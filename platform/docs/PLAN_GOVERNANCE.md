@@ -59,7 +59,7 @@ G_i = all T_i pass + Steward sign-off where required
 
 **A_{G.1}:**
 - Existing data retroactive classification strategy — ADR-008 (pending). [UNKNOWN: what to do with pre-existing unclassified Knowledge rows? Must read ADR-008 when CLOSED]. Block G.1 start until ADR-008 CLOSED.
-- DLP mechanism for Confidential+ tier — [UNKNOWN: not specified in FRAMEWORK_MAPPING.md]. Resolution: either (a) ADR-013 "DLP mechanism for Confidential+ tier — technology choice" is authored and CLOSED before G.1 routing-matrix config work starts, OR (b) marked as `ACKNOWLEDGED_GAP` per FRAMEWORK_MAPPING §12 with Steward sign-off record on file. Q4 in the Q-table reflects this binary resolution. Stage G.1 is BLOCKED until one of the two resolution paths completes.
+- DLP mechanism for Confidential+ tier — [UNKNOWN: not specified in FRAMEWORK_MAPPING.md]. Resolution: either (a) ADR-018 "DLP mechanism for Confidential+ tier — technology choice" (per ROADMAP §12) is authored and CLOSED before G.1 routing-matrix config work starts, OR (b) marked as `ACKNOWLEDGED_GAP` per FRAMEWORK_MAPPING §12 with Steward sign-off record on file. Q4 in the Q-table reflects this binary resolution. Stage G.1 is BLOCKED until one of the two resolution paths completes.
 
 **Work:**
 1. `DataClassification` entity migration.
@@ -326,30 +326,111 @@ pytest tests/ -x
 
 ---
 
-## Phase G exit gate (G_GOV) — Terminal gate for all 7 soundness conditions
+## Stage G.9 — ProofTrailCompleteness + ECITP C6/C11 promotion
+
+**Closes:** ECITP C12 (End-to-end proof trail — causal chain `documents → analysis → ambiguities → objectives → tasks → requirements → AC → tests → verification → artifact` with evidence preserved) + ECITP C7 (Continuity of meaning — small refinements cause bounded downstream revision). Also promotes B.6 relation_semantic and F.10 structured-transfer from WARN to REJECT mode system-wide. Source: `.ai/theorems/Epistemic_Continuity_and_Information_Topology_Preservation_for_AI_Agent_Systems.md` §3 C12 + C7.
+
+**Rationale (ESC-3 root-cause uniqueness):** ECITP C12 requires that "for every final artifact Z, there must exist a causal chain with evidence references preserved across the chain." Three enforcement shapes considered:
+1. Inline trail validation on every Change commit — **rejected**: expensive per-commit traversal; violates ESC-1 determinism under high concurrency (long lock on causal_edges). Also duplicates E.7 commit-chain overhead.
+2. Periodic audit script + Finding-on-gap — **chosen**: deterministic batch; runs nightly + on-demand via CLI; emits Finding per missing link with severity=HIGH so B.6/F.10 REJECT-promotion gates these before they accumulate.
+3. On-demand only (no scheduled run) — **rejected**: violates ECITP §7 Lemma 4 (broken continuity amplifies revision cost) — gaps accumulate undetected between manual runs.
+
+**Entry conditions:**
+- G_{G.8} = PASS (snapshot validation in place — needed for C7 bounded-revision test).
+- G_{B.6} = PASS, G_{F.10} = PASS (WARN-mode mechanisms exist; G.9 promotes to REJECT).
+- G_{E.7} = PASS (EpistemicProgressCheck available — G.9 audit references epistemic_delta to mark stages that degraded continuity).
+
+**A_{G.9}:**
+- Two entity gaps — [UNKNOWN: the 10-link chain requires `Requirement` as distinct entity from `Finding`, and `Test` as distinct entity from `AcceptanceCriterion`. These are not yet in the schema.]. Resolution paths:
+  - **ADR-015 (proposed, per ROADMAP §12): Requirement entity** — either (a) promote `Finding.type = 'requirement'` to explicit `Requirement` table with FK from AC, OR (b) document `Finding.type='requirement'` as the canonical chain link with no new entity and adjust G.9 audit to accept both. G.9 is BLOCKED until ADR-015 CLOSED.
+  - **ADR-016 (proposed, per ROADMAP §12): Test entity** — either (a) promote `AcceptanceCriterion.scenario_type` into a `Test` table with FK from AC, OR (b) treat AC+scenario_type as the chain's test link. G.9 is BLOCKED until ADR-016 CLOSED.
+- Promotion semantic for B.6/F.10 WARN→REJECT — [CONFIRMED: promotion triggers a `feature_flags` row `CAUSAL_RELATION_SEMANTIC_REJECT=true` and `STRUCTURED_TRANSFER_REJECT=true`; prior plan validators read this flag at runtime per B.5/F.10 phased-rollout pattern].
+
+**Work:**
+1. `scripts/proof_trail_audit.py`:
+   - For every `Change` in DB, traverses backward via `CausalEdge`:
+     ```
+     Change → Execution → AcceptanceCriterion → (Test per ADR-015) → Requirement per ADR-014 → Task → Objective → Finding → Knowledge
+     ```
+   - For each missing link, emits `Finding(severity=HIGH, kind='proof_trail_gap', change_id=..., missing_link='...')`.
+   - Exit code: 0 if all Changes have complete chains, 1 if any gap.
+2. CI integration: nightly cron runs audit; failure creates a P0 ticket.
+3. CLI command: `forge audit proof-trail --change-id=<uuid>` for on-demand per-Change validation.
+4. B.6/F.10 REJECT promotion: G.9 migration sets `feature_flags` rows enabling REJECT mode on AC-topology validator (B.6) and structured-transfer gate (F.10).
+5. C7 bounded-revision test: `tests/test_c7_bounded_revision.py` — for 10 historical minor-edit PRs, assert `len(ImpactClosure) ≤ threshold` (threshold from ADR-004 `w_m` weights).
+
+**Exit test T_{G.9} (deterministic):**
+```bash
+# T1: audit script runs on clean DB
+python scripts/proof_trail_audit.py
+# exits 0 (no gaps in seed fixtures) OR exits 1 with explicit Finding count
+
+# T2: synthetic gap detection
+pytest tests/test_proof_trail_audit.py::test_missing_link_detected -x
+# PASS: Change with no linked Execution → Finding(kind='proof_trail_gap', missing_link='Execution')
+
+# T3: complete 10-link chain on fixture
+pytest tests/test_proof_trail_audit.py::test_complete_chain_passes -x
+
+# T4: CLI per-change audit
+forge audit proof-trail --change-id=$(psql -tc "SELECT id FROM changes LIMIT 1")
+# exits 0 on complete, 1 on gap
+
+# T5: B.6 REJECT-promotion active
+psql -c "SELECT value FROM feature_flags WHERE name='CAUSAL_RELATION_SEMANTIC_REJECT'" | grep -q true
+# exits 0
+
+# T6: F.10 REJECT-promotion active
+psql -c "SELECT value FROM feature_flags WHERE name='STRUCTURED_TRANSFER_REJECT'" | grep -q true
+# exits 0
+
+# T7: bounded revision (C7)
+pytest tests/test_c7_bounded_revision.py -x
+# PASS: 10 minor-edit PR fixtures → ImpactClosure size ≤ threshold from ADR-004
+
+# T8: regression
+pytest tests/ -x
+```
+
+**Gate G_{G.9}:** T1–T8 pass + ADR-015 CLOSED + ADR-016 CLOSED → PASS. **ECITP C12 closed** structurally (per-Change chain auditable); **ECITP C7 closed** (bounded-revision test); **B.6/F.10 promoted from WARN to REJECT**.
+
+**ESC-4 impact:** `scripts/proof_trail_audit.py` (new CLI + cron); `feature_flags` (+2 rows); AC-topology validator (WARN→REJECT — existing code, flag flip); StructuredTransferGate (WARN→REJECT — same); schema impact depends on ADR-014/015 outcome (either +2 tables or zero). **ESC-5 invariants preserved:** B.1 CausalEdge structure unchanged; B.6 ENUM values unchanged (promotion is enforcement change, not schema); F.10 raise-not-warn semantic unchanged at code level (flag only toggles active enforcement, never falls back to warn). **ESC-6 evidence completeness:** every Finding emitted by audit carries `source='proof_trail_audit'`, `trace_to_condition='ECITP_C12'`, `correctness_evidence=<traversal_query_text>`, `test_evidence='T_{G.9}_T2'`, `validation_evidence='CI_cron_run'`. **ESC-7 failure modes:** (a) missing Requirement entity → ADR-014 blocks gate entry; (b) false-positive gap due to orphan root Decision → B.1 `is_objective_root` exception honored; (c) concurrent audit+write race → audit runs against snapshot `SET TRANSACTION SNAPSHOT` to avoid partial-DAG reads.
+
+---
+
+## Phase G exit gate (G_GOV) — Terminal gate for 7 CCEGAP + 6 ECITP soundness conditions
 
 ```
 G_GOV = PASS iff:
-  G_{G.1} through G_{G.8} all PASS
+  G_{G.1} through G_{G.9} all PASS  (incl. G.9 ProofTrailCompleteness + ECITP C6/C11 REJECT-promotion)
   AND pytest tests/ -x → all 6 prior plans' tests + Governance tests green
   AND FRAMEWORK_MAPPING.md §12: every acknowledged gap is RESOLVED or has Steward-signed ACKNOWLEDGED_GAP record
   AND 7 metrics live: GET /projects/{slug}/metrics returns all 7 non-null
   AND Rule review report produced: ≥ 1 retirement candidate identified
   AND every HIGH/CRITICAL Decision has Steward sign-off (DB query: count = 0 violations)
   AND rule_prevention_log mechanism verified: T_{G.4} T1 generalized to all rule classes — for each rule class a synthetic REJECTED delivery produces a log row. (Production log may be empty on day 1; this gate tests the pipeline, not accumulated production data.)
+  AND proof_trail_audit.py exits 0: every Change has complete 10-link causal chain (G.9)
+  AND feature_flags CAUSAL_RELATION_SEMANTIC_REJECT=true (G.9 promotes B.6)
+  AND feature_flags STRUCTURED_TRANSFER_REJECT=true (G.9 promotes F.10)
 ```
 
-**Final soundness theorem validation — 7 conditions across all stages:**
+**Final soundness validation — CCEGAP 7 conditions + ECITP 6 additional conditions:**
 
-| Condition | Mechanism at G_GOV | Evidence |
-|---|---|---|
-| 1 RequiredInfo ⊆ C_i | ContextProjector active (B.4); fidelity tested on 10 historical | T_{B.4} T2 in CI |
-| 2 Suff(C_i, R_i) | ContractSchema drift test in CI | T_{E.1} T1, T2 |
-| 3 O_i derived from E_<i | CausalEdge insert gate + ImpactClosure gate in VerdictEngine | T_{B.1} T4, T_{C.3} T2 |
-| 4 A_i explicit, propagated | CONFIRMED/ASSUMED/UNKNOWN enforced as REJECT | T_{F.3} T1 |
-| 5 ∃ T_i deterministic | CI α-gate + mutation smoke in CI | T_{D.5} T3, T4 |
-| 6 O_i only if G_i = pass | grep invariant: 0 direct .status= in CI | T_{A.4} T1 |
-| 7 Missing → Stop | BLOCKED state + no auto-fill path | T_{F.4} T2, T3 |
+| # | Theorem / Condition | Mechanism at G_GOV | Evidence |
+|---|---|---|---|
+| 1 | CCEGAP — RequiredInfo ⊆ C_i | ContextProjector active (B.4); fidelity tested on 10 historical | T_{B.4} T2 in CI |
+| 2 | CCEGAP — Suff(C_i, R_i) | ContractSchema drift test in CI | T_{E.1} T1, T2 |
+| 3 | CCEGAP — O_i derived from E_<i | CausalEdge insert gate + ImpactClosure gate in VerdictEngine | T_{B.1} T4, T_{C.3} T2 |
+| 4 | CCEGAP — A_i explicit, propagated | CONFIRMED/ASSUMED/UNKNOWN enforced as REJECT | T_{F.3} T1 |
+| 5 | CCEGAP — ∃ T_i deterministic | CI α-gate + mutation smoke in CI | T_{D.5} T3, T4 |
+| 6 | CCEGAP — O_i only if G_i = pass | grep invariant: 0 direct .status= in CI | T_{A.4} T1 |
+| 7 | CCEGAP — Missing → Stop | BLOCKED state + no auto-fill path | T_{F.4} T2, T3 |
+| 8 | ECITP C3 — Timely delivery | TimelyDeliveryGate at pending→IN_PROGRESS transition; no F_i without materialized P_i | T_{B.5} T2, T3 |
+| 9 | ECITP C6 — Topology preservation | relation_semantic ENUM + CausalGraph relation-typed queries; REJECT-promoted at G.9 | T_{B.6} T4, T5 + G.9 feature_flag |
+| 10 | ECITP C7 — Continuity of meaning | Bounded-revision test on 10 minor-edit PRs ≤ threshold | T_{G.9} T7 |
+| 11 | ECITP C8 — Additive progression | EpistemicProgressCheck rejects null stages (6 deltas) | T_{E.7} T2, T5 |
+| 12 | ECITP C11 — Structured transfer | StructuredTransferGate: NL-only projection → BLOCKED; grep-gate on fallback paths | T_{F.10} T1, T4 |
+| 13 | ECITP C12 — End-to-end proof trail | proof_trail_audit.py: every Change has complete 10-link chain | T_{G.9} T1, T3 |
 
 When G_GOV = PASS, the platform satisfies the seven soundness conditions **structurally at the per-execution level** via enforced mechanical constraints (not by convention, not by LLM discipline). **System-level soundness** (across sessions, under concurrency, with novel task types not seen during development) is **NOT** established by G_GOV and requires separate post-G_GOV work: soak tests, multi-agent concurrency tests, fidelity-at-scale tests, and empirical coverage of the RequiredInfo projection beyond the 10 historical fixtures in T_{B.4} T2. See AUTONOMOUS_AGENT_FAILURE_MODES.md §2.2, §2.4.
 
@@ -362,5 +443,7 @@ When G_GOV = PASS, the platform satisfies the seven soundness conditions **struc
 | Q1 | ADR-007 Steward rotation — who, how many, rotation period? ADR must exist with `Status: CLOSED` before G.5 start. | Stage G.5 (BLOCKING) |
 | Q2 | ADR-008 Retroactive Stage 0 strategy for pre-existing data AND SecurityIncident confirmation schema (kill-criteria §G.1 step 6). ADR must exist with `Status: CLOSED` before G.1 start. | Stage G.1 (BLOCKING) |
 | Q3 | ADR-009 Snapshot Validation 5 components — must align with FORMAL_PROPERTIES_v2 §11.2 synth(s, i) pattern. ADR file must exist with `Status: CLOSED` before G.8 start. | Stage G.8 (BLOCKING) |
-| Q4 | DLP mechanism for Confidential+ tier — either (a) ADR-013 authored + CLOSED with technology choice, OR (b) marked `ACKNOWLEDGED_GAP` per FRAMEWORK_MAPPING §12 with Steward sign-off record on file. | Stage G.1 (BLOCKING — one of two paths) |
+| Q4 | DLP mechanism for Confidential+ tier — either (a) ADR-018 (per ROADMAP §12) authored + CLOSED with technology choice, OR (b) marked `ACKNOWLEDGED_GAP` per FRAMEWORK_MAPPING §12 with Steward sign-off record on file. | Stage G.1 (BLOCKING — one of two paths) |
 | Q5 | OPERATING_MODEL §7.1 seven metrics: cross-check that FRAMEWORK_MAPPING.md §7 bindings match §7.1 definitions before G.3 collectors implemented. | Stage G.3 (drift check — informational if bindings match; BLOCKING if discrepancy → file Finding and escalate to Steward) |
+| Q6 | ADR-015 Requirement entity — either (a) promote `Finding.type='requirement'` to distinct `Requirement` table, OR (b) accept Finding-as-Requirement in proof-trail audit. ADR file must exist with `Status: CLOSED` before G.9 start. | Stage G.9 (BLOCKING — ECITP C12) |
+| Q7 | ADR-016 Test entity — either (a) promote `AcceptanceCriterion.scenario_type` to distinct `Test` table, OR (b) accept AC+scenario_type as the chain's test link. ADR file must exist with `Status: CLOSED` before G.9 start. | Stage G.9 (BLOCKING — ECITP C12) |

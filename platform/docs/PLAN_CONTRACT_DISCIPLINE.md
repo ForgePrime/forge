@@ -12,13 +12,15 @@
 
 ## Soundness conditions addressed
 
-| Theorem condition | What "addressed" means | Closed in |
-|---|---|---|
-| **2** — Suff(C_i, R_i, i) = true | ContractSchema derives both prompt constraints and validator rules from one source; sufficiency check is structural, not LLM-evaluated | Stage E.1 exit |
-| **4** — A_i explicit and propagated until resolved | Assumption tags (CONFIRMED/ASSUMED/UNKNOWN) become REJECT conditions — not warnings; ambiguities tracked in `Execution.uncertainty_state` | Stage F.3 + F.4 exit |
-| **7** — Missing(C_i) → Stop or Escalate, not Guess | BLOCKED state on Execution; UNKNOWN items halt pipeline until resolved by human ACK via `POST /resolve-uncertainty` | Stage F.4 exit |
+| Theorem condition | Source theorem | What "addressed" means | Closed in |
+|---|---|---|---|
+| **2** — Suff(C_i, R_i, i) = true | CCEGAP | ContractSchema derives both prompt constraints and validator rules from one source; sufficiency check is structural, not LLM-evaluated | Stage E.1 exit |
+| **4** — A_i explicit and propagated until resolved | CCEGAP | Assumption tags (CONFIRMED/ASSUMED/UNKNOWN) become REJECT conditions — not warnings; ambiguities tracked in `Execution.uncertainty_state` | Stage F.3 + F.4 exit |
+| **7** — Missing(C_i) → Stop or Escalate, not Guess | CCEGAP | BLOCKED state on Execution; UNKNOWN items halt pipeline until resolved by human ACK via `POST /resolve-uncertainty` | Stage F.4 exit |
+| **C8** — Additive epistemic progression | ECITP | EpistemicProgressCheck evaluates 6 deltas (new evidence / reduced ambiguity / new failure mode / narrowed scope / tightened schema / new AC with source); zero deltas → REJECTED with reason=epistemically_null_stage | Stage E.7 exit |
+| **C11** — Downstream inheritance (no NL-only transfer) | ECITP | StructuredTransferGate rejects ContextProjection that is NL-only or missing any of 6 structural categories (requirements, evidence_refs, ambiguity_state, test_obligations, dependency_relations, hard_constraints); no fallback path in codebase (grep-gate) | Stage F.10 exit |
 
-Conditions 1, 3, 5, 6 are closed by PLAN_MEMORY_CONTEXT and PLAN_GATE_ENGINE.
+CCEGAP conditions 1, 3, 5, 6 are closed by PLAN_MEMORY_CONTEXT and PLAN_GATE_ENGINE. ECITP conditions C3, C6 are closed by PLAN_MEMORY_CONTEXT B.5/B.6. ECITP C12 is closed by PLAN_GOVERNANCE G.9.
 
 ---
 
@@ -235,6 +237,70 @@ pytest tests/execution/contract/ tests/validation/contract/ -x  # with execution
 
 ---
 
+### Stage E.7 — EpistemicProgressGate
+
+**Closes:** ECITP C8 (Additive epistemic progression — every stage must ADD evidence / reduce ambiguity / increase testability / refine scope / strengthen constraints / make acceptance explicit — no stage may be "epistemically null"). Source: `.ai/theorems/Epistemic_Continuity_and_Information_Topology_Preservation_for_AI_Agent_Systems.md` §3 C8 + Lemma 5 (non-additive stages increase hallucination pressure).
+
+**Rationale (ESC-3 root-cause uniqueness):** three candidate enforcement designs considered:
+1. Boolean "any delta" gate (one of 6 deltas required) — **chosen**: matches ECITP C8 exact wording ("each stage must add evidence OR reduce ambiguity OR ... OR strengthen constraints"); testable against existing Execution fields.
+2. Weighted scoring (Σ delta_weights ≥ threshold) — **rejected**: introduces calibration constant blocking on another ADR; violates ESC-1 determinism unless weights frozen; no evidence that "weighted" is truer to C8 than "any-of".
+3. Mandatory 2-of-6 deltas — **rejected**: stricter than theorem requires; would REJECT legitimate scope-narrowing-only stages (allowed per C8).
+
+**Entry conditions:**
+- G_{E.1} = PASS (ContractSchema present — delta 5 "tightened schema" needs versioned ContractSchema).
+- G_{E.2} = PASS (Invariant entity present — delta 6 "strengthened constraints" uses Invariant count).
+- G_{F.3} = PASS (uncertainty_state exists — delta 2 "ambiguity reduced" needs before/after comparison).
+
+**A_{E.7}:**
+- Six delta definitions — [CONFIRMED: 6 classes listed in ECITP §2.7 and §3 C8: `new_evidence, reduced_ambiguity, new_failure_mode, narrowed_scope, tightened_schema, new_ac_with_source`. Direct text match — no interpretation].
+- Baseline "previous state" source: `Execution.epistemic_snapshot_before JSONB` recorded at `pending → IN_PROGRESS` transition — [ASSUMED: snapshot stored when TimelyDeliveryGate (B.5) passes; consistent with B.5 state machine].
+
+**Work:**
+1. `app/governance/epistemic_progress.py`:
+   - `EpistemicProgressCheck.evaluate(execution) → Verdict` — PASS iff any delta from {Δ1..Δ6} strictly positive; FAIL otherwise; reason string names which deltas were evaluated.
+   - Δ1: `len(execution.new_evidence_refs) >= 1` (new EvidenceSet rows inserted with `source_execution_id = execution.id`).
+   - Δ2: `execution.uncertainty_state.uncertain ⊊ execution.epistemic_snapshot_before.uncertain` (strict subset).
+   - Δ3: `len(execution.new_failure_modes) >= 1`.
+   - Δ4: `set(execution.scope_tags) ⊊ set(execution.epistemic_snapshot_before.scope_tags)` (strict subset).
+   - Δ5: `ContractSchema.version(task) > epistemic_snapshot_before.contract_schema_version`.
+   - Δ6: new AcceptanceCriterion rows with `source_ref IS NOT NULL`.
+2. Alembic migration: `Execution.epistemic_snapshot_before JSONB NOT NULL DEFAULT '{}'::jsonb`, `Execution.epistemic_delta JSONB NULL` (populated at commit).
+3. GateRegistry: `(Execution, IN_PROGRESS, COMMITTED) → [..., EpistemicProgressCheck]` — added to existing Execution commit chain after F.3/F.4 checks.
+4. Failure diagnostic: on REJECT, reason="epistemically_null_stage: no delta in [Δ1..Δ6]"; written to Finding with severity=HIGH.
+
+**Exit test T_{E.7} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: execution with zero deltas → REJECTED
+pytest tests/test_epistemic_progress.py::test_null_stage_rejected -x
+# PASS: synthetic Execution with no new Evidence, same uncertainty, same scope, same schema, no new AC, no new FM → REJECTED with reason="epistemically_null_stage"
+
+# T3: execution with only new Evidence → PASS (Δ1 sufficient)
+pytest tests/test_epistemic_progress.py::test_delta1_sufficient -x
+
+# T4: execution with only reduced uncertainty → PASS (Δ2 sufficient)
+pytest tests/test_epistemic_progress.py::test_delta2_sufficient -x
+
+# T5: paraphrase-only Decision (same Evidence, same uncertainty, same schema) → REJECTED
+pytest tests/test_epistemic_progress.py::test_paraphrase_rejected -x
+# PASS: Execution whose only output is new Decision text referencing existing EvidenceSet with no new EvidenceSet row → REJECTED
+
+# T6: baseline snapshot captured at transition
+pytest tests/test_epistemic_progress.py::test_baseline_at_transition -x
+# PASS: Execution.epistemic_snapshot_before non-empty immediately after pending→IN_PROGRESS
+
+# T7: regression
+pytest tests/ -x
+```
+
+**Gate G_{E.7}:** T1–T7 pass → PASS. **ECITP C8 closed** structurally.
+
+**ESC-4 impact:** `executions` table (+2 JSONB columns), VerdictEngine commit chain (+1 check), PLAN_GOVERNANCE G.3 metrics (adds Δ-count telemetry per capability). Adds upstream dependency on B.5 (snapshot capture). **ESC-5 invariants preserved:** F.3 assumption tags still REJECT (pre-check, runs before E.7); F.4 BLOCKED still halts (pre-check). **ESC-6 evidence completeness:** each REJECT carries `reason` field with specific deltas evaluated — reviewer can verify decision. **ESC-7 failure modes:** (a) snapshot corruption → NOT NULL default `{}::jsonb` forces explicit baseline; (b) Δ2 false positive on set identity with different ordering → explicit strict-subset semantics (⊊, not ≠); (c) stage that SHOULD be null (e.g. pure rename refactor) — by design rejected; this is a feature, forcing rename to carry at least a Finding or new test.
+
+---
+
 ## Phase F — Decision discipline
 
 ### Stage F.1 — Evidence source constraint (P17 full)
@@ -401,22 +467,98 @@ grep "status" platform/docs/decisions/ADR-012*.md | grep -i "filed\|open\|draft"
 
 ---
 
+### Stage F.10 — StructuredTransferGate
+
+**Closes:** ECITP C11 (Downstream inheritance rule — no stage may consume only NL output of previous stages if the missing structure includes: requirements, evidence refs, ambiguity state, test obligations, dependency relations, hard constraints) + ECITP Lemma 3 (summary-only transfer destroys second-order constraints). Source: `.ai/theorems/Epistemic_Continuity_and_Information_Topology_Preservation_for_AI_Agent_Systems.md` §3 C11 + §7 Lemma 3.
+
+**Rationale (ESC-3 root-cause uniqueness):** C11 enumerates six structural categories that must transfer as structure (not NL summaries). Three enforcement shapes considered:
+1. Validator in prompt_parser that raises on NL-only ContextProjection — **chosen**: structural gate at the producer boundary; errors fail-fast before LLM call; matches B.5 TimelyDeliveryGate pattern (same state transition).
+2. Post-hoc audit job that Findings NL-only transfers — **rejected**: detects after the fact; violates ECITP C10 stop-or-escalate (we must stop, not log).
+3. Runtime LLM instruction ("please use structured fields") — **rejected**: violates ESC-1 determinism; relies on statistical prior, which is precisely what ECITP forbids (prior substitution).
+
+**Entry conditions:**
+- G_{F.4} = PASS (BLOCKED state path available for rejection).
+- G_{B.5} = PASS (TimelyDeliveryGate already checks `context_projection_id IS NOT NULL`; F.10 adds structural-content check on top).
+- G_{B.6} = PASS (relation_semantic ENUM available — needed to verify `dependency_relations` structural field).
+
+**A_{F.10}:**
+- Six structural categories — [CONFIRMED: directly quoted from ECITP §3 C11: `requirements, evidence_refs, ambiguity_state, test_obligations, dependency_relations, hard_constraints`].
+- Per-category minimum content thresholds — [ASSUMED: each field non-null AND (empty-list OR string-length ≥ 2 chars) — rejects explicit null but accepts legitimate empty lists. If task has `requirement_refs` non-empty in schema, projection.requirements MUST be non-empty; if schema says task has no requirements, empty list is valid. Discriminator = `ContractSchema.required_context_categories(task)`].
+
+**Work:**
+1. `app/validation/structured_transfer_gate.py`:
+   - `StructuredTransferGate.check(projection, task) → Verdict` — PASS iff for each `cat ∈ ContractSchema.required_context_categories(task)`:
+     - `projection.<cat>` is not None
+     - If task demands non-empty (per schema): `len(projection.<cat>) >= 1`
+     - Each entry in `projection.<cat>` is a structured record (dict/dataclass), NOT a plain string
+2. ContextProjector extension: `ContextProjection` pydantic model gains six typed fields (`requirements: List[RequirementRef]`, `evidence_refs: List[EvidenceRef]`, `ambiguity_state: AmbiguityState`, `test_obligations: List[TestObligation]`, `dependency_relations: List[DependencyRelation]`, `hard_constraints: List[InvariantRef]`).
+3. prompt_parser integration:
+   ```python
+   verdict = StructuredTransferGate.check(projection, task)
+   if verdict != PASS:
+       execution.status = BLOCKED
+       execution.blocked_reason = f"structured_transfer_incomplete: {verdict.reason}"
+       raise StructuredTransferIncompleteError(verdict.reason)  # no fallback
+   ```
+4. Grep-gate in CI: `grep -rnE "session_context|fallback.*projection|nl_only_prompt" app/` must return zero matches (existing F.4 no-auto-fill discipline extended).
+
+**Exit test T_{F.10} (deterministic):**
+```bash
+# T1: NL-only projection → BLOCKED
+pytest tests/test_structured_transfer.py::test_nl_only_blocked -x
+# PASS: projection with `requirements = "some text"` (string not List) → BLOCKED
+
+# T2: missing required category → BLOCKED
+pytest tests/test_structured_transfer.py::test_missing_category_blocked -x
+# PASS: task.requirement_refs non-empty but projection.requirements == [] → BLOCKED
+
+# T3: fully structured projection → PASS
+pytest tests/test_structured_transfer.py::test_full_structured_passes -x
+# PASS: all 6 categories populated with typed records → LLM call proceeds
+
+# T4: no fallback path in codebase
+grep -rnE "session_context|fallback.*projection|nl_only_prompt" app/
+# exits 1 (zero matches)
+
+# T5: no raise-to-warn regression
+grep -rnE "StructuredTransferIncomplete.*warn|log\.warning.*structured_transfer" app/
+# exits 1 (only raise, never warn)
+
+# T6: integration — full flow
+pytest tests/test_structured_transfer_integration.py -x
+# PASS: task with full ContractSchema + ContextProjector → projection has all 6 fields → LLM call allowed
+# PASS: task with metadata-stripped projection → BLOCKED, no LLM call
+
+# T7: regression
+pytest tests/ -x
+```
+
+**Gate G_{F.10}:** T1–T7 pass → PASS. **ECITP C11 closed** structurally; ECITP Lemma 3 mitigated (second-order constraints now carried structurally, not summarized).
+
+**ESC-4 impact:** `ContextProjection` pydantic model (+6 typed fields), prompt_parser (raise path replaces any residual fallback), CI grep-gates (+2), B.5 TimelyDeliveryGate semantics (F.10 is strict superset — B.5 ensures projection exists, F.10 ensures projection is structurally sufficient). **ESC-5 invariants preserved:** F.3/F.4 tag+BLOCKED semantics unchanged; B.4 ContextProjector interface additive (fields added, none removed); B.5 transition gate runs first, F.10 second. **ESC-7 failure modes:** (a) task with genuinely empty category (no requirements, no AC, no deps) — allowed via schema discriminator; (b) projector under-fills due to pruning budget — deterministic: `required` always takes priority over budget in B.4 priority order; (c) new task type without schema → B.5 WARN baseline seed covers until E.1; F.10 inherits same seed.
+
+---
+
 ## Phase E+F exit gate (G_CD)
 
 ```
 G_CD = PASS iff:
-  G_{E.1} through G_{E.6} all PASS  (self-adjoint contract, invariants, autonomy, reachability, modes, diagonalization)
-  AND G_{F.1} through G_{F.9} all PASS  (evidence discipline, uncertainty blocking, root cause, disclosure, independence, SR-1/2/3)
+  G_{E.1} through G_{E.7} all PASS  (self-adjoint contract, invariants, autonomy, reachability, modes, diagonalization, epistemic progression)
+  AND G_{F.1} through G_{F.10} all PASS  (evidence discipline, uncertainty blocking, root cause, disclosure, independence, SR-1/2/3, structured transfer)
   AND pytest tests/ -x → all prior phase + Contract Discipline tests green
   AND Suff(C_i, R_i) = true: ContractSchema drift test green (E.1)
   AND A_i enforced: non-trivial untagged → REJECTED (F.3)
   AND Missing(C_i) → BLOCKED: UNKNOWN items halt execution (F.4)
+  AND every accepted Execution passes EpistemicProgressCheck (E.7)
+  AND no NL-only context transfer path remains (F.10 grep-gates green)
 ```
 
 **Soundness conditions closed at G_CD:**
-- **Condition 2** — Suff(C_i, R_i): ContractSchema derives prompt + validator from one source; structural sufficiency. [T_{E.1} T1, T2]
-- **Condition 4** — A_i explicit + propagated: assumption tags enforced as REJECT, not warning. [T_{F.3} T1]
-- **Condition 7** — Missing(C_i) → Stop OR Escalate: BLOCKED state enforced (Stop) + `POST /resolve-uncertainty` requires explicit `[ASSUMED: accepted-by=<role>]` (Escalate); no auto-fill, no default resolution. [T_{F.4} T2, T3, T4]
+- **CCEGAP Condition 2** — Suff(C_i, R_i): ContractSchema derives prompt + validator from one source; structural sufficiency. [T_{E.1} T1, T2]
+- **CCEGAP Condition 4** — A_i explicit + propagated: assumption tags enforced as REJECT, not warning. [T_{F.3} T1]
+- **CCEGAP Condition 7** — Missing(C_i) → Stop OR Escalate: BLOCKED state enforced (Stop) + `POST /resolve-uncertainty` requires explicit `[ASSUMED: accepted-by=<role>]` (Escalate); no auto-fill, no default resolution. [T_{F.4} T2, T3, T4]
+- **ECITP C8** — Additive progression: EpistemicProgressCheck rejects epistemically-null stages (paraphrase-only outputs) structurally. [T_{E.7} T2, T5]
+- **ECITP C11** — Structured transfer: NL-only ContextProjection → BLOCKED; six structural categories enforced at producer boundary. [T_{F.10} T1, T2, T4]
 
 ---
 
@@ -431,3 +573,5 @@ G_CD = PASS iff:
 | Q5 | ADR-012 distinct-actor edge cases (SR-3 F.9) — file must exist with `Status: CLOSED` before F.9 start. | Stage F.9 (BLOCKING) |
 | Q6 | ADR-004 calibration constants (W, q_min, α) — file must exist with `Status: CLOSED` before E.3 start. | Stage E.3 (BLOCKING) |
 | Q7 | forge_challenge endpoint: does it already exist per IMPLEMENTATION_TRACKER? — Pre-flight Stage 0.3 smoke must produce VERIFIED or DIVERGED status before F.6 start. | Stage F.6 (BLOCKING) |
+| Q8 | E.7 baseline snapshot capture point — must align with B.5 TimelyDeliveryGate transition hook; confirm at integration before E.7 implementation | Stage E.7 (BLOCKING) |
+| Q9 | ContractSchema.required_context_categories(task) — exact schema for 6 ECITP C11 categories; depends on E.1 ContractSchema definition | Stage F.10 (BLOCKING) |

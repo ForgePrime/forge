@@ -54,12 +54,12 @@ platform/docs/
 | [`DEEP_RISK_REGISTER.md`](DEEP_RISK_REGISTER.md) | LIVING | tracking | 29 risks, status per-risk. |
 | [`AUTONOMOUS_AGENT_FAILURE_MODES.md`](AUTONOMOUS_AGENT_FAILURE_MODES.md) | DRAFT | no | Failure analysis for autonomous agent executing ROADMAP. Source for Phase F.7–F.9 structural requirements. |
 | **Functional execution plans (soundness-theorem-driven)** | | | |
-| [`PLAN_PRE_FLIGHT.md`](PLAN_PRE_FLIGHT.md) | DRAFT | no | Stage 0: ADR-003 ratification, calibration ADRs, tracker smoke. Meta-conditions for all 7 soundness conditions. |
-| [`PLAN_GATE_ENGINE.md`](PLAN_GATE_ENGINE.md) | DRAFT | no | Phase A: VerdictEngine, GateRegistry, EvidenceSet, idempotency. Closes conditions **5** + **6**. |
-| [`PLAN_MEMORY_CONTEXT.md`](PLAN_MEMORY_CONTEXT.md) | DRAFT | no | Phase B: CausalEdge DAG, CausalGraph, ContextProjector. Closes conditions **1** + **3**. |
-| [`PLAN_QUALITY_ASSURANCE.md`](PLAN_QUALITY_ASSURANCE.md) | DRAFT | no | Phases C+D: ImpactClosure, Reversibility, property/metamorphic/adversarial tests, CI α-gate. Strengthens **5**, closes **3** (full). |
-| [`PLAN_CONTRACT_DISCIPLINE.md`](PLAN_CONTRACT_DISCIPLINE.md) | DRAFT | no | Phases E+F: ContractSchema, Invariants, Autonomy, assumption enforcement, BLOCKED state. Closes conditions **2** + **4** + **7**. |
-| [`PLAN_GOVERNANCE.md`](PLAN_GOVERNANCE.md) | DRAFT | no | Phase G: CGAID capstone. Terminal gate — verifies all 7 conditions hold at system level. |
+| [`PLAN_PRE_FLIGHT.md`](PLAN_PRE_FLIGHT.md) | DRAFT | no | Stage 0: ADR-003 ratification, calibration ADRs, tracker smoke. Meta-conditions for all 7 CCEGAP conditions. |
+| [`PLAN_GATE_ENGINE.md`](PLAN_GATE_ENGINE.md) | DRAFT | no | Phase A (5 stages): VerdictEngine, GateRegistry, EvidenceSet, idempotency. Closes CCEGAP **5** + **6**. |
+| [`PLAN_MEMORY_CONTEXT.md`](PLAN_MEMORY_CONTEXT.md) | DRAFT | no | Phase B (6 stages): CausalEdge DAG, CausalGraph, ContextProjector + **B.5 TimelyDeliveryGate (ECITP C3)** + **B.6 SemanticRelationTypes (ECITP C6)**. Closes CCEGAP **1** + **3**; ECITP **C3** + **C6**. |
+| [`PLAN_QUALITY_ASSURANCE.md`](PLAN_QUALITY_ASSURANCE.md) | DRAFT | no | Phases C+D (9 stages): ImpactClosure, Reversibility, property/metamorphic/adversarial tests, CI α-gate. Strengthens CCEGAP **5**; closes FORMAL P3 within documented scope (not CCEGAP cond. 3). |
+| [`PLAN_CONTRACT_DISCIPLINE.md`](PLAN_CONTRACT_DISCIPLINE.md) | DRAFT | no | Phases E+F (17 stages): ContractSchema, Invariants, Autonomy, assumption enforcement, BLOCKED state + **E.7 EpistemicProgressGate (ECITP C8)** + **F.10 StructuredTransferGate (ECITP C11)**. Closes CCEGAP **2** + **4** + **7**; ECITP **C8** + **C11**. |
+| [`PLAN_GOVERNANCE.md`](PLAN_GOVERNANCE.md) | DRAFT | no | Phase G (9 stages): CGAID capstone + **G.9 ProofTrailCompleteness (ECITP C7, C12)** + ECITP C6/C11 REJECT-promotion. Terminal gate verifies 7 CCEGAP + 6 ECITP conditions at per-execution level. System-level soundness (soak, multi-agent) out of scope (disclosed). |
 | [`FORMAL_PROPERTIES_v2.md`](FORMAL_PROPERTIES_v2.md) | DRAFT | no | 25 atomic properties (v2.1 patch). |
 | [`GAP_ANALYSIS_v2.md`](GAP_ANALYSIS_v2.md) | DRAFT | no | Every file:line must be re-verified by reviewer. |
 | [`CHANGE_PLAN_v2.md`](CHANGE_PLAN_v2.md) | DRAFT | no | Seven-phase (A→G) with rationale. |
