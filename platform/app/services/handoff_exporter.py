@@ -1,7 +1,7 @@
 """In-repo Handoff Document exporter — CGAID artifact #4.
 
 CGAID Section 5.3 Artifact #4 requires a standardized Handoff Document
-transferring business intent from the Solutioning Cockpit (objectives)
+transferring business intent (objectives)
 to the codebase execution layer, with 8 fields:
 
   1. intent
