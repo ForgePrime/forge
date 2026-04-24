@@ -5,9 +5,13 @@
 **Depends on:** PLAN_CONTRACT_DISCIPLINE complete (G_CD = PASS). All five prior plans complete.
 **Must complete before:** nothing — this is the terminal plan.
 
-> **Known unverified claim (CONTRACT §A.6 disclosure):** this plan's "terminal gate" label implies *system-level* soundness, but every cited exit test is unit-level (pytest, single-endpoint HTTP, small-sample fixtures). System-level soundness (concurrency, multi-agent sessions, novel task types not seen during development) is **out of scope** of G_GOV and must be verified by post-G_GOV soak / integration / multi-session tests tracked separately. G_GOV establishes per-execution structural enforcement; it does not establish empirical coverage at scale. See AUTONOMOUS_AGENT_FAILURE_MODES.md §2.2, §2.4.
+> **Scope split (CONTRACT §A.6 disclosure):** "soundness" has two distinct dimensions in this plan, and only one is closed here.
+>
+> **(a) Structural meta-condition — CLOSED at G_GOV:** the 7 CCEGAP conditions (and the broader 21-check table at G_GOV) are enforced *structurally per execution* via mechanical constraints — not by convention, not by LLM discipline. This is what L30 means by "the 7 conditions must hold at SYSTEM LEVEL" — i.e., the *enforcement mechanism* is system-wide, applied to every execution.
+>
+> **(b) Empirical meta-condition — OUT OF SCOPE of G_GOV:** every cited exit test is unit-level (pytest, single-endpoint HTTP, small-sample fixtures). Empirical soundness (concurrency, multi-agent sessions, novel task types not seen during development, fidelity-at-scale of the RequiredInfo projection beyond 10 historical fixtures) is verified by post-G_GOV soak / integration / multi-session tests tracked separately. G_GOV establishes per-execution structural enforcement; it does not establish empirical coverage at scale. See AUTONOMOUS_AGENT_FAILURE_MODES.md §2.2, §2.4.
 
-**ROADMAP phases:** G.1 → G.8.
+**ROADMAP phases:** G.1 → G.11.
 **Source spec:** FORMAL_PROPERTIES_v2.md (full), FRAMEWORK_MAPPING.md §12, OPERATING_MODEL.md.
 **Soundness theorem source:** `.ai/theorems/Context-Complete Evidence-Guided Agent Process.md`.
 
@@ -294,7 +298,7 @@ pytest tests/test_adaptive_rigor.py -x
 
 ## Stage G.8 — Deterministic Snapshot Validation
 
-**Closes (conditional):** P25 iff ADR-009's 5 components align with FORMAL_PROPERTIES_v2 §11.2 `synth(s, i)` pattern. If ADR-009 diverges from §11.2, P25 remains open and a new ADR supersession is required before G.8 can claim closure.
+**Closes:** OPERATING_MODEL §9.4 5-component snapshot pattern (Baseline / Capture / Comparator / Failure Contract / Refresh). **Extends** PLAN_CONTRACT_DISCIPLINE E.10 P25 with the snapshot-style subcase per FORMAL §11.2 ("snapshot-style validation is a subcase" of P25). P25 main-case closure (TestSynthesizer auto-synthesizing property tests from ContractSchema + Invariants) is at E.10; G.8 applies the same pattern to runtime snapshot observations (Stage 1 volume / Stage 3 output shape / Stage 4 business outcome).
 
 **Entry conditions:**
 - G_{D.1} = PASS (snapshot pattern from deterministic harness).
@@ -570,7 +574,9 @@ pytest tests/ -x
 
 ---
 
-## Phase G exit gate (G_GOV) — Terminal gate for 7 CCEGAP + 6 ECITP conditions + 3 ECITP continuity definitions + 5 FC critical gaps + 2 Tier-1 gaps (23 total)
+## Phase G exit gate (G_GOV) — Terminal gate
+
+**Total mechanical conditions enforced at G_GOV:** 7 CCEGAP conditions + 6 ECITP conditions (C3, C6, C7, C8, C11, C12) + 3 ECITP continuity definitions (§2.3, §2.4, §2.7) + 5 FC critical gaps (§8, §15, §16-§19, §25+§26, §37) + 2 Tier-1 cross-theorem gaps (AIOS A18 + AI-SDLC §19/#20 at G.11; AIOS A8 + AI-SDLC #10 at D.6 — counted in earlier plans) = **21 mechanical checks** in the validation table below. The "23 total" in the prior version inadvertently double-counted the Tier-1 gaps that are already closed in upstream plans (D.6 at PLAN_QUALITY_ASSURANCE; G.11 below). Reconciled count = **21**.
 
 ```
 G_GOV = PASS iff:
@@ -587,7 +593,7 @@ G_GOV = PASS iff:
   AND every state-mutating Change has Baseline + Post runtime observations for every ImpactClosure element AND Diff = ExpectedDiff (G.10)
 ```
 
-**Final soundness validation — CCEGAP 7 + ECITP 6 conditions (C3, C6, C7, C8, C11, C12) + ECITP 3 continuity definitions (§2.3, §2.4, §2.7) = 16 mechanical checks:**
+**Final soundness validation table — 21 mechanical checks (7 CCEGAP + 6 ECITP conditions + 3 ECITP continuity definitions + 5 FC critical gaps):**
 
 | # | Theorem / Condition | Mechanism at G_GOV | Evidence |
 |---|---|---|---|

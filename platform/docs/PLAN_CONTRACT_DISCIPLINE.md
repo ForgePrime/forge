@@ -5,7 +5,7 @@
 **Depends on:** PLAN_GATE_ENGINE (G_A), PLAN_MEMORY_CONTEXT (G_B), PLAN_QUALITY_ASSURANCE (G_QA).
 **Must complete before:** PLAN_GOVERNANCE (G phase needs E+F complete).
 **ROADMAP phases:** E.1 → E.6, F.1 → F.9.
-**Source spec:** FORMAL_PROPERTIES_v2.md — closed structurally: P4, P9, P11, P12, P13, P17, P18, P19, P20, P21, P23, P24. Partially closed (§B mechanical disclosure templates only — §A semantic behavioral disclosure deferred to F.6 challenger path): P22. CONTRACT.md §A, §B.
+**Source spec:** FORMAL_PROPERTIES_v2.md — closed structurally: P4, P9, P11, P12, P13, P17, P18, P19, P20, P21, P23, P24, **P25** (TestSynthesizer at E.10, walking ContractSchema E.1 + Invariants E.2 per FORMAL §11.2). Partially closed (§B mechanical disclosure templates only — §A semantic behavioral disclosure deferred to F.6 challenger path): P22. CONTRACT.md §A, §B.
 **Soundness theorem source:** `.ai/theorems/Context-Complete Evidence-Guided Agent Process.md`.
 
 ---
@@ -455,6 +455,78 @@ pytest tests/ -x
 
 ---
 
+### Stage E.10 — TestSynthesizer (FORMAL §11.2 P25)
+
+**Closes:** FORMAL_PROPERTIES_v2 §11.2 P25 (Deterministic test synthesis from contracts) — `∀ s ∈ ContractSchema, ∀ i ∈ Invariants(s): ∃ t ∈ T : t = synth(s, i)`. Picks up cross-plan deferral from PLAN_QUALITY_ASSURANCE (which correctly identified P25 as ContractSchema-bound).
+
+**Rationale (ESC-3 root-cause uniqueness):** three designs considered:
+1. LLM emits property tests from natural-language contracts — **rejected**: violates ESC-1 determinism; reintroduces the prior-substitution failure mode FORMAL §11.2 P25 is meant to remove.
+2. Hand-written property tests per ContractSchema — **rejected**: scales poorly; drift between schema and tests becomes likely as schemas evolve.
+3. Structural walk of ContractSchema fields → hypothesis strategies; structural walk of Invariants → assertion stubs — **chosen**: deterministic by construction; regenerable; matches §11.2 binding exactly.
+
+**Entry conditions:**
+- G_{E.1} = PASS (ContractSchema typed Pydantic available — input to synthesis).
+- G_{E.2} = PASS (Invariant entity + check_fn callable available — input to assertion synthesis).
+
+**A_{E.10}:**
+- Hypothesis strategy mapping per Pydantic field type — [ASSUMED: standard hypothesis built-in strategies for primitive types; custom strategies for domain types via `@register_strategy(SchemaType)` decorator. Document strategy table.].
+- Output location `tests/synthesized/` — [CONFIRMED per FORMAL §11.2: "Output lands in tests/synthesized/ (regeneratable, kept in repo for diffability)"].
+- Snapshot semantics for re-generation — [ASSUMED: idempotent re-run produces byte-identical files modulo timestamp comments; CI gate flags drift].
+
+**Work:**
+1. `app/validation/test_synthesizer.py`:
+   - `TestSynthesizer(contract_schema, invariants) → list[PropertyTest]` service.
+   - Walks ContractSchema fields → emits `@given(<strategy>)` decorators per type.
+   - Walks Invariants registered on entity → emits `assert invariant.check_fn(entity_after_op)` per applicable transition.
+2. `scripts/regenerate_synthesized_tests.py`:
+   - For each `(ContractSchema, Invariants)` pair, regenerate `tests/synthesized/test_<schema>_<entity>.py`.
+   - Diffs vs in-repo files; non-zero diff → CI fails (drift between schema/invariants and synthesized tests).
+3. CI integration:
+   - Pre-merge: `regenerate_synthesized_tests.py --check-only` exits 0 iff in-repo files match regenerated.
+   - Post-schema-change: developer runs `--apply` to refresh files; PR includes the diff.
+
+**Exit test T_{E.10} (deterministic):**
+```bash
+# T1: synth deterministic
+pytest tests/test_synthesizer.py::test_deterministic_output -x
+# PASS: same (ContractSchema, Invariants) input → byte-identical output across 5 runs.
+
+# T2: walks ContractSchema fields correctly
+pytest tests/test_synthesizer.py::test_field_strategies -x
+# PASS: ContractSchema with 3 fields (str, int, list[str]) → 3 hypothesis strategies emitted.
+
+# T3: walks Invariants correctly
+pytest tests/test_synthesizer.py::test_invariant_assertions -x
+# PASS: Invariant registered on entity → synthesized test contains
+# `assert invariant.check_fn(entity_after_op)` after each applicable transition.
+
+# T4: synthesized tests pass on conforming implementation
+pytest tests/synthesized/ -x --hypothesis-seed=0
+# PASS: all auto-generated property tests green on current implementation.
+
+# T5: synthesized tests fail on mutation
+pytest tests/test_synthesizer.py::test_mutation_breaks_synth -x
+# PASS: mutating any ContractSchema field OR Invariant.check_fn → ≥1 synthesized test fails.
+
+# T6: CI drift gate
+python scripts/regenerate_synthesized_tests.py --check-only
+# exits 0 (no drift); manually corrupt one file → re-run → exits non-zero with diff.
+
+# T7: minimum coverage — for canonical fixture
+pytest tests/test_synthesizer.py::test_canonical_fixture -x
+# PASS: ContractSchema with 3 fields + 2 Invariants → ≥5 property tests synthesized
+# (matches FORMAL §11.2 acceptance signal).
+
+# T8: regression
+pytest tests/ -x
+```
+
+**Gate G_{E.10}:** T1–T8 pass → PASS. **FORMAL P25 closed**: property tests are auto-synthesized from typed ContractSchema + registered Invariants, deterministic by structural walk, mutation-sensitive, drift-gated in CI.
+
+**ESC-4 impact:** new `app/validation/test_synthesizer.py` service; `tests/synthesized/` directory (regenerable); `scripts/regenerate_synthesized_tests.py`; CI pre-merge check. **ESC-5 invariants preserved:** E.1 ContractSchema interface unchanged (consumer-side); E.2 Invariant interface unchanged (consumer-side); D.2 hand-written property tests in `tests/property/` co-exist (synthesized tests live in separate dir). **ESC-7 failure modes:** (a) ContractSchema with un-strategy-able custom type → registration via `@register_strategy` decorator; missing registration → synth raises with clear error citing the field; (b) drift between schema and synthesized tests → CI gate (T6) catches; (c) hypothesis strategy regression breaking determinism → pinned hypothesis version per ADR-006 + `--hypothesis-seed=0`.
+
+---
+
 ## Phase F — Decision discipline
 
 ### Stage F.1 — Evidence source constraint (P17 full)
@@ -857,7 +929,7 @@ pytest tests/ -x
 
 ```
 G_CD = PASS iff:
-  G_{E.1} through G_{E.9} all PASS  (self-adjoint contract, invariants, autonomy, reachability, modes, diagonalization, epistemic progression, scope boundary, architecture components)
+  G_{E.1} through G_{E.10} all PASS  (self-adjoint contract, invariants, autonomy, reachability, modes, diagonalization, epistemic progression, scope boundary, architecture components, test synthesizer)
   AND G_{F.1} through G_{F.12} all PASS  (evidence discipline, uncertainty blocking, root cause, disclosure, independence, SR-1/2/3, structured transfer, candidate evaluation, technical debt tracking)
   AND pytest tests/ -x → all prior phase + Contract Discipline tests green
   AND Suff(C_i, R_i) = true: ContractSchema drift test green (E.1)
@@ -871,16 +943,45 @@ G_CD = PASS iff:
 ```
 
 **Soundness conditions closed at G_CD:**
-- **CCEGAP Condition 2** — Suff(C_i, R_i): ContractSchema derives prompt + validator from one source; structural sufficiency. [T_{E.1} T1, T2]
-- **CCEGAP Condition 4** — A_i explicit + propagated: assumption tags enforced as REJECT, not warning. [T_{F.3} T1]
-- **CCEGAP Condition 7** — Missing(C_i) → Stop OR Escalate: BLOCKED state enforced (Stop) + `POST /resolve-uncertainty` requires explicit `[ASSUMED: accepted-by=<role>]` (Escalate); no auto-fill, no default resolution. [T_{F.4} T2, T3, T4]
-- **ECITP C8** — Additive progression: EpistemicProgressCheck rejects epistemically-null stages (paraphrase-only outputs) structurally. [T_{E.7} T2, T5]
-- **ECITP §2.7** — Explicit invalidation: silent K_i drop → REJECTED; legitimate drop requires `invalidated_evidence_refs` record with reason_code. [T_{E.7} T7]
-- **ECITP C11** — Structured transfer: NL-only ContextProjection → BLOCKED; six structural categories enforced at producer boundary. [T_{F.10} T1, T2, T4]
-- **ECITP §2.4** — Ambiguity continuity: unresolved UNKNOWN persists across executions until `resolved_uncertainty` record exists (property test over 10,000 chains). [T_{F.4} T5]
-- **FC §15** — Change Set Completeness: every ImpactClosure element accounted for in `in_scope_refs` or `out_of_scope_refs` with reason code. [T_{E.8} T2, T3]
-- **FC §16+§17+§18+§19** — Candidate Solution Evaluation: architectural Decisions require ≥2 candidates, 14-dimension Score, argmax selection, Necessary(c) component justification. [T_{F.11} T2-T5, T8]
-- **FC §37** — No unaccepted Technical Debt: deferred-work markers in committed Changes require `technical_debt` row with authorized `accepted_by`. [T_{F.12} T2, T3]
+
+*CCEGAP theorem conditions:*
+- **Condition 2** — Suff(C_i, R_i): ContractSchema derives prompt + validator from one source; structural sufficiency. [T_{E.1} T1, T2]
+- **Condition 4** — A_i explicit + propagated: assumption tags enforced as REJECT, not warning. [T_{F.3} T1]
+- **Condition 7** — Missing(C_i) → Stop OR Escalate: BLOCKED state enforced (Stop) + `POST /resolve-uncertainty` requires explicit `[ASSUMED: accepted-by=<role>]` (Escalate); no auto-fill, no default resolution. [T_{F.4} T2, T3, T4]
+
+*ECITP conditions:*
+- **C8** — Additive progression: EpistemicProgressCheck rejects epistemically-null stages (paraphrase-only outputs) structurally. [T_{E.7} T2, T5]
+- **§2.7** — Explicit invalidation: silent K_i drop → REJECTED; legitimate drop requires `invalidated_evidence_refs` record with reason_code. [T_{E.7} T7]
+- **C11** — Structured transfer: NL-only ContextProjection → BLOCKED; six structural categories enforced at producer boundary. [T_{F.10} T1, T2, T4]
+- **§2.4** — Ambiguity continuity: unresolved UNKNOWN persists across executions until `resolved_uncertainty` record exists (property test over 10,000 chains). [T_{F.4} T5]
+
+*Forge Complete (FC) sections:*
+- **§15** — Change Set Completeness: every ImpactClosure element accounted for in `in_scope_refs` or `out_of_scope_refs` with reason code. [T_{E.8} T2, T3]
+- **§16+§17+§18+§19** — Candidate Solution Evaluation: architectural Decisions require ≥2 candidates, 14-dimension Score, argmax selection, Necessary(c) component justification. [T_{F.11} T2-T5, T8]
+- **§37** — No unaccepted Technical Debt: deferred-work markers in committed Changes require `technical_debt` row with authorized `accepted_by`. [T_{F.12} T2, T3]
+
+*FORMAL_PROPERTIES_v2 atomic properties (structural closure):*
+- **P4** — Asymptotic autonomy with demote(): Q_n components below floor → level demotion within one run. [T_{E.3} T2]
+- **P9** — Outcome surjectivity: every ACTIVE Objective has non-empty `reachability_evidence`. [T_{E.4} T2]
+- **P11** — Architectural diagonalizability: 6 modes; stub-replacement drill green. [T_{E.5} + T_{E.6}]
+- **P12** — Self-adjointness: ContractSchema mutation lockstep on prompt + validator. [T_{E.1} T1, T2]
+- **P13** — Invariant preservation: VerdictEngine.commit() evaluates applicable invariants post-transition. [T_{E.2} T2, T3]
+- **P17** (full) — Evidence source constraint: application-level enforcement of kind enum + provenance non-null. [T_{F.1}]
+- **P18** — Evidence verifiability: reproducer_ref / checksum mandatory; weekly replay job. [T_{F.2}]
+- **P19** — Assumption control: non-trivial untagged → REJECTED. [T_{F.3} T1]
+- **P20** — Uncertainty blocks execution: BLOCKED state + resolve-uncertainty endpoint. [T_{F.4} T2-T4]
+- **P21** — Root cause uniqueness: ≥2 alternatives with explicit rejection reasons. [T_{F.5} T1]
+- **P22** (partial — mechanical only) — Disclosure protocol: 5 templates validated (CONTRACT §B); §A semantic disclosure deferred to F.6 challenger path. [T_{F.5} T2, T3]
+- **P23** — Verification independence: ACCEPTED requires deterministic check OR challenge pass. [T_{F.6} T1]
+- **P24** — Transitive accountability: parent [CONFIRMED] copied from child → downgraded to [ASSUMED]. [T_{F.6} T2]
+- **P25** — Deterministic test synthesis from contracts: TestSynthesizer walks ContractSchema + Invariants; CI drift gate. [T_{E.10} T1, T6, T7]
+
+*Cross-theorem framework alignment:*
+- **AIOS A6 (boundary completeness, 5-category typing)** — Invariant.semantic_category ENUM NOT NULL across {technical, business, data, temporal, operational}. [T_{E.2} T4]
+- **AI-SDLC §9 (ValidArchitecture)** — architecture_components first-class with SSoT uniqueness, rollback traceability, CI coverage check. [T_{E.9} T2-T8]
+- **SR-1 / SR-2 / SR-3** (AUTONOMOUS_AGENT_FAILURE_MODES) — agent authority check on open ADRs, skip-cost enforcement, distinct-actor spawn in autonomous loop. [T_{F.7} + T_{F.8} + T_{F.9}]
+
+*Cross-plan note on CCEGAP condition 3:* PLAN_MEMORY_CONTEXT B.4 closes condition 3 procedurally (E_<i delivered to C_i via ContextProjector). F.1/F.2/F.3 in this plan **strengthen** the substantive evidence-quality component of condition 3 (source kind constraint, reproducer/checksum verifiability, assumption tagging) — they do not formally re-close it; they tighten the E_<i quality so that condition 3's "O_i derived from E_<i" rests on high-quality evidence.
 
 ---
 

@@ -17,7 +17,7 @@
 | **5** — ∃ T_i: Eval(O_i, T_i) deterministic | VerdictEngine is a pure function; same inputs → same verdict; replay harness verifies this | Stage A.3 exit |
 | **6** — O_i propagates only if G_i = pass | All 75 direct `.status=` assignments replaced by `VerdictEngine.commit()` — no bypass path | Stage A.4 exit |
 | **3** (partial) — O_i derived from E_<i | Every Decision requires a linked EvidenceSet; no evidence → no Decision write | Stage A.1 exit |
-| **1** (partial) — RequiredInfo ⊆ C_i | EvidenceSet captures what evidence was present at decision time; audit trail grounded | Stage A.1 |
+| **1** (audit-foundation only, not runtime-closed) — RequiredInfo ⊆ C_i | EvidenceSet captures what evidence was present at decision time; audit trail grounded. Runtime enforcement of `RequiredInfo ⊆ C_i` deferred to PLAN_MEMORY_CONTEXT B.4 (ContextProjector). | Stage A.1 (audit), Stage B.4 (runtime) |
 
 Conditions 1 (full), 2, 4, 7 are NOT closed by this plan. They depend on PLAN_MEMORY_CONTEXT (1, 2) and PLAN_CONTRACT_DISCIPLINE (4, 7).
 
@@ -203,9 +203,9 @@ pytest tests/ -x
 grep -rn '\.status\s*=\s*["'"'"']' app/ --include="*.py" | grep -v verdict_engine.py
 # exits 1 (no matches)
 
-# T2: pre-commit hook active
-cat .pre-commit-config.yaml | grep "status.*="
-# exits 0 (hook defined)
+# T2: pre-commit hook active (hook registered by specific identifier, not loose keyword match)
+grep -E 'id:\s*no-direct-status-assign' .pre-commit-config.yaml
+# exits 0 (hook is registered by identifier — false-positive-resistant)
 
 # T3: HTML exclusion documented
 grep -n "status" platform/templates/base.html
@@ -235,7 +235,7 @@ pytest tests/ -x
 - ADR-004 TTL value CLOSED (required for `expires_at` calculation).
 
 **A_{A.5}:**
-- TTL value — [CONFIRMED: ADR-004 CLOSED per Pre-flight]. Specific value read from ADR-004 before implementing.
+- TTL value — [ASSUMED: ADR-004 CLOSED per Pre-flight G_0 dependency; re-read ADR-004 at stage entry to promote to CONFIRMED before implementing]. Specific value read from ADR-004 before implementing.
 - 4 mutating MCP tools: `forge_execute`, `forge_deliver`, `forge_decision`, `forge_finding` — [CONFIRMED: listed in CHANGE_PLAN_v2 §2.2.6]. Verify no 5th mutating tool exists before shipping.
 
 **Work:**
@@ -284,6 +284,13 @@ G_A = PASS iff:
   AND G_{A.5} = PASS  (MCP idempotency)
   AND pytest tests/ -x → all existing 420 + new tests green
   AND grep '\.status\s*=\s*["'"'"']' app/ --include="*.py" | grep -v verdict_engine.py → 0 matches
+  AND DB-wide P16 invariant (ROADMAP §4 Phase A exit):
+      SELECT COUNT(*) FROM decisions d
+        LEFT JOIN evidence_sets e
+          ON e.artifact_type = 'decision' AND e.artifact_id = d.id
+        WHERE e.id IS NULL
+      = 0
+      (catches Decision rows inserted before A.1 or via any bypass; stronger than per-insert A.1 T3)
 ```
 
 **Soundness conditions closed at G_A:**
@@ -292,7 +299,7 @@ G_A = PASS iff:
 - **Condition 3 (partial)** — EvidenceSet required for every Decision write; no evidence = rejected at gate. [T_{A.1} T3]
 
 **What remains open after Phase A:**
-- Condition 1 (RequiredInfo ⊆ C_i): no ContextProjector yet → PLAN_MEMORY_CONTEXT.
+- Condition 1 (runtime enforcement): EvidenceSet captures C_i at A.1 (audit-foundation); ContextProjector enforces `RequiredInfo ⊆ C_i` at B.4 → PLAN_MEMORY_CONTEXT.
 - Condition 2 (Suff(C_i, R_i)): no ContractSchema yet → PLAN_CONTRACT_DISCIPLINE.
 - Condition 4 (A_i explicit + propagated): assumption tags warn but don't block → PLAN_CONTRACT_DISCIPLINE.
 - Condition 7 (Missing→Stop): no BLOCKED state in Execution → PLAN_CONTRACT_DISCIPLINE.

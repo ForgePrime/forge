@@ -5,7 +5,7 @@
 **Depends on:** PLAN_GATE_ENGINE complete (G_A = PASS). PLAN_MEMORY_CONTEXT (B.2 CausalEdge) needed for C.3 closure walk, but C.1–C.2 can start from G_A.
 **Must complete before:** PLAN_CONTRACT_DISCIPLINE (E stages need ImpactClosure, ContractSchema, Invariants).
 **ROADMAP phases:** C.1 → C.4, D.1 → D.5.
-**Source spec:** FORMAL_PROPERTIES_v2.md P2, P3, P5, P10, P18, P25.
+**Source spec:** FORMAL_PROPERTIES_v2.md P2 (partial via C.3 plan-stability), P3 (within static-dispatch scope at C.3), P5 (C.4), P10 (D.5), P18 (D.5 weekly replay job). (Note: **P25** Deterministic test synthesis from contracts is bound to ContractSchema per FORMAL §11.2 — closure deferred to PLAN_CONTRACT_DISCIPLINE Phase E, not this plan.)
 **Soundness theorem source:** `.ai/theorems/Context-Complete Evidence-Guided Agent Process.md`.
 
 ---
@@ -455,9 +455,17 @@ G_QA = PASS iff:
 
 **Soundness conditions closed at G_QA:**
 - **Theorem condition 5 (within static-dispatch scope)** — ∃ T_i deterministic, risk-weighted: property tests (D.2), metamorphic (D.3), adversarial (D.4), CI α-gate (D.5). [T_{D.5} T3, T4]
+- **FORMAL P2 (partial — plan stability within ImpactClosure scope)** — one-line edit mutates ≤2 task IDs. [T_{C.3} T4]
 - **FORMAL P3 (within documented scope)** — ImpactClosure rejects under-declared `modifying` lists for static imports and ≥20 tagged side-effecting functions. Dynamic dispatch and untagged side effects remain explicit gaps. [T_{C.3} T2]
+- **FORMAL P5 (Reversibility)** — every Change classified; REVERSIBLE round-trips via Rollback service to byte-identical checksum. [T_{C.4} T2, T3, T4]
+- **FORMAL P10 (Risk-weighted coverage)** — `∑ w_m Cov(T, m) ≥ α` per capability; CI gate blocks merge below α. [T_{D.5} T2, T3]
+- **FORMAL P18 (Evidence verifiability)** — weekly replay job re-executes 5% of EvidenceSet `reproducer_ref`; divergences emit Findings and exit non-zero (after baseline). [T_{D.5} T5]
+- **AIOS A6 (boundary completeness, 5 semantic categories)** — FailureMode `semantic_category` ENUM NOT NULL across {technical, business, data, temporal, operational}. [T_{D.5} T6]
+- **AIOS A8 + AI-SDLC #10 (Critical Path)** — CPM CritPath computed deterministically; non-critical Tasks blocked when critical starved. [T_{D.6} T2, T3, T6]
 
-**NOT closed by this plan:** theorem condition 3 (epistemic provenance of O_i from E_<i) — that is closed by PLAN_MEMORY_CONTEXT B.4 + PLAN_CONTRACT_DISCIPLINE F.1/F.2/F.3 (evidence-source constraint, verifiability, assumption control). The deep-verify-corrected scoping ensures this plan does not over-claim.
+**NOT closed by this plan:**
+- **Theorem condition 3** (epistemic provenance of O_i from E_<i) — procedural component closed by PLAN_MEMORY_CONTEXT B.4 (ContextProjector delivers E_<i into C_i); substantive evidence-quality component (source constraint, verifiability, assumption control) further strengthened — but not formally re-closed — by PLAN_CONTRACT_DISCIPLINE F.1/F.2/F.3. This plan does not over-claim condition 3.
+- **FORMAL P25** (Deterministic test synthesis from contracts) — bound to ContractSchema per FORMAL §11.2; closure deferred to PLAN_CONTRACT_DISCIPLINE Phase E.
 
 ---
 

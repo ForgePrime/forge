@@ -16,7 +16,7 @@ Without this plan, every downstream test is measuring against an undefined targe
 
 | Pre-condition | Required by | Closed in |
 |---|---|---|
-| ADR-003 ratified (distinct-actor mechanism) | Conditions 5, 6 (tests reviewed by distinct actor) | Stage 0.1 |
+| ADR-003 ratified (distinct-actor mechanism) | Conditions 6, 7 (gate sign-off mechanism + escalation path; distinct-actor review also confirms that T_i predicates are deterministic, contributing to 5) | Stage 0.1 |
 | ADR-004 closed (τ, α, W, q_min, TTL) | Condition 2 (sufficiency threshold), 5 (α-gate) | Stage 0.2 |
 | ADR-005 closed (Invariant.check_fn format) | Condition 5 (determinism of invariant T_i — callable vs DSL affects testability) | Stage 0.2 |
 | ADR-006 closed (model version pinning) | Condition 5 (determinism across sessions) | Stage 0.2 |
@@ -61,11 +61,13 @@ PASS iff:
       docs/decisions/README.md eligible reviewers — NOT the commissioning user
       (CONTRACT §B.8: user cannot solo-verify their own ADR)
   AND grep "Status.*NORMATIVE" platform/docs/FORMAL_PROPERTIES_v2.md → match
+  AND grep -E "ADR-003.*RATIFIED" docs/decisions/README.md → match
+      (ADR index reflects the new status; prevents README drift from ADR state)
 ```
 
 **"Original author" definition:** For AI-generated artifacts (ADR-003 was produced by a Claude session), "original author" = the commissioning user who directed that session. A distinct actor must be a different human, not the same user acting again.
 
-**Gate G_{0.1}:** all four grep conditions true → PASS.
+**Gate G_{0.1}:** all five grep conditions true → PASS.
 **Soundness:** condition 6 — output (normative spec) propagates only after gate passes.
 
 ---
@@ -101,8 +103,21 @@ PASS iff:
   grep "status: CLOSED" docs/decisions/ADR-005*.md  → match
   grep "status: CLOSED" docs/decisions/ADR-006*.md  → match
   AND each ADR has review record in docs/reviews/
-  AND ADR-004 contains all 7 required constants (W, q_min×20, τ, α, TTL, skew, threshold)
+  AND ADR-004 contains all 7 required constants, verified by explicit greps
+      (no LLM interpretation, no "contains" heuristic):
+        grep -E "^- W:\s"                                docs/decisions/ADR-004*.md  → match
+        grep -E "^- q_min\["                             docs/decisions/ADR-004*.md  → ≥20 matches
+                                                                                         (4 Q-fields × 5 autonomy levels)
+        grep -E "^- tau:\s"                              docs/decisions/ADR-004*.md  → match
+        grep -E "^- alpha\["                             docs/decisions/ADR-004*.md  → ≥1 match
+                                                                                         (per-capability table)
+        grep -E "^- idempotency_ttl:\s"                  docs/decisions/ADR-004*.md  → match
+        grep -E "^- clock_skew_tolerance:\s"             docs/decisions/ADR-004*.md  → match
+        grep -E "^- impact_closure_review_cost_threshold:\s"
+                                                         docs/decisions/ADR-004*.md  → match
 ```
+
+**Note on the 7 constants vs FORMAL_PROPERTIES_v2 §7 (which lists 8 rows):** the eighth row in §7 ("Impact-estimate error tolerance") is explicitly annotated `P3 (hint)` — advisory, not required. The closure set above is the minimum required set; the hint may be recorded but is not gated.
 
 **Gate G_{0.2}:** all conditions true → PASS.
 **Soundness:** condition 7 — these are the UNKNOWN items from A_0. Remaining UNKNOWN → STOP, not default-fill.

@@ -5,7 +5,7 @@
 **Depends on:** PLAN_GATE_ENGINE complete (G_A = PASS).
 **Must complete before:** PLAN_QUALITY_ASSURANCE (D.2 property tests need G_{B.1}; C.3 ImpactClosure needs G_{B.2}), PLAN_CONTRACT_DISCIPLINE (E.1 ContractSchema needs ContextProjector at G_{B.4}).
 **ROADMAP phases:** B.1 → B.4.
-**Source spec:** FORMAL_PROPERTIES_v2.md P14, P15, partial P4.
+**Source spec:** FORMAL_PROPERTIES_v2.md P14, P15. (Note: CausalEdge history produced here is the data substrate for P4 Q_n rolling window; full P4 closure handled at Phase E E.3 ContinuousAutonomy stage, not this plan.)
 **Soundness theorem source:** `.ai/theorems/Context-Complete Evidence-Guided Agent Process.md`.
 
 ---
@@ -532,8 +532,13 @@ G_B = PASS iff:
 **Soundness conditions closed at G_B:**
 - **CCEGAP Condition 1** — RequiredInfo(i) ⊆ C_i: ContextProjector delivers formally computed C_i. [T_{B.4} T2, T3]
 - **CCEGAP Condition 3 (full)** — O_i derived from E_<i: CausalEdge enforces ancestry; ContextProjector delivers that ancestry to the agent. [T_{B.1} T4, T_{B.4} T6]
-- **ECITP C3 (WARN→REJECT)** — timely delivery enforced at Execution state transition; no F_i runs without P_i materialized. [T_{B.5} T2, T3, T5]
-- **ECITP C6 (WARN; REJECT at G.9)** — semantic relation topology (requirement/risk/AC/test) survives transfer via relation_semantic ENUM. [T_{B.6} T4, T5]
+- **ECITP C3 (WARN → REJECT at G_{E.1})** — timely delivery enforced at Execution state transition; no F_i runs without P_i materialized. [T_{B.5} T2, T3, T5]
+- **ECITP C6 (WARN → REJECT at G.9)** — semantic relation topology (requirement/risk/AC/test) survives transfer via relation_semantic ENUM. [T_{B.6} T4, T5]
+- **ECITP §2.3** — Evidence continuity: every decision-relevant ancestor edge is propagated into projection over 10,000 random DAG+task pairs (zero false-negatives). [T_{B.4} T2b]
+- **FC §8** — Source consistency: literal-value mismatches across Knowledge are deterministically detected, blocking Execution with unresolved conflict in task ancestor closure. [T_{B.7} T2, T4, T5]
+- **FC §9** — Actor/Process decomposition: requirement Findings traceable to ≥1 actor + (≥1 process OR system_automation-only). [T_{B.8} T2, T3, T4, T5]
+- **AI-SDLC §7 + #8** — Business-analysis completeness with non-empty `business_justification` (≥20 chars). [T_{B.8} T2, T10]
+- **AIOS A1** — Lossless decomposition (projection-level + task-level) over 10,000 random pairs / random Objectives. [T_{B.4} T2c + T_{B.8} T11]
 
 **Residual gap (disclosed):** projection fidelity tested on 10 historical executions (spot-check). Novel task types not covered by fidelity test. Full coverage requires Phase E ContractSchema (typed `Task.produces` → typed `RequiredInfo`).
 
