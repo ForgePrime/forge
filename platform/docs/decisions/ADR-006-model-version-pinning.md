@@ -1,9 +1,9 @@
 # ADR-006 — LLM model version pinning + canary eval procedure
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003) [ASSUMED: AI-recommendation, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — platform owner + governance steward
-**Related:** R-SPEC-05 (model drift risk), PRACTICE_SURVEY incidents of silent model upgrade causing behavioral drift, FORMAL_PROPERTIES_v2 P6 determinism, CCEGAP C9.
+**Decided by:** user (mass-accept) + AI agent (draft)
+**Related:** R-SPEC-05, PRACTICE_SURVEY model-drift incidents, FORMAL P6, CCEGAP C9, ADR-012 (distinct-actor requires stable model_id).
 
 ## Context
 
@@ -11,12 +11,51 @@ Forge executions invoke LLMs. Without version pinning + canary evaluation, a pro
 
 ## Decision
 
-[UNKNOWN — requires: (a) pinning strategy, (b) canary dataset, (c) go/no-go criteria for model version bumps.]
+**Option B (extended) — strict model-id + version-tag pinning + 100-execution canary + divergence threshold ≤ 1% + Steward sign-off within 7-day SLA.**
 
-Required decisions:
-1. **Pinning granularity:** model-id + version-tag (e.g. `claude-opus-4-7:2026-04`) vs model-family (e.g. `claude-opus-4`) — stricter = more stable, more vendor-change friction.
-2. **Canary dataset size + scope:** N historical executions replayed against new version; divergence threshold D%.
-3. **Approval flow:** canary PASS → automatic bump? Or always requires Steward sign-off?
+### Pinning granularity
+- **Strict** `model-id:version-tag` format (e.g., `claude-opus-4-7:2026-04-15`) stored in `app/config.py` + env var `FORGE_MODEL_PIN`.
+- `ai_interaction` table + `llm_calls` row captures `model_pin_used` immutable per call (audit trail).
+- Current pins (as of 2026-04-24):
+  - `claude_model: claude-opus-4-7:2026-04-15` (primary)
+  - `claude_model_challenger: claude-sonnet-4-6:2026-04-15` (challenger per F.6)
+- Version tag = release-date marker; format enforced via regex at config-load.
+
+### Canary procedure for version bumps
+- **Dataset**: fixed 100 historical Executions pinned at baseline state (stored in `canary_fixtures/` directory; deterministic replay).
+- **Replay**: `scripts/canary_replay.py --new-version=X` runs all 100 against new model version; produces divergence report per Execution.
+- **Divergence metric**: output-shape equality (ContractSchema validator pass/fail agreement) + assumption-tag agreement (CONFIRMED/ASSUMED/UNKNOWN match). Numeric threshold: **divergence rate ≤ 1% of 100 = ≤1 Execution can disagree**.
+- **Bump criteria**:
+  - Canary divergence ≤ 1% → proposal advances.
+  - Divergence > 1% → bump REJECTED; stays on pinned baseline; Finding filed.
+
+### Approval flow
+- **Proposed bump** creates `model_version_proposal` row (new table): `{proposed_pin, canary_result, diverged_executions, proposer_user_id, proposed_at, steward_sign_off_by NULL, steward_sign_off_at NULL}`.
+- **Steward SLA**: 7 calendar days from canary PASS to sign-off.
+- **If signed within SLA**: pin updated; old pin archived; AuditLog row.
+- **If NOT signed within 7 days**: auto-revert proposal (fallback to baseline); Finding emitted `model_version_bump_sla_breached`.
+
+### Emergency revert
+Any Steward may issue immediate revert via `POST /config/model-pin/revert` citing incident_id; bypasses canary for revert-only (cannot bump via revert path).
+
+Rejected alternatives:
+- **A (no pinning)**: explicit R-SPEC-05 violation; blocked.
+- **C (MANDATORY sign-off every bump regardless of divergence)**: adds governance load for zero-divergence bumps; excessive.
+
+Schema:
+```sql
+CREATE TABLE model_version_proposal (
+  id SERIAL PRIMARY KEY,
+  proposed_pin TEXT NOT NULL,
+  canary_divergence_count INT NOT NULL,
+  canary_total INT NOT NULL DEFAULT 100,
+  proposer_user_id INT FK,
+  proposed_at TIMESTAMP NOT NULL,
+  steward_sign_off_by INT FK NULL,
+  steward_sign_off_at TIMESTAMP NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'sla_reverted'))
+);
+```
 
 ## Alternatives considered
 
@@ -51,4 +90,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option B extended (strict model-id:version-tag pin, 100-execution canary dataset, ≤1% divergence threshold, 7-day Steward SLA, emergency revert path, model_version_proposal schema); content DRAFT.

@@ -1,9 +1,9 @@
 # ADR-013 — Challenger REFUTED verdict handling
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003) [ASSUMED: AI-recommendation, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — platform engineering
-**Related:** PLAN_CONTRACT_DISCIPLINE Stage F.6, FORMAL_PROPERTIES_v2 P23 (verification independence), EPISTEMIC_CONTINUITY_ASSESSMENT §8 Q2.
+**Decided by:** user (mass-accept) + AI agent (draft)
+**Related:** PLAN_CONTRACT_DISCIPLINE Stage F.6, FORMAL_PROPERTIES_v2 P23, EPISTEMIC_CONTINUITY_ASSESSMENT §8 Q2, ADR-007 (Steward override path), ADR-012 (challenger must satisfy distinct-actor).
 
 ## Context
 
@@ -15,7 +15,31 @@ F.6 introduces `forge_challenge` endpoint where a distinct actor (challenger) re
 
 ## Decision
 
-[UNKNOWN — requires: re-queue policy + human override policy + retry limits.]
+**Option D — Hybrid with bounded retry + Steward override**:
+
+Policy:
+1. **Bounded re-queue**: REFUTED verdict → new Execution spawned with challenger findings injected as UNKNOWN items (via `Execution.uncertainty_state.uncertain`). Counter `Execution.refuted_retry_count` incremented. Allowed up to `max_refuted_retries = 3` (per ADR-004 calibration; starting default = 3).
+2. **Terminal REJECTED** at N=3: after 3 failed attempts, Execution status = REJECTED with reason=`challenger_refuted_terminal`; Change (if any) reverted per C.4 Reversibility; Finding filed with severity=HIGH.
+3. **Steward override path**: for terminal-REJECTED Executions, Steward may issue a signed override via `POST /executions/{id}/steward-override` with:
+   - `override_reason` (mandatory free-text)
+   - `override_evidence_ref` (mandatory — ≥1 EvidenceSet citing independent basis)
+   - `steward_sign_off_by` (Steward user-id + timestamp)
+   Result: Execution.status → ACCEPTED_WITH_OVERRIDE; Change proceeds; AuditLog row mandatory.
+4. **Override audit**: G.3 metrics include `M_challenger_override_rate` — if > 10% of REJECTED lead to override, quarterly Steward audit (G.5) flags systemic issue.
+
+Rationale:
+- N=3 strikes balance between author-correction opportunity and challenger authority. Higher N → challenger becomes advisory; lower N → one disagreement kills valuable work.
+- Steward override path prevents deadlock while preserving audit trail + violation log (G.2).
+- Infinite retry (Option A alone) risks fixed-point disagreement loop → budget waste + tech debt accumulation.
+
+Implementation:
+- Schema: `Execution.refuted_retry_count INT NOT NULL DEFAULT 0`; `Execution.steward_override_reason TEXT NULL`, `steward_override_evidence_ref UUID NULL`, `steward_override_at TIMESTAMP NULL`.
+- F.6 T3 test: synthetic challenger always-REFUTED → Execution retries 3× then terminal-REJECTED; Steward override test confirms bypass works with signed record.
+
+Rejected alternatives:
+- **A (infinite re-queue)**: risk of fixed-point disagreement loop; budget unbounded.
+- **B (permanent REJECTED, no retry, no override)**: hard reset wastes partial work; no recovery path.
+- **C (Steward override without retry attempts)**: bypasses challenger authority entirely; challenger becomes advisory-only.
 
 ## Alternatives considered
 
@@ -54,4 +78,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option D (hybrid: N=3 retry + terminal REJECT + Steward override with signed record + M_challenger_override_rate metric); content DRAFT.

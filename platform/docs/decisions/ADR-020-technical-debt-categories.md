@@ -1,9 +1,9 @@
 # ADR-020 — Technical debt category enum + accepted_by role allowlist
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003) [ASSUMED: AI-recommendation, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — platform engineering + governance
-**Related:** PLAN_CONTRACT_DISCIPLINE Stage F.12, Forge Complete theorem §37 No Technical Debt Rule.
+**Decided by:** user (mass-accept) + AI agent (draft)
+**Related:** PLAN_CONTRACT_DISCIPLINE Stage F.12, Forge Complete theorem §37, ADR-007 (Steward role), ADR-013 (override metric parallel).
 
 ## Context
 
@@ -14,23 +14,46 @@ F.12 tracks deferred work via `technical_debt` table. Two decisions required:
 
 ## Decision
 
-[UNKNOWN — specify enum + allowlist.]
+**Option A (extended) — 8-category enum + 3-role allowlist with co-sign threshold.**
 
-### Part 1: Category enum (candidate list per FC §37)
-`{incomplete_validation, duplicated_logic, weak_contract, temporary_workaround, deferred_refactor, untested_edge_case, missing_monitoring, known_regression}`
+### Part 1: Category enum
 
-Questions:
-- Add `gaming_coverage_threshold` category (per ADR-004 risk)?
-- Add `sdk_constraint` for cases where upstream SDK forces suboptimal code?
-- Granularity trade-off: few broad categories (8) vs many narrow categories (20+)?
+Finalized enum (8 canonical per FC §37):
+```sql
+CREATE TYPE technical_debt_category AS ENUM (
+  'incomplete_validation',    -- gap in a validator; known edge not handled
+  'duplicated_logic',         -- copy-paste; refactor deferred
+  'weak_contract',            -- optional field that should be required, etc.
+  'temporary_workaround',     -- patch for acute issue; root-fix pending
+  'deferred_refactor',        -- structural improvement accepted for later
+  'untested_edge_case',       -- code exists, test does not
+  'missing_monitoring',       -- prod behavior not observable
+  'known_regression'          -- accepted partial rollback of prior capability
+);
+```
 
-### Part 2: `accepted_by` role allowlist
-Candidate: `{steward, platform_engineer, tech_lead}`
+Extensions: new categories require superseding ADR. Common additions deferred to v2 based on production learning (candidates: `gaming_coverage_threshold` from ADR-004 risk, `sdk_constraint` for upstream-forced suboptimal patterns).
 
-Questions:
-- Can `platform_engineer` alone accept debt, or requires co-sign with `tech_lead`?
-- Is `steward` override-only (for blocks rejected by engineers)?
-- Does `accepted_role` get captured at acceptance time and become immutable (audit trail)?
+### Part 2: `accepted_by` role allowlist + co-sign threshold
+
+Allowed roles (enum `debt_acceptance_role`): `{steward, platform_engineer, tech_lead}`.
+
+Acceptance rules:
+- **Single-sign**: `platform_engineer` OR `tech_lead` may unilaterally accept debt UP TO `debt_severity_threshold`:
+  - `change_size_loc ≤ 100 AND estimated_deferral_weeks ≤ 4` → single-sign allowed
+- **Co-sign required**: if debt exceeds either threshold:
+  - `change_size_loc > 100` OR `estimated_deferral_weeks > 4` → co-sign from 2-of-3 roles required
+  - Steward counted as 1 role; co-sign = 2 distinct `debt_acceptance_role` values
+- **Steward-only categories**: `known_regression` and `gaming_coverage_threshold` (if added in v2) require Steward signature regardless of size
+
+`accepted_role` captured at acceptance time as immutable audit value. If accepter leaves org, historical `technical_debt.accepted_role_at_time` preserved separately from `accepted_by` user FK.
+
+Metric: `M_debt_count_by_category` per G.3 — dashboard shows open-debt count per category. Steward quarterly audit flags categories with growth > 20% quarter-over-quarter.
+
+Rejected alternatives:
+- **B (12-category extended)**: more granular audit valuable but premature; let production signal justify.
+- **C (free-form TEXT category)**: violates §27 determinism; not queryable for metrics.
+- **D (strict co-sign for all debt regardless of size)**: too heavy for small debt; deters legitimate acceptance workflow.
 
 ## Alternatives considered
 
@@ -68,4 +91,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option A (8-category enum + 3-role allowlist + size-based co-sign threshold LOC>100 OR deferral>4w + Steward-only for known_regression); content DRAFT.

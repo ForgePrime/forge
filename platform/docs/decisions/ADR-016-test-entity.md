@@ -1,9 +1,9 @@
 # ADR-016 — Test entity — promote AC.scenario_type or accept as-is
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003) [ASSUMED: AI-recommendation, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — platform engineering + architecture
-**Related:** PLAN_GOVERNANCE Stage G.9, ECITP C12, FC §22 Test Completeness.
+**Decided by:** user (mass-accept) + AI agent (draft)
+**Related:** PLAN_GOVERNANCE Stage G.9, ECITP C12, FC §22 Test Completeness, ADR-001 (scenario_type enum), ADR-015 (parallel Requirement decision).
 
 ## Context
 
@@ -11,17 +11,19 @@ ECITP C12 proof-trail chain includes `AC → tests → verification`. Current Fo
 
 ## Decision
 
-[UNKNOWN — requires:]
+**Option B — Accept `AcceptanceCriterion + scenario_type` as canonical test-link in chain; no new entity.**
 
-### Option A: Promote `AC.scenario_type` to distinct `Test` table
-- `tests` table with FK to AC; one-to-many (one AC can have multiple Tests — unit + integration + property-based).
-- Pro: multiple tests per AC; Test can have own evidence_ref, execution record, coverage_weight.
-- Con: migration + backfill; doubles entity count in proof-trail chain.
+Rationale (parallel to ADR-015 Finding-as-Requirement decision): zero migration cost; reversible via future supersession if test-per-AC cardinality > 1 becomes common in practice. Matches existing Forge pattern (ADR-001 already expanded scenario_type enum to 9 values covering positive/negative/edge_case/boundary/concurrent/malformed/regression/performance/security — sufficient granularity for initial test-intent expression).
 
-### Option B: Accept AC + scenario_type as canonical "test link" in chain
-- G.9 audit accepts `AC.scenario_type` values as test-link representation.
-- Pro: zero migration.
-- Con: can only express 1:1 AC-to-Test; cannot represent AC with both unit + property tests.
+Implementation:
+- No migration required for ADR-016.
+- G.9 proof-trail audit chain: `Change → Execution → AcceptanceCriterion (scenario_type in range) → Finding (type=requirement)` — AC IS the test-link, scenario_type encodes test intent.
+- FC §22 Test Completeness coverage: each AC's `scenario_type` bitmap must span `{nominal, boundary, edge, exception}` per the plan's test completeness requirement; enforced via FailureMode coverage (D.5 α-gate) and adversarial fixture seed (D.4).
+- If empirical data later shows AC needs multiple independent Test executions (e.g., same AC verified by unit + property + integration in parallel), supersede ADR-016 with Option A (distinct Test table + FK).
+
+Rejected alternative:
+- **A (distinct Test table + FK migration)**: correct if test-per-AC > 1 common; defer until empirical signal; premature migration adds complexity without proven need.
+- **C (virtual view)**: complex FK semantics; defer.
 
 ## Alternatives considered
 
@@ -59,4 +61,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option B (AC + scenario_type as test-link, zero-migration); content DRAFT.

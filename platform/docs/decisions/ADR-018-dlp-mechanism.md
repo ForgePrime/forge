@@ -1,9 +1,9 @@
 # ADR-018 — DLP mechanism for Confidential+ tier
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003) [ASSUMED: AI-recommendation based on Forge's current role as LLM-orchestration platform, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — platform + security + governance
-**Related:** PLAN_GOVERNANCE Stage G.1, FRAMEWORK_MAPPING R-FW-02, DATA_CLASSIFICATION.md.
+**Decided by:** user (mass-accept) + AI agent (draft)
+**Related:** PLAN_GOVERNANCE Stage G.1, FRAMEWORK_MAPPING R-FW-02, DATA_CLASSIFICATION.md, ADR-008 (SecurityIncident schema consumer).
 
 ## Context
 
@@ -11,17 +11,57 @@ G.1 DataClassification Gate blocks Confidential+ data ingest without DLP record.
 
 ## Decision
 
-[UNKNOWN — choose one:]
+**Path B — Formal ACKNOWLEDGED_GAP per FRAMEWORK_MAPPING §12 with explicit Forge-scope contract.**
 
-### Path A: Technology-backed DLP
-- Choose technology (e.g. Presidio, AWS Macie, Google Cloud DLP, commercial SaaS).
-- Define detection policies (PII patterns, PHI patterns, credential regex, etc.).
-- Integrate scan at ingest boundary.
+Rationale: Forge is an **LLM-orchestration platform operating on structured development artifacts** (tickets, code, plans, decisions, findings). It is **NOT a primary data-ingestion system**. The data flowing into Forge is:
+- Ticket/issue descriptions (text, usually Internal tier)
+- Code snippets (Internal or Confidential if proprietary; scope-bound)
+- Architecture docs (Internal to Confidential)
+- Developer-authored specs (Internal)
 
-### Path B: Formal ACKNOWLEDGED_GAP
-- Mark DLP as "out of scope for current phase" per FRAMEWORK_MAPPING §12 with Steward sign-off record.
-- Forge relies on adopting-org's existing DLP at the data boundary before data reaches Forge.
-- Must be accompanied by clear contract: Forge does NOT perform DLP, expects sanitized input.
+Forge does NOT typically ingest:
+- Customer PII
+- Payment data (PCI scope)
+- Health records (PHI scope)
+- Mass end-user data feeds
+
+Given this scope, running a DLP engine inside Forge duplicates upstream org DLP at disproportionate cost.
+
+### Contract (explicit)
+
+Forge's ACKNOWLEDGED_GAP contract:
+1. **Forge assumes**: upstream adopting organization runs DLP at data-source boundary BEFORE data reaches Forge. Adopting org responsibility.
+2. **Forge provides**: DataClassification gate (G.1) + SecurityIncident infrastructure (ADR-008) to record, trigger kill-criteria, and audit IF Confidential+ data is nonetheless detected.
+3. **Forge detects (partial)**: basic tier-tag validation at ingest (no tier = rejected; Confidential+ without DLP record = rejected per G.1). Does NOT perform semantic PII-detection.
+4. **Steward ACKNOWLEDGED_GAP sign-off**: required at each quarterly audit (G.5) — Steward re-confirms that upstream DLP assumption still holds for current use case.
+
+### Trigger for supersession (switch to Path A)
+
+Mandatory supersession with Path A if ANY of:
+- Adopting org lacks upstream DLP (detected via security review).
+- Forge use case expands to direct end-user data ingestion.
+- ≥1 `SecurityIncident(tier ≥ Confidential, detected_by='dlp_scan')` emitted by any mechanism (indicates DLP is being done somewhere but not governed).
+- Regulatory regime (GDPR/HIPAA/PCI) requires Forge's direct DLP per audit.
+
+At supersession: ADR-018 v2 chooses from `{Presidio (Python, open-source, extensible), AWS Macie (if cloud), commercial SaaS}` based on deployment context.
+
+### ACKNOWLEDGED_GAP record format
+
+```sql
+INSERT INTO acknowledged_gaps (
+  gap_kind, signed_by_steward_id, signed_at, expires_at, rationale
+) VALUES (
+  'dlp_mechanism',
+  <steward_user_id>,
+  NOW(),
+  NOW() + INTERVAL '1 quarter',  -- must re-sign quarterly
+  'Forge operates on structured dev artifacts; upstream org DLP handles primary data boundary. See ADR-018 v2 triggers for supersession.'
+);
+```
+
+Rejected alternatives:
+- **A (technology-backed DLP, e.g. Presidio)**: valid; but premature given current scope. Ready-to-activate via supersession on any trigger.
+- **C (bespoke DLP)**: reinvents wheel; maintenance cost unjustified.
 
 ## Alternatives considered
 
@@ -57,4 +97,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Path B (ACKNOWLEDGED_GAP with explicit contract: Forge = dev-artifact orchestration, not primary data ingestion; upstream org DLP assumed; quarterly Steward re-sign-off; mandatory supersession triggers listed); content DRAFT.

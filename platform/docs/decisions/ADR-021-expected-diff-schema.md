@@ -1,9 +1,9 @@
 # ADR-021 — ExpectedDiff schema per Change.type + IRREVERSIBLE recovery procedure
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003) [ASSUMED: AI-recommendation, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — platform engineering + governance
-**Related:** PLAN_GOVERNANCE Stage G.10, Forge Complete theorem §25 (Baseline/Post/Diff) + §26 (per-element runtime verification).
+**Decided by:** user (mass-accept) + AI agent (draft)
+**Related:** PLAN_GOVERNANCE Stage G.10, Forge Complete theorem §25 + §26, ADR-009 (snapshot_validator consumer), ADR-008 (SecurityIncident schema parallel).
 
 ## Context
 
@@ -14,26 +14,74 @@ G.10 requires every state-mutating Change to declare `expected_diff` pre-commit.
 
 ## Decision
 
-[UNKNOWN — two decisions:]
+**Option A — Per-Change.type typed JSONB schemas + 48h IRREVERSIBLE recovery SLA.**
 
-### Part 1: ExpectedDiff schemas
+### Part 1: ExpectedDiff schema per Change.type
 
-Candidate per Change.type (NOT a decision — starting point):
-- `migration`: `{tables_created: [...], tables_dropped: [...], columns_added: [...], columns_dropped: [...], indexes_added: [...], rows_affected_estimate: int}`
-- `code`: `{files_added: [paths], files_modified: [paths], files_removed: [paths], public_api_added: [names], public_api_removed: [names]}`
-- `config`: `{env_vars_added: [...], env_vars_modified: [...], feature_flags_changed: [...]}`
-- `data`: `{tables_touched: [...], rows_inserted_estimate: int, rows_updated_estimate: int, rows_deleted_estimate: int}`
+Schema per Change.type (validated at insert via Pydantic + DB CHECK constraint):
 
-Questions:
-- Exact/approximate for row counts (±%)?
-- How is "rows_affected_estimate" validated post-apply?
+```python
+# app/validation/expected_diff_schema.py
+class MigrationExpectedDiff(BaseModel):
+    tables_created: list[str] = []
+    tables_dropped: list[str] = []
+    columns_added: list[dict]  # [{"table": str, "column": str, "type": str}]
+    columns_dropped: list[dict]
+    indexes_added: list[str] = []
+    indexes_dropped: list[str] = []
+    rows_affected_estimate_min: int = 0
+    rows_affected_estimate_max: int  # inclusive upper bound
+
+class CodeExpectedDiff(BaseModel):
+    files_added: list[str] = []
+    files_modified: list[str] = []
+    files_removed: list[str] = []
+    public_api_added: list[str] = []
+    public_api_removed: list[str] = []
+
+class ConfigExpectedDiff(BaseModel):
+    env_vars_added: list[str] = []
+    env_vars_modified: list[str] = []
+    feature_flags_changed: list[dict]  # [{"flag": str, "from": str, "to": str}]
+
+class DataExpectedDiff(BaseModel):
+    tables_touched: list[str]
+    rows_inserted_estimate_min: int = 0
+    rows_inserted_estimate_max: int
+    rows_updated_estimate_min: int = 0
+    rows_updated_estimate_max: int
+    rows_deleted_estimate_min: int = 0
+    rows_deleted_estimate_max: int
+```
+
+Row-count validation:
+- **Range-based, not exact**: actual rows_affected must be in `[min, max]` inclusive. Outside range → DIFF_MISMATCH per G.10.
+- Rationale: exact counts fragile (concurrent inserts, retry loops); range captures author intent while allowing realistic variation.
 
 ### Part 2: IRREVERSIBLE recovery procedure
 
-G.10 design: IRREVERSIBLE Change with Diff mismatch → no auto-rollback, CRITICAL Incident, Steward sign-off required. Need:
-- Incident-response runbook fields (investigator, decision-ownership, approved-next-action).
-- Approved recovery options: (a) manual rollback via new compensating Change; (b) accept the deviation with Steward sign-off + new Decision explaining; (c) system-wide BLOCKED until resolved.
-- SLA for recovery (how long can IRREVERSIBLE-mismatch sit unresolved before escalation?).
+When Change.reversibility_class=IRREVERSIBLE AND Diff ≠ ExpectedDiff:
+
+1. **Immediate**: `Change.status=DIFF_MISMATCH_IRREVERSIBLE`; system-wide BLOCKED flag raised (new Executions cannot commit Changes until recovery complete).
+2. **Incident record**: `SecurityIncident`-like table `change_incidents(id, change_id, detected_at, severity='CRITICAL', investigator_assigned_to NULL, recovery_option_chosen NULL, resolved_at NULL)`.
+3. **Investigation window**: 48h SLA for Steward to:
+   - Review ExpectedDiff vs actual Diff (diagnostic query available via `GET /incidents/{id}/diff-report`).
+   - Choose recovery option.
+4. **Approved recovery options** (exactly one chosen per incident):
+   - **(a) Compensating Change**: author a new Change that returns state to Baseline-equivalent. Requires its own ExpectedDiff + Baseline/Post cycle. Original Change remains DIFF_MISMATCH_IRREVERSIBLE in audit.
+   - **(b) Accept deviation**: Steward signs off with new Decision(type='deviation_acceptance', evidence_ref=deviation_analysis); Change.status → APPLIED_WITH_DEVIATION; AuditLog mandatory.
+   - **(c) Extended BLOCKED**: if neither (a) nor (b) chosen within 48h SLA → system-wide BLOCKED persists; escalation to higher authority (per org); Steward must provide explanation of delay.
+5. **SLA breach**: 48h elapsed without recovery option chosen → Finding(kind='IRREVERSIBLE_recovery_sla_breach', severity=CRITICAL) auto-emitted; G.3 metrics tracked.
+
+Implementation:
+- Schema: `Change.expected_diff JSONB NOT NULL` + CHECK constraint per Change.type; `Change.expected_diff_schema_version INT DEFAULT 1` for evolution.
+- Legacy Changes (pre-G.10): migration adds column NULL; query `UPDATE changes SET expected_diff = '{}'::jsonb WHERE expected_diff IS NULL AND created_at < <G.10 deployment date>` flags legacy as "exempted" via new `expected_diff_exempted_legacy BOOL DEFAULT false` + Finding explaining exemption. Post-G.10 Changes CANNOT use exemption path.
+- G.10 T10 test: synthetic IRREVERSIBLE mismatch → system-wide BLOCKED within 1 second; SLA timer starts; at 48h without resolution → Finding emitted.
+
+Rejected alternatives:
+- **B (generic schema)**: loses Change.type-specific validation; weak.
+- **C (free-form JSONB)**: violates FC §27 determinism; unvalidatable.
+- **D (ExpectedDiff optional for non-migration)**: violates §26 per-element runtime verification for all Impact elements.
 
 ## Alternatives considered
 
@@ -72,4 +120,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option A (per-Change.type Pydantic schemas + range-based row-count validation + 48h IRREVERSIBLE recovery SLA with 3 approved options + legacy-Changes exemption path); content DRAFT.

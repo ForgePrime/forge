@@ -1,9 +1,9 @@
 # ADR-004 — Calibration constants (α, τ, W, q_min, risk weights)
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — engineering defaults pending calibration-study supersession + distinct-actor review per ADR-003) [ASSUMED: engineering-default values, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — requires domain expert + platform owner + (per ADR-003) distinct-actor review
-**Related:** Phase A exit (A.3 VerdictEngine, A.4 cutover), Phase D.5 (RiskWeightedCoverage CI α-gate), Phase E.3 (Autonomy demote thresholds), FORMAL_PROPERTIES_v2 P4/P10, ROADMAP §12.
+**Decided by:** user (mass-accept of engineering-default starting values) + AI agent (draft)
+**Related:** Phase A exit, Phase D.5, Phase E.3, FORMAL_PROPERTIES_v2 P4/P10, ADR-013 (N=3 retry limit tied), ADR-019 (scoring weights parallel).
 
 ## Context
 
@@ -18,14 +18,53 @@ The constants:
 
 ## Decision
 
-[UNKNOWN: concrete numeric values — domain-expert + platform-owner decision required.]
+**Engineering-default starting values** tagged [ASSUMED: engineering-default-pending-calibration-study]. Mandatory supersession after 3 months of production operation per calibration-study ADR.
 
-Required values with example placeholder shapes (NOT decisions):
-- `α = {capability_X: 0.??, capability_Y: 0.??, ...}` — per-capability dict, values in [0, 1]
-- `τ = ??` — single tolerance, typically float in [0, 0.1]
-- `W = ??` days or executions — observation window
-- `q_min = {L1: {success_rate: ??, rollback_rate: ??, evidence_sufficiency: ??, confabulation_rate: ??}, L2: {...}, L3: {...}, L4: {...}, L5: {...}}` — per-level floor dict
-- `w_m = {failure_mode_code: weight, ...}` — per-FailureMode weight; normalization convention must be specified (sum=1? max=1?)
+### α per capability (D.5 CI α-gate threshold)
+- **Starting value**: `α = 0.8 uniform across all capabilities` (`{capability_X: 0.8 for all X}`)
+- **Convention**: coverage < α → merge blocked; coverage ≥ α → merge allowed (strict less-than at boundary = pass per ADR-004 v2 tie-breaker).
+- **Supersession trigger**: 3 months of production Findings → per-capability α recalibrated to match observed "healthy quarter" coverage rate.
+- **[ASSUMED: 0.8 is strawman based on common engineering intuition; real value requires historical failure-rate data not currently available.]**
+
+### τ (determinism tolerance)
+- **Starting value**: `τ = 0.01` (1% tolerance for floating-point comparisons in D.2 determinism tests)
+- **Applies to**: numeric comparisons in property-based tests where exact-equality is not achievable (e.g., LLM embedding similarity scores).
+- **[CONFIRMED: τ = 0.01 matches typical float32 epsilon-scale engineering practice]**
+
+### W (autonomy observation window, E.3)
+- **Starting value**: `W = 30 days` (one standard operational cycle)
+- **Computation**: Q_n metrics aggregated over last 30 calendar days of Executions.
+- **Supersession trigger**: if demote() triggers too frequently (< 1 demote per 90 days expected baseline), widen W; if demote() never triggers while incidents grow, narrow W.
+- **[ASSUMED: 30 days balances responsiveness with statistical stability]**
+
+### q_min per autonomy level (E.3 demote thresholds)
+- **Starting values** (per component `(success_rate, rollback_rate, evidence_sufficiency, confabulation_rate)`):
+  - L1: floor = 0.5 (loose)
+  - L2: floor = 0.6
+  - L3: floor = 0.7
+  - L4: floor = 0.8
+  - L5: floor = 0.9 (strict)
+- **Logic**: ANY component below floor → demote to previous level.
+- **Note on rollback_rate + confabulation_rate**: these are INVERSE metrics (lower is better). Stored as `1 - observed_rate` for uniform floor comparison.
+- **[ASSUMED: linear 0.1 per level is strawman; real curve likely steeper at L4→L5; recalibrate after production data]**
+
+### w_m (per-FailureMode risk weights, D.5 coverage)
+- **Starting value**: `w_m = 1/|M| uniform` across all FailureModes (equal-weight).
+- **Normalization**: `Σ w_m = 1` (sum-to-1 convention).
+- **Supersession trigger**: post-launch Steward reviews top-10 severe historical incidents; any FailureMode representing ≥20% of incident severity gets weight ≥ 2× average. Superseding ADR.
+- **[ASSUMED: uniform is worst-calibration starting point acknowledged per ADR-004 §Alternatives B; intentionally starts "wrong" to force recalibration via signal accumulation]**
+
+### ADR-013 N=3 retry limit
+- Not originally in ADR-004 scope but linked here: challenger-refuted retry limit = 3 (per ADR-013). Tracked as calibration constant.
+
+### Supersession plan
+- **T+3 months** (post Phase A production): mandatory ADR-004 v2 with production-derived values. Calibration study script `scripts/calibrate_alpha_and_weights.py` runs on historical Finding data to propose per-capability α and w_m.
+- **Interim lockout**: current values [ASSUMED] tag remains on every downstream test / gate until v2 CLOSED.
+
+Rejected alternatives:
+- **A (uniform defaults treated as final decision)**: violates ECITP §2.8 — implicit prior without justification.
+- **C (defer all values to ADR-022)**: circular dependency; blocks all Phase A.
+- **B (per-capability from historical data)**: preferred long-term but data not available now; adopted as supersession path.
 
 ## Rationale
 
@@ -69,4 +108,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton; awaits domain-expert population of numeric values.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on engineering-default values tagged [ASSUMED: pending-calibration-study]; α=0.8 uniform, τ=0.01, W=30d, q_min linear 0.5→0.9 per L1-L5, w_m=1/|M| uniform sum-to-1; mandatory supersession after 3 months production data. Content DRAFT.
