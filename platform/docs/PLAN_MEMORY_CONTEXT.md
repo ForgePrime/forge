@@ -412,6 +412,72 @@ pytest tests/ -x
 
 ---
 
+## Stage B.8 — ActorAndProcessEntities (FC §9 + AI-SDLC §7)
+
+**Closes:** Forge Complete §9 Business Problem Decomposition (actors + processes) + AI-SDLC §7 Valid(S1) business-analysis completeness. Source: ADR-025 Actor + BusinessProcess entities.
+
+**Rationale (ESC-3 root-cause uniqueness):** see ADR-025 §Alternatives. Two distinct entities (Actor, BusinessProcess) + many-to-many link chosen — matches domain-modeling norms + enables queryable business-analysis dashboards; rejected single combined entity (conflates who-vs-what).
+
+**Entry conditions:**
+- G_{B.1} = PASS (CausalEdge table exists; Finding.actor_refs/process_refs participate in DAG).
+- ADR-025 CLOSED.
+
+**A_{B.8}:**
+- Authority-level enum values — [CONFIRMED: ADR-025 specifies `{observer, participant, decision_maker, approver, system_automation}`].
+- LLM-based Actor/Process extraction quality — [ASSUMED: LLM can extract structured candidates from Knowledge prose with ≥80% precision after Steward review pass; calibration on first 20 documents]. Steward override always available.
+- Legacy-row exemption — [CONFIRMED: pre-B.8 Findings marked `legacy_exempted_business_analysis=true`; validator skips them].
+
+**Work:**
+1. Alembic migrations: `actors` + `business_processes` + `business_process_actors` tables per ADR-025.
+2. `findings.actor_refs JSONB NOT NULL DEFAULT '[]'::jsonb` + `findings.process_refs JSONB NOT NULL DEFAULT '[]'::jsonb` + `findings.legacy_exempted_business_analysis BOOL NOT NULL DEFAULT false`.
+3. Extraction service: `app/analysis/actor_process_extractor.py` — LLM-based extraction with Steward review queue.
+4. Dashboard endpoint: `GET /projects/{slug}/business-analysis/candidates` — extraction candidates pending Steward review.
+5. Validator `BusinessAnalysisCompleteness` added to GateRegistry for `(Finding, *, OPEN)` insert chain. Enforces per ADR-025: requirement Findings must reference ≥1 actor + (≥1 process OR all actors system_automation).
+6. Migration for existing Findings: flag as `legacy_exempted_business_analysis=true`.
+
+**Exit test T_{B.8} (deterministic):**
+```bash
+# T1: migration round-trip (3 new tables + 3 new columns on findings)
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: Finding(type='requirement') insert without actor_refs → REJECTED
+pytest tests/test_business_analysis_completeness.py::test_missing_actor_rejected -x
+# PASS: Finding(type='requirement', actor_refs=[], process_refs=[1]) → REJECTED
+# with reason='requirement_missing_actor'
+
+# T3: Finding(type='requirement') insert without process_refs (human actor) → REJECTED
+pytest tests/test_business_analysis_completeness.py::test_missing_process_rejected -x
+# PASS: Finding(type='requirement', actor_refs=[human_actor_id], process_refs=[]) → REJECTED
+
+# T4: system_automation-only exception allowed
+pytest tests/test_business_analysis_completeness.py::test_system_automation_exempt -x
+# PASS: all actors have authority_level='system_automation' → process_refs may be empty
+
+# T5: legacy exemption honored
+pytest tests/test_business_analysis_completeness.py::test_legacy_exempt_passes -x
+# PASS: Finding with legacy_exempted_business_analysis=true skips validator
+
+# T6: LLM extraction + Steward review flow
+pytest tests/test_actor_process_extractor.py -x
+# PASS: extraction from fixture Knowledge → candidates queue → Steward approve → actors+processes rows inserted
+
+# T7: hierarchical process nesting
+pytest tests/test_business_processes.py::test_parent_child_processes -x
+# PASS: BusinessProcess with parent_process_id FK works; cycle detection rejects self-reference
+
+# T8: dashboard endpoint returns pending candidates
+pytest tests/test_dashboard.py::test_business_analysis_candidates_endpoint -x
+
+# T9: regression
+pytest tests/ -x
+```
+
+**Gate G_{B.8}:** T1–T9 pass + ADR-025 CLOSED → PASS. **FC §9 Actor/Process gap closed + AI-SDLC §7 Business Analysis advanced from PARTIAL to ADDRESSED**.
+
+**ESC-4 impact:** 3 new tables (actors, business_processes, business_process_actors); `findings` schema extension (+3 columns); new extraction service; GateRegistry insert-validation chain extension; dashboard endpoint. **ESC-5 invariants preserved:** Finding insert path backward-compat (legacy flag); B.1 CausalEdge structure unchanged; F.3 assumption-tagging unaffected. **ESC-7 failure modes:** (a) over-extraction by LLM (too many irrelevant actors) → Steward review queue catches before persist; (b) actor drift (person changes role) → `archived_at` soft-delete + re-insert with new role; (c) process granularity unclear → `parent_process_id` enables hierarchy; `frequency_per_day` differentiates detail vs high-level.
+
+---
+
 ## Phase B exit gate (G_B)
 
 ```
@@ -423,6 +489,7 @@ G_B = PASS iff:
   AND G_{B.5} = PASS  (TimelyDeliveryGate — ECITP C3 closed in WARN, auto-promotes to REJECT at G_{E.1})
   AND G_{B.6} = PASS  (SemanticRelationTypes — ECITP C6 closed in WARN, promotes at G.9)
   AND G_{B.7} = PASS  (SourceConflictDetector — FC §8; unresolved conflicts in task ancestor closure → BLOCKED)
+  AND G_{B.8} = PASS  (ActorAndProcessEntities — FC §9 + AI-SDLC §7; requirement Findings traceable to actor + process)
   AND pytest tests/ -x → all existing + Gate Engine + Memory tests green
   AND every new Decision|Change|Finding has ≥ 1 CausalEdge OR is flagged as an objective-root (e.g. Decision.is_objective_root = true) — DB invariant query:
       SELECT count(*) FROM (decisions UNION changes UNION findings) d

@@ -29,14 +29,14 @@ Test strategy per phase: combination of (a) existing pytest suite regression, (b
 |---|---|---|---|---|---|
 | **Pre-flight** | ADR-003 ratification, calibration ADRs, smoke tests | 3 | 1 sprint | — | — |
 | **A** | Deterministic gate fundament: VerdictEngine + GateRegistry + EvidenceSet + idempotency | 5 | 2–3 sprints | P1, P6, P7, P8, P16; CCEGAP 5, 6 | Pre-flight |
-| **B** | Causal memory + context projection + timely delivery + topology preservation + source consistency | 7 | 3–4 sprints | P14, P15, partial P4; CCEGAP 1, 3; **ECITP C3, C6**; **FC §8** | A |
+| **B** | Causal memory + context projection + timely delivery + topology preservation + source consistency + actor/process entities | 8 | 3–4 sprints | P14, P15, partial P4; CCEGAP 1, 3; **ECITP C3, C6**; **FC §8, §9**; **AI-SDLC §7** | A |
 | **C** | Impact Closure + Reversibility | 4 | 2–3 sprints | P3, P5, P2 | A |
-| **D** | Failure-oriented testing + risk-weighted coverage | 5 | 2–3 sprints | P10, P18 (replay), P25; CCEGAP 5 strengthened | A, B |
+| **D** | Failure-oriented testing + risk-weighted coverage + critical path scheduling | 6 | 3 sprints | P10, P18, P25; CCEGAP 5 strengthened; **AIOS A8**; **AI-SDLC #10** | A, B |
 | **E** | Self-adjoint contract + diagonalization + invariants + continuous autonomy + additive progression + scope boundary | 8 | 3–4 sprints | P4, P9, P11, P12, P13; CCEGAP 2; **ECITP C8**; **FC §15** | A, B, C, D |
 | **F** | Decision discipline (disclosure, uncertainty blocks, root cause, transitive) + structured transfer + candidate evaluation + debt tracking | 12 | 4 sprints | P17-P24; CCEGAP 4, 7; **ECITP C11**; **FC §16-§19, §37** | A, B |
-| **G** | CGAID compliance capstone: Stage 0, metrics, Rule Lifecycle, Steward, 11 artifacts + proof trail + baseline/post verification | 10 | 4 sprints | — (closes CGAID alignment); **ECITP C7, C12**; **FC §25+§26** | E, F |
+| **G** | CGAID compliance capstone: Stage 0, metrics, Rule Lifecycle, Steward, 11 artifacts + proof trail + baseline/post + error propagation | 11 | 4 sprints | — (closes CGAID alignment); **ECITP C7, C12**; **FC §25+§26**; **AIOS A18**; **AI-SDLC §19** | E, F |
 
-**Calendar estimate:** 23–29 sprints (~6 months at one-sprint-per-week) — realistic calendar: 8–12 months with overhead. **This is NOT a commitment** — it's a capacity estimate subject to R-OP-01 (composite 12 MEDIUM). Revised twice: first from 17-22 → 20-26 (added 5 ECITP stages B.5, B.6, E.7, F.10, G.9), now 20-26 → 23-29 (added 5 FC-critical-gap stages B.7, E.8, F.11, F.12, G.10).
+**Calendar estimate:** 25–31 sprints (~6–7 months at one-sprint-per-week) — realistic calendar: 9–13 months with overhead. **This is NOT a commitment** — it's a capacity estimate subject to R-OP-01 (composite 12 MEDIUM). Revised three times: 17-22 → 20-26 (5 ECITP stages) → 23-29 (5 FC-critical-gap stages) → **25-31** (3 Tier-1 cross-theorem gap stages B.8, D.6, G.11).
 
 ---
 
@@ -781,6 +781,10 @@ Each stage exit test is **automated** (pytest or shell script) except where mark
 | ADR-019 Candidate scoring weights for 14 dimensions + trivial-change bypass thresholds + tie-breaker rule | Phase F.11 | platform + architecture lead — from FC §19 Optimal Solution Selection |
 | ADR-020 Technical-debt category enum + `accepted_by` role allowlist + marker-detector extension path | Phase F.12 | platform — from FC §37 No Technical Debt Rule |
 | ADR-021 ExpectedDiff schema per Change.type (migration / code / config) + IRREVERSIBLE incident recovery procedure | Phase G.10 | platform — from FC §25+§26 Baseline/Post verification |
+| ADR-022 Memory-version pinning per Execution (bounds Phase 10→1 feedback) | Stage B.5 extension | platform — from USAGE_PROCESS §16 method-weakness #3 |
+| ADR-023 Critical Path enforcement via CPM + CriticalPathGate | Phase D.6 (new) | platform — from AIOS A8 + AI-SDLC #10 |
+| ADR-024 Error propagation via Finding inheritance + Execution invalidation | Phase G.11 (new) | platform — from AIOS A18 + AI-SDLC §19+#20 + FC §14 |
+| ADR-025 Actor + BusinessProcess entities + BusinessAnalysisCompleteness validator | Phase B.8 (new) | platform — from FC §9 + AI-SDLC §7 |
 
 ADRs 4–7 are P1 per deep-risk; must be created + reviewed before their respective phase starts.
 ADRs 15–17 block G.9 and B.6; ADR-018 blocks G.1; ADR-019 blocks F.11; ADR-020 blocks F.12; ADR-021 blocks G.10.
@@ -826,13 +830,16 @@ This is a living document. Update per stage completion:
   - [ ] Stage 0.2 Calibration ADRs (004, 005, 006)
   - [ ] Stage 0.3 IMPLEMENTATION_TRACKER smoke tests
 - [ ] Phase A (5 stages)
-- [ ] Phase B (7 stages)
+- [ ] Phase B (8 stages)
   - [ ] Stage B.1–B.4 (CausalEdge, backfill, CausalGraph, ContextProjector)
   - [ ] Stage B.5 TimelyDeliveryGate (ECITP C3)
   - [ ] Stage B.6 SemanticRelationTypes (ECITP C6)
   - [ ] Stage B.7 SourceConflictDetector (FC §8)
+  - [ ] Stage B.8 ActorAndProcessEntities (FC §9 + AI-SDLC §7)
 - [ ] Phase C (4 stages)
-- [ ] Phase D (5 stages)
+- [ ] Phase D (6 stages)
+  - [ ] Stage D.1–D.5 (harness, property, metamorphic, adversarial, FailureMode α-gate)
+  - [ ] Stage D.6 CriticalPathScheduler (AIOS A8 + AI-SDLC #10)
 - [ ] Phase E (8 stages)
   - [ ] Stage E.1–E.6 (contract schema, invariants, autonomy, reachability, modes, contract tests)
   - [ ] Stage E.7 EpistemicProgressGate (ECITP C8 + §2.7)
@@ -845,12 +852,13 @@ This is a living document. Update per stage completion:
   - [ ] Stage F.10 StructuredTransferGate (ECITP C11)
   - [ ] Stage F.11 CandidateSolutionEvaluation (FC §16+§17+§18+§19)
   - [ ] Stage F.12 TechnicalDebtTracking (FC §37)
-- [ ] Phase G (10 stages)
+- [ ] Phase G (11 stages)
   - [ ] Stage G.1–G.8 (CGAID compliance)
   - [ ] Stage G.9 ProofTrailCompleteness + ECITP REJECT-promotion (ECITP C7, C12)
   - [ ] Stage G.10 BaselinePostVerification (FC §25+§26)
+  - [ ] Stage G.11 ErrorPropagationMechanism (AIOS A18 + AI-SDLC §19+#20)
 
-Total: 3 + 5 + 7 + 4 + 5 + 8 + 12 + 10 = **54 stages**.
+Total: 3 + 5 + 8 + 4 + 6 + 8 + 12 + 11 = **57 stages**.
 
 Each completed stage produces either a commit (stage tests green) or a blocking Finding if tests fail. No "partial" stages — incomplete = DRAFT.
 

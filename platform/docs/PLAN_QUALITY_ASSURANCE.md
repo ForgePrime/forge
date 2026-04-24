@@ -372,6 +372,61 @@ python scripts/evidence_replay.py --sample-pct=5              # subsequent runs;
 
 ---
 
+### Stage D.6 — CriticalPathScheduler (AIOS A8 + AI-SDLC #10)
+
+**Closes:** AIOS Axiom 8 (CritPath = LongestPath(T_main)) + AI-SDLC §10 Planning Stage (CriticalPathDefined). Source: ADR-023 Critical Path enforcement.
+
+**Rationale (ESC-3 root-cause uniqueness):** see ADR-023 §Alternatives. Standard CPM chosen (not PERT or RCPSP) — simple, deterministic, non-invasive; fits Forge scale.
+
+**Entry conditions:**
+- G_{C.3} = PASS (ImpactClosure provides Task graph; CritPath computed over same graph).
+- G_{B.2} = PASS (causal_edges backfilled with relation_semantic='depends_on' per ADR-017).
+- ADR-023 CLOSED.
+
+**A_{D.6}:**
+- Task duration estimation source — [ASSUMED: historical-average from `duration_actual_hours` over prior Tasks with matching scope_tags; if no history, Task opts-out of CritPath with dashboard warning]. Calibration per ADR-004 supersession T+3mo.
+- Starvation detection heuristic — [ASSUMED: `starved = count(critical_tasks WHERE status=READY AND executor_id IS NULL) > 0 AND available_executor_capacity = 0`]. If wrong → gate over-blocks; mitigation via T3 test.
+
+**Work:**
+1. Alembic migration: `tasks.duration_estimate_hours`, `tasks.duration_actual_hours`, `objectives.critical_path_task_ids JSONB`, `objectives.critical_path_computed_at`, `objectives.critical_path_total_duration_hours`.
+2. `scripts/compute_critical_path.py` — standard CPM (topological sort + forward pass + backward pass + slack computation).
+3. GateRegistry entry: `(Execution, pending, IN_PROGRESS)` chain — `CriticalPathGate` added after B.5 TimelyDeliveryGate.
+4. Triggers for re-computation: Objective.DRAFT→ACTIVE, Task insert/delete, task_dependencies change, Task.duration_estimate_hours change.
+5. G.3 metrics extension: `M_critpath_slippage` + `M_critpath_respect_rate`.
+6. Dashboard: `GET /objectives/{id}/critical-path` returns CritPath JSON + SVG Gantt-style chart.
+
+**Exit test T_{D.6} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: CPM computation correctness on fixture
+pytest tests/test_critical_path.py::test_cpm_fixture -x
+# Fixture: 5-Task DAG with known LongestPath → computed CritPath matches
+
+# T3: CritPath gate pauses non-critical when critical starved
+pytest tests/test_critical_path.py::test_gate_blocks_non_critical_when_starved -x
+# synthetic: critical Task READY + no capacity → non-critical Task blocked
+
+# T4: CritPath gate allows non-critical when no starvation
+pytest tests/test_critical_path.py::test_gate_allows_non_critical_no_starvation -x
+
+# T5: Tasks without duration_estimate opt out of CritPath (warning, not error)
+pytest tests/test_critical_path.py::test_no_estimate_opt_out -x
+
+# T6: deterministic — same graph + durations → same CritPath over 100 runs
+pytest tests/test_critical_path.py::test_determinism -x
+
+# T7: regression
+pytest tests/ -x
+```
+
+**Gate G_{D.6}:** T1–T7 pass + ADR-023 CLOSED → PASS. **AIOS A8 closed** structurally; **AI-SDLC #10 advanced from PARTIAL to ADDRESSED**.
+
+**ESC-4 impact:** `tasks` + `objectives` schema extensions; new script; GateRegistry chain extension; G.3 metrics (+2). **ESC-5 invariants preserved:** B.5 TimelyDeliveryGate runs before CritPathGate (order preserved); task_dependencies graph unchanged. **ESC-7 failure modes:** (a) cycle in task_dependencies (should not occur per B.1 acyclicity, defensive cycle-rejection in script); (b) very-fast Tasks producing unstable CritPath → stability heuristic (only promote new CritPath if >10% duration change per ADR-023); (c) estimation drift → M_critpath_slippage surfaces divergence.
+
+---
+
 ## Phase C+D exit gate (G_QA)
 
 ```
@@ -385,6 +440,7 @@ G_QA = PASS iff:
   AND G_{D.3} = PASS  (metamorphic tests)
   AND G_{D.4} = PASS  (≥18 adversarial fixtures)
   AND G_{D.5} = PASS  (FailureMode entity, CI α-gate, replay job)
+  AND G_{D.6} = PASS  (CriticalPathScheduler — AIOS A8 + AI-SDLC #10)
   AND pytest tests/ -x → all existing + Gate Engine + Memory + QA tests green
   AND mutation smoke: removing any VerdictEngine rule fails ≥ 1 test
   AND ImpactClosure gate active in VerdictEngine

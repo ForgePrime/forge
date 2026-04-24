@@ -15,11 +15,20 @@
 
 ## 0. TL;DR
 
-- **AIOS:** 12/24 ADDRESSED ✅ · 8/24 PARTIAL ⚠️ · 4/24 GAP ❌
-- **AI-SDLC:** 19/25 ADDRESSED ✅ · 6/25 PARTIAL ⚠️ · 0/25 GAP ❌
-- **Forge aligns more with AI-SDLC than AIOS** — the SDLC-focused theorem matches Forge's actual scope. AIOS gaps (Amdahl, Scheduler, Compactness) fall outside Forge's LLM-orchestration scope.
-- **3 HIGH-priority shared gaps** justify immediate closure: Critical Path, Error Propagation, Actor/Process entities.
-- **4 axioms of AIOS are JustifiedNotApplicable** for Forge's scope (parallel HPC concerns, not LLM-orchestration).
+**Pre-Tier-1-closure (initial verification):**
+- **AIOS:** 12/24 ADDRESSED · 8/24 PARTIAL · 4/24 GAP
+- **AI-SDLC:** 19/25 ADDRESSED · 6/25 PARTIAL · 0/25 GAP
+
+**Post-Tier-1-closure (this update, 2026-04-24):**
+- **AIOS:** 13/24 ADDRESSED (+1 A8) + 1 PARTIAL→ADDRESSED (A18) = **14/24 ✅** · 6/24 PARTIAL · 4/24 still JustifiedNotApplicable (A11/A12/A19 + A2-A4 DEFER)
+- **AI-SDLC:** 22/25 ADDRESSED (+3: #7 + #10 + #20) = **22/25 ✅** · 3/25 PARTIAL (#8 + #9 + #18 remaining)
+
+3 Tier-1 ADRs closed the shared multi-theorem gaps:
+- **ADR-023 Critical Path enforcement** (Stage D.6) — closes AIOS A8 + AI-SDLC #10
+- **ADR-024 Error propagation** (Stage G.11) — closes AIOS A18 + AI-SDLC §19+#20 + FC §14
+- **ADR-025 Actor + BusinessProcess entities** (Stage B.8) — closes FC §9 + AI-SDLC #7
+
+**Forge aligns more with AI-SDLC than AIOS** — the SDLC-focused theorem matches Forge's actual scope. AIOS A11/A12/A19 fall outside Forge's LLM-orchestration scope (JustifiedNotApplicable).
 
 ---
 
@@ -146,45 +155,41 @@ USAGE_PROCESS.md §16 ProcessCorrect verification already confirmed topological 
 
 Three gaps appear under different names in AIOS and AI-SDLC:
 
-#### G-SHARED-1: Critical Path computation (AIOS A8 GAP + AI-SDLC #10 PARTIAL)
+#### G-SHARED-1: Critical Path computation (AIOS A8 GAP + AI-SDLC #10 PARTIAL) — **[CLOSED 2026-04-24]**
 
-Current state:
-- `task_dependencies` DAG exists and supports topological queries
-- Phase A-G ordering encodes high-level precedence
-- **Mechanical `LongestPath(T_main)` computation missing**
-- No scheduler gate enforcing CritPath respect
+**Resolution:** ADR-023 Critical Path enforcement + Stage D.6 CriticalPathScheduler (PLAN_QUALITY_ASSURANCE).
+- `scripts/compute_critical_path.py` — standard CPM (topological sort + forward pass + backward pass + slack).
+- `tasks.duration_estimate_hours` + `objectives.critical_path_task_ids JSONB` schema extensions.
+- `CriticalPathGate` in Execution pending→IN_PROGRESS chain (starvation prevention).
+- G.3 metrics: `M_critpath_slippage` + `M_critpath_respect_rate`.
+- Re-computation triggers: Objective activate, Task insert/delete, task_dependencies change, duration update.
+- Exit tests T_{D.6} T1–T7 specified.
 
-Closure path: **ADR-023 Critical Path enforcement** (proposed).
-- `scripts/compute_critical_path.py` computing LongestPath + Task.duration_estimate
-- Scheduler gate: new Execution cannot start if violates CritPath precedence
-- Dashboard: visualize per-Objective critical path
-- G.3 metric: `M_critpath_slippage` (deviation from planned CritPath)
+#### G-SHARED-2: Error propagation mechanism (AIOS A18 PARTIAL + AI-SDLC #20 PARTIAL + FC §14 partial) — **[CLOSED 2026-04-24]**
 
-#### G-SHARED-2: Error propagation mechanism (AIOS A18 PARTIAL + AI-SDLC #20 PARTIAL + FC §14 partial)
+**Resolution:** ADR-024 Error propagation mechanism + Stage G.11 ErrorPropagationMechanism (PLAN_GOVERNANCE).
+- Two-mechanism: Finding inheritance (`parent_finding_id`, `propagation_depth`, `propagates_to_task_ids`, `inheritance_kind`) + Execution invalidation (`invalidated_by_finding_id`).
+- `Task.status` enum extended with `BLOCKED_UPSTREAM_FAILURE`.
+- `propagate_finding_on_rejection` hook in VerdictEngine REJECTED path.
+- `ErrorPropagationCheck` gate blocks commit when upstream has unresolved HIGH Finding.
+- Cascade depth cap `max_depth=5` (ADR-004 calibration).
+- Resolution path: `Decision(type='finding_resolution')` cascades un-invalidation.
+- Contest-propagation path for false-positives.
+- G.3 metrics: `M_propagation_blast_radius` + `M_unresolved_cascade_count`.
+- Exit tests T_{G.11} T1–T7 specified.
 
-Current state:
-- ImpactClosure (C.3) computes forward impact (what files a change touches)
-- No explicit `Error(x) → PotentialError(Dep(x))` propagation
+#### G-SHARED-3: Actor + Process entities (FC §9 partial + AI-SDLC #7 partial) — **[CLOSED 2026-04-24]**
 
-Closure path: **ADR-024 Error propagation mechanism** (proposed).
-- `Finding.propagates_to_tasks FK JSONB` listing affected downstream tasks
-- Automatic Finding-creation when source task fails: for each dependent task, create `Finding(type='inherited_error', parent_finding_id=...)`
-- G.9 proof-trail audit extended to verify error propagation: every failed Task has propagated Findings in dependent Tasks
-- Invalidation semantics: `DependentArtifact.status='INVALIDATED'` until source error resolved
-
-#### G-SHARED-3: Actor + Process entities (FC §9 partial + AI-SDLC #7 partial)
-
-Current state:
-- Objective + KeyResult = goal structure
-- Task = work unit
-- Guideline + Invariant = rules
-- **No explicit `Actor` entity** (AI-SDLC §7 requires actors)
-- **No explicit `BusinessProcess` entity** (AI-SDLC §7 requires processes)
-
-Closure path: **ADR-025 Business-analysis entity extension** (proposed).
-- `actors` table: (id, name, role, project_id, description, authority_level)
-- `business_processes` table: (id, name, input_trigger, output_outcome, actors_involved FK, constraints)
-- Finding insert validator: `Finding(type='requirement')` must reference ≥1 actor + ≥1 process (or exception_role='system')
+**Resolution:** ADR-025 Actor + BusinessProcess entities + Stage B.8 ActorAndProcessEntities (PLAN_MEMORY_CONTEXT).
+- `actors` table with authority_level ENUM(`observer`, `participant`, `decision_maker`, `approver`, `system_automation`).
+- `business_processes` table with input_trigger + output_outcome + expected_duration + frequency + parent_process_id (hierarchical).
+- `business_process_actors` many-to-many with role_in_process.
+- `findings.actor_refs JSONB` + `findings.process_refs JSONB` (each entry with evidence_ref citation).
+- `BusinessAnalysisCompleteness` validator: `Finding(type='requirement')` must reference ≥1 actor + (≥1 process OR all actors system_automation).
+- LLM-based extraction with Steward review queue.
+- Legacy-row exemption via `legacy_exempted_business_analysis` flag.
+- G.9 proof-trail chain extended: 10-link → 12-link (includes Actor + BusinessProcess).
+- Exit tests T_{B.8} T1–T9 specified.
 
 ### 5.2 AIOS-specific gaps
 

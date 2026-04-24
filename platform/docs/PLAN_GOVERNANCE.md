@@ -485,11 +485,75 @@ pytest tests/ -x
 
 ---
 
-## Phase G exit gate (G_GOV) — Terminal gate for 7 CCEGAP + 6 ECITP conditions + 3 ECITP continuity definitions + 5 FC critical gaps (21 total)
+## Stage G.11 — ErrorPropagationMechanism (AIOS A18 + AI-SDLC §19+#20)
+
+**Closes:** AIOS Axiom 18 (Err(x) → Err(Dep(x))) + AI-SDLC §19 (invalidation of dependent artifacts) + Forge Complete §14 (Impact closure completeness). Source: ADR-024 Error propagation mechanism.
+
+**Rationale (ESC-3 root-cause uniqueness):** see ADR-024 §Alternatives. Two-mechanism approach (Finding inheritance + Execution invalidation) chosen — preserves audit trail + blocks new work until resolved.
+
+**Entry conditions:**
+- G_{C.3} = PASS (ImpactClosure provides descendant closure).
+- G_{B.2} = PASS (causal_edges with relation_semantic).
+- G_{F.4} = PASS (BLOCKED state pattern extended with BLOCKED_UPSTREAM_FAILURE).
+- ADR-024 CLOSED.
+
+**A_{G.11}:**
+- `max_depth=5` cascade limit — [ASSUMED: typical Forge Objective DAGs < 50 nodes deep; cap prevents runaway in pathological case]. Calibration per ADR-004 supersession.
+- Propagation kinds (`direct_dependency`, `data_flow`, `shared_state`, `test_coverage_gap`) — [CONFIRMED: ADR-024 enumeration].
+
+**Work:**
+1. Alembic migrations: `findings.parent_finding_id`, `propagation_depth`, `propagates_to_task_ids`, `inheritance_kind`; `executions.invalidated_by_finding_id` + companions; `Task.status` enum adds `BLOCKED_UPSTREAM_FAILURE`.
+2. Hook `propagate_finding_on_rejection` in VerdictEngine REJECTED path for Execution with severity ≥ HIGH Finding.
+3. GateRegistry entry: `(Execution, IN_PROGRESS, COMMITTED)` chain — `ErrorPropagationCheck` gate blocks commit if any upstream Task has unresolved HIGH Finding.
+4. Resolution path: `Decision(type='finding_resolution')` + Evidence → cascade un-invalidation; `resolved_by_cascade_resolution_id` populated on all inherited Findings.
+5. G.3 metrics: `M_propagation_blast_radius` = avg number of affected Tasks per HIGH Finding; `M_unresolved_cascade_count` = count of open cascades > 14 days.
+6. Dashboard: `GET /findings/{id}/cascade-view` visualizes propagation tree.
+
+**Exit test T_{G.11} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: cascade on synthetic upstream failure
+pytest tests/test_error_propagation.py::test_cascade_on_upstream_rejected -x
+# synthetic: Task A has 3 descendants {B, C, D}. A Execution REJECTED with
+# HIGH Finding → B, C, D get inherited Findings + status=BLOCKED_UPSTREAM_FAILURE
+
+# T3: cascade depth cap respected
+pytest tests/test_error_propagation.py::test_max_depth_5 -x
+# synthetic: chain A→B→C→D→E→F→G (depth 6). REJECTED at A → cascade reaches E;
+# F and G NOT auto-flagged; Steward manual extension required
+
+# T4: ErrorPropagationCheck gate blocks new Execution commit
+pytest tests/test_error_propagation.py::test_gate_blocks_on_upstream_unresolved -x
+# Execution for Task C (whose ancestor A has unresolved Finding) → REJECTED
+
+# T5: resolution cascades un-invalidation
+pytest tests/test_error_propagation.py::test_resolution_cascades -x
+# Decision(type='finding_resolution', resolves_finding_id=A.finding_id) →
+# all inherited Findings get resolved_by_cascade_resolution_id;
+# affected Tasks transition back to READY
+
+# T6: challenged propagation (contest-propagation endpoint)
+pytest tests/test_error_propagation.py::test_contest_propagation -x
+# Task_y author POST /findings/{id}/contest-propagation → Steward review
+# queue entry created; propagation persists until Steward decision
+
+# T7: regression
+pytest tests/ -x
+```
+
+**Gate G_{G.11}:** T1–T7 pass + ADR-024 CLOSED → PASS. **AIOS A18 closed** + **AI-SDLC §19 + #20 closed** + **FC §14 error-propagation aspect closed**.
+
+**ESC-4 impact:** `findings` schema (+5 columns), `executions` schema (+3 columns), `Task.status` enum extension, VerdictEngine REJECTED-path hook, GateRegistry chain extension, G.3 metrics (+2), dashboard endpoint. **ESC-5 invariants preserved:** F.4 BLOCKED semantics unchanged (BLOCKED_UPSTREAM_FAILURE is new sibling status); G.9 proof-trail audit extended but doesn't change traversal logic; existing Finding.severity enum unchanged. **ESC-7 failure modes:** (a) false propagation (over-broad) → contest-propagation endpoint for Task authors; (b) cascade depth cap at 5 leaves deeper dependents unflagged → Steward manual extension with signed record; (c) performance on large cascades → `max_depth=5` + indexed FK; benchmark pending.
+
+---
+
+## Phase G exit gate (G_GOV) — Terminal gate for 7 CCEGAP + 6 ECITP conditions + 3 ECITP continuity definitions + 5 FC critical gaps + 2 Tier-1 gaps (23 total)
 
 ```
 G_GOV = PASS iff:
-  G_{G.1} through G_{G.10} all PASS  (incl. G.9 ProofTrailCompleteness + ECITP C6/C11 REJECT-promotion + G.10 BaselinePostVerification)
+  G_{G.1} through G_{G.11} all PASS  (incl. G.9 ProofTrailCompleteness + ECITP C6/C11 REJECT-promotion + G.10 BaselinePostVerification + G.11 ErrorPropagationMechanism)
   AND pytest tests/ -x → all 6 prior plans' tests + Governance tests green
   AND FRAMEWORK_MAPPING.md §12: every acknowledged gap is RESOLVED or has Steward-signed ACKNOWLEDGED_GAP record
   AND 7 metrics live: GET /projects/{slug}/metrics returns all 7 non-null
