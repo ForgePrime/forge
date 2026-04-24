@@ -31,6 +31,7 @@ REJECT (the registry is the spec, not a catalog of observed behavior).
 from __future__ import annotations
 
 from app.validation.rule_adapter import RuleAdapter
+from app.validation.rules import evidence_link_required
 
 # --- Per-entity transition lists -------------------------------------------
 # Sources verified 2026-04-25 via grep of app/models/*.py CheckConstraints.
@@ -112,12 +113,32 @@ _ORCHESTRATE_RUN_TRANSITIONS: tuple[tuple[str, str], ...] = (
 )
 
 
+# Per-transition rule overrides. Empty tuple is the default for any
+# transition not in this map — placeholder for stages A.3+ to wire rule
+# adapters. Entries here are concrete rules already implemented and
+# binding (Stage A.1+).
+#
+# Decision transitions to permanent states (ACCEPTED, CLOSED, MITIGATED)
+# require >=1 EvidenceSet — closes FORMAL P16 at the state-transition
+# gate. OPEN/ANALYZING/DEFERRED are work-in-progress states where
+# evidence is legitimately still being collected, so no rule there.
+_RULE_OVERRIDES: dict[tuple[str, str, str], tuple[RuleAdapter, ...]] = {
+    ("decision", "ANALYZING", "ACCEPTED"): (evidence_link_required,),
+    ("decision", "ANALYZING", "MITIGATED"): (evidence_link_required,),
+    ("decision", "ACCEPTED", "CLOSED"): (evidence_link_required,),
+    ("decision", "MITIGATED", "CLOSED"): (evidence_link_required,),
+}
+
+
 def _build_registry() -> dict[tuple[str, str, str], tuple[RuleAdapter, ...]]:
     """Construct the registry deterministically at import time.
 
-    Empty rule tuples are placeholders — Phase A.3 binds plan_gate +
-    contract_validator adapters; later stages add per-property rules
-    (P16 evidence presence at A.1+, P12 self-adjointness at E.1, etc.).
+    For each enumerated transition, look up _RULE_OVERRIDES; default to
+    empty tuple (placeholder for stages that add rules later).
+
+    Phase A.3 will bind plan_gate + contract_validator adapters as
+    further per-transition entries; later stages add per-property rules
+    (P12 self-adjointness at E.1, P13 invariant preservation at E.2, etc.).
 
     The dict is built once and frozen by tuple wrapping; runtime code
     treats GATE_REGISTRY as immutable.
@@ -129,7 +150,15 @@ def _build_registry() -> dict[tuple[str, str, str], tuple[RuleAdapter, ...]]:
             if key in out:
                 # Defensive: duplicate registration is a programmer error.
                 raise ValueError(f"duplicate transition registered: {key}")
-            out[key] = ()
+            out[key] = _RULE_OVERRIDES.get(key, ())
+    # Cross-check: every override key is a valid transition (catches typos
+    # in _RULE_OVERRIDES against the canonical transition list).
+    for key in _RULE_OVERRIDES:
+        if key not in out:
+            raise ValueError(
+                f"_RULE_OVERRIDES references unregistered transition {key}; "
+                f"add to the per-entity transition list first"
+            )
     return out
 
 
