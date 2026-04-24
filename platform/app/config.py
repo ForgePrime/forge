@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     orchestrator_max_retries_per_task: int = 3
     orchestrator_max_tasks: int = 50
 
+    # --- Phase A VerdictEngine mode (shadow/cutover gate per PLAN_GATE_ENGINE) ---
+    # - "off": VerdictEngine not invoked; legacy validators authoritative. DEFAULT.
+    # - "shadow": VerdictEngine runs in parallel with legacy; diffs logged, no
+    #   state-transition impact. Used for Phase A.3 replay harness.
+    # - "enforce": VerdictEngine is authoritative; legacy path removed. Activated
+    #   only at Phase A.4 cutover after canary sign-off per PLAN_GATE_ENGINE.
+    # Shadow-mode default keeps blast radius at zero until explicit cutover ADR.
+    verdict_engine_mode: str = "off"
+
     # --- Environment marker (for prod-safety checks) ---
     # Set FORGE_ENV=production in production deployments. Anything else treated as dev/test.
     env: str = "development"

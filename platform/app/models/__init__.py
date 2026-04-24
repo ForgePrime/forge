@@ -26,6 +26,7 @@ from app.models.project_hook import ProjectHook
 from app.models.hook_run import HookRun
 from app.models.lessons import ProjectLesson, AntiPattern
 from app.models.contract_revision import ContractRevision
+from app.models.evidence_set import EvidenceSet
 
 __all__ = [
     "Organization",
@@ -63,4 +64,5 @@ __all__ = [
     "ProjectLesson",
     "AntiPattern",
     "ContractRevision",
+    "EvidenceSet",
 ]
