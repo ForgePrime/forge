@@ -1,8 +1,9 @@
 # ADR-003 — Human peer-reviewer required for NORMATIVE status transition
 
-**Status:** OPEN — this ADR is itself an example of what it governs. It is authored by one actor (Claude) and must not self-promote to RATIFIED. A distinct human reviewer's acceptance transitions this ADR to RATIFIED; until then, it describes the policy it proposes, without yet enforcing it on itself.
-**Date:** 2026-04-22
+**Status:** RATIFIED (by user hergati@gmail.com, 2026-04-24; review record: [`../reviews/review-ADR-003-by-user-2026-04-24.md`](../reviews/review-ADR-003-by-user-2026-04-24.md)). Transitioned from OPEN via distinct-actor (user named as qualifying reviewer per §Consequences / Reviewer identification). Review record discloses terse ratification format — reviewer may supplement with command outputs + challenges at any time.
+**Date:** 2026-04-22 (authored); 2026-04-24 (ratified)
 **Authored by:** Claude (Opus 4.7, 1M context)
+**Ratified by:** user (hergati@gmail.com) 2026-04-24
 **Related:** [FORMAL_PROPERTIES_v2.md §11.3](../FORMAL_PROPERTIES_v2.md), [`/deep-risk` audit R-GOV-01 (composite 19)](#), CONTRACT §B.8 solo-verifier, OPERATING_MODEL §9.2.
 
 ---
@@ -182,4 +183,7 @@ Future-Claude reading this in a later session: the act of ratification itself wa
 ## Versioning
 
 - v1 (2026-04-22, authored) — initial DRAFT.
-- Transitions to RATIFIED pending distinct-actor acceptance.
+- v1 RATIFIED (2026-04-24) — user hergati@gmail.com declared ACCEPT verdict via distinct-actor authority per §Consequences. Review record filed at `../reviews/review-ADR-003-by-user-2026-04-24.md`. Record discloses minimal-depth format (terse verbal confirmation without command-output enumeration); supplementation path open.
+
+
+ RATIFIED (by user hergati@gmail.com, 2026-04-24, review: ŁK)
