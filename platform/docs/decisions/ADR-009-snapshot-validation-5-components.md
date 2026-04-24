@@ -1,9 +1,9 @@
 # ADR-009 — Deterministic Snapshot Validation 5 components
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003) [ASSUMED: AI-recommendation, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — platform engineering
-**Related:** PLAN_GOVERNANCE Stage G.8, FORMAL_PROPERTIES_v2 §11.2 (P25), OPERATING_MODEL §9.4.
+**Decided by:** user (mass-accept) + AI agent (draft)
+**Related:** PLAN_GOVERNANCE Stage G.8, FORMAL_PROPERTIES_v2 §11.2 (P25), OPERATING_MODEL §9.4, ADR-021 (consumed by G.10 BaselinePost).
 
 ## Context
 
@@ -13,14 +13,27 @@ Per PLAN_GOVERNANCE G.8 post-fix: "Closes P25 iff ADR-009's 5 components align w
 
 ## Decision
 
-[UNKNOWN — requires enumeration of 5 components consistent with FORMAL §11.2 synth(s, i) pattern.]
+**Option A — 5-component literal enumeration per candidate list.**
 
-Candidate components (placeholder):
-1. **Structural** — row counts, schema hash
-2. **Distribution** — key cardinalities, value-range histograms
-3. **Invariant** — Invariant.check_fn results per applicable entity (integrates with E.2)
-4. **Cross-entity** — FK-consistency snapshot
-5. **Temporal** — timestamp-ordering validity
+Five components of `snapshot_validator.capture_state(scope) → SnapshotResult`:
+
+1. **Structural** — row counts per affected table; schema hash of `pg_catalog.pg_class + pg_attribute` for scope entities.
+2. **Distribution** — distinct-value cardinalities per indexed column; value-range `{min, max, median}` per numeric column; top-10 mode values per enum column.
+3. **Invariant** — results of every `Invariant` whose `applies_to_entity` intersects scope (per ADR-005 Python callable; read-only execution).
+4. **Cross-entity** — FK-consistency: for each FK in scope, `count(child WHERE parent NOT EXISTS)` must equal 0 (dangling refs flagged).
+5. **Temporal** — `max(created_at), max(updated_at)` per table; ordering validity: `created_at < updated_at` for all rows (no time-travel).
+
+Per-component output: `{component_name: str, value: JSONB, sha256: str}`. SnapshotResult is the 5-tuple with a composite sha256 over the ordered concatenation.
+
+Alignment with FORMAL §11.2 synth(s, i): structural + distribution + invariant + cross-entity are the 4 state-check dimensions; temporal is the *progression* dimension making synth(s, i) well-defined over time. 5 total matches §11.2 intent; if §11.2 enumeration differs on distinct-actor read, supersede with v2 preserving the 5-count shape.
+
+Exclusions from observation (per AD-7 correction in CHANGE_PLAN_COMPREHENSIVE):
+- `pg_statistic`, `pg_stat_*`, `pg_class.reltuples`, `pg_stat_user_tables.*` — mutable by autovacuum + ANALYZE, not part of semantic state.
+- Explicit exclusion list in `platform/app/validation/snapshot_validator.py` docstring; grep-gate tests for forbidden catalog reads.
+
+Rationale against rejected alternatives:
+- **B (3-component minimal)**: violates "5" specification in OM §9.4.
+- **C (variable per entity-type)**: violates FC §27 determinism (same inputs → same result impossible if component count varies).
 
 ## Alternatives considered
 
@@ -57,4 +70,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option A (5 components: structural + distribution + invariant + cross-entity + temporal); mutable-catalog exclusions per AD-7; content DRAFT.

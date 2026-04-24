@@ -1,8 +1,8 @@
 # ADR-014 — C2 sufficiency gate placement: pre-LLM vs post-hoc validator
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003)
 **Date:** 2026-04-24
-**Decided by:** pending — platform engineering
+**Decided by:** user (decision) + AI agent (draft)
 **Related:** Phase A exit, CCEGAP Condition 2, PLAN_CONTRACT_DISCIPLINE Stage E.1, EPISTEMIC_CONTINUITY_ASSESSMENT §8 Q4.
 
 ## Context
@@ -14,7 +14,13 @@ CCEGAP C2 requires `Suff(P_i, R_i, A_i, E_<i, T_i) = true` — context sufficien
 
 ## Decision
 
-[UNKNOWN — which gate placement is canonical for E.1?]
+**Option C — Both pre-LLM AND post-hoc validation** (per FORMAL P11 diagonalizability).
+
+- **Pre-LLM gate**: `ContractSchema.validate_required(projection, task)` runs in `prompt_parser` BEFORE the LLM call. Integrates with B.5 TimelyDeliveryGate chain — same pending→IN_PROGRESS transition, one atomic gate set. Fail → Execution BLOCKED with `blocked_reason='input_sufficiency_missing'`, no LLM cost incurred.
+- **Post-hoc gate**: `ContractSchema.validate_output(decision.result)` runs in VerdictEngine at Decision commit. Fail → REJECTED with `reason='output_shape_insufficient'`.
+- **Shared validator module**: `app/validation/contract_schema_validator.py` exposes both entry points from single source (DRY; no duplicate logic).
+
+The two gates are **orthogonal layers** per P11 — pre-LLM catches input insufficiency (structural precondition), post-hoc catches output insufficiency (structural postcondition). Neither alone suffices: pre-only misses output-shape bugs; post-only wastes LLM cost on inputs known to fail.
 
 ## Alternatives considered
 
@@ -52,4 +58,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option C (pre+post dual-gate); content DRAFT pending distinct-actor review per ADR-003.

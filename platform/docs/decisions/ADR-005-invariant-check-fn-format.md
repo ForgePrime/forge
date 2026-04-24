@@ -1,9 +1,9 @@
 # ADR-005 — Invariant.check_fn format (Python callable vs DSL vs SQL)
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003)
 **Date:** 2026-04-24
-**Decided by:** pending — platform engineering
-**Related:** PLAN_CONTRACT_DISCIPLINE Stage E.2, FORMAL_PROPERTIES_v2 P13.
+**Decided by:** user (decision) + AI agent (draft)
+**Related:** PLAN_CONTRACT_DISCIPLINE Stage E.2, FORMAL_PROPERTIES_v2 P13, ADR-014 (orthogonal), ADR-017 (integrates).
 
 ## Context
 
@@ -11,7 +11,29 @@ E.2 introduces `Invariant` entity with a `check_fn` column that evaluates whethe
 
 ## Decision
 
-[UNKNOWN — one of three options must be chosen and justified by distinct-actor review.]
+**Option A — Python callable, with hardening**:
+
+Schema:
+- `Invariant.check_fn TEXT NOT NULL` — stores **module+function import path** (e.g. `"app.invariants.inv_task_done_requires_all_ac_passed"`), NOT raw code.
+- Insert-time validation: regex `^app\.invariants\.inv_[a-z_]+_[a-z_]+$` (naming: `inv_<entity>_<predicate>`); reject otherwise.
+- `ast.parse` validation of the target module against allowed-import whitelist (stdlib read-only, `app.models`, `app.evidence.causal_graph`); forbidden: `os`, `subprocess`, `eval`, `exec`, `__import__` dynamic, `open` for write.
+
+Runtime:
+- `importlib.import_module(module_path) → getattr(module, fn_name)` at Invariant registration time (lazy cache).
+- Execute inside **read-only DB session** (`session.execute("SET TRANSACTION READ ONLY")` or equivalent).
+- `@invariant_check` decorator wraps registered functions; decorator asserts:
+  - Returns `bool` or raises explicit `InvariantViolation(reason=...)`.
+  - No `session.is_modified` mutations during call (checked via SQLAlchemy session before/after).
+  - Pure function: same (entity_state, ctx) → same Verdict on 3 consecutive invocations.
+
+Exit-test contract (enforced at PLAN_CONTRACT_DISCIPLINE Stage E.2 T2+):
+- `pytest tests/test_invariant_purity.py` — for every registered invariant: call 3× with identical argument → identical Verdict + zero session mutations.
+
+Seed invariants (day-1):
+- `inv_task_done_requires_all_ac_passed` — Task.DONE ⟹ all AC.status=PASS
+- `inv_decision_requires_non_empty_evidence_set` — Decision insert ⟹ ≥ 1 EvidenceSet FK
+
+Cross-entity graph predicates (e.g. "AC traceable to Requirement via CausalGraph") are addressable via `from app.evidence.causal_graph import requirements_of` in invariant function body — impossible in SQL-only, the key reason Python callable wins.
 
 ## Alternatives considered
 
@@ -47,4 +69,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option A (Python callable + import-path storage + ast.parse whitelist + @invariant_check decorator + read-only session execution); content DRAFT pending distinct-actor review.

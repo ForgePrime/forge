@@ -1,9 +1,9 @@
 # ADR-015 — Requirement entity — promote from Finding.type or accept as-is
 
-**Status:** OPEN
+**Status:** CLOSED (content DRAFT — pending distinct-actor review per ADR-003) [ASSUMED: AI-recommendation, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
-**Decided by:** pending — platform engineering + architecture
-**Related:** PLAN_GOVERNANCE Stage G.9 ProofTrailCompleteness, ECITP C12 (10-link proof trail), FC §10 (BR↔TR traceability), FC §11 (Requirement completeness).
+**Decided by:** user (mass-accept) + AI agent (draft)
+**Related:** PLAN_GOVERNANCE Stage G.9 ProofTrailCompleteness, ECITP C12 (10-link proof trail), FC §10, FC §11, ADR-016 (parallel Test-entity decision), ADR-017 (relation mapping consumers).
 
 ## Context
 
@@ -11,18 +11,21 @@ ECITP C12 requires a 10-link causal chain for every artifact: `documents → ana
 
 ## Decision
 
-[UNKNOWN — requires:]
+**Option B — Accept `Finding.type = 'requirement'` as canonical chain link; no new entity.**
 
-### Option A: Promote `Finding.type = 'requirement'` to distinct `Requirement` table
-- New migration: `requirements` table; `AcceptanceCriterion.requirement_id` FK added.
-- Backfill: move rows where `Finding.type='requirement'` → new table; link AC via scope_tags.
-- Pro: clear entity separation; `Finding` stays a discovery-time artifact, `Requirement` becomes normative.
-- Con: migration touches multiple tables; backfill risk per GAP_ANALYSIS_v2.
+Rationale: zero migration cost; reversible (can promote to distinct Requirement table later via superseding ADR); avoids touching AC+task_dependencies schemas; matches existing Forge pattern where Finding is the generic "discovered/declared artifact" entity. G.9 proof-trail audit walks `Finding` rows where `type='requirement'` as the canonical chain link.
 
-### Option B: Accept `Finding.type='requirement'` as canonical; no new table
-- G.9 proof-trail audit accepts Finding-as-Requirement in the chain.
-- Pro: zero migration cost.
-- Con: `Finding` carries two semantically distinct roles (ambiguity/risk vs requirement); FC §11 completeness fields (ClearInput, ClearOutput) need to live on Finding (type-specific validation).
+Implementation:
+- No migration required for ADR-015.
+- Finding type discriminator enforced at insert: `Finding.type ∈ {'requirement', 'ambiguity', 'risk', 'decision_candidate', 'observation'}` — extend existing enum.
+- FC §11 completeness fields (ClearInput, ClearOutput, BusinessRule, VerificationMethod) live as typed JSONB field `Finding.type_specific_fields` with schema validation per `type` value.
+- G.9 chain traversal: `Change → Execution → AcceptanceCriterion → (AC.source_ref → Finding WHERE type='requirement')` satisfies the 10-link ECITP C12 chain.
+
+Rejected alternative:
+- **A (distinct Requirement table + FK migration)**: correct long-term if test-per-Requirement cardinality > 1 becomes common; defer until empirical signal justifies migration cost.
+- **C (virtual view)**: complex FK semantics; defer.
+
+If empirical data later shows requirement-management distinct from Finding discovery (e.g., requirements carry own approval workflow independent of Finding close status) → supersede with v2 promoting to Option A.
 
 ## Alternatives considered
 
@@ -58,4 +61,5 @@ none
 
 ## Versioning
 
-- v1 (2026-04-24) — skeleton.
+- v1 (2026-04-24) — skeleton OPEN.
+- v2 (2026-04-24) — CLOSED on Option B (Finding-as-Requirement, zero-migration); content DRAFT.
