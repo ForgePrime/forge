@@ -398,11 +398,98 @@ pytest tests/ -x
 
 ---
 
-## Phase G exit gate (G_GOV) — Terminal gate for 7 CCEGAP + 6 ECITP conditions + 3 ECITP continuity definitions (16 total)
+## Stage G.10 — BaselinePostVerification (runtime diff enforcement)
+
+**Closes:** FC §25 Baseline/Post/Diff verification (`Diff = ExpectedDiff ∧ UnexpectedDiff = empty`) + FC §26 Runtime Impact Verification per element (`∀ x ∈ Impact: ∃ runtime_check rc: Observes(rc, x)`). Source: Forge Complete theorem §25 + §26.
+
+**Rationale (ESC-3 root-cause uniqueness):** four enforcement shapes considered for runtime change verification:
+1. Trust post-change code review — **rejected**: violates FC §27 deterministic validation + ECITP §2.8 prior substitution (reviewer opinion ≠ runtime evidence).
+2. Post-only snapshot (capture after change, compare to ExpectedDiff) — **rejected**: cannot detect baseline drift that preceded the change; false negatives on environment contamination.
+3. Per-Execution (every Execution captures baseline+post) — **rejected**: pure-read executions have no diff; overhead waste.
+4. Per-Change with state mutation (captures Baseline before applying Delta, Post after; Diff = ExpectedDiff enforced, auto-rollback on mismatch) — **chosen**: scoped to state-mutating Changes; matches C.4 Reversibility integration (rollback on FAIL).
+
+**Entry conditions:**
+- G_{C.3} = PASS (ImpactClosure provides the per-element reference set for §26).
+- G_{C.4} = PASS (Reversibility classifier + Rollback service — required for auto-rollback on Diff mismatch).
+- G_{G.8} = PASS (snapshot validation infrastructure from P25 — provides the observation primitive).
+- ADR-021 CLOSED (ExpectedDiff schema per Change.type). Stage G.10 is BLOCKED until ADR-021 exists.
+
+**A_{G.10}:**
+- Observation primitives — [CONFIRMED: snapshot_validator from G.8 provides `capture_state(scope) → checksum + observed_values JSONB`; reuse not reinvent].
+- ExpectedDiff schema — [UNKNOWN: ADR-021 per Change.type specifies shape; e.g. for `Change.type='migration'`: `{tables_created: [...], columns_added: [...], rows_affected: <int>}`; for `Change.type='code'`: `{files_added: [...], files_modified: [...], symbols_affected: [...]}`. Schema finalization is ADR-021 scope].
+- Per-element runtime check — [CONFIRMED: every element in ImpactClosure gets one row in `runtime_observations` per phase; missing observation for any element → REJECTED].
+
+**Work:**
+1. Alembic migration: `runtime_observations(id, change_id FK, phase ENUM{'baseline','post'}, impact_element_ref TEXT, check_type ENUM, check_ref TEXT, observed_value JSONB, observed_at TIMESTAMP, sha256 TEXT)`. Unique on `(change_id, phase, impact_element_ref)`.
+2. `app/validation/baseline_post_verifier.py`:
+   - `capture_baseline(change) → None` — for each `x ∈ ImpactClosure(change)`, call `snapshot_validator.capture_state(x)` and insert `runtime_observations(phase='baseline')` row.
+   - `capture_post(change) → None` — same for phase='post' after Delta applied.
+   - `diff(change) → DiffResult` — compare baseline vs post per element; returns `{matches_expected: bool, unexpected_changes: [...], unexpected_identities: [...]}`.
+   - `BaselinePostCheck.evaluate(change) → Verdict` — PASS iff:
+     - Every `x ∈ ImpactClosure(change)` has `runtime_observations` row with `phase='baseline'` AND one with `phase='post'`.
+     - `diff(change).unexpected_changes = ∅` (everything that changed was in ExpectedDiff).
+     - `diff(change).unexpected_identities = ∅` (everything that should have changed did — ExpectedDiff ⊆ actual Diff).
+3. VerdictEngine integration:
+   - Pre-apply hook: `capture_baseline(change)` runs; if any element unreachable → REJECTED with reason=`baseline_capture_failed: <element>`.
+   - Apply: Delta executed.
+   - Post-apply hook: `capture_post(change)` runs; `BaselinePostCheck.evaluate(change)` runs; if REJECTED → auto-invoke `rollback_service.attempt(change)` (per C.4) + mark Change.status=`diff_mismatch_rolled_back`.
+4. ExpectedDiff declaration: `Change.expected_diff JSONB NOT NULL` per ADR-021 schema. Change insert without ExpectedDiff → REJECTED at insert.
+
+**Exit test T_{G.10} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: Change without ExpectedDiff declared → REJECTED at insert
+pytest tests/test_baseline_post.py::test_missing_expected_diff_rejected -x
+# PASS: INSERT INTO changes without expected_diff → IntegrityError / Verdict REJECTED
+
+# T3: Change with Baseline capture failure → REJECTED
+pytest tests/test_baseline_post.py::test_baseline_capture_failure -x
+# PASS: ImpactClosure includes unreachable element (e.g. deleted table) → REJECTED
+# with reason='baseline_capture_failed: <element_ref>'
+
+# T4: Change with Diff = ExpectedDiff → PASS
+pytest tests/test_baseline_post.py::test_matching_diff_passes -x
+# PASS: Baseline and Post captured for every ImpactClosure element; observed diff
+# equals expected_diff; zero unexpected_changes AND zero unexpected_identities
+
+# T5: Change with Diff ≠ ExpectedDiff → REJECTED + auto-rollback triggered
+pytest tests/test_baseline_post.py::test_unexpected_diff_rollback -x
+# PASS: synthetic Change where actual diff includes extra table creation not in
+# expected_diff → REJECTED, Change.status='diff_mismatch_rolled_back',
+# rollback_service.attempt invoked, state restored to Baseline checksum
+
+# T6: per-element coverage — missing runtime_observation for any ImpactClosure element → REJECTED
+pytest tests/test_baseline_post.py::test_missing_element_observation_rejected -x
+# PASS: ImpactClosure = {a, b, c}; runtime_observations only for {a, b} → REJECTED
+# with reason='missing_runtime_check: c'
+
+# T7: integration with C.4 Reversibility on REVERSIBLE Change
+pytest tests/test_baseline_post.py::test_c4_integration_reversible -x
+# PASS: REVERSIBLE Change with diff mismatch → rollback succeeds + Post' checksum
+# matches Baseline checksum exactly (byte-identical state restore)
+
+# T8: integration with C.4 on IRREVERSIBLE Change → explicit incident, no silent drop
+pytest tests/test_baseline_post.py::test_c4_integration_irreversible -x
+# PASS: IRREVERSIBLE Change with diff mismatch → Change.status='diff_mismatch_irreversible';
+# Incident filed with severity=CRITICAL; no automatic rollback attempt (by design)
+
+# T9: regression
+pytest tests/ -x
+```
+
+**Gate G_{G.10}:** T1–T9 pass + ADR-021 CLOSED → PASS. **FC §25 + §26 closed** structurally: every state-mutating Change captures Baseline before + Post after for every ImpactClosure element; observed Diff must equal declared ExpectedDiff; mismatch triggers auto-rollback (REVERSIBLE) or CRITICAL incident (IRREVERSIBLE); silent drift mechanically impossible.
+
+**ESC-4 impact:** `runtime_observations` table (new); Change schema (+`expected_diff JSONB NOT NULL`); VerdictEngine pre/post-apply hooks (+2); integrates with G.8 snapshot_validator (consumer-side reuse) + C.4 rollback_service (consumer-side reuse); ADR-021 (new). **ESC-5 invariants preserved:** C.4 Reversibility classification semantics unchanged; G.8 snapshot_validator interface additive; E.2 Invariant.check_fn still runs at commit (orthogonal to Diff verification — invariants check state validity, BaselinePost checks change correctness). **ESC-7 failure modes:** (a) ImpactClosure false-positive causes baseline capture of irrelevant state → captured but never in Diff (no impact); (b) concurrent change during observation window → Change.status='concurrent_mutation_detected' + REJECTED (new Change.lock mechanism required, or retry at lower-level); (c) IRREVERSIBLE Change with unexpected diff → no silent rollback (by design per C.4); CRITICAL incident triggers Steward sign-off for recovery; (d) ExpectedDiff schema evolution → ADR-021 versioning; old Changes retain old schema via `expected_diff_schema_version` field.
+
+---
+
+## Phase G exit gate (G_GOV) — Terminal gate for 7 CCEGAP + 6 ECITP conditions + 3 ECITP continuity definitions + 5 FC critical gaps (21 total)
 
 ```
 G_GOV = PASS iff:
-  G_{G.1} through G_{G.9} all PASS  (incl. G.9 ProofTrailCompleteness + ECITP C6/C11 REJECT-promotion)
+  G_{G.1} through G_{G.10} all PASS  (incl. G.9 ProofTrailCompleteness + ECITP C6/C11 REJECT-promotion + G.10 BaselinePostVerification)
   AND pytest tests/ -x → all 6 prior plans' tests + Governance tests green
   AND FRAMEWORK_MAPPING.md §12: every acknowledged gap is RESOLVED or has Steward-signed ACKNOWLEDGED_GAP record
   AND 7 metrics live: GET /projects/{slug}/metrics returns all 7 non-null
@@ -412,6 +499,7 @@ G_GOV = PASS iff:
   AND proof_trail_audit.py exits 0: every Change has complete 10-link causal chain (G.9)
   AND feature_flags CAUSAL_RELATION_SEMANTIC_REJECT=true (G.9 promotes B.6)
   AND feature_flags STRUCTURED_TRANSFER_REJECT=true (G.9 promotes F.10)
+  AND every state-mutating Change has Baseline + Post runtime observations for every ImpactClosure element AND Diff = ExpectedDiff (G.10)
 ```
 
 **Final soundness validation — CCEGAP 7 + ECITP 6 conditions (C3, C6, C7, C8, C11, C12) + ECITP 3 continuity definitions (§2.3, §2.4, §2.7) = 16 mechanical checks:**
@@ -434,6 +522,11 @@ G_GOV = PASS iff:
 | 14 | ECITP §2.3 — Evidence continuity | Property test: 10,000 random DAG+task pairs; every decision-relevant ancestor edge in projection | T_{B.4} T2b |
 | 15 | ECITP §2.4 — Ambiguity continuity | Property test: 10,000 random execution chains; UNKNOWN persists until `resolved_uncertainty` record exists | T_{F.4} T5 |
 | 16 | ECITP §2.7 — Explicit invalidation | Silent prior-K drop → REJECTED; explicit `invalidated_evidence_refs` with reason_code → PASS | T_{E.7} T7 |
+| 17 | FC §8 — Source Consistency | SourceConflictDetector: literal-value mismatches on `(entity_ref, field_name)` → `source_conflicts` row + Finding; unresolved in task ancestor closure → BLOCKED | T_{B.7} T2, T4 |
+| 18 | FC §15 — Change Set Completeness | `Execution.in_scope_refs ∪ out_of_scope_refs ⊇ ImpactClosure`; unjustified elements → REJECTED | T_{E.8} T2, T3 |
+| 19 | FC §16+§17+§18+§19 — Candidate Solution Evaluation | architectural Decisions: ≥2 candidates, 14-dim Score, argmax selection, Necessary(c) evidence | T_{F.11} T2-T5, T8 |
+| 20 | FC §37 — No unaccepted Technical Debt | Debt markers in Change.diff require `technical_debt` row with authorized `accepted_by` | T_{F.12} T2, T3 |
+| 21 | FC §25+§26 — Baseline/Post/Diff + per-element runtime verification | Every state-mutating Change: Baseline + Post observations per ImpactClosure element; Diff = ExpectedDiff; mismatch → auto-rollback | T_{G.10} T4, T5, T6 |
 
 When G_GOV = PASS, the platform satisfies the seven soundness conditions **structurally at the per-execution level** via enforced mechanical constraints (not by convention, not by LLM discipline). **System-level soundness** (across sessions, under concurrency, with novel task types not seen during development) is **NOT** established by G_GOV and requires separate post-G_GOV work: soak tests, multi-agent concurrency tests, fidelity-at-scale tests, and empirical coverage of the RequiredInfo projection beyond the 10 historical fixtures in T_{B.4} T2. See AUTONOMOUS_AGENT_FAILURE_MODES.md §2.2, §2.4.
 
@@ -466,3 +559,4 @@ When G_GOV = PASS, the platform satisfies the seven soundness conditions **struc
 | Q5 | OPERATING_MODEL §7.1 seven metrics: cross-check that FRAMEWORK_MAPPING.md §7 bindings match §7.1 definitions before G.3 collectors implemented. | Stage G.3 (drift check — informational if bindings match; BLOCKING if discrepancy → file Finding and escalate to Steward) |
 | Q6 | ADR-015 Requirement entity — either (a) promote `Finding.type='requirement'` to distinct `Requirement` table, OR (b) accept Finding-as-Requirement in proof-trail audit. ADR file must exist with `Status: CLOSED` before G.9 start. | Stage G.9 (BLOCKING — ECITP C12) |
 | Q7 | ADR-016 Test entity — either (a) promote `AcceptanceCriterion.scenario_type` to distinct `Test` table, OR (b) accept AC+scenario_type as the chain's test link. ADR file must exist with `Status: CLOSED` before G.9 start. | Stage G.9 (BLOCKING — ECITP C12) |
+| Q8 | ADR-021 ExpectedDiff schema per Change.type — shape of `Change.expected_diff` JSONB for migrations, code changes, config changes. ADR file must exist with `Status: CLOSED` before G.10 start. | Stage G.10 (BLOCKING — FC §25+§26) |

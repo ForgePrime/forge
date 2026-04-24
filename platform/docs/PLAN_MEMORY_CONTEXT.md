@@ -19,6 +19,7 @@
 | **C3** — Timely delivery | ECITP | All required info materialized in P_i BEFORE F_i executes; no post-hoc compensation. Enforced at Execution state transition (pending → IN_PROGRESS). | Stage B.5 exit (WARN); auto-promotes to REJECT at G_{E.1} |
 | **C6** — Topology preservation | ECITP | Semantic dependency relations (requirement ↔ risk ↔ AC ↔ test) survive transfer via `causal_edges.relation_semantic` ENUM; CausalGraph exposes relation-typed queries. | Stage B.6 exit (WARN); promotes to REJECT at G.9 |
 | **§2.3** — Evidence continuity | ECITP | B.4 T2b property test over 10,000 random DAG+task pairs: every decision-relevant ancestor edge in `Relevant(E_i)` appears in `ContextProjection(task_j)` for j > i. Not just spot-check on 10 historical — structural propagation enforced. | Stage B.4 exit (strengthened from T2 spot-check) |
+| **§8** — Source Consistency (no silent contradictions) | FC | SourceConflictDetector emits `source_conflicts` rows for literal-value mismatches on `(entity_ref, field_name)` across Knowledge; unresolved conflict in task ancestor closure → Execution BLOCKED. Deterministic (hash-equality), no LLM. | Stage B.7 exit |
 
 Conditions 2 (Suff), 4 (A_i propagated), 5 (deterministic T_i), 6 (gate), 7 (Missing→Stop) are NOT closed by this plan. They depend on PLAN_GATE_ENGINE (5, 6) and PLAN_CONTRACT_DISCIPLINE (2, 4, 7).
 
@@ -347,6 +348,70 @@ pytest tests/ -x
 
 ---
 
+## Stage B.7 — SourceConflictDetector
+
+**Closes:** FC §8 Source Consistency — `Contradicts(x, y) ⇒ ConflictRecorded(x, y)` and `UnresolvedConflict(x, y) ⇒ STOP`. Source: Forge Complete theorem §8.
+
+**Rationale (ESC-3 root-cause uniqueness):** three enforcement designs considered:
+1. Inline conflict check at Knowledge insert — **rejected**: contradictions emerge cross-document, not at single-row insert time; single-row check cannot see the other side.
+2. LLM-based semantic contradiction detection — **rejected**: violates ESC-1 determinism; re-introduces exactly the statistical-prior pathology FC §34 prohibits.
+3. Periodic + on-demand deterministic batch scan with blocking Finding — **chosen**: groups Knowledge by `(entity_ref, field_name)` and flags literal-value mismatches; deterministic (hash-based equality), re-runnable, and cooperates with existing Finding/BLOCKED flow (F.4 pattern).
+
+**Entry conditions:**
+- G_{B.2} = PASS (Knowledge FK relations in CausalEdge).
+- G_{B.6} = PASS (relation_semantic ENUM; conflict-detector classifies relations).
+
+**A_{B.7}:**
+- Conflict-detection scope: exact literal-value mismatch on `(entity_ref, field_name)` pairs — [CONFIRMED: scope = literal equality, not semantic paraphrase per ESC-1 determinism]. Paraphrase-level conflict detection out of scope (would require LLM; violates determinism).
+- UNKNOWN handling: rows with `value IS NULL` or `value = '[UNKNOWN]'` treated as non-contradictory (CONTRACT §B.2 compatible — UNKNOWN ≠ contradiction with known) — [CONFIRMED].
+
+**Work:**
+1. Alembic migration: `source_conflicts(id, source_a_id, source_b_id, entity_ref, field_name, value_a, value_b, detected_at, resolved_at NULL, resolution_decision_id NULL FK → decisions.id)`. Unique on `(source_a_id, source_b_id, entity_ref, field_name)` sorted (canonical) to prevent duplicate symmetric rows.
+2. `scripts/detect_source_conflicts.py` — deterministic scan:
+   - For each `(entity_ref, field_name)` group in `knowledge`, if |distinct non-NULL values| > 1 → emit `source_conflicts` row per pair + `Finding(severity=HIGH, kind='source_conflict')`.
+3. Pre-execution validator: at `Execution.pending → IN_PROGRESS` transition (extends B.5 TimelyDeliveryGate), if any `source_conflicts` row where both `source_a` and `source_b` are in `ancestors(task) ∩ causal_edges` AND `resolved_at IS NULL` → BLOCKED with reason=`unresolved_source_conflict`.
+4. Resolution mechanism: `Decision(type='conflict_resolution', resolves_conflict_id FK)` with EvidenceSet citing which source wins + why. `resolution_decision_id` populated + `resolved_at = now()`.
+5. Periodic CI cron: nightly full-DB scan; new conflicts emit Findings.
+
+**Exit test T_{B.7} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: synthetic conflict detected (deterministic — hash-equality based)
+pytest tests/test_source_conflict_detector.py::test_literal_mismatch -x
+# PASS: two Knowledge rows with same (entity_ref, field_name) and different literal values
+#       → exactly one source_conflicts row emitted + Finding(kind='source_conflict')
+
+# T3: UNKNOWN-vs-known is NOT a conflict
+pytest tests/test_source_conflict_detector.py::test_unknown_not_conflict -x
+# PASS: Knowledge rows where one is '[UNKNOWN]' and other is 'concrete_value'
+#       → no source_conflicts row emitted
+
+# T4: Execution with unresolved conflict in ancestor closure → BLOCKED
+pytest tests/test_source_conflict_detector.py::test_unresolved_blocks_execution -x
+# PASS: task whose ancestors include both conflicting sources → Execution.status=BLOCKED
+#       with blocked_reason='unresolved_source_conflict'
+
+# T5: resolution via Decision unblocks
+pytest tests/test_source_conflict_detector.py::test_resolution_unblocks -x
+# PASS: Decision(type='conflict_resolution', resolves_conflict_id=X) with EvidenceSet
+#       → source_conflicts[X].resolved_at populated → next Execution transition PASSES
+
+# T6: idempotency — re-running scan produces same rows (no duplicates)
+python scripts/detect_source_conflicts.py && python scripts/detect_source_conflicts.py
+# source_conflicts row count identical after second run (ESC-1 determinism)
+
+# T7: regression
+pytest tests/ -x
+```
+
+**Gate G_{B.7}:** T1–T7 pass → PASS. **FC §8 Source Consistency closed** structurally: conflicts detected deterministically + blocking at execution gate + explicit resolution path.
+
+**ESC-4 impact:** `source_conflicts` table (new); extends B.5 TimelyDeliveryGate with one additional check; Decision.type enum extended (add `'conflict_resolution'`); CI cron job (new). No existing code paths removed. **ESC-5 invariants preserved:** F.4 BLOCKED semantic unchanged (new `blocked_reason` value, same state machine); B.5 gate extends additively. **ESC-7 failure modes:** (a) high-volume duplicate detection on large DB → `LIMIT` + batched scan per entity_ref group; (b) schema-evolution (field rename across sources) masquerades as conflict → resolution via explicit Decision with EvidenceSet citing the rename ADR; (c) detection lag between Knowledge insert and CI cron → same-transaction pre-execution check (step 3) catches intra-task conflicts immediately even before cron runs.
+
+---
+
 ## Phase B exit gate (G_B)
 
 ```
@@ -357,6 +422,7 @@ G_B = PASS iff:
   AND G_{B.4} = PASS  (ContextProjector live behind flag, fidelity + determinism confirmed)
   AND G_{B.5} = PASS  (TimelyDeliveryGate — ECITP C3 closed in WARN, auto-promotes to REJECT at G_{E.1})
   AND G_{B.6} = PASS  (SemanticRelationTypes — ECITP C6 closed in WARN, promotes at G.9)
+  AND G_{B.7} = PASS  (SourceConflictDetector — FC §8; unresolved conflicts in task ancestor closure → BLOCKED)
   AND pytest tests/ -x → all existing + Gate Engine + Memory tests green
   AND every new Decision|Change|Finding has ≥ 1 CausalEdge OR is flagged as an objective-root (e.g. Decision.is_objective_root = true) — DB invariant query:
       SELECT count(*) FROM (decisions UNION changes UNION findings) d

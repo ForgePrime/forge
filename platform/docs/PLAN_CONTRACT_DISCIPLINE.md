@@ -21,6 +21,9 @@
 | **§2.7** — Explicit invalidation (legitimate K drop) | ECITP | `Execution.invalidated_evidence_refs` records any prior evidence drop + reason_code; silent drop → REJECTED with reason=silent_invalidation_violation_§2.7 | Stage E.7 exit |
 | **§2.3** — Evidence continuity (cross-stage propagation) | ECITP | B.4 T2b property test over 10,000 random DAG+task pairs asserts every decision-relevant ancestor edge appears in ContextProjection | MEMORY Stage B.4 exit |
 | **§2.4** — Ambiguity continuity (cross-stage persistence) | ECITP | F.4 T5 property test over 10,000 random execution chains asserts UNKNOWN persists until resolved-uncertainty record exists | Stage F.4 exit |
+| **§15** — Change Set Completeness (scope boundary) | FC | `Execution.in_scope_refs ∪ out_of_scope_refs ⊇ ImpactClosure(change)`; unjustified elements → REJECTED with diagnostic path list | Stage E.8 exit |
+| **§16+§17+§18+§19** — Candidate Solution Evaluation | FC | architectural Decisions require ≥2 structured candidates with 14-dimension Score (positive minus negative); selection = argmax; necessary_components justified via Necessary(c) evidence_ref | Stage F.11 exit (blocked on ADR-019) |
+| **§37** — No unaccepted Technical Debt | FC | Debt-marker detector (grep regex on Change.diff) + mandatory `technical_debt` row with authorized `accepted_by` + `accepted_role ∈ ADR-020 allowlist`; silent TODO accumulation REJECTED | Stage F.12 exit (blocked on ADR-020) |
 | **C11** — Downstream inheritance (no NL-only transfer) | ECITP | StructuredTransferGate rejects ContextProjection that is NL-only or missing any of 6 structural categories (requirements, evidence_refs, ambiguity_state, test_obligations, dependency_relations, hard_constraints); no fallback path in codebase (grep-gate) | Stage F.10 exit |
 
 CCEGAP conditions 1, 3, 5, 6 are closed by PLAN_MEMORY_CONTEXT and PLAN_GATE_ENGINE. ECITP conditions C3, C6 are closed by PLAN_MEMORY_CONTEXT B.5/B.6. ECITP C12 is closed by PLAN_GOVERNANCE G.9.
@@ -322,6 +325,61 @@ pytest tests/ -x
 
 ---
 
+### Stage E.8 — ScopeBoundaryDeclaration
+
+**Closes:** FC §15 Change Set Completeness — `∀ x ∈ Impact: ChangeRequired(x) OR NoChangeJustified(x) OR OutOfScopeExplicit(x)`. Source: Forge Complete theorem §15.
+
+**Rationale (ESC-3 root-cause uniqueness):** three designs considered:
+1. Implicit scope = ImpactClosure (everything in closure auto-in-scope) — **rejected**: ImpactClosure is automatic and broad; includes interface-only dependents that the change does not actually modify. Without explicit author declaration, "OutOfScope" is silent — violates FC §15.
+2. Allowlist/denylist per repo/config — **rejected**: too rigid; scope varies per task type; config drift not tracked.
+3. Explicit `Execution.in_scope_refs + out_of_scope_refs` with reason codes — **chosen**: forces author to *name* what's intentionally excluded; makes scope boundary a first-class artifact; integrates with C.3 ImpactClosure output at commit time.
+
+**Entry conditions:**
+- G_{C.3} = PASS (ImpactClosure exists — provides the reference set).
+- G_{E.7} = PASS (Execution state-machine already extended; E.8 adds two more JSONB columns in same migration pattern).
+
+**A_{E.8}:**
+- Out-of-scope reason codes — [CONFIRMED: enum `{interface_only_reexport, test_infra, config_only, out_of_scope_by_design, deferred_to_change_N}` — derived from existing refactor patterns in Forge codebase]. Open addition path: new reason codes require ADR per CONTRACT §A.
+- In-scope granularity: file-level paths (not line-level) — [ASSUMED: file-level matches C.3 ImpactClosure granularity; line-level would require parser integration out of scope here].
+
+**Work:**
+1. Alembic migration: `Execution.in_scope_refs JSONB NOT NULL DEFAULT '[]'::jsonb`, `Execution.out_of_scope_refs JSONB NOT NULL DEFAULT '[]'::jsonb` (each entry: `{path: str, reason: enum}`), `Execution.unjustified_in_closure JSONB NULL` (computed at commit).
+2. `app/validation/scope_boundary.py`:
+   - `ScopeBoundaryCheck.evaluate(execution) → Verdict` — computes `unjustified = ImpactClosure(change) ∖ (set(in_scope_refs) ∪ set(out_of_scope_refs))`; PASS iff `unjustified = ∅`; FAIL with list of unjustified paths otherwise.
+3. VerdictEngine commit hook: runs after E.7 EpistemicProgressCheck; REJECT → reason=`scope_boundary_incomplete: <paths>`.
+4. UI/API diagnostic: unjustified list surfaced in Execution response so author can either add to in_scope (and actually modify) or to out_of_scope (with reason).
+
+**Exit test T_{E.8} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: Change with ImpactClosure={f.py, g.py, h.py}, in_scope=[f.py], out_of_scope=[] → REJECTED
+pytest tests/test_scope_boundary.py::test_unjustified_rejected -x
+# PASS: unjustified = {g.py, h.py} → REJECTED with reason listing both paths
+
+# T3: Change with all closure elements accounted for → PASS
+pytest tests/test_scope_boundary.py::test_complete_closure_passes -x
+# PASS: in_scope ∪ out_of_scope ⊇ ImpactClosure → ScopeBoundaryCheck PASS
+
+# T4: out_of_scope with invalid reason code → REJECTED at insert
+pytest tests/test_scope_boundary.py::test_invalid_reason_rejected -x
+# PASS: out_of_scope entry with reason='just_because' → CHECK constraint violation at DB
+
+# T5: unjustified field populated on REJECT for diagnostic
+pytest tests/test_scope_boundary.py::test_unjustified_field_populated -x
+# PASS: REJECTED execution has Execution.unjustified_in_closure = [<paths>] non-empty
+
+# T6: regression
+pytest tests/ -x
+```
+
+**Gate G_{E.8}:** T1–T6 pass → PASS. **FC §15 Change Set Completeness closed** structurally: every impacted element is either changed, explicitly justified as unchanged, or explicitly out-of-scope with reason code.
+
+**ESC-4 impact:** `executions` table (+3 JSONB columns), VerdictEngine commit chain (+1 check after E.7); integrates with C.3 ImpactClosure output (consumer-side, no change to C.3). Diagnostic API response field. **ESC-5 invariants preserved:** E.7 EpistemicProgressCheck still runs (E.8 runs after); F.10 StructuredTransferGate still runs (E.8 orthogonal). **ESC-7 failure modes:** (a) ImpactClosure false-positive includes auto-generated file → add to out_of_scope with `reason=test_infra` or `config_only`; (b) closure mutation between compute and check → ScopeBoundaryCheck captures closure at check time (snapshot); (c) author forgets to update boundary after adding import → next E.8 run catches, re-REJECTED.
+
+---
+
 ## Phase F — Decision discipline
 
 ### Stage F.1 — Evidence source constraint (P17 full)
@@ -576,18 +634,165 @@ pytest tests/ -x
 
 ---
 
+### Stage F.11 — CandidateSolutionEvaluation
+
+**Closes:** FC §16 Candidate Solution Set + §17 Hard Feasibility Constraints + §18 Anti-Overengineering Rule + §19 Optimal Solution Selection. Source: Forge Complete theorem §16–§19.
+
+**Rationale (ESC-3 root-cause uniqueness):** four enforcement designs considered for multi-candidate discipline:
+1. Free-form prose "we considered alternatives" — **rejected**: violates FC §19 determinism (no argmax possible); violates ECITP §2.7 additive (no structured knowledge transfer); this is the current implicit behavior that FC §16 prohibits.
+2. ≥2 structured candidates with deterministic Score(x) over 14 dimensions — **chosen**: matches theorem exactly; enables argmax; Necessary(c) test mechanically defined.
+3. Single-candidate fast path for trivial changes — **rejected as default** but *retained* as an explicit `Decision.type='trivial_change'` bypass path gated on `change_size ≤ threshold` AND `impact_closure_size ≤ 1`; all non-trivial decisions require ≥2 candidates.
+4. LLM ranks candidates — **rejected**: violates ESC-1 determinism; precisely the prior-substitution failure mode FC §34 and ECITP §2.8 prohibit.
+
+**Entry conditions:**
+- G_{E.1} = PASS (ContractSchema — required for candidate `architecture_ref`, `datamodel_ref` typed fields).
+- ADR-019 CLOSED (scoring weights for 14 dimensions — who sets them, how balanced). Stage F.11 is BLOCKED until ADR-019 exists with `Status: CLOSED`.
+
+**A_{F.11}:**
+- 14 scoring dimensions — [CONFIRMED: exact list from FC §19: positive = `{business_fit, determinism, consistency, traceability, testability, runtime_verifiability, evolvability, resilience, justification_completeness}`; negative = `{complexity, coupling, duplication, technical_debt, operational_risk, expected_future_cost}`].
+- Weights per dimension — [UNKNOWN: domain decision; ADR-019 must specify. Default strawman all-equal is rejected per ESC-3 (weights matter; defaults violate FC §19 "best total value").].
+- Trivial-change bypass threshold — [UNKNOWN: `change_size` LOC limit + `impact_closure_size` limit; domain decision per ADR-019].
+
+**Work:**
+1. Alembic migrations:
+   - `solution_candidates(id, decision_id FK, summary, architecture_ref, codedesign_ref, datamodel_ref, dependencies_refs JSONB, testing_strategy_ref, operational_impact, future_impact, risk_refs JSONB, cost, debt_assessment, necessary_components_list JSONB)`.
+   - `solution_scores(id, candidate_id FK, dimension ENUM[14 values], value NUMERIC, evidence_ref, scored_by, scored_at)`. Unique on `(candidate_id, dimension)`.
+2. `app/validation/candidate_evaluation.py`:
+   - `CandidateEvaluationCheck.evaluate(decision) → Verdict` — for `Decision.type ∈ {'architectural', 'solution_selection'}`:
+     - Require `len(solution_candidates WHERE decision_id = decision.id) >= 2`.
+     - Require for each candidate: all 14 `solution_scores` rows with non-null `value` AND `evidence_ref`.
+     - Compute `Score(c) = Σ (weight_d × value_{c,d})` per ADR-019 weights.
+     - Selected candidate (`Decision.selected_candidate_id`) MUST equal `argmax_c Score(c)` — selection that is not argmax → REJECTED.
+   - Anti-overengineering check (FC §18 Necessary(c)):
+     - For each element `c ∈ necessary_components_list` of selected candidate: require `c.justification_evidence_ref` citing which requirement/invariant/scalability bound/resilience bound/validated future scenario `c` satisfies. Empty or wildcard `"general_utility"` → REJECTED.
+3. Trivial-change bypass: `Decision.type='trivial_change'` allowed only when gate `TrivialChangeGate` passes: `change_size <= threshold_loc AND impact_closure_size <= 1`. Gate deterministic.
+
+**Exit test T_{F.11} (deterministic):**
+```bash
+# T1: migrations round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: architectural Decision with 1 candidate → REJECTED
+pytest tests/test_candidate_evaluation.py::test_single_candidate_rejected -x
+# PASS: Decision.type='architectural', len(candidates)=1 → REJECTED with reason='fewer_than_2_candidates'
+
+# T3: architectural Decision with 2 candidates but missing score dimension → REJECTED
+pytest tests/test_candidate_evaluation.py::test_missing_score_dim_rejected -x
+# PASS: candidate A has 14 scores, candidate B has 13 → REJECTED with reason listing missing dim
+
+# T4: selection not equal to argmax → REJECTED
+pytest tests/test_candidate_evaluation.py::test_non_argmax_selection_rejected -x
+# PASS: candidate A Score=82, candidate B Score=75; Decision.selected = B → REJECTED
+
+# T5: anti-overengineering — component without Necessary() evidence_ref
+pytest tests/test_candidate_evaluation.py::test_unnecessary_component_rejected -x
+# PASS: necessary_components_list has entry c with evidence_ref=NULL or justification='general_utility' → REJECTED
+
+# T6: trivial-change bypass allowed under threshold
+pytest tests/test_candidate_evaluation.py::test_trivial_change_bypass -x
+# PASS: Decision.type='trivial_change' with change_size=5 LOC, impact_closure_size=1 → PASS without multi-candidate
+
+# T7: trivial-change bypass REJECTED above threshold
+pytest tests/test_candidate_evaluation.py::test_trivial_change_over_threshold -x
+# PASS: Decision.type='trivial_change' with change_size > threshold → REJECTED, force to 'architectural'
+
+# T8: valid multi-candidate argmax selection → PASS
+pytest tests/test_candidate_evaluation.py::test_valid_selection_passes -x
+
+# T9: regression
+pytest tests/ -x
+```
+
+**Gate G_{F.11}:** T1–T9 pass + ADR-019 CLOSED → PASS. **FC §16+§17+§18+§19 closed** structurally: architectural decisions require ≥2 candidates, 14-dimension scored, argmax-selected, with Necessary(c) justified components.
+
+**ESC-4 impact:** Two new tables (`solution_candidates`, `solution_scores`); VerdictEngine commit chain (+1 check for architectural Decision.type); new Decision.type values (`trivial_change`, `architectural`, `solution_selection`); ADR-019 (new). **ESC-5 invariants preserved:** F.3/F.4/F.10 all run before F.11; E.7 EpistemicProgressCheck still runs; scoring is deterministic (sum of products, no LLM). **ESC-7 failure modes:** (a) 14 dimensions over-engineering the check itself → mitigated by ADR-019 setting meaningful weights (trivial dimensions get weight=0); (b) tie in Score(x) between candidates → tie-breaker rule in ADR-019 (deterministic, e.g. lowest complexity dim, then candidate ID); (c) necessary_components_list padded with "required for future flexibility" (evasion) → evidence_ref MUST cite concrete requirement/invariant — wildcards REJECTED (see T5).
+
+---
+
+### Stage F.12 — TechnicalDebtTracking
+
+**Closes:** FC §37 No Technical Debt Rule — `Debt(Delta) = 0 within known required scope` AND "no known required correction may be deferred unless explicitly accepted as debt." Source: Forge Complete theorem §37.
+
+**Rationale (ESC-3 root-cause uniqueness):** three enforcement shapes considered:
+1. No formal tracking (cultural discipline only, CONTRACT §A) — **rejected**: violates FC §37 operationally; allows silent accumulation; violates ASPS §16 visible-skip.
+2. Detect-only with informational logging — **rejected**: does not block; enables shortcut economics where skipping is cheap.
+3. Detect + mandatory `technical_debt` row with `accepted_by` before commit — **chosen**: makes debt visible, countable, reviewable; integrates with Steward sign-off (G.5) for accept-by authorization.
+
+**Entry conditions:**
+- G_{F.4} = PASS (BLOCKED state pattern extended for debt-unacceptance).
+- ADR-020 CLOSED (debt category enum finalized). Stage F.12 is BLOCKED until ADR-020 exists.
+
+**A_{F.12}:**
+- Debt marker patterns detected — [CONFIRMED: grep patterns `\bTODO\b`, `\bFIXME\b`, `\bHACK\b`, `\bXXX\b`, `NotImplementedError`, `raise\s+NotImplemented`, `pass\s*#\s*(TODO|placeholder)` — canonical across Python/JS/TypeScript. Extension to other languages requires ADR update.].
+- Debt category enum — [UNKNOWN: ADR-020 must finalize; candidates per FC §37: `{incomplete_validation, duplicated_logic, weak_contract, temporary_workaround, deferred_refactor, untested_edge_case, missing_monitoring, known_regression}`].
+- Who can `accepted_by` — [ASSUMED: role ∈ `{steward, platform_engineer, tech_lead}` per G.5; ADR-020 can narrow further].
+
+**Work:**
+1. Alembic migration: `technical_debt(id, change_id FK, category ENUM[per ADR-020], description, reason, accepted_by FK→users.id, accepted_role ENUM, created_at, resolved_by_change_id FK NULL, resolved_at TIMESTAMP NULL)`.
+2. `scripts/detect_debt_markers.py` — deterministic grep-based scan of Change diff:
+   - Input: Change.diff (unified diff of files_added + files_modified).
+   - Output: list of `(file_path, line_no, marker_type, context_line)` for each regex match.
+3. `app/validation/technical_debt.py`:
+   - `TechnicalDebtCheck.evaluate(change) → Verdict` — at Change commit:
+     - Run `detect_debt_markers.py` on `change.diff`.
+     - For each detected marker, require matching `technical_debt` row with `change_id = change.id` AND `accepted_by IS NOT NULL` AND `accepted_role ∈ ADR-020 allowed roles`.
+     - Any marker without matching accepted Debt row → REJECTED with reason=`unaccepted_technical_debt: <file:line>`.
+4. Resolution path: Change that removes the marker sets `technical_debt.resolved_by_change_id = <this change>` and `resolved_at = now()`. Audit query: open-debt count per category.
+
+**Exit test T_{F.12} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: Change with '# TODO: fix later' and no technical_debt row → REJECTED
+pytest tests/test_technical_debt.py::test_unaccepted_todo_rejected -x
+# PASS: Change.diff contains 'TODO' + no matching technical_debt row → REJECTED with
+# reason='unaccepted_technical_debt: path/to/file.py:42'
+
+# T3: Change with TODO + matching technical_debt row + accepted_by → PASS
+pytest tests/test_technical_debt.py::test_accepted_debt_passes -x
+# PASS: technical_debt(change_id=X, category='deferred_refactor', accepted_by=steward_user_id,
+# accepted_role='steward') exists → Change commit succeeds
+
+# T4: accepted_role outside ADR-020 allow-list → REJECTED
+pytest tests/test_technical_debt.py::test_unauthorized_accepted_role_rejected -x
+# PASS: accepted_role='random_dev' → REJECTED with reason='unauthorized_debt_acceptance_role'
+
+# T5: resolution path: Change removing TODO + resolved_by_change_id populated
+pytest tests/test_technical_debt.py::test_resolution_path -x
+# PASS: Change whose diff removes the TODO line + sets resolved_by_change_id=<this>
+# → technical_debt.resolved_at populated; audit query shows debt closed
+
+# T6: idempotency — re-run detector gives same marker set
+python scripts/detect_debt_markers.py --change-id=X &&
+python scripts/detect_debt_markers.py --change-id=X | diff - expected_markers_X.txt
+# exits 0 (same output)
+
+# T7: regression
+pytest tests/ -x
+```
+
+**Gate G_{F.12}:** T1–T7 pass + ADR-020 CLOSED → PASS. **FC §37 closed**: every deferred-work marker in committed code requires explicit `technical_debt` row with authorized `accepted_by`; silent accumulation is mechanically impossible.
+
+**ESC-4 impact:** New `technical_debt` table; grep-based detector script (new); VerdictEngine commit chain for Change (+1 check); ADR-020 (new). **ESC-5 invariants preserved:** F.3 assumption tags still REJECT for untagged NonTrivial claims (orthogonal to debt markers); F.4 BLOCKED still halts on UNKNOWN; C.4 Reversibility still classifies Change.reversibility_class (independent concern). **ESC-7 failure modes:** (a) new debt marker pattern (e.g. language-specific `@Deprecated`) not in detector regex → ADR-020 update path; until then, false-negatives tracked in `detect_debt_markers.py` docstring as known limitations; (b) accepted_by user leaves org → `technical_debt.accepted_role_at_time_of_acceptance` immutable audit record (role captured at acceptance, not dynamically); (c) legitimate documentation mentioning "TODO" in comment about someone else's code → detector scans only `added_lines` in diff, not pre-existing lines; ADR-020 can add whitelist for doc strings.
+
+---
+
 ## Phase E+F exit gate (G_CD)
 
 ```
 G_CD = PASS iff:
-  G_{E.1} through G_{E.7} all PASS  (self-adjoint contract, invariants, autonomy, reachability, modes, diagonalization, epistemic progression)
-  AND G_{F.1} through G_{F.10} all PASS  (evidence discipline, uncertainty blocking, root cause, disclosure, independence, SR-1/2/3, structured transfer)
+  G_{E.1} through G_{E.8} all PASS  (self-adjoint contract, invariants, autonomy, reachability, modes, diagonalization, epistemic progression, scope boundary)
+  AND G_{F.1} through G_{F.12} all PASS  (evidence discipline, uncertainty blocking, root cause, disclosure, independence, SR-1/2/3, structured transfer, candidate evaluation, technical debt tracking)
   AND pytest tests/ -x → all prior phase + Contract Discipline tests green
   AND Suff(C_i, R_i) = true: ContractSchema drift test green (E.1)
   AND A_i enforced: non-trivial untagged → REJECTED (F.3)
   AND Missing(C_i) → BLOCKED: UNKNOWN items halt execution (F.4)
   AND every accepted Execution passes EpistemicProgressCheck (E.7)
   AND no NL-only context transfer path remains (F.10 grep-gates green)
+  AND every Execution declares in_scope_refs ∪ out_of_scope_refs ⊇ ImpactClosure (E.8)
+  AND every architectural Decision has ≥2 candidates with argmax selection + Necessary(c) evidence (F.11)
+  AND no unaccepted debt markers in committed Changes (F.12)
 ```
 
 **Soundness conditions closed at G_CD:**
@@ -598,6 +803,9 @@ G_CD = PASS iff:
 - **ECITP §2.7** — Explicit invalidation: silent K_i drop → REJECTED; legitimate drop requires `invalidated_evidence_refs` record with reason_code. [T_{E.7} T7]
 - **ECITP C11** — Structured transfer: NL-only ContextProjection → BLOCKED; six structural categories enforced at producer boundary. [T_{F.10} T1, T2, T4]
 - **ECITP §2.4** — Ambiguity continuity: unresolved UNKNOWN persists across executions until `resolved_uncertainty` record exists (property test over 10,000 chains). [T_{F.4} T5]
+- **FC §15** — Change Set Completeness: every ImpactClosure element accounted for in `in_scope_refs` or `out_of_scope_refs` with reason code. [T_{E.8} T2, T3]
+- **FC §16+§17+§18+§19** — Candidate Solution Evaluation: architectural Decisions require ≥2 candidates, 14-dimension Score, argmax selection, Necessary(c) component justification. [T_{F.11} T2-T5, T8]
+- **FC §37** — No unaccepted Technical Debt: deferred-work markers in committed Changes require `technical_debt` row with authorized `accepted_by`. [T_{F.12} T2, T3]
 
 ---
 
@@ -630,3 +838,6 @@ G_CD = PASS iff:
 | Q7 | forge_challenge endpoint: does it already exist per IMPLEMENTATION_TRACKER? — Pre-flight Stage 0.3 smoke must produce VERIFIED or DIVERGED status before F.6 start. | Stage F.6 (BLOCKING) |
 | Q8 | E.7 baseline snapshot capture point — must align with B.5 TimelyDeliveryGate transition hook; confirm at integration before E.7 implementation | Stage E.7 (BLOCKING) |
 | Q9 | ContractSchema.required_context_categories(task) — exact schema for 6 ECITP C11 categories; depends on E.1 ContractSchema definition | Stage F.10 (BLOCKING) |
+| Q10 | Out-of-scope reason-code enum for E.8 — starts with `{interface_only_reexport, test_infra, config_only, out_of_scope_by_design, deferred_to_change_N}`; extensions require ADR | Stage E.8 (BLOCKING on enum finalization) |
+| Q11 | ADR-019 candidate scoring weights (14 dimensions) + trivial-change bypass thresholds — domain decision | Stage F.11 (BLOCKING) |
+| Q12 | ADR-020 technical-debt category enum + `accepted_by` role allowlist — decide before F.12 | Stage F.12 (BLOCKING) |

@@ -29,14 +29,14 @@ Test strategy per phase: combination of (a) existing pytest suite regression, (b
 |---|---|---|---|---|---|
 | **Pre-flight** | ADR-003 ratification, calibration ADRs, smoke tests | 3 | 1 sprint | — | — |
 | **A** | Deterministic gate fundament: VerdictEngine + GateRegistry + EvidenceSet + idempotency | 5 | 2–3 sprints | P1, P6, P7, P8, P16; CCEGAP 5, 6 | Pre-flight |
-| **B** | Causal memory + context projection + timely delivery + topology preservation | 6 | 3–4 sprints | P14, P15, partial P4; CCEGAP 1, 3; **ECITP C3, C6** | A |
+| **B** | Causal memory + context projection + timely delivery + topology preservation + source consistency | 7 | 3–4 sprints | P14, P15, partial P4; CCEGAP 1, 3; **ECITP C3, C6**; **FC §8** | A |
 | **C** | Impact Closure + Reversibility | 4 | 2–3 sprints | P3, P5, P2 | A |
 | **D** | Failure-oriented testing + risk-weighted coverage | 5 | 2–3 sprints | P10, P18 (replay), P25; CCEGAP 5 strengthened | A, B |
-| **E** | Self-adjoint contract + diagonalization + invariants + continuous autonomy + additive progression | 7 | 3–4 sprints | P4, P9, P11, P12, P13; CCEGAP 2; **ECITP C8** | A, B, C, D |
-| **F** | Decision discipline (disclosure, uncertainty blocks, root cause, transitive) + structured transfer | 10 | 3–4 sprints | P17, P18, P19, P20, P21, P22, P23, P24; CCEGAP 4, 7; **ECITP C11** | A, B |
-| **G** | CGAID compliance capstone: Stage 0, metrics, Rule Lifecycle, Steward, 11 artifacts + proof trail | 9 | 3–4 sprints | — (closes CGAID alignment); **ECITP C7, C12** | E, F |
+| **E** | Self-adjoint contract + diagonalization + invariants + continuous autonomy + additive progression + scope boundary | 8 | 3–4 sprints | P4, P9, P11, P12, P13; CCEGAP 2; **ECITP C8**; **FC §15** | A, B, C, D |
+| **F** | Decision discipline (disclosure, uncertainty blocks, root cause, transitive) + structured transfer + candidate evaluation + debt tracking | 12 | 4 sprints | P17-P24; CCEGAP 4, 7; **ECITP C11**; **FC §16-§19, §37** | A, B |
+| **G** | CGAID compliance capstone: Stage 0, metrics, Rule Lifecycle, Steward, 11 artifacts + proof trail + baseline/post verification | 10 | 4 sprints | — (closes CGAID alignment); **ECITP C7, C12**; **FC §25+§26** | E, F |
 
-**Calendar estimate:** 20–26 sprints (~5–6 months at one-sprint-per-week) — realistic calendar: 7–11 months with overhead. **This is NOT a commitment** — it's a capacity estimate subject to R-OP-01 (composite 12 MEDIUM). Revised upward from 17–22 sprints to account for 5 new ECITP-driven stages (B.5, B.6, E.7, F.10, G.9).
+**Calendar estimate:** 23–29 sprints (~6 months at one-sprint-per-week) — realistic calendar: 8–12 months with overhead. **This is NOT a commitment** — it's a capacity estimate subject to R-OP-01 (composite 12 MEDIUM). Revised twice: first from 17-22 → 20-26 (added 5 ECITP stages B.5, B.6, E.7, F.10, G.9), now 20-26 → 23-29 (added 5 FC-critical-gap stages B.7, E.8, F.11, F.12, G.10).
 
 ---
 
@@ -243,6 +243,20 @@ Pre-flight ─── A ─── B ─────────────┘
 
 **Exit:** ENUM live; CausalGraph exposes relation-typed queries; REJECT-promotion handled at G.9.
 
+### Stage B.7 — SourceConflictDetector (FC §8)
+
+**Entry:** B.2 + B.6.
+
+**Stage tests:**
+- [ ] Alembic migration (`source_conflicts` table with unique constraint on sorted source pair).
+- [ ] Synthetic literal-value mismatch on `(entity_ref, field_name)` across Knowledge → `source_conflicts` row + Finding(kind='source_conflict').
+- [ ] UNKNOWN vs concrete value is NOT flagged as conflict (CONTRACT §B.2 compatibility).
+- [ ] Execution with unresolved conflict in task ancestor closure → BLOCKED with blocked_reason='unresolved_source_conflict'.
+- [ ] Resolution via `Decision(type='conflict_resolution', resolves_conflict_id)` → `resolved_at` populated, next Execution transition PASSES.
+- [ ] Idempotency: re-run `scripts/detect_source_conflicts.py` produces identical source_conflicts row count.
+
+**Closes:** FC §8 (Source Consistency).
+
 ### Phase B exit gate
 
 - [ ] Every new `Decision | Change | Finding` insert has ≥ 1 edge OR `is_objective_root = true` (DB invariant test).
@@ -251,6 +265,7 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] Budget test green.
 - [ ] TimelyDeliveryGate blocks IN_PROGRESS without materialized projection (B.5).
 - [ ] `relation_semantic` ENUM populated for all backfilled edges; unmappable rows have Findings (B.6).
+- [ ] Unresolved source conflicts in any task ancestor closure → Execution BLOCKED (B.7).
 
 ---
 
@@ -432,6 +447,19 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] Baseline snapshot captured at pending→IN_PROGRESS transition (integrates with B.5).
 - [ ] **Explicit invalidation test (ECITP §2.7):** silent drop of prior `E_old` → REJECTED with reason=`silent_invalidation_violation_§2.7`; drop with valid `{evidence_set_id, reason_code}` entry in `invalidated_evidence_refs` → PASS. Valid reason_codes: `{superseded_by_newer, retracted_at_source, rejected_by_independent_check, made_obsolete_by_decision}`.
 
+### Stage E.8 — ScopeBoundaryDeclaration (FC §15)
+
+**Entry:** C.3 + E.7.
+
+**Stage tests:**
+- [ ] Alembic migration (`executions.in_scope_refs`, `out_of_scope_refs`, `unjustified_in_closure` JSONB columns).
+- [ ] Change where `ImpactClosure = {f, g, h}` and `in_scope_refs ∪ out_of_scope_refs ⊉ ImpactClosure` → REJECTED with reason listing unjustified paths.
+- [ ] Change with complete closure coverage → PASS.
+- [ ] Out-of-scope entry with invalid reason code → DB CHECK constraint violation.
+- [ ] `Execution.unjustified_in_closure` populated on REJECT for diagnostic.
+
+**Closes:** FC §15 (Change Set Completeness).
+
 ### Phase E exit gate
 
 - [ ] Invariants live + violation test green.
@@ -538,6 +566,34 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] `grep -rnE "StructuredTransferIncomplete.*warn|log\.warning.*structured_transfer" app/` exits 1 (raise only, no warn).
 
 **Closes:** ECITP C11 (downstream inheritance) + Lemma 3 (summary-only transfer destroys second-order constraints).
+
+### Stage F.11 — CandidateSolutionEvaluation (FC §16+§17+§18+§19)
+
+**Entry:** E.1 + ADR-019 CLOSED (scoring weights).
+
+**Stage tests:**
+- [ ] Alembic migrations (`solution_candidates`, `solution_scores`) round-trip.
+- [ ] architectural Decision with 1 candidate → REJECTED with reason=`fewer_than_2_candidates`.
+- [ ] architectural Decision with ≥2 candidates but missing any of 14 score dimensions → REJECTED.
+- [ ] `Decision.selected_candidate_id ≠ argmax_c Score(c)` → REJECTED (deterministic argmax).
+- [ ] Component in `necessary_components_list` without `justification_evidence_ref` citing concrete requirement/invariant/scalability bound → REJECTED (Anti-Overengineering §18).
+- [ ] `Decision.type='trivial_change'` bypass allowed under LOC + impact_closure_size thresholds; above threshold → REJECTED.
+
+**Closes:** FC §16 (Candidate Solution Set), §17 (Hard Feasibility Constraints), §18 (Anti-Overengineering), §19 (Optimal Solution Selection).
+
+### Stage F.12 — TechnicalDebtTracking (FC §37)
+
+**Entry:** F.4 + ADR-020 CLOSED (debt categories + allowed `accepted_by` roles).
+
+**Stage tests:**
+- [ ] Alembic migration (`technical_debt` table with category enum).
+- [ ] Change.diff containing `TODO`, `FIXME`, `HACK`, `XXX`, `NotImplementedError`, `pass # TODO` without matching `technical_debt` row with `accepted_by` → REJECTED.
+- [ ] Change with debt marker + matching `technical_debt(accepted_by=<user>, accepted_role ∈ allowlist)` → PASS.
+- [ ] `accepted_role` outside ADR-020 allowlist → REJECTED with reason=`unauthorized_debt_acceptance_role`.
+- [ ] Resolution path: Change removing debt marker + setting `resolved_by_change_id` → `technical_debt.resolved_at` populated.
+- [ ] `scripts/detect_debt_markers.py` idempotent on re-run.
+
+**Closes:** FC §37 (No Technical Debt Rule).
 
 ### Phase F exit gate
 
@@ -652,6 +708,21 @@ Pre-flight ─── A ─── B ─────────────┘
 
 **Closes:** ECITP C12 (end-to-end proof trail structurally auditable), ECITP C7 (continuity of meaning — bounded downstream revision).
 
+### Stage G.10 — BaselinePostVerification (FC §25+§26)
+
+**Entry:** C.3 + C.4 + G.8 + ADR-021 CLOSED (ExpectedDiff schema per Change.type).
+
+**Stage tests:**
+- [ ] Alembic migration (`runtime_observations` table; `Change.expected_diff JSONB NOT NULL`).
+- [ ] Change inserted without `expected_diff` declared → REJECTED at insert.
+- [ ] Baseline capture failure on any `ImpactClosure` element → REJECTED with `baseline_capture_failed: <ref>`.
+- [ ] Every state-mutating Change must have `runtime_observations` rows for every `ImpactClosure` element in both `phase='baseline'` and `phase='post'`; missing observation → REJECTED.
+- [ ] `Diff(baseline, post) = ExpectedDiff` → PASS.
+- [ ] `Diff ≠ ExpectedDiff` on REVERSIBLE Change → REJECTED + auto-rollback (C.4 integration); state restored to Baseline sha256.
+- [ ] `Diff ≠ ExpectedDiff` on IRREVERSIBLE Change → REJECTED + CRITICAL Incident + NO auto-rollback (Steward sign-off required for recovery).
+
+**Closes:** FC §25 (Baseline/Post/Diff comparison), §26 (per-element runtime impact verification).
+
 ### Phase G exit gate
 
 - [ ] Every Confidential+ ingest has Classification row + (DLP record OR signed acceptance).
@@ -663,6 +734,7 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] ≥ 3 gates use snapshot validation.
 - [ ] `proof_trail_audit.py` exits 0 on full DB; every Change has complete 10-link chain (G.9).
 - [ ] ECITP C6/C11 REJECT-promotion flags active; WARN→REJECT transition verified (G.9).
+- [ ] Every state-mutating Change has Baseline + Post `runtime_observations` for every ImpactClosure element; Diff = ExpectedDiff enforced (G.10).
 
 ---
 
@@ -706,9 +778,12 @@ Each stage exit test is **automated** (pytest or shell script) except where mark
 | ADR-016 Test entity — promote `AcceptanceCriterion.scenario_type` to separate `Test` table, or treat AC+scenario_type as chain's test link? | Phase G.9 | platform — from ECITP C12 10-link proof trail |
 | ADR-017 Canonical `relation TEXT → relation_semantic ENUM` mapping for B.6 backfill | Phase B.6 | platform — from ECITP C6 topology preservation |
 | ADR-018 DLP mechanism for Confidential+ tier — technology choice, OR formal ACKNOWLEDGED_GAP per FRAMEWORK_MAPPING §12 with Steward sign-off | Phase G.1 | platform + security — from FRAMEWORK_MAPPING R-FW-02 |
+| ADR-019 Candidate scoring weights for 14 dimensions + trivial-change bypass thresholds + tie-breaker rule | Phase F.11 | platform + architecture lead — from FC §19 Optimal Solution Selection |
+| ADR-020 Technical-debt category enum + `accepted_by` role allowlist + marker-detector extension path | Phase F.12 | platform — from FC §37 No Technical Debt Rule |
+| ADR-021 ExpectedDiff schema per Change.type (migration / code / config) + IRREVERSIBLE incident recovery procedure | Phase G.10 | platform — from FC §25+§26 Baseline/Post verification |
 
 ADRs 4–7 are P1 per deep-risk; must be created + reviewed before their respective phase starts.
-ADRs 15–17 block G.9 and B.6; ADR-018 blocks G.1.
+ADRs 15–17 block G.9 and B.6; ADR-018 blocks G.1; ADR-019 blocks F.11; ADR-020 blocks F.12; ADR-021 blocks G.10.
 
 ---
 
@@ -751,26 +826,31 @@ This is a living document. Update per stage completion:
   - [ ] Stage 0.2 Calibration ADRs (004, 005, 006)
   - [ ] Stage 0.3 IMPLEMENTATION_TRACKER smoke tests
 - [ ] Phase A (5 stages)
-- [ ] Phase B (6 stages)
+- [ ] Phase B (7 stages)
   - [ ] Stage B.1–B.4 (CausalEdge, backfill, CausalGraph, ContextProjector)
   - [ ] Stage B.5 TimelyDeliveryGate (ECITP C3)
   - [ ] Stage B.6 SemanticRelationTypes (ECITP C6)
+  - [ ] Stage B.7 SourceConflictDetector (FC §8)
 - [ ] Phase C (4 stages)
 - [ ] Phase D (5 stages)
-- [ ] Phase E (7 stages)
+- [ ] Phase E (8 stages)
   - [ ] Stage E.1–E.6 (contract schema, invariants, autonomy, reachability, modes, contract tests)
-  - [ ] Stage E.7 EpistemicProgressGate (ECITP C8)
-- [ ] Phase F (10 stages)
+  - [ ] Stage E.7 EpistemicProgressGate (ECITP C8 + §2.7)
+  - [ ] Stage E.8 ScopeBoundaryDeclaration (FC §15)
+- [ ] Phase F (12 stages)
   - [ ] Stage F.1–F.6 (decision discipline)
   - [ ] Stage F.7 AgentAuthorityCheck gate (SR-1)
   - [ ] Stage F.8 Skip-cost enforcement (SR-2)
   - [ ] Stage F.9 Distinct-actor spawn in autonomous loop (SR-3)
   - [ ] Stage F.10 StructuredTransferGate (ECITP C11)
-- [ ] Phase G (9 stages)
+  - [ ] Stage F.11 CandidateSolutionEvaluation (FC §16+§17+§18+§19)
+  - [ ] Stage F.12 TechnicalDebtTracking (FC §37)
+- [ ] Phase G (10 stages)
   - [ ] Stage G.1–G.8 (CGAID compliance)
   - [ ] Stage G.9 ProofTrailCompleteness + ECITP REJECT-promotion (ECITP C7, C12)
+  - [ ] Stage G.10 BaselinePostVerification (FC §25+§26)
 
-Total: 3 + 5 + 6 + 4 + 5 + 7 + 10 + 9 = **49 stages**.
+Total: 3 + 5 + 7 + 4 + 5 + 8 + 12 + 10 = **54 stages**.
 
 Each completed stage produces either a commit (stage tests green) or a blocking Finding if tests fail. No "partial" stages — incomplete = DRAFT.
 
