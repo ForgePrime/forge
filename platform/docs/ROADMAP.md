@@ -32,11 +32,11 @@ Test strategy per phase: combination of (a) existing pytest suite regression, (b
 | **B** | Causal memory + context projection + timely delivery + topology preservation + source consistency + actor/process entities | 8 | 3–4 sprints | P14, P15, partial P4; CCEGAP 1, 3; **ECITP C3, C6**; **FC §8, §9**; **AI-SDLC §7** | A |
 | **C** | Impact Closure + Reversibility | 4 | 2–3 sprints | P3, P5, P2 | A |
 | **D** | Failure-oriented testing + risk-weighted coverage + critical path scheduling | 6 | 3 sprints | P10, P18, P25; CCEGAP 5 strengthened; **AIOS A8**; **AI-SDLC #10** | A, B |
-| **E** | Self-adjoint contract + diagonalization + invariants + continuous autonomy + additive progression + scope boundary | 8 | 3–4 sprints | P4, P9, P11, P12, P13; CCEGAP 2; **ECITP C8**; **FC §15** | A, B, C, D |
+| **E** | Self-adjoint contract + diagonalization + invariants + continuous autonomy + additive progression + scope boundary + architecture components | 9 | 4 sprints | P4, P9, P11, P12, P13; CCEGAP 2; **ECITP C8**; **FC §15**; **AI-SDLC §9** | A, B, C, D |
 | **F** | Decision discipline (disclosure, uncertainty blocks, root cause, transitive) + structured transfer + candidate evaluation + debt tracking | 12 | 4 sprints | P17-P24; CCEGAP 4, 7; **ECITP C11**; **FC §16-§19, §37** | A, B |
 | **G** | CGAID compliance capstone: Stage 0, metrics, Rule Lifecycle, Steward, 11 artifacts + proof trail + baseline/post + error propagation | 11 | 4 sprints | — (closes CGAID alignment); **ECITP C7, C12**; **FC §25+§26**; **AIOS A18**; **AI-SDLC §19** | E, F |
 
-**Calendar estimate:** 25–31 sprints (~6–7 months at one-sprint-per-week) — realistic calendar: 9–13 months with overhead. **This is NOT a commitment** — it's a capacity estimate subject to R-OP-01 (composite 12 MEDIUM). Revised three times: 17-22 → 20-26 (5 ECITP stages) → 23-29 (5 FC-critical-gap stages) → **25-31** (3 Tier-1 cross-theorem gap stages B.8, D.6, G.11).
+**Calendar estimate:** 26–32 sprints (~6–7 months at one-sprint-per-week) — realistic calendar: 9–13 months with overhead. **This is NOT a commitment** — it's a capacity estimate subject to R-OP-01 (composite 12 MEDIUM). Revised four times: 17-22 → 20-26 (5 ECITP stages) → 23-29 (5 FC-critical-gap stages) → 25-31 (3 Tier-1 cross-theorem gap stages) → **26-32** (1 Tier-2 AI-SDLC stage E.9 + inline extensions to B.8 and G.9).
 
 ---
 
@@ -784,7 +784,8 @@ Each stage exit test is **automated** (pytest or shell script) except where mark
 | ADR-022 Memory-version pinning per Execution (bounds Phase 10→1 feedback) | Stage B.5 extension | platform — from USAGE_PROCESS §16 method-weakness #3 |
 | ADR-023 Critical Path enforcement via CPM + CriticalPathGate | Phase D.6 (new) | platform — from AIOS A8 + AI-SDLC #10 |
 | ADR-024 Error propagation via Finding inheritance + Execution invalidation | Phase G.11 (new) | platform — from AIOS A18 + AI-SDLC §19+#20 + FC §14 |
-| ADR-025 Actor + BusinessProcess entities + BusinessAnalysisCompleteness validator | Phase B.8 (new) | platform — from FC §9 + AI-SDLC §7 |
+| ADR-025 Actor + BusinessProcess entities + BusinessAnalysisCompleteness validator | Phase B.8 | platform — from FC §9 + AI-SDLC §7 + AI-SDLC #8 (business_justification extension) |
+| ADR-026 Architecture components unified view (7-kind enum + relationships + dashboard) | Phase E.9 (new) | platform — from AI-SDLC §9 + #9 |
 
 ADRs 4–7 are P1 per deep-risk; must be created + reviewed before their respective phase starts.
 ADRs 15–17 block G.9 and B.6; ADR-018 blocks G.1; ADR-019 blocks F.11; ADR-020 blocks F.12; ADR-021 blocks G.10.
@@ -840,10 +841,11 @@ This is a living document. Update per stage completion:
 - [ ] Phase D (6 stages)
   - [ ] Stage D.1–D.5 (harness, property, metamorphic, adversarial, FailureMode α-gate)
   - [ ] Stage D.6 CriticalPathScheduler (AIOS A8 + AI-SDLC #10)
-- [ ] Phase E (8 stages)
+- [ ] Phase E (9 stages)
   - [ ] Stage E.1–E.6 (contract schema, invariants, autonomy, reachability, modes, contract tests)
   - [ ] Stage E.7 EpistemicProgressGate (ECITP C8 + §2.7)
   - [ ] Stage E.8 ScopeBoundaryDeclaration (FC §15)
+  - [ ] Stage E.9 ArchitectureComponents (AI-SDLC §9)
 - [ ] Phase F (12 stages)
   - [ ] Stage F.1–F.6 (decision discipline)
   - [ ] Stage F.7 AgentAuthorityCheck gate (SR-1)
@@ -858,7 +860,7 @@ This is a living document. Update per stage completion:
   - [ ] Stage G.10 BaselinePostVerification (FC §25+§26)
   - [ ] Stage G.11 ErrorPropagationMechanism (AIOS A18 + AI-SDLC §19+#20)
 
-Total: 3 + 5 + 8 + 4 + 6 + 8 + 12 + 11 = **57 stages**.
+Total: 3 + 5 + 8 + 4 + 6 + 9 + 12 + 11 = **58 stages**.
 
 Each completed stage produces either a commit (stage tests green) or a blocking Finding if tests fail. No "partial" stages — incomplete = DRAFT.
 

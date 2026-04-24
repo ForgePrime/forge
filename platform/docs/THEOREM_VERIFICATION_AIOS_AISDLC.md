@@ -19,16 +19,22 @@
 - **AIOS:** 12/24 ADDRESSED · 8/24 PARTIAL · 4/24 GAP
 - **AI-SDLC:** 19/25 ADDRESSED · 6/25 PARTIAL · 0/25 GAP
 
-**Post-Tier-1-closure (this update, 2026-04-24):**
-- **AIOS:** 13/24 ADDRESSED (+1 A8) + 1 PARTIAL→ADDRESSED (A18) = **14/24 ✅** · 6/24 PARTIAL · 4/24 still JustifiedNotApplicable (A11/A12/A19 + A2-A4 DEFER)
-- **AI-SDLC:** 22/25 ADDRESSED (+3: #7 + #10 + #20) = **22/25 ✅** · 3/25 PARTIAL (#8 + #9 + #18 remaining)
+**Post-Tier-1-closure (2026-04-24):**
+- **AIOS:** 14/24 ADDRESSED · 6 PARTIAL · 4 JustifiedNotApplicable
+- **AI-SDLC:** 22/25 ADDRESSED · 3 PARTIAL · 0 GAP
 
-3 Tier-1 ADRs closed the shared multi-theorem gaps:
-- **ADR-023 Critical Path enforcement** (Stage D.6) — closes AIOS A8 + AI-SDLC #10
-- **ADR-024 Error propagation** (Stage G.11) — closes AIOS A18 + AI-SDLC §19+#20 + FC §14
-- **ADR-025 Actor + BusinessProcess entities** (Stage B.8) — closes FC §9 + AI-SDLC #7
+**Post-Tier-2-closure (this update, 2026-04-24):**
+- **AIOS:** **14/24 ADDRESSED** (unchanged — Tier 2 is AI-SDLC-specific) · 6 PARTIAL · 4 JustifiedNotApplicable
+- **AI-SDLC:** **25/25 ADDRESSED ✅** (+3 from Tier 2: #8 + #9 + #18) · 0 PARTIAL · 0 GAP — **FULL THEOREM COMPLIANCE**
 
-**Forge aligns more with AI-SDLC than AIOS** — the SDLC-focused theorem matches Forge's actual scope. AIOS A11/A12/A19 fall outside Forge's LLM-orchestration scope (JustifiedNotApplicable).
+Tier 2 closures:
+- **AI-SDLC #8** (Requirement.business_justification) — inline extension of ADR-025 scope + B.8 stage Work item + T10 exit test (no new ADR needed, pre-ratification content-DRAFT revision)
+- **AI-SDLC #9** (Architecture components unified view) — **ADR-026** + new Stage E.9 ArchitectureComponents in PLAN_CONTRACT_DISCIPLINE
+- **AI-SDLC #18** (Main task satisfaction check) — G.9 stage Work item #6 extension + T9 exit test (no new ADR; extends proof-trail audit with explicit AC-satisfaction check)
+
+**AI-SDLC theorem now FULLY ADDRESSED.** Forge's SDLC-focused scope fully satisfies all 25 conditions of the theorem that matches its scope most precisely.
+
+**Forge aligns more with AI-SDLC than AIOS** — the SDLC-focused theorem matches Forge's actual scope (now 25/25). AIOS A11/A12/A19 fall outside Forge's LLM-orchestration scope (JustifiedNotApplicable).
 
 ---
 

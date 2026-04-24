@@ -380,6 +380,74 @@ pytest tests/ -x
 
 ---
 
+### Stage E.9 — ArchitectureComponents (AI-SDLC §9)
+
+**Closes:** AI-SDLC §9 ValidArchitecture (explicit components + data model + interfaces + dependencies + state transitions + invariants + SSoT + failure handling + scalability/resilience/security constraints + rollback path). Source: ADR-026 Architecture components unified view.
+
+**Rationale (ESC-3 root-cause uniqueness):** see ADR-026 §Alternatives. Unified view (Option A at §Alternatives A) chosen — scattered state violates AI-SDLC §9 mechanically; file-system + SQL schema alone don't capture scalability/resilience/security constraints nor SSoT ownership.
+
+**Entry conditions:**
+- G_{E.1} = PASS (ContractSchema — E.9 components may reference typed schemas).
+- G_{E.2} = PASS (Invariants — architecture_components can link to Invariant via description/references).
+- G_{E.5} = PASS (services → modes refactor — E.9 captures the refactored modes as components).
+- ADR-026 CLOSED.
+
+**A_{E.9}:**
+- 7-kind component enum — [CONFIRMED: ADR-026 specifies `{service, module, data_store, interface, external, job, config}`; extensions via superseding ADR].
+- Constraint format (scalability/resilience/security) — [ASSUMED: free-form TEXT at v1 to enable rapid adoption; future structured schema via ADR-XXX if needed].
+- Legacy codebase component count — [UNKNOWN: will require migration phase to backfill existing Python packages as components]. Resolution: E.9 migration creates `legacy_exempted_architecture` flag; Steward backfills over first quarter.
+
+**Work:**
+1. Alembic migration: `architecture_components` + `architecture_component_relationships` tables per ADR-026; `changes.architecture_components_affected JSONB NOT NULL DEFAULT '[]'::jsonb`.
+2. Three validators added to GateRegistry:
+   - `ArchitectureChangeValidator` at `(Change, *, PROPOSED)` insert for `type='architectural'`
+   - `SSoTUniquenessValidator` at `(architecture_components, *, INSERT)` for `kind='data_store'`
+   - `RollbackReferenceValidator` at `(architecture_components, *, INSERT)` for code-kind components
+3. Dashboard endpoint `GET /projects/{slug}/architecture` (hierarchical JSON + SVG Mermaid).
+4. G.9 proof-trail audit extension: architectural Changes must have architectural Decision ancestor + component linkage.
+5. CI check `scripts/check_architecture_component_coverage.py`: every Python package in `app/` without matching `architecture_components` row → Finding (Steward backfill).
+
+**Exit test T_{E.9} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: architectural Change without components_affected → REJECTED
+pytest tests/test_architecture_components.py::test_arch_change_missing_components -x
+
+# T3: SSoT uniqueness enforced
+pytest tests/test_architecture_components.py::test_ssot_uniqueness -x
+# PASS: two data_store components claiming same ssot_ref → second INSERT rejected
+
+# T4: rollback reference required for code-kind components
+pytest tests/test_architecture_components.py::test_rollback_ref_required_for_service -x
+# PASS: INSERT kind='service' with rollback_reference_id=NULL → REJECTED
+
+# T5: CI coverage check flags uncatalogued packages
+pytest tests/test_architecture_components.py::test_coverage_check -x
+# fixture: app/new_unregistered_service/ present in tree but absent from components
+# → Finding emitted by scripts/check_architecture_component_coverage.py
+
+# T6: hierarchical relationships (parent_component_id)
+pytest tests/test_architecture_components.py::test_hierarchy -x
+# PASS: component with parent_component_id → dashboard shows nested tree
+
+# T7: dashboard endpoint returns SVG + JSON
+pytest tests/test_dashboard.py::test_architecture_endpoint -x
+
+# T8: G.9 audit extended — architectural Change without architectural Decision ancestor → Finding
+pytest tests/test_proof_trail_audit.py::test_architectural_change_requires_decision_ancestor -x
+
+# T9: regression
+pytest tests/ -x
+```
+
+**Gate G_{E.9}:** T1–T9 pass + ADR-026 CLOSED → PASS. **AI-SDLC §9 closed** structurally — architecture is a first-class artifact with queryable components, explicit constraints per kind, SSoT uniqueness, rollback traceability.
+
+**ESC-4 impact:** 2 new tables; `changes` schema extension (+1 JSONB); 3 new validators in GateRegistry; dashboard endpoint; CI coverage script; G.9 audit extension. **ESC-5 invariants preserved:** E.5 services→modes refactor semantics unchanged (E.9 catalogs the result, doesn't alter it); F.11 CandidateSolutionEvaluation continues to work (can now reference component IDs via typed FK). **ESC-7 failure modes:** (a) architecture drift between code and catalog → CI check (T5) catches; (b) subjective component boundaries → Steward quarterly refines; (c) performance on large component graphs → indexed FK + dashboard pagination; benchmark at 500+ components required before scale.
+
+---
+
 ## Phase F — Decision discipline
 
 ### Stage F.1 — Evidence source constraint (P17 full)
@@ -782,7 +850,7 @@ pytest tests/ -x
 
 ```
 G_CD = PASS iff:
-  G_{E.1} through G_{E.8} all PASS  (self-adjoint contract, invariants, autonomy, reachability, modes, diagonalization, epistemic progression, scope boundary)
+  G_{E.1} through G_{E.9} all PASS  (self-adjoint contract, invariants, autonomy, reachability, modes, diagonalization, epistemic progression, scope boundary, architecture components)
   AND G_{F.1} through G_{F.12} all PASS  (evidence discipline, uncertainty blocking, root cause, disclosure, independence, SR-1/2/3, structured transfer, candidate evaluation, technical debt tracking)
   AND pytest tests/ -x → all prior phase + Contract Discipline tests green
   AND Suff(C_i, R_i) = true: ContractSchema drift test green (E.1)

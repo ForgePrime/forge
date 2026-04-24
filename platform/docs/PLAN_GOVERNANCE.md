@@ -358,6 +358,15 @@ pytest tests/ -x
 3. CLI command: `forge audit proof-trail --change-id=<uuid>` for on-demand per-Change validation.
 4. B.6/F.10 REJECT promotion: G.9 migration sets `feature_flags` rows enabling REJECT mode on AC-topology validator (B.6) and structured-transfer gate (F.10).
 5. C7 bounded-revision test: `tests/test_c7_bounded_revision.py` — for 10 historical minor-edit PRs, assert `len(ImpactClosure) ≤ threshold` (threshold from ADR-004 `w_m` weights).
+6. **Main-task satisfaction audit (AI-SDLC §16 + #18, closes AI-SDLC Tier-2 partial #18):**
+   - Schema addition: `Task.is_main_task BOOLEAN DEFAULT false`; `decisions.satisfies_ac_id INT FK REFERENCES acceptance_criteria(id) NULL` + `changes.satisfies_ac_id INT FK NULL`.
+   - Validator logic per main Task m with m.status=DONE:
+     - `satisfied_acs = {AC.id | ∃ D ∈ descendant_decisions(m): D.satisfies_ac_id = AC.id OR ∃ C ∈ descendant_changes(m): C.satisfies_ac_id = AC.id}`
+     - `required_acs = {AC.id | AC.task_id ∈ descendant_tasks(m) ∪ {m.id}}`
+     - `missing = required_acs - satisfied_acs`
+     - If `missing ≠ ∅` → emit `Finding(kind='main_task_incomplete', severity=HIGH, parent_task_id=m.id, missing_ac_ids=list(missing))` + `Objective.status='BLOCKED_MAIN_TASK_INCOMPLETE'`.
+   - Runs as part of `scripts/proof_trail_audit.py` nightly pass.
+   - Re-audit on Decision/Change insert with `satisfies_ac_id` populated (lazy un-block).
 
 **Exit test T_{G.9} (deterministic):**
 ```bash
@@ -390,9 +399,21 @@ pytest tests/test_c7_bounded_revision.py -x
 
 # T8: regression
 pytest tests/ -x
+
+# T9: main-task satisfaction check (AI-SDLC §16 + #18)
+pytest tests/test_proof_trail_audit.py::test_main_task_subtask_satisfaction -x
+# For every completed main Task m (m.is_main_task=true AND m.status=DONE):
+#   let subtask_outcomes = union of Decisions + Changes across descendant Tasks
+#   for every AC ∈ m.acceptance_criteria:
+#     assert exists matching outcome O in subtask_outcomes with
+#       O.satisfies_ac_id = AC.id (explicit satisfaction flag) OR
+#       O.produced_artifact matches AC.scenario_type pattern
+# FAIL: any AC of m without matching subtask outcome → Finding(
+#   kind='main_task_incomplete', severity=HIGH, parent_task_id=m.id)
+#   AND Objective.status='BLOCKED_MAIN_TASK_INCOMPLETE'
 ```
 
-**Gate G_{G.9}:** T1–T8 pass + ADR-015 CLOSED + ADR-016 CLOSED → PASS. **ECITP C12 closed** structurally (per-Change chain auditable); **ECITP C7 closed** (bounded-revision test); **B.6/F.10 promoted from WARN to REJECT**.
+**Gate G_{G.9}:** T1–T9 pass + ADR-015 CLOSED + ADR-016 CLOSED → PASS. **ECITP C12 closed** structurally (per-Change chain auditable); **ECITP C7 closed** (bounded-revision test); **B.6/F.10 promoted from WARN to REJECT**; **AI-SDLC §16+#18 closed** (main-task satisfaction mechanically verified — union of subtask outcomes must cover all AC of main task).
 
 **ESC-4 impact:** `scripts/proof_trail_audit.py` (new CLI + cron); `feature_flags` (+2 rows); AC-topology validator (WARN→REJECT — existing code, flag flip); StructuredTransferGate (WARN→REJECT — same); schema impact depends on ADR-014/015 outcome (either +2 tables or zero). **ESC-5 invariants preserved:** B.1 CausalEdge structure unchanged; B.6 ENUM values unchanged (promotion is enforcement change, not schema); F.10 raise-not-warn semantic unchanged at code level (flag only toggles active enforcement, never falls back to warn). **ESC-6 evidence completeness:** every Finding emitted by audit carries `source='proof_trail_audit'`, `trace_to_condition='ECITP_C12'`, `correctness_evidence=<traversal_query_text>`, `test_evidence='T_{G.9}_T2'`, `validation_evidence='CI_cron_run'`. **ESC-7 failure modes:** (a) missing Requirement entity → ADR-014 blocks gate entry; (b) false-positive gap due to orphan root Decision → B.1 `is_objective_root` exception honored; (c) concurrent audit+write race → audit runs against snapshot `SET TRANSACTION SNAPSHOT` to avoid partial-DAG reads.
 

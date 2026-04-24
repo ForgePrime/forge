@@ -429,10 +429,10 @@ pytest tests/ -x
 
 **Work:**
 1. Alembic migrations: `actors` + `business_processes` + `business_process_actors` tables per ADR-025.
-2. `findings.actor_refs JSONB NOT NULL DEFAULT '[]'::jsonb` + `findings.process_refs JSONB NOT NULL DEFAULT '[]'::jsonb` + `findings.legacy_exempted_business_analysis BOOL NOT NULL DEFAULT false`.
+2. `findings.actor_refs JSONB NOT NULL DEFAULT '[]'::jsonb` + `findings.process_refs JSONB NOT NULL DEFAULT '[]'::jsonb` + `findings.legacy_exempted_business_analysis BOOL NOT NULL DEFAULT false` + **`findings.business_justification TEXT NULL`** (closes AI-SDLC #8 — pre-ratification content-DRAFT extension of ADR-025 scope).
 3. Extraction service: `app/analysis/actor_process_extractor.py` — LLM-based extraction with Steward review queue.
 4. Dashboard endpoint: `GET /projects/{slug}/business-analysis/candidates` — extraction candidates pending Steward review.
-5. Validator `BusinessAnalysisCompleteness` added to GateRegistry for `(Finding, *, OPEN)` insert chain. Enforces per ADR-025: requirement Findings must reference ≥1 actor + (≥1 process OR all actors system_automation).
+5. Validator `BusinessAnalysisCompleteness` added to GateRegistry for `(Finding, *, OPEN)` insert chain. Enforces per ADR-025: requirement Findings must reference ≥1 actor + (≥1 process OR all actors system_automation) + **non-empty `business_justification` text with minimum 20 characters** (closes AI-SDLC #8 — "every requirement has business_justification").
 6. Migration for existing Findings: flag as `legacy_exempted_business_analysis=true`.
 
 **Exit test T_{B.8} (deterministic):**
@@ -470,9 +470,18 @@ pytest tests/test_dashboard.py::test_business_analysis_candidates_endpoint -x
 
 # T9: regression
 pytest tests/ -x
+
+# T10: business_justification required for Finding(type='requirement') (AI-SDLC #8)
+pytest tests/test_business_analysis_completeness.py::test_missing_business_justification_rejected -x
+# PASS: Finding(type='requirement', actor_refs=[X], process_refs=[Y], business_justification=NULL)
+#       → REJECTED with reason='requirement_missing_business_justification'
+# PASS: business_justification=' ' (only whitespace) → REJECTED
+# PASS: business_justification='ok' (< 20 chars) → REJECTED
+# PASS: business_justification='Enables weekly operational reporting for Actor X'
+#       (≥ 20 chars) → PASS
 ```
 
-**Gate G_{B.8}:** T1–T9 pass + ADR-025 CLOSED → PASS. **FC §9 Actor/Process gap closed + AI-SDLC §7 Business Analysis advanced from PARTIAL to ADDRESSED**.
+**Gate G_{B.8}:** T1–T10 pass + ADR-025 CLOSED → PASS. **FC §9 Actor/Process gap closed + AI-SDLC §7 Business Analysis + #8 business_justification advanced from PARTIAL to ADDRESSED**.
 
 **ESC-4 impact:** 3 new tables (actors, business_processes, business_process_actors); `findings` schema extension (+3 columns); new extraction service; GateRegistry insert-validation chain extension; dashboard endpoint. **ESC-5 invariants preserved:** Finding insert path backward-compat (legacy flag); B.1 CausalEdge structure unchanged; F.3 assumption-tagging unaffected. **ESC-7 failure modes:** (a) over-extraction by LLM (too many irrelevant actors) → Steward review queue catches before persist; (b) actor drift (person changes role) → `archived_at` soft-delete + re-insert with new role; (c) process granularity unclear → `parent_process_id` enables hierarchy; `frequency_per_day` differentiates detail vs high-level.
 
