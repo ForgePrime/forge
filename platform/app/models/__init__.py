@@ -27,6 +27,7 @@ from app.models.hook_run import HookRun
 from app.models.lessons import ProjectLesson, AntiPattern
 from app.models.contract_revision import ContractRevision
 from app.models.evidence_set import EvidenceSet
+from app.models.idempotent_call import IdempotentCall, DEFAULT_IDEMPOTENCY_TTL_SECONDS
 
 __all__ = [
     "Organization",
@@ -65,4 +66,6 @@ __all__ = [
     "AntiPattern",
     "ContractRevision",
     "EvidenceSet",
+    "IdempotentCall",
+    "DEFAULT_IDEMPOTENCY_TTL_SECONDS",
 ]
