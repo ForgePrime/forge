@@ -69,6 +69,7 @@ platform/docs/
 | [`platform/ONBOARDING.md`](platform/ONBOARDING.md) | DRAFT | reference | Map + tutorial + failure catalog. |
 | [`platform/DATA_MODEL.md`](platform/DATA_MODEL.md) | DRAFT | reference | 30 entities + invariants. |
 | [`EPISTEMIC_CONTINUITY_ASSESSMENT.md`](EPISTEMIC_CONTINUITY_ASSESSMENT.md) | DRAFT | no | 2026-04-23. Maps C1–C12 theorem conditions → 25 atomic properties → roadmap phases. Priority quickstart for soundness (not completeness) ordering. |
+| [`CHANGE_PLAN_COMPREHENSIVE.md`](CHANGE_PLAN_COMPREHENSIVE.md) | DRAFT | no | Comprehensive adversarial analysis of 6 functional plans + ECITP/FC extensions. 26 findings, 4 root causes, 12 required additions, 15 test gap specs, 5 new ADRs proposed. Not binding until distinct-actor review per ADR-003. |
 | [`decisions/ADR-001`](decisions/ADR-001-scenario-type-enum-extension.md) | decision CLOSED · content DRAFT | decision: yes | scenario_type → 9 values. |
 | [`decisions/ADR-002`](decisions/ADR-002-ceremony-level-cgaid-mapping.md) | decision CLOSED · content DRAFT | decision: yes | ceremony_level ↔ CGAID 1:1. |
 | [`decisions/ADR-003`](decisions/ADR-003-human-reviewer-normative-transition.md) | OPEN | — | Self-referential; ratification pending. |
