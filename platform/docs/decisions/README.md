@@ -27,6 +27,7 @@
 | [ADR-019](ADR-019-candidate-scoring-weights.md) | Candidate scoring: Option B prioritization tiers (P0=5×, P1=3×, P2=1×, P3=0.5×); trivial bypass LOC ≤50 AND closure ≤1; tie-breaker by complexity→cost→UUID | decision CLOSED · content DRAFT | 2026-04-24 | user |
 | [ADR-020](ADR-020-technical-debt-categories.md) | Technical debt: Option A (8-category enum + 3-role allowlist + size-based co-sign LOC>100 OR deferral>4w + Steward-only for known_regression) | decision CLOSED · content DRAFT | 2026-04-24 | user |
 | [ADR-021](ADR-021-expected-diff-schema.md) | ExpectedDiff schema: Option A (per-Change.type Pydantic schemas + range-based row-count + 48h IRREVERSIBLE recovery SLA with 3 approved options + legacy-Changes exemption) | decision CLOSED · content DRAFT | 2026-04-24 | user |
+| [ADR-022](ADR-022-memory-version-pinning.md) | Memory-version pinning per Execution: capture rule/microskill/guideline/invariant version_ids at pending→IN_PROGRESS transition (B.5 extension); append-only memory tables; bounds Phase 10→1 feedback loop per USAGE_PROCESS §16 method-weakness #3 | decision CLOSED · content DRAFT | 2026-04-24 | user |
 
 ## ADR template
 
