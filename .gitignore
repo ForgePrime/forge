@@ -54,3 +54,7 @@ out/
 Thumbs.db
 
 .documentation/
+
+# Smoke-test artifacts (PLAN_PRE_FLIGHT Stage 0.3 — regenerated per run)
+platform/smoke_results.json
+platform/smoke_findings_to_create.jsonl
