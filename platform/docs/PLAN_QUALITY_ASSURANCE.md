@@ -335,8 +335,8 @@ python -c "import json; d=json.load(open('tests/adversarial/manifest.json')); as
 - `w_m` risk weights per FailureMode — [ASSUMED: initially uniform (w_m = 1/|M|) pending domain expert input; ADR-004 may specify or defer. Read ADR-004 before implementing weighting].
 
 **Work:**
-1. Alembic migration: `failure_modes(id, code, description, risk_weight, capability)`.
-2. Seed from existing `AcceptanceCriterion` rows with failure-oriented `scenario_type`.
+1. Alembic migration: `failure_modes(id, code, description, risk_weight, capability, semantic_category)` with `semantic_category ENUM('technical', 'business', 'data', 'temporal', 'operational') NOT NULL` (closes AIOS A6 — 5-category boundary typing applied to failure modes).
+2. Seed from existing `AcceptanceCriterion` rows with failure-oriented `scenario_type`. Each seed FailureMode carries appropriate `semantic_category` — e.g., "null_or_empty_input" → `data`; "timeout_or_dependency_failure" → `operational`; "repeated_execution" → `technical`; "monday_morning_user_state" → `temporal`.
 3. `scripts/coverage_report.py` — computes `∑ w_m Cov(T, m)` per capability.
 4. CI gate in `pyproject.toml` / `.github/workflows/`: below α per capability → merge blocked.
 5. Weekly evidence-verifiability replay job (P18): random sample 5% of `EvidenceSet` rows; re-execute reproducer_ref; divergences → Finding.
@@ -366,9 +366,16 @@ python scripts/mutation_smoke.py --rule=evidence_set_non_empty
 # Subsequent runs: any divergence → emit Finding AND exit non-zero.
 python scripts/evidence_replay.py --sample-pct=5 --first-run  # only on very first invocation; writes replay_baseline.json
 python scripts/evidence_replay.py --sample-pct=5              # subsequent runs; exits non-zero on divergence
+
+# T6: semantic_category NOT NULL on every FailureMode (closes AIOS A6 second half)
+pytest tests/test_failure_mode_semantic_category.py -x
+# PASS: INSERT failure_mode WITHOUT semantic_category → IntegrityError
+# PASS: every seed FailureMode from PRACTICE_SURVEY incidents has semantic_category
+# PASS: coverage report per semantic_category surfaced in dashboard; each of 5 categories
+#       has ≥1 seeded FailureMode (completeness — no category is empty)
 ```
 
-**Gate G_{D.5}:** T1–T3 automated + T4 mutation_smoke.py exits 0 (disabled rule caused failure, rule restored, checksum verified) + T5 replay job: baseline run produced manifest (first-run only) OR subsequent run exits 0 with zero divergences → PASS.
+**Gate G_{D.5}:** T1–T3 automated + T4 mutation_smoke.py exits 0 + T5 replay job green + **T6 semantic_category coverage across 5 categories** → PASS. **AIOS A6 (boundary completeness with 5-category semantic typing) fully closed** via E.2 Invariant + D.5 FailureMode ENUM columns.
 
 ---
 

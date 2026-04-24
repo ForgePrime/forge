@@ -215,6 +215,17 @@ pytest tests/property/test_evidence_continuity.py -x --hypothesis-seed=0
 # Closes ECITP §2.3 Evidence continuity and mitigates §5 Degradation by preventing
 # prior substitution due to unpropagated evidence.
 
+# T2c: lossless decomposition — property-based test (closes AIOS A1 first half)
+pytest tests/property/test_lossless_decomposition.py -x --hypothesis-seed=0
+# AIOS Axiom 1: Decompose(Σ) → Σ_i must satisfy ⋃ Σ_i = Σ ∧ InfoLoss = 0.
+# PASS: for a random Objective with N decomposed Tasks:
+#   let Σ_global = Objective's relevant CausalGraph subgraph (scope_tags ∪ requirement_refs)
+#   let Σ_i = ContextProjector.project(task_i, budget_tokens=large_enough) for each task_i
+#   assert union(Σ_i for i) ⊇ Σ_global (every global element appears in at least one task's projection)
+#   assert InfoLoss = |Σ_global - union(Σ_i)| = 0
+# Hypothesis: 10,000 random (Objective, N_tasks) pairs with 2-20 tasks per Objective.
+# Zero false-negatives allowed. Closes AIOS A1 decomposition lossless property.
+
 # T3: determinism
 pytest tests/test_context_projector.py::test_determinism -x
 # PASS: same (task_id, budget) called 3 times → identical projection output
@@ -479,9 +490,20 @@ pytest tests/test_business_analysis_completeness.py::test_missing_business_justi
 # PASS: business_justification='ok' (< 20 chars) → REJECTED
 # PASS: business_justification='Enables weekly operational reporting for Actor X'
 #       (≥ 20 chars) → PASS
+
+# T11: Task decomposition scope coverage — property test (closes AIOS A1 second half)
+pytest tests/property/test_task_decomposition_coverage.py -x --hypothesis-seed=0
+# AIOS Axiom 1 applied to Task decomposition: if main Task m decomposes into
+# {subtask_1, ..., subtask_n}, then scope(m) ⊆ union(scope(subtask_i)).
+# PASS: for random Task m with 2-10 subtasks:
+#   assert set(m.scope_tags) ⊆ union(set(st.scope_tags) for st in descendants(m))
+#   assert set(m.requirement_refs) ⊆ union(st.requirement_refs for st in descendants(m))
+# Ensures decomposition does not silently drop scope elements; paired with
+# E.8 ScopeBoundaryDeclaration (which covers converse: subtasks ⊆ main scope)
+# → together enforce set equality. Closes AIOS A1 for Task-level decomposition.
 ```
 
-**Gate G_{B.8}:** T1–T10 pass + ADR-025 CLOSED → PASS. **FC §9 Actor/Process gap closed + AI-SDLC §7 Business Analysis + #8 business_justification advanced from PARTIAL to ADDRESSED**.
+**Gate G_{B.8}:** T1–T11 pass + ADR-025 CLOSED → PASS. **FC §9 Actor/Process gap closed + AI-SDLC §7 Business Analysis + #8 business_justification closed + AIOS A1 Task-decomposition coverage closed (paired with B.4 T2c for projection decomposition and E.8 for converse direction)**.
 
 **ESC-4 impact:** 3 new tables (actors, business_processes, business_process_actors); `findings` schema extension (+3 columns); new extraction service; GateRegistry insert-validation chain extension; dashboard endpoint. **ESC-5 invariants preserved:** Finding insert path backward-compat (legacy flag); B.1 CausalEdge structure unchanged; F.3 assumption-tagging unaffected. **ESC-7 failure modes:** (a) over-extraction by LLM (too many irrelevant actors) → Steward review queue catches before persist; (b) actor drift (person changes role) → `archived_at` soft-delete + re-insert with new role; (c) process granularity unclear → `parent_process_id` enables hierarchy; `frequency_per_day` differentiates detail vs high-level.
 

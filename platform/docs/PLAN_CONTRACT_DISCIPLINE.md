@@ -102,9 +102,9 @@ pytest tests/ -x
 - Seed invariants: "Task.DONE ⟹ all AC PASS" and "Decision requires non-empty EvidenceSet" (already enforced at DB level; register formally here) — [ASSUMED: these two are the minimum viable seed. Full registry requires domain expert input].
 
 **Work:**
-1. Alembic migration: `invariants(id, code, description, check_fn, applies_to_entity, applies_to_transitions)`.
+1. Alembic migration: `invariants(id, code, description, check_fn, applies_to_entity, applies_to_transitions, semantic_category)` with `semantic_category ENUM('technical', 'business', 'data', 'temporal', 'operational') NOT NULL` (closes AIOS A6 — 5-category boundary typing).
 2. `VerdictEngine.commit()` evaluates applicable invariants post-transition; any `check_fn` returning False → rejected, state reverted.
-3. Seed ≥ 2 invariants per entity with > 1 state.
+3. Seed ≥ 2 invariants per entity with > 1 state. Each seed invariant carries its correct `semantic_category` — e.g., "Task.DONE ⟹ all AC PASS" → `business` (domain rule); "src.created_at < dst.created_at acyclicity" → `temporal`; "Decision requires non-empty EvidenceSet" → `technical`.
 4. Synthetic violation test: each registered invariant has ≥ 1 transition that would violate it, blocked by gate.
 
 **Exit test T_{E.2} (deterministic):**
@@ -120,11 +120,18 @@ pytest tests/test_invariant_gate.py -x
 pytest tests/test_invariant_registry.py -x
 # PASS: every entity with > 1 state has ≥ 1 registered invariant
 
-# T4: regression
+# T4: semantic_category NOT NULL on every Invariant (closes AIOS A6 first half)
+pytest tests/test_invariant_semantic_category.py -x
+# PASS: INSERT invariants WITHOUT semantic_category → IntegrityError
+# PASS: invalid ENUM value → CHECK constraint violation
+# PASS: every seed invariant has semantic_category ∈ {technical, business, data, temporal, operational}
+# PASS: coverage report: count of Invariants per category is surfaced in dashboard
+
+# T5: regression
 pytest tests/ -x
 ```
 
-**Gate G_{E.2}:** T1–T4 pass → PASS.
+**Gate G_{E.2}:** T1–T5 pass → PASS. **AIOS A6 (Invariant boundary typing) closed**.
 
 ---
 
