@@ -327,4 +327,171 @@ The following are scaffolded but not implemented in MVP — wireframes + endpoin
 ## 10. Authorship + versioning
 
 - v1 (2026-04-25) — initial L4 spec; 4 personas; 3 MVP web pages + 5 CLI commands; error message template; failure scenarios.
+- v2 (2026-04-25) — added §11 Constellation map view (Phase 2 spec + Phase 1 minimum subset in §11.11). No Phase 1 scope change to PLAN_PHASE1_UX_INTEGRATION; minimum subset listed but not yet wired into that plan's surfaces table.
+- v2.1 (2026-04-25) — corrected §11.7 progress formulas: column names `value/target/verified_at/result` were hallucinated; replaced with verified DATA_MODEL.md §2 columns (`current_value`, `target_value`, `last_executed_at`, derived AC predicate via TestRun). TestRun pass/fail predicate kept `[ASSUMED]` pending DATA_MODEL.md §2 TestRun column-list expansion. Propagated: `/map` row added to PLAN_PHASE1_UX_INTEGRATION.md §1.1 surfaces table (8th surface, Phase 2 deferred); MASTER_IMPLEMENTATION_PLAN.md §4.b L4 Web Dashboard bullet added.
+- v2.2 (2026-04-25) — closed §11.7 last `[ASSUMED]` by direct read of `platform/app/models/test_run.py`: TestRun pass/fail = `test_runs.all_pass BOOLEAN`; per-AC mapping = `test_runs.ac_mapping JSONB`. Refined AC progress to use `ac_mapping` lookup directly (no JOIN-against-Task indirection). DATA_MODEL.md §2 TestRun column-list expansion still pending (separate edit, out of scope here).
+
+---
+
+## 11. Constellation map view (Phase 2 spec; Phase 1 minimum subset in §11.11)
+
+**Status:** spec-only; no implementation in MVP. Phase 1 ships the minimal subset in §11.11; the full feature set is Phase 2 deferred per §7. Backed by entities already in DATA_MODEL.md §2 (Objective, KeyResult, AcceptanceCriterion, Task, TestRun, Knowledge); no new entity introduction required.
+
+**Purpose:** a single surface where the human can see *where the AI is currently working* across the full plan corpus — which Objective is active, which Task is `IN_PROGRESS`, which evidence chain is being assembled, where a Kill-criterion just fired. Replaces tab-hopping across the `/objectives/{id}` 9-tab layout (PLAN_PHASE1_UX_INTEGRATION §3) for the cross-Objective oversight case.
+
+### 11.1 Node types (5 + Source pins)
+
+| Node | Source entity (DATA_MODEL.md §2) | Visual |
+|---|---|---|
+| Objective | `objectives` | Hex outline; thicker stroke = higher tier |
+| KeyResult | `key_results` | Diamond; FK `objective_id` ⇒ parent edge |
+| AcceptanceCriterion | `acceptance_criteria` | Round-rect; FK `task_id` ⇒ parent edge |
+| Task | `tasks` | Round-rect (filled); FK `objective_id` ⇒ parent edge |
+| TestRun | `test_runs` | Square; FK `task_id` ⇒ parent edge |
+| Source (pin, sidebar-anchored) | `knowledge` where `kind ∈ {ADR, SRC, KR}` | Pin marker; reference edge from Task or AC via `source_ref` |
+
+Source pins do not occupy graph topology rows; they anchor in a right-side rail and project reference edges into the graph. Counted as "5 + Source pins" per the user's framing.
+
+### 11.2 Edge semantics (DAG, acyclic)
+
+```
+Objective ──contains──> KeyResult
+Objective ──contains──> Task
+Task      ──satisfies──> AcceptanceCriterion
+Task      ──verifies──> TestRun
+Task      ──cites──> Source
+AcceptanceCriterion ──completes_kr──> KeyResult     (via tasks.completes_kr_ids[])
+```
+
+Cycle-prevention invariant: the rendered graph must remain acyclic. `objective_dependencies` (DATA_MODEL.md §2) already enforces no-cycles between Objectives; the same constraint extends to the full DAG and is checked at render time before layout.
+
+### 11.3 Layouts (2; toggle ⌘L or via toolbar)
+
+| Layout | Algorithm | When useful |
+|---|---|---|
+| Hierarchical (default) | Sugiyama / Reingold–Tilford rooted at Objectives | Reading: see plan from top |
+| Force | dagre-force or D3-force hybrid | Discovery: clusters, isolated nodes, blocked subgraphs |
+
+Persistence: per-user last-used layout in `users.ui_prefs` JSONB.
+
+### 11.4 Live signals (5)
+
+| Signal | Trigger | Visual |
+|---|---|---|
+| IN_PROGRESS pulse | `tasks.status = 'IN_PROGRESS'` | Pulsujący ring 1.5s loop, accent color |
+| Evidence-flow animation | `executions` INSERT or `evidence_set` INSERT | Animated dash on the Task→TestRun or Task→Source edge, 800ms travel time |
+| K-trip flash | `kill_criteria_event_log` INSERT (PLAN_PHASE1_UX_INTEGRATION §11) | Czerwony pulse 600ms on affected node + K-code badge |
+| AI-active dot | `executions.status ∈ ('RUNNING','BLOCKED_AWAITING_HUMAN')` | Small dot top-right of node; tooltip = `agent_model + agent_id` |
+| Mini-feed | `union(executions, kill_criteria_event_log, decisions)` last 5 rows | Right rail; `timestamp · agent · action · → linked node` |
+
+Data feed: SSE on `GET /api/v1/constellation/stream` (§11.9). All five signals derive from existing tables; no new persistence introduced by this view.
+
+### 11.5 Focus mode (isolation)
+
+Single-click on any node ⇒ `mode = isolated(node)`:
+- Subgraph kept = `ancestors(node) ∪ {node} ∪ descendants(node)` (transitive closure on DAG edges).
+- All other nodes blade out (opacity 0.05, no events).
+- Toolbar shows breadcrumb; `Esc` exits.
+- Edge highlights: parents and children use distinct stroke colors **and** distinct dash patterns (color-blind-safe; never hue-only).
+
+Double-click opens detail panel via existing `/objective/:id`, `/tasks/:id`, etc. routes.
+
+### 11.6 Filters (8, multi-select; URL-persistable)
+
+| # | Filter | Backing predicate | URL form |
+|---|---|---|---|
+| 1 | Hide DONE / ACHIEVED | `status NOT IN ('DONE','ACHIEVED')` per node type | `?hide_done=1` |
+| 2 | Show only blocked | `status = 'BLOCKED' OR executions.status = 'BLOCKED_AWAITING_HUMAN'` | `?blocked=1` |
+| 3 | Show only what AI touches now | `JOIN executions ON status = 'RUNNING'` (last 60s window) | live; not URL |
+| 4 | Tier (T1/T2/T3) | `objectives.tier` (inherited transitively) | `?tier=T1,T2` |
+| 5 | Owner / agent model | `executions.agent_model = ?` | `?agent=claude-opus-4-7` |
+| 6 | Epistemic tag | `acceptance_criteria.epistemic_tag IN (?)` ∈ {INVENTED, ADR-CITED, KR-LINKED, SRC-PINNED} (PLAN_PHASE1_UX_INTEGRATION) | `?tag=INVENTED` |
+| 7 | Search / jump (⌘K) | full-text on `title`, `id`, `epistemic_tag`; jumps + selects node | not persisted |
+| 8 | Group-by-Objective | collapse all descendants of an Objective into a super-node with a progress badge | `?collapse=OBJ-123,OBJ-987` |
+
+Multi-select semantics: AND within a category, OR across categories. Conflicts resolved by precedence: `search > isolation > others`.
+
+### 11.7 Progress encoding
+
+Node fill = gradient from accent-green (100% complete) to neutral-gray (0% complete). Computation:
+
+| Node | Progress formula | Source-of-truth columns |
+|---|---|---|
+| Objective | `count(achieved KR) / count(total KR)` if KRs exist, else `count(DONE Task) / count(Task)` | `key_results.status = 'ACHIEVED'`; `tasks.status = 'DONE'` |
+| KeyResult (numeric) | `key_results.current_value / key_results.target_value` | `key_results.current_value`, `key_results.target_value` (invariant `kr_type='numeric' ⇒ target_value NOT NULL`) |
+| KeyResult (descriptive) | binary: `1.0` if `key_results.status = 'ACHIEVED'` else `0.0` | `key_results.kr_type='descriptive'` (no numeric target) |
+| AcceptanceCriterion | **derived** — lookup AC id in `test_runs.ac_mapping` JSONB (most-recent TestRun for AC's Task); `1.0` if mapped result = pass, `0.0` otherwise | `test_runs.ac_mapping` JSONB stores `[{ac_id, test_id, passed}]` — no JOIN-against-Task required, the mapping is per-row |
+| Task | `count(test_runs WHERE all_pass=true) / count(test_runs)` if any, else `tasks.status = 'DONE' ? 1.0 : 0.0` | `test_runs.all_pass` BOOLEAN; `tasks.status` |
+| TestRun | binary: `1.0` if `test_runs.all_pass = true`, else `0.0` | `test_runs.all_pass` BOOLEAN (default `false`) |
+
+[CONFIRMED via DATA_MODEL.md §2]: `key_results.current_value`, `key_results.target_value`, `key_results.status ∈ {NOT_STARTED, IN_PROGRESS, ACHIEVED, BLOCKED}`, `key_results.kr_type ∈ {numeric, descriptive}`, `tasks.status ∈ {TODO, CLAIMING, IN_PROGRESS, DONE, FAILED, SKIPPED}`, `acceptance_criteria.last_executed_at` (timestamp, semantics ≠ pass/fail).
+
+[CONFIRMED via `platform/app/models/test_run.py:38, 41`]: `test_runs.all_pass BOOLEAN NOT NULL` (canonical pass/fail flag); `test_runs.ac_mapping JSONB` (per-AC pass/fail map). DATA_MODEL.md §2 TestRun entry is undocumented at column-level; ground truth lives in the model file. **Action item:** DATA_MODEL.md §2 should be expanded to mirror these columns (separate edit, not in this turn).
+
+**Authoring history of §11.7:** v2 draft referenced columns `value`, `target`, `verified_at`, `result` — all four hallucinated against DATA_MODEL.md §2; corrected in v2.1. v2.1 left TestRun pass/fail as `[ASSUMED]`; v2.2 closed it via direct read of `app/models/test_run.py`. Documented per CONTRACT §A.1 (assumption-instead-of-verification disclosure).
+
+### 11.8 Sidebar: mini-feed (right rail)
+
+Width 280px, sticky. Each row:
+```
+HH:MM:SS · agent_id (or "human") · {action}
+└─ on Task#TASK-123  /  Decision#DEC-45  /  KR#KR-7
+```
+Action vocabulary (closed set): `started`, `blocked`, `evidence-attached`, `K-trip`, `acceptance-failed`, `acceptance-passed`, `decision-recorded`. Click row ⇒ isolation mode on the linked node.
+
+### 11.9 Data feed
+
+Endpoint: `GET /api/v1/constellation/stream` (Server-Sent Events).
+- **Initial frame:** full graph snapshot `{ nodes[], edges[], etag }`.
+- **Live frames:** deltas only, JSON-Patch (RFC 6902); one frame per event; batched at 100ms.
+- **Reconnect:** client sends `Last-Event-ID`; server resumes from `audit_log`.
+- **Auth:** bearer token, same as `/api/v1/*` (MVP_SCOPE §6).
+
+Phase 1 (§11.11) uses non-SSE polling on `GET /api/v1/constellation` every 5s; SSE is Phase 2.
+
+### 11.10 Failure scenarios (ASPS Clause 11)
+
+| # | Scenario | Status | Mechanism / Justification |
+|---|---|---|---|
+| 1 | null_or_empty_input | Handled | Empty graph (zero Objectives) renders empty-state copy "no plan loaded yet" with link to `forge objective new`; never blank canvas |
+| 2 | timeout_or_dependency_failure | Handled | SSE drop ⇒ banner "live updates paused, retrying"; auto-fallback to 5s poll; no data loss because feed is delta-on-server-state |
+| 3 | repeated_execution | Handled | Multiple browser tabs share `etag`; deltas idempotent (JSON-Patch test ops); concurrent K-trips from same source dedup via `event_id` |
+| 4 | missing_permissions | Handled | Filters bounded by ACL; UI shows "0 visible (12 filtered by ACL)" — never silent zero |
+| 5 | migration_or_old_data_shape | Handled | Optional new columns (`cascade_dod`, `autonomy_pinned`, `epistemic_tag`) render as neutral state when absent; no crash |
+| 6 | frontend_not_updated | Handled | Backend SSE shape versioned via `v=N` header; client refuses unknown major version with explicit refresh prompt |
+| 7 | rollback_or_restore | Handled | Rollback = revert PR; constellation re-renders from current DB state; no in-graph history needed in MVP |
+| 8 | monday_morning_user_state | Handled | All filter state in URL query; bookmarkable; refresh restores exact view |
+| 9 | warsaw_missing_data | JustifiedNotApplicable | UX surface; no geographic dimension |
+| 10 | 100+ active Tasks (cull strategy) | Handled | Force layout caps at N=200 visible nodes; excess collapsed by group-by-Objective with explicit "+47 hidden" badge |
+| 11 | agent_id NULL (anonymous K-trip) | Handled | K-trip flash renders without agent attribution; mini-feed shows "system · K-trip" |
+| 12 | concurrent K-trips on same node | Handled | Flashes queue (max 3 visible); subsequent collapsed into "K1, K3, K6 fired" badge |
+
+### 11.11 Phase 1 minimum subset (cut by Twierdzenie 5: bounded exploration; Twierdzenie 14: minimal change)
+
+Phase 1 ships ONLY:
+- Force layout only (no hierarchical toggle; ⌘L disabled)
+- Two node types: **Objective + Task** (no KR, AC, TestRun, Source)
+- One filter: "AI active now" + ⌘K jump (filters 1, 2, 4, 5, 6, 8 deferred)
+- Polling feed (5s) — no SSE
+- No animated edges, no K-trip flash, no isolation focus, no progress gradient (binary done/not-done coloring instead)
+- No mini-feed sidebar
+
+Page route in Phase 1: `/map` — would need to be added as a 4th page to PLAN_PHASE1_UX_INTEGRATION §1.1 surfaces table. **That edit is not done in this turn** — this §11.11 is a spec target, not an enacted scope expansion.
+
+Exit criterion for Phase 1 minimum: a developer opens `/map`, sees all Objectives + Tasks, identifies which Task an AI agent is currently executing within 3 seconds.
+
+### 11.12 Phase 2 expansion
+
+Adds, relative to §11.11: hierarchical layout, KR + AC + TestRun + Source nodes, all 8 filters, isolation focus, animated evidence-flow edges, K-trip flash, mini-feed sidebar, progress gradient, SSE feed.
+
+Estimated effort (rough): **8–12 dev-days frontend** (Vite+React per ADR-028) + **3 dev-days backend** (SSE endpoint + delta computation). Not committed; Phase 2 prioritization deferred to post-MVP review.
+
+### 11.13 Open questions (Phase 2 blockers)
+
+| # | Question | Blocks |
+|---|---|---|
+| Q-CM1 | Graph library: D3 (raw) vs react-flow vs cytoscape.js? D3 = max control + most code; react-flow = best DX for DAG ≤500 nodes; cytoscape = best for force ≥500 nodes | Phase 2 dev start |
+| Q-CM2 | Server-side delta computation: Postgres LISTEN/NOTIFY direct vs app-level event bus? LISTEN/NOTIFY simpler, couples DB to delivery | SSE endpoint design |
+| Q-CM3 | Color-blind-safe palette for green→gray gradient — viridis-based? | Visual a11y review |
+| Q-CM4 | When N > 500 visible nodes, default to group-by-Objective collapsed, or show all and warn? | Scale UX |
 - Updates require explicit version bump + distinct-actor review per ADR-003.

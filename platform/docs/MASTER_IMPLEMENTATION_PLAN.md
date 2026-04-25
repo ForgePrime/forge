@@ -212,6 +212,7 @@ forge metrics                       # show 7 metrics + 4 Tier-1 metrics
 - Change review: expected_diff + runtime observations + apply/reject
 - Steward queue: pending critical sign-offs + ACKNOWLEDGED_GAP reviews
 - Metrics dashboard: 7 G.3 metrics + CritPath slippage + cascade blast radius + debt categories
+- Constellation map (`/map`) — DAG view of Objective → KR → AC → Task → TestRun → Source with live AI-activity highlighting, isolation focus, 8 filters. **Phase 2 per UX_DESIGN.md §11**; Phase 1 minimum subset (§11.11) specified but not enacted unless scope expansion approved
 
 #### L4.c Onboarding
 - First-run wizard (3 steps): create Project, upload first doc, define first Objective

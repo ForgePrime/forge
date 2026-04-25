@@ -43,6 +43,7 @@ Source: `platform/docs/forge_redesign_extracted/` (10 files, extracted 2026-04-2
 | `/execution/:id/causal` | Causal-graph SVG (B.3 CausalGraph rendering) | Developer | NEW |
 | `/settings/autonomy` | Per-objective `autonomy_pinned` switch ('L1'/'L2'/'L3') | Steward | NEW |
 | `/billing` | LLM cost rollups, quotas | Executive | NEW |
+| `/map` | Constellation DAG view (Objective→KR→AC→Task→TestRun→Source) — full feature set with two layouts, isolation focus, animated evidence flow, K-trip flash, mini-feed, 8 filters | Developer + Tech-lead | **NEW (Phase 2 deferred per UX_DESIGN.md §11.11)** — Phase 1 minimum subset (force layout, OBJ+Task only, "AI active now" filter, 5s poll) is **specified but not enacted** in Phase 1 scope; enactment requires explicit scope-expansion decision |
 
 ### §1.2 New domain concepts (9 — schema-impacting)
 
