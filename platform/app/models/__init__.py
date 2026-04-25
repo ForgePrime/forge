@@ -28,6 +28,7 @@ from app.models.lessons import ProjectLesson, AntiPattern
 from app.models.contract_revision import ContractRevision
 from app.models.evidence_set import EvidenceSet
 from app.models.idempotent_call import IdempotentCall, DEFAULT_IDEMPOTENCY_TTL_SECONDS
+from app.models.verdict_divergence import VerdictDivergence
 
 __all__ = [
     "Organization",
@@ -68,4 +69,5 @@ __all__ = [
     "EvidenceSet",
     "IdempotentCall",
     "DEFAULT_IDEMPOTENCY_TTL_SECONDS",
+    "VerdictDivergence",
 ]
