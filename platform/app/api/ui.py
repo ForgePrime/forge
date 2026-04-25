@@ -283,6 +283,134 @@ def dashboard_json(request: Request, db: Session = Depends(get_db)):
     return JSONResponse(dashboard_to_dict(compute_dashboard(db, org_id)))
 
 
+@router.get("/audit", response_class=HTMLResponse)
+def audit_view(
+    request: Request,
+    db: Session = Depends(get_db),
+    kc: str = Query("", description="filter by K-code: K1..K6 or empty for all"),
+    window: str = Query("24h", description="time window: 24h | 7d | 30d | all"),
+):
+    """Phase 1 redesign /audit view — append-only K-criteria event log.
+
+    Steward / Compliance surface for reviewing K1-K6 firings. Filters by
+    K-code + time window. Counts per K-code at the top.
+    """
+    from app.models import KillCriteriaEventLog
+    org_id = _current_org_id(request)
+    project_ids = []
+    q = db.query(Project)
+    if org_id is not None:
+        q = q.filter(Project.organization_id == org_id)
+    project_ids = [p.id for p in q.all()]
+
+    # Build base query — scope to visible projects via decision_id link
+    visible_decision_subq = (
+        db.query(Decision.id).filter(Decision.project_id.in_(project_ids))
+        if project_ids else db.query(Decision.id).filter(False)
+    )
+
+    base_q = db.query(KillCriteriaEventLog).filter(
+        (KillCriteriaEventLog.decision_id.in_(visible_decision_subq))
+        | (KillCriteriaEventLog.decision_id.is_(None))
+    )
+
+    # Time window
+    now = dt.datetime.now(dt.timezone.utc)
+    if window == "24h":
+        since = now - dt.timedelta(hours=24)
+    elif window == "7d":
+        since = now - dt.timedelta(days=7)
+    elif window == "30d":
+        since = now - dt.timedelta(days=30)
+    else:
+        since = None
+
+    if since is not None:
+        base_q = base_q.filter(KillCriteriaEventLog.fired_at >= since)
+
+    # Per-K-code counts (always over the same time window)
+    code_counts: dict[str, int] = {}
+    for code in ("K1", "K2", "K3", "K4", "K5", "K6"):
+        cnt = (
+            base_q.with_entities(sqlfunc.count(KillCriteriaEventLog.id))
+            .filter(KillCriteriaEventLog.kc_code == code)
+            .scalar() or 0
+        )
+        code_counts[code] = cnt
+
+    # Apply kc filter — but compute total_rows BEFORE adding order_by
+    # (with_entities + count + order_by produces invalid SQL).
+    counted_q = base_q
+    if kc:
+        counted_q = counted_q.filter(KillCriteriaEventLog.kc_code == kc)
+    total_rows = (
+        counted_q.with_entities(sqlfunc.count(KillCriteriaEventLog.id)).scalar() or 0
+    )
+    # Now add order_by + limit for the actual row fetch.
+    rows = counted_q.order_by(KillCriteriaEventLog.fired_at.desc()).limit(200).all()
+
+    return templates.TemplateResponse(request, "audit.html", {
+        "rows": rows,
+        "total_rows": total_rows,
+        "code_counts": code_counts,
+        "selected_kc": kc,
+        "selected_window": window,
+    })
+
+
+@router.get("/audit.json", response_class=JSONResponse)
+def audit_json(
+    request: Request,
+    db: Session = Depends(get_db),
+    kc: str = Query(""),
+    window: str = Query("24h"),
+):
+    """JSON variant of /ui/audit — for tests + future HTMX partial refresh."""
+    from app.models import KillCriteriaEventLog
+    org_id = _current_org_id(request)
+    project_ids = []
+    q = db.query(Project)
+    if org_id is not None:
+        q = q.filter(Project.organization_id == org_id)
+    project_ids = [p.id for p in q.all()]
+    visible_decision_subq = (
+        db.query(Decision.id).filter(Decision.project_id.in_(project_ids))
+        if project_ids else db.query(Decision.id).filter(False)
+    )
+    base_q = db.query(KillCriteriaEventLog).filter(
+        (KillCriteriaEventLog.decision_id.in_(visible_decision_subq))
+        | (KillCriteriaEventLog.decision_id.is_(None))
+    )
+    now = dt.datetime.now(dt.timezone.utc)
+    since = {
+        "24h": now - dt.timedelta(hours=24),
+        "7d": now - dt.timedelta(days=7),
+        "30d": now - dt.timedelta(days=30),
+    }.get(window, None)
+    if since is not None:
+        base_q = base_q.filter(KillCriteriaEventLog.fired_at >= since)
+    if kc:
+        base_q = base_q.filter(KillCriteriaEventLog.kc_code == kc)
+    rows = base_q.order_by(KillCriteriaEventLog.fired_at.desc()).limit(200).all()
+    return JSONResponse({
+        "rows": [
+            {
+                "id": r.id,
+                "kc_code": r.kc_code,
+                "fired_at": r.fired_at.isoformat() if r.fired_at else None,
+                "objective_id": r.objective_id,
+                "decision_id": r.decision_id,
+                "task_id": r.task_id,
+                "evidence_set_id": r.evidence_set_id,
+                "reason": r.reason,
+            }
+            for r in rows
+        ],
+        "kc_filter": kc,
+        "window": window,
+    })
+
+
 @router.post("/projects")
 def ui_create_project(
     request: Request,

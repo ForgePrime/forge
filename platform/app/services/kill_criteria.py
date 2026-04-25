@@ -197,6 +197,13 @@ def detect_k4_solo_verifier(
 
     Returns the K4 event row if logged, else None.
 
+    **Idempotent per-execution**: if a K4 event has already been logged
+    for this execution_id (any K4 row whose reason mentions
+    `execution_id={N}`), skip and return None. Prevents duplicate events
+    when the detector is invoked multiple times (e.g. on challenge call
+    retry, or by the audit script after the auto-instrumentation already
+    fired).
+
     Limitations (CONTRACT §A.1 disclosure):
     - 'human-in-loop' is not encoded on LLMCall in current schema; this
       detector treats every same-model executor+challenger pair as K4.
@@ -204,6 +211,15 @@ def detect_k4_solo_verifier(
     - If multiple challenge calls exist (retries), only the first is
       compared — refine when retry semantics matter.
     """
+    # Idempotency check: was K4 already logged for this execution?
+    already = (
+        db.query(KillCriteriaEventLog.id)
+        .filter(KillCriteriaEventLog.kc_code == "K4")
+        .filter(KillCriteriaEventLog.reason.like(f"%execution_id={execution_id}:%"))
+        .first()
+    )
+    if already is not None:
+        return None
     # Find executor model
     exec_call = (
         db.query(LLMCall)

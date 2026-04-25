@@ -1477,6 +1477,18 @@ def orchestrate(
                         db.flush()
                         total_cost += chal.llm_call_meta.get("cost_usd") or 0
 
+                        # K4 auto-instrumentation: detect solo-verifier (challenger
+                        # model == executor model) per ADR-012 distinct-actor.
+                        # Idempotent per-execution; safe to call after every
+                        # challenge LLMCall creation. Failures here MUST NOT
+                        # break the pipeline — wrap in defensive try.
+                        try:
+                            from app.services.kill_criteria import detect_k4_solo_verifier
+                            detect_k4_solo_verifier(db, execution.id)
+                        except Exception:
+                            # Logged-only audit; never raises into the executor path.
+                            pass
+
                     for cf in chal.new_findings:
                         ext_id = _next_external_id(db, proj.id, Finding, "F")
                         db.add(Finding(

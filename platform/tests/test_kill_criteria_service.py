@@ -396,6 +396,35 @@ def test_detect_k4_quiet_without_challenge_call(db_session, project_decision):
     assert event is None
 
 
+def test_detect_k4_idempotent_per_execution(db_session, project_decision):
+    """Repeated invocation on same execution_id does NOT duplicate K4 events."""
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    exec_ = Execution(task_id=task.id, agent="test-agent", status="VALIDATING")
+    db_session.add(exec_)
+    db_session.flush()
+    _make_llm_call(db_session, exec_.id, purpose="execute", model="claude-opus-4-7", project_id=proj.id)
+    _make_llm_call(db_session, exec_.id, purpose="challenge", model="claude-opus-4-7", project_id=proj.id)
+
+    first = detect_k4_solo_verifier(db_session, exec_.id)
+    second = detect_k4_solo_verifier(db_session, exec_.id)
+    third = detect_k4_solo_verifier(db_session, exec_.id)
+
+    assert first is not None  # first call fires
+    assert second is None     # second is no-op
+    assert third is None      # third is no-op
+
+    # Verify only ONE row in the log for this execution
+    from sqlalchemy import func as sqlfunc
+    count = (
+        db_session.query(sqlfunc.count(KillCriteriaEventLog.id))
+        .filter(KillCriteriaEventLog.kc_code == "K4")
+        .filter(KillCriteriaEventLog.reason.like(f"%execution_id={exec_.id}:%"))
+        .scalar()
+    )
+    assert count == 1
+
+
 def test_detect_k4_uses_model_used_when_set(db_session, project_decision):
     """If LLMCall.model_used is set (actual model after fallback), K4 should
     compare those, not the requested `model`."""

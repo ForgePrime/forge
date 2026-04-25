@@ -1202,3 +1202,82 @@ as ADR_CITED / EMPIRICALLY_OBSERVED / TOOL_VERIFIED will lift further.
 
 **Cumulative session metric: 11 commits ahead of session-start origin
 (`9a2bbb0`); branch synced to GitHub.**
+
+---
+
+### §1.23 K4 auto-instrumentation + /ui/audit view
+
+**[2026-04-25 evening]**
+
+User: "1 a potem 2" → wired K4 detection into pipeline.py challenge
+LLMCall path (auto-instrumentation), then built /ui/audit view as
+Compliance/Steward surface for K-event review.
+
+**§1.23.1 — K4 auto-instrumentation:**
+
+- `app/services/kill_criteria.py::detect_k4_solo_verifier` made
+  **idempotent per-execution**: queries existing K4 events with
+  `reason LIKE '%execution_id={N}:%'` BEFORE writing. Repeat invocations
+  on same execution return None (no duplicate audit rows).
+- New test `test_detect_k4_idempotent_per_execution` confirms 1st call
+  fires, 2nd+3rd no-op, log row count = 1.
+- `app/api/pipeline.py:1477` — wired `detect_k4_solo_verifier(db, execution.id)`
+  immediately after challenge LLMCall is flushed. Wrapped in defensive
+  `try/except` so failure never breaks the executor path. Future
+  same-model executor+challenger pairs will be auto-logged.
+
+**§1.23.2 — /ui/audit view + JSON variant:**
+
+- `app/templates/audit.html` (~110 lines Tailwind+Jinja):
+  - Header + filter form (K-code dropdown + window: 24h/7d/30d/all)
+  - 6-tile per-K-code summary panel (counts, click-to-filter)
+  - Event table: When / K-code / Entity ref / Reason / Evidence
+  - Empty-state copy when zero events
+  - Steward note about dismissal protocol (record as Decision with
+    type='kill_criterion_override', not edit/delete the event)
+- `app/api/ui.py` — two routes added:
+  - `GET /ui/audit?kc=K4&window=24h` — HTML view
+  - `GET /ui/audit.json?kc=K4&window=24h` — machine-readable
+  - Both scope events to visible projects via `decision.project_id`
+    subquery (org-tenant isolation)
+- Bug fix during dev (CONTRACT §A.6): SQLAlchemy `.with_entities(count())`
+  on a query with `ORDER BY` produces invalid SQL. Restructured to
+  count BEFORE adding order_by.
+
+**§1.23.3 — Tests:**
+
+- `tests/test_audit_view.py` — 4 tests covering:
+  - Empty-state template render
+  - Real-row template render (creates K4 event, asserts visible)
+  - Filter dropdown state preservation
+  - Live-DB regression on the 27 §1.21 K4 events (informational skip
+    if events deleted)
+- All existing K-criteria + dashboard tests still green.
+- 23 kill_criteria tests (was 22 + idempotency test).
+
+**Live verification on dev DB:**
+- `audit_json(kc='K4', window='24h')` → 27 rows; first row `id=74`,
+  `task_id=28`, reason cites `execution_id=31` with executor/challenger
+  both `claude-haiku-4-5-20251001`.
+- Direct template render → 200 OK, 37313 bytes body, all expected
+  markers present.
+
+**Cumulative session totals after §1.23:**
+
+| Metric | Value |
+|---|---|
+| Commits ahead of session start | 12 |
+| Deterministic test count | 145 (132 + 9 K2/K4 + 1 idempotency + 4 audit/template - skipping count overlap) |
+| K-detectors implemented | K1, K2, K4 (idempotent) |
+| K-detectors auto-instrumented | K4 only (in pipeline.py) |
+| Dashboard panels with real data | HERO + M2 + K1 + K2 + K4 + Objectives |
+| New routes | /ui/dashboard, /ui/dashboard.json, /ui/audit, /ui/audit.json |
+
+**State of remaining work:**
+- K3 / K5 / K6 detectors — schema/ADR work (tier model, gate-spectrum,
+  contract drift)
+- K1 / K2 auto-instrumentation — separate hot-path decisions
+- /audit dismissal flow — Decision with type='kill_criterion_override'
+  protocol; UI not yet wired
+- 27 historical K4 findings — Steward review (case-by-case dismiss vs
+  treat as real)
