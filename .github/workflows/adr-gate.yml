@@ -109,23 +109,36 @@ jobs:
       - name: TODO — invoke validate_migration_cycle.py
         run: echo "Stage 28.2b implementation pending — see PLAN_ADR_GATE_PIPELINE.md §4b"
 
-  # Stage 28.3 — Pydantic schema validator (PLACEHOLDER — depends on app/schemas/ existing)
+  # Stage 28.3 — Pydantic schema validator (ENABLED 2026-04-25 after
+  # app/schemas/side_effect_map.py landed for ADR-028 D3 ImpactDelta).
   pydantic-schema:
-    name: 'Stage 28.3: Pydantic schema (placeholder)'
+    name: 'Stage 28.3: Pydantic schema (round-trip + mypy strict)'
     runs-on: ubuntu-latest
-    if: false  # TODO: enable when app/schemas/ is populated post-migration
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.13' }
-      - name: TODO — Hypothesis round-trip + mypy --strict on app/schemas/
-        run: echo "Stage 28.3 implementation pending — depends on Phase 1 schema files"
+        with:
+          python-version: '3.13'
+      - name: Install platform deps (Pydantic 2.x + pytest)
+        working-directory: platform
+        run: |
+          python -m pip install --upgrade pip
+          pip install pydantic pytest
+      - name: Round-trip property tests on app/schemas/
+        working-directory: platform
+        run: python -m pytest tests/test_impact_delta_round_trip.py -q
+      - name: mypy --strict on app/schemas/
+        working-directory: platform
+        run: |
+          pip install mypy
+          mypy --strict app/schemas/ || echo "::warning::mypy --strict findings — review before flipping to fail"
+        continue-on-error: true  # Starter: non-blocking until baseline clean.
 
   # Aggregate gate: all required jobs must pass for the ADR gate to be green.
   # Branch protection rule should require this status check before merge.
   adr-gate-pass:
     name: 'ADR Gate Pipeline (composite)'
-    needs: [adr-format, migration-convention, adr-lifecycle]
+    needs: [adr-format, migration-convention, adr-lifecycle, pydantic-schema]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -134,9 +147,11 @@ jobs:
           echo "format:        ${{ needs.adr-format.result }}"
           echo "migration:     ${{ needs.migration-convention.result }}"
           echo "lifecycle:     ${{ needs.adr-lifecycle.result }}"
+          echo "pydantic:      ${{ needs.pydantic-schema.result }}"
           if [[ "${{ needs.adr-format.result }}" != "success" ]] || \
              [[ "${{ needs.migration-convention.result }}" != "success" ]] || \
-             [[ "${{ needs.adr-lifecycle.result }}" != "success" && "${{ github.event_name }}" == "pull_request" ]]; then
+             [[ "${{ needs.adr-lifecycle.result }}" != "success" && "${{ github.event_name }}" == "pull_request" ]] || \
+             [[ "${{ needs.pydantic-schema.result }}" != "success" ]]; then
             echo "::error::One or more ADR Gate stages failed"
             exit 1
           fi

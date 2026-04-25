@@ -93,3 +93,14 @@ repos:
         language: system
         pass_filenames: false
         files: '^platform/docs/migrations_drafts/.*\.sql$'
+
+      # Stage 28.3 of Deterministic ADR Gate Pipeline (task #28).
+      # Pydantic round-trip property tests on app/schemas/ — catches AI
+      # silent-fill bugs (wrong type into discriminated-union variant,
+      # missing discriminator, extra fields) at commit time.
+      - id: validate-pydantic-schemas
+        name: 'Stage 28.3: Pydantic schema round-trip (ADR-028 D3 self-adjointness)'
+        entry: bash -c 'cd platform && python -m pytest tests/test_impact_delta_round_trip.py -q'
+        language: system
+        pass_filenames: false
+        files: '^platform/(app/schemas/.*\.py|tests/test_impact_delta_round_trip\.py)$'

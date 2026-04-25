@@ -745,3 +745,92 @@ What displays "awaiting Phase 1" until migration applied:
 |---|---|
 | #27 DashboardView SSR | **completed (PoC)** — 16 tests green; route registered; live 303→login |
 | #28 Deterministic ADR Gate Pipeline | in_progress (Stage 28.1 + 28.2a + 28.4 DONE; 28.2b + 28.3 pending) |
+
+---
+
+### §1.17 Phase 1 migration applied + models + Stage 28.3 (autonomous batch)
+
+**[2026-04-25 evening, autonomous execution per "polegał na rekomendacjach swoich"]**
+
+User direction: continue executing rec-driven, do as much as possible
+without stopping. Five high-leverage moves landed in one batch.
+
+**§1.17.1 — Doc updates from second-session committed (`0ef2abe` pushed):**
+- UX_DESIGN.md §11 Constellation map (Phase 2 spec; Phase 1 minimum
+  subset spec'd but not enacted)
+- PLAN_PHASE1_UX_INTEGRATION.md §1.1 — `/map` row added (Phase 2 deferred)
+- MASTER_IMPLEMENTATION_PLAN.md §L4.b bullet
+
+**§1.17.2 — Phase 1 migration APPLIED on dev DB (task #29 completed):**
+- Backup taken: `platform/backups/backup_pre_phase1_20260425_174524.sql`
+  (16MB, gitignored).
+- Migration ran cleanly:
+  `docker exec -i platform-db-1 psql ... < migrations_drafts/2026_04_26_phase1_redesign.sql`
+  Output: BEGIN, 3×ALTER, 3×DO, 5×CREATE TABLE, 9×CREATE INDEX, COMMIT.
+- §101 verification queries all GREEN [CONFIRMED via psql output]:
+  - `epistemic_tag` ENUM exists with 6 values in canonical order
+  - 5 new tables: alternatives, side_effect_map, cascade_dod_item,
+    kill_criteria_event_log, trust_debt_snapshot — all to_regclass non-NULL
+  - `objectives.stage` + `objectives.autonomy_pinned` columns present
+  - `decisions.epistemic_tag` + `acceptance_criteria.epistemic_tag` present
+- **G_5.1 ExitGate PASSED.**
+
+**§1.17.3 — Phase 1 SQLAlchemy models (task #30 completed, commit `f44c973`):**
+- New: `app/models/{epistemic,alternative,side_effect_map,cascade_dod_item,
+  kill_criteria_event_log,trust_debt_snapshot}.py`
+- Extended: `Objective` (+ stage, autonomy_pinned), `Decision` (+ epistemic_tag),
+  `AcceptanceCriterion` (+ epistemic_tag).
+- `epistemic_tag` PG ENUM mapped via `create_type=False` (DB type already
+  exists from migration §1).
+- All Phase 1 enums exported from `app/models/__init__.py`:
+  `EpistemicTag` / `ObjectiveStage` / `AutonomyPinned`.
+- Smoke import test passed; 83 deterministic gate-pipeline + dashboard
+  tests still green after model wiring.
+
+**§1.17.4 — Pydantic ImpactDelta discriminated union (task #31 completed):**
+- `app/schemas/side_effect_map.py` — 5 typed variants
+  (LatencyDelta float / CostDelta Decimal / BlastRadiusFiles+Users int /
+  ReversibilityClassDelta Literal[A..E]) + ImpactDeltaList wrapper with
+  `to_jsonb` / `from_jsonb` round-trip.
+- `tests/test_impact_delta_round_trip.py` — **25 tests green** covering
+  round-trip per variant, discriminator integrity, wrong-type rejection
+  (string into numeric latency = ValidationError per AI silent-fill defense),
+  extra-field rejection, NULL JSONB, parametrised fuzz.
+
+**§1.17.5 — Stage 28.3 wired into CI + pre-commit (task #32 completed):**
+- `.github/workflows/adr-gate.yml` `pydantic-schema` job activated (no
+  longer placeholder); composite gate `adr-gate-pass` now requires
+  Stage 28.3 green.
+- `.pre-commit-config.yaml` hook `validate-pydantic-schemas` on
+  `app/schemas/*.py` + test file changes.
+- PLAN_ADR_GATE_PIPELINE.md §5 rewritten as DONE.
+
+**Total deterministic gate coverage after §1.17:**
+
+| Stage | Tests |
+|---|---|
+| 28.1 ADR format | 22 |
+| 28.2a SQL migration Forge-convention | 21 |
+| 28.3 Pydantic schema | 25 |
+| 28.4 ADR lifecycle | 24 |
+| Dashboard service | 16 |
+| **Total** | **108** |
+
+Pure-stdlib + Pydantic; runs in <5s; no DB / no network.
+
+**State of pending tasks after §1.17:**
+
+| Task | Status |
+|---|---|
+| #28 Deterministic ADR Gate Pipeline | in_progress (4 of 5 stages DONE; 28.2b live PG cycle pending — Docker dep) |
+| #29 Apply Phase 1 migration | **completed** |
+| #30 Phase 1 SQLAlchemy models | **completed** |
+| #31 Pydantic ImpactDelta | **completed** |
+| #32 Wire Stage 28.3 into CI + pre-commit | **completed** |
+
+**Cross-ref §14:**
+- §1.17 ← §1.16 (migration draft + DashboardView graceful fallback ready)
+- §1.17 → DashboardView "awaiting Phase 1" pills will degrade to real
+  values once kill-criteria firing instrumentation + alternatives writes
+  + side_effect_map writes happen (not yet wired)
+- §1.17 → Stage 28.2b live PG up/down/up cycle (only remaining 28.* stage)
