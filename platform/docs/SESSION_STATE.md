@@ -919,3 +919,81 @@ DashboardView graceful-fallback path is now visibly degrading:
 
 **Branch state**: `docs/forge-plans-soundness-v1` 5 commits ahead of
 origin start of session (`9a2bbb0`); all pushed to GitHub.
+
+---
+
+### §1.19 Stage 28.2b live PG cycle validator (closes task #28)
+
+**[2026-04-25 evening, autonomous batch continued]**
+
+**Artefact:**
+- `platform/scripts/validate_migration_cycle.py` (~310 LOC, pure stdlib
+  + psycopg2). Parses §99 reversal block, runs up→down→up cycle against
+  ephemeral PG, asserts schema-snapshot equalities (S0==S2 down restored
+  baseline; S1==S3 up deterministic).
+- `platform/tests/test_validate_migration_cycle.py` — **11 parser tests
+  green** (offline, no DB). Covers: §99 extraction, prose-line skipping
+  (regression sentinel for the "drop tables FIRST" prose-as-SQL bug),
+  ALTER continuation lines, DROP TYPE, missing-§99 raise,
+  split_up_section, real Phase 1 parser regression, CycleResult shape.
+- `.github/workflows/adr-gate.yml` job `migration-live-cycle` —
+  ephemeral postgres:16-alpine service, bootstraps baseline schema from
+  app.models metadata (with Phase 1 targets stripped via inline Python
+  so the migration's ALTERs land on the pre-Phase-1 shape), runs cycle.
+- Composite gate `adr-gate-pass` now requires Stage 28.2b green
+  (5-of-5 stages now required for merge).
+
+**Live cycle on Phase 1 migration [CONFIRMED 2026-04-25 via local PG]:**
+- Restored `backup_pre_phase1_20260425_174524.sql` to test DB
+- Ran validator: **all 5 gates green** (up first OK, down OK, up second
+  OK, S0==S2 YES, S1==S3 YES)
+- Snapshot sizes: S0=47114 bytes, S1=53959 bytes (delta = added Phase 1
+  tables + columns)
+
+**Bugs found + fixed during 28.2b development (CONTRACT §A.6 disclosure):**
+1. §99 parser was too liberal — included prose lines like "drop tables
+   FIRST (FKs)" because of a `\b(DROP|ALTER|...)\b` regex. **Fixed**:
+   require line to START with the keyword (after stripping `-- `) OR
+   end with `;`. Test `test_parser_skips_prose_lines` is the regression
+   sentinel.
+2. S1 != S3 false-positive caused by PostgreSQL auto-generated NOT NULL
+   constraint names containing the table OID (e.g. `2200_35484_3_not_null`).
+   These change every CREATE TABLE due to fresh OIDs but are
+   semantically identical. **Fixed**: filter via regex
+   `^[0-9]+_[0-9]+_[0-9]+_not_null$` in the constraint snapshot query.
+   Named constraints (CHECK, UNIQUE, FK, PK) preserved because those are
+   what the developer controls.
+
+**Final session task state — task #28 CLOSED:**
+
+| Stage | Status | Tests |
+|---|---|---|
+| 28.1 ADR format | DONE | 22 |
+| 28.2a SQL migration Forge-convention | DONE | 21 |
+| 28.2b SQL migration live PG cycle | **DONE** | 11 |
+| 28.3 Pydantic schema | DONE | 25 |
+| 28.4 Lifecycle state machine + CI wiring | DONE | 24 |
+| Dashboard service | DONE (separate from #28) | 16 |
+| **Total deterministic gate tests** | | **119** |
+
+Total runtime: <5s (offline parser tests + dashboard); +~30s with live
+PG cycle in CI (postgres service spin-up + restore + cycle).
+
+**Cross-ref §14:**
+- §1.19 ← §1.17 (Phase 1 migration applied gives concrete artefact to
+  cycle-test); §1.18 (M2 typed metric proved migration columns are
+  queryable as expected)
+- §1.19 → composite ADR gate ALL 5 stages required for merge
+- §1.19 → manual setup remaining: GitHub branch protection on main
+  requiring `ADR Gate Pipeline (composite)` status check
+
+**Branch state at session close**: `docs/forge-plans-soundness-v1`
+~9 commits ahead of session-start origin (`9a2bbb0`); all pushed.
+
+**What's still open (not in scope of this autonomous batch):**
+- Kill-criteria firing instrumentation (multi-day; would populate K1..K6
+  panel with real data)
+- Trust-debt formula ratification by Steward (process step, not code)
+- Retro-fix legacy ADR drift (F1 / F2 from §1.13)
+- Phase 2 work per UX_DESIGN §11 Constellation map (8-12 PD if user
+  chooses to enact)

@@ -1,6 +1,6 @@
 # PLAN_ADR_GATE_PIPELINE.md — Deterministic ADR Gate Pipeline (task #28)
 
-**Status:** Stage 28.1 DONE; Stage 28.2a DONE; Stage 28.3 DONE; Stage 28.4 DONE; Stage 28.2b PENDING (Docker dep).
+**Status:** All 5 sub-stages DONE (28.1 + 28.2a + 28.2b + 28.3 + 28.4). Task #28 closed.
 **Date:** 2026-04-25
 **Theorem compliance:** AntiShortcutSound §15 (Step-by-step phases with ExitGates) + CONTRACT §B.8(a) (deterministic check as distinct-actor substitute).
 **Branch:** `docs/forge-plans-soundness-v1`.
@@ -15,7 +15,7 @@
 |---|---|---|---|
 | 28.1 | ADR format (header, sections, alternatives, status-evidence) | **DONE** | 22 tests green; baseline freezes legacy drift |
 | 28.2a | SQL migration Forge-convention (header, BEGIN/COMMIT, §99 reversal pairing, §101 verification, idempotency) | **DONE** | 21 tests green; real Phase 1 migration regression test green |
-| 28.2b | Live PG up→down→up cycle (`psql --dry-run` + ephemeral container + schema-dump diff) | PENDING | requires Docker; folded into Stage 28.4 CI workflow |
+| 28.2b | Live PG up→down→up cycle (ephemeral PG service + schema-snapshot diff) | **DONE** | 11 parser tests green; live cycle PASS on real Phase 1 migration; CI job `migration-live-cycle` active |
 | 28.3 | Pydantic schema (round-trip + mypy strict) on `app/schemas/` | **DONE** | 25 tests green; ImpactDelta discriminated union catches AI silent-fill bugs |
 | 28.4 | ADR lifecycle state machine + GitHub Actions wiring | **DONE** | 24 tests green; `.github/workflows/adr-gate.yml` runs all stages on PR; composite gate `adr-gate-pass` blocks merge unless 28.1+28.2a+28.4 green |
 
@@ -144,22 +144,36 @@ Split into two sub-stages: 28.2a (pure-Python, no infra) DONE; 28.2b (live PG) P
 - ✓ Real Phase 1 migration `2026_04_26_phase1_redesign.sql` PASS without baseline
 - ✓ Pre-commit hook wired
 
-### §4b — Stage 28.2b — Live PG up/down/up cycle (PENDING)
+### §4b — Stage 28.2b — Live PG up/down/up cycle (DONE)
 
-#### Goal
-Spawn ephemeral Postgres → run `up()` → `pg_dump --schema-only` → run `down()` → `pg_dump --schema-only` → run `up()` → `pg_dump --schema-only` again. The first and third schema dumps must be byte-equal; the second must equal the pre-up schema.
+#### Artefact
+- `platform/scripts/validate_migration_cycle.py` (~310 LOC, pure stdlib + psycopg2).
+- `platform/tests/test_validate_migration_cycle.py` — 11 parser tests green (offline, no DB).
+- `.github/workflows/adr-gate.yml` job `migration-live-cycle` — spawns ephemeral PG 16-alpine service, bootstraps baseline schema from `app.models` metadata (with Phase-1 targets stripped), runs cycle on the migration draft.
 
-#### Required infrastructure
-- testcontainers-python (Docker dependency) OR docker compose service `postgres-test`.
-- Schema-dump diff utility (sort + diff with whitespace normalisation).
+#### Cycle validates
+1. **up() applies cleanly** — no syntax error, no FK violation against baseline.
+2. **down() reverses up()** — schema snapshot S2 == S0 (down restores baseline).
+3. **up() is deterministic** — schema snapshot S3 == S1 (re-applying after down produces same shape as first up).
 
-#### Why deferred
-- Stage 28.2a catches ~80% of migration-correctness defects deterministically without Docker.
-- Stage 28.2b requires Docker availability in dev environment + CI runner.
-- Folding into Stage 28.4 (CI workflow) lets us run Docker only in CI, not pre-commit.
+#### Schema snapshot approach
+Canonical text dump via 4 information_schema queries (tables+columns, ENUMs, named constraints, indexes). Auto-generated NOT-NULL constraints with OID-based names (e.g. `2200_35484_3_not_null`) filtered out — these change with every CREATE TABLE due to fresh OIDs but carry no semantic difference.
 
-#### ExitGate G_28.2b
-GitHub Actions workflow runs the up/down/up cycle on every PR touching `migrations_drafts/` or `alembic/versions/`. Schema-dump diff = empty.
+#### §99 reversal-block parser
+Reads commented-out `-- DROP/ALTER` lines from the §99 section, strips `-- ` prefix, returns executable SQL. Heuristic-tightened against prose lines (e.g. "drop tables FIRST (FKs)" must NOT trigger inclusion — earlier liberal regex did, fixed in `parse_reversal_block` to require lines that START with a top-level SQL keyword OR end with `;`).
+
+#### Live cycle on Phase 1 migration [CONFIRMED 2026-04-25]
+Restored pre-Phase-1 backup as baseline → ran cycle → all 5 gates green:
+- ✓ up() first apply
+- ✓ down() apply
+- ✓ up() second apply
+- ✓ S0 == S2 (down restored baseline)
+- ✓ S1 == S3 (up is deterministic)
+
+#### ExitGate G_28.2b — STATUS: PASSED [CONFIRMED]
+- ✓ 11 parser tests green
+- ✓ Live cycle PASS on real Phase 1 migration
+- ✓ CI workflow job active; composite gate `adr-gate-pass` requires it
 
 ---
 

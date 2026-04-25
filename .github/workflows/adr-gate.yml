@@ -82,32 +82,75 @@ jobs:
       - name: Run validate_adr_lifecycle unit tests
         run: python -m pytest platform/tests/test_validate_adr_lifecycle.py -q
 
-  # Stage 28.2b — Live PG up/down/up cycle (PLACEHOLDER — implementation pending)
-  # Spawns ephemeral Postgres, applies migration up(), down(), up() again,
-  # diffs schema dumps. See PLAN_ADR_GATE_PIPELINE.md §4b.
+  # Stage 28.2b — Live PG up/down/up cycle.
+  # Spawns ephemeral Postgres, bootstraps baseline schema from
+  # app.models metadata (Base.metadata.create_all), then applies the
+  # migration up(), down(), up() again, asserting:
+  #   - up() applies cleanly
+  #   - down() reverses to byte-identical baseline (S0 == S2)
+  #   - up() is deterministic (S1 == S3)
+  # See PLAN_ADR_GATE_PIPELINE.md §4b.
   migration-live-cycle:
-    name: 'Stage 28.2b: live PG cycle (placeholder)'
+    name: 'Stage 28.2b: live PG up/down/up cycle'
     runs-on: ubuntu-latest
-    if: false  # TODO: enable when validate_migration_cycle.py is implemented
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: forge_test
-          POSTGRES_PASSWORD: forge_test
-          POSTGRES_DB: forge_test
+          POSTGRES_USER: forge
+          POSTGRES_PASSWORD: forge
+          POSTGRES_DB: forge_migration_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd="pg_isready -U forge_test"
+          --health-cmd="pg_isready -U forge"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.13' }
-      - name: TODO — invoke validate_migration_cycle.py
-        run: echo "Stage 28.2b implementation pending — see PLAN_ADR_GATE_PIPELINE.md §4b"
+        with:
+          python-version: '3.13'
+      - name: Install platform deps + psycopg2
+        working-directory: platform
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install psycopg2-binary
+      - name: Bootstrap baseline schema from app.models metadata
+        working-directory: platform
+        env:
+          FORGE_DATABASE_URL: postgresql://forge:forge@localhost:5432/forge_migration_test
+        run: |
+          python -c "
+          from sqlalchemy import create_engine
+          from app.database import Base
+          from app import models  # noqa: F401 — registers all model tables on Base.metadata
+          eng = create_engine('postgresql://forge:forge@localhost:5432/forge_migration_test')
+          # Strip Phase 1 tables from metadata (they're under test) so
+          # baseline matches pre-Phase-1 state.
+          phase1_tables = {'alternatives','side_effect_map','cascade_dod_item','kill_criteria_event_log','trust_debt_snapshot'}
+          for tname in phase1_tables:
+              if tname in Base.metadata.tables:
+                  Base.metadata.remove(Base.metadata.tables[tname])
+          # Strip Phase 1 columns too (stage, autonomy_pinned, epistemic_tag)
+          # — these are added by ALTER in the migration under test.
+          for tn, col_to_drop in [('objectives','stage'),('objectives','autonomy_pinned'),
+                                   ('decisions','epistemic_tag'),('acceptance_criteria','epistemic_tag')]:
+              if tn in Base.metadata.tables and col_to_drop in Base.metadata.tables[tn].columns:
+                  Base.metadata.tables[tn]._columns.remove(Base.metadata.tables[tn].columns[col_to_drop])
+          Base.metadata.create_all(eng)
+          print('baseline schema applied')
+          "
+      - name: Run up/down/up cycle on Phase 1 migration
+        working-directory: platform
+        run: |
+          python scripts/validate_migration_cycle.py \
+            --sql docs/migrations_drafts/2026_04_26_phase1_redesign.sql \
+            --db-url postgresql://forge:forge@localhost:5432/forge_migration_test
+      - name: Run cycle validator parser unit tests
+        working-directory: platform
+        run: python -m pytest tests/test_validate_migration_cycle.py -q
 
   # Stage 28.3 — Pydantic schema validator (ENABLED 2026-04-25 after
   # app/schemas/side_effect_map.py landed for ADR-028 D3 ImpactDelta).
@@ -138,7 +181,7 @@ jobs:
   # Branch protection rule should require this status check before merge.
   adr-gate-pass:
     name: 'ADR Gate Pipeline (composite)'
-    needs: [adr-format, migration-convention, adr-lifecycle, pydantic-schema]
+    needs: [adr-format, migration-convention, adr-lifecycle, pydantic-schema, migration-live-cycle]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -148,10 +191,12 @@ jobs:
           echo "migration:     ${{ needs.migration-convention.result }}"
           echo "lifecycle:     ${{ needs.adr-lifecycle.result }}"
           echo "pydantic:      ${{ needs.pydantic-schema.result }}"
+          echo "live-cycle:    ${{ needs.migration-live-cycle.result }}"
           if [[ "${{ needs.adr-format.result }}" != "success" ]] || \
              [[ "${{ needs.migration-convention.result }}" != "success" ]] || \
              [[ "${{ needs.adr-lifecycle.result }}" != "success" && "${{ github.event_name }}" == "pull_request" ]] || \
-             [[ "${{ needs.pydantic-schema.result }}" != "success" ]]; then
+             [[ "${{ needs.pydantic-schema.result }}" != "success" ]] || \
+             [[ "${{ needs.migration-live-cycle.result }}" != "success" ]]; then
             echo "::error::One or more ADR Gate stages failed"
             exit 1
           fi
