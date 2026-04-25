@@ -124,12 +124,24 @@
 
 {# --- K1..K6 panel --------------------------------------------------------- #}
 <div class="mb-6">
-    <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-2">
-        Kill criteria · K1–K6 (last 24h)
-    </h2>
+    <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+            Kill criteria · K1–K6 (last 24h)
+        </h2>
+        <a href="/ui/audit?window=24h"
+           class="text-xs text-blue-600 hover:underline">→ full audit log</a>
+    </div>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {% for k in d.kill_criteria %}
-        <div class="bg-white border border-slate-200 rounded-lg p-3 {% if not k.available %}opacity-75{% endif %}">
+        {# Cards become clickable links to /ui/audit when active.
+           Available + tripped > 0: link to filter by this K-code.
+           Available + tripped = 0: link still active (filter shows "no events"). #}
+        {% if k.available %}
+        <a href="/ui/audit?kc={{ k.id }}&window=24h"
+           class="block bg-white border border-slate-200 rounded-lg p-3 hover:border-blue-400 hover:shadow-sm transition">
+        {% else %}
+        <div class="block bg-white border border-slate-200 rounded-lg p-3 opacity-75">
+        {% endif %}
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <span class="mono text-xs font-bold text-slate-700">{{ k.id }}</span>
@@ -147,8 +159,14 @@
             <div class="text-xs text-slate-500 mt-1">{{ k.desc }}</div>
             {% if not k.available %}
             <div class="text-[10px] text-slate-400 mt-2 italic">awaits: {{ k.awaits }}</div>
+            {% elif k.tripped_24h > 0 %}
+            <div class="text-[10px] text-blue-600 mt-2">→ click to review {{ k.tripped_24h }} event{{ "s" if k.tripped_24h != 1 else "" }} in audit log</div>
             {% endif %}
+        {% if k.available %}
+        </a>
+        {% else %}
         </div>
+        {% endif %}
         {% endfor %}
     </div>
 </div>

@@ -1350,3 +1350,69 @@ requires a separate ADR + migration. Documented and deferred —
 | Dashboard panels w/ real data | HERO + M2 + K1 + K2 + K4 + Objectives |
 | Steward UI flows | /ui/audit list + dismissal POST |
 | New routes since session start | /dashboard, /dashboard.json, /audit, /audit.json, /audit/dismiss |
+
+---
+
+### §1.25 K1 auto-instrumentation + Dashboard K-panel click-through + K4 integration tests
+
+**[2026-04-25 evening]**
+
+User: "następnych kilka rzeczy" — three chained tasks in one batch.
+
+**§1.25.1 — K1 auto-instrumentation (Task→IN_PROGRESS):**
+
+- New helper `detect_k1_for_task(db, task_id)` in `kill_criteria.py`:
+  walks Decisions linked to this Task via `decisions.task_id`, logs K1
+  for every `side_effect_map.owner=NULL` row found. Idempotent per
+  side_effect_map.id.
+- `detect_k1_unowned_side_effects` (the Execution-scoped variant) gained
+  matching idempotency.
+- Wired via `post_commit` hook (foundational substrate from §1.24.1) at
+  TWO callsites:
+  - `app/api/pipeline.py:895` — orchestrator-CLI Task claim path
+  - `app/api/execute.py:129` — manual Task claim path
+- Hook closure captures `db` + `candidate.id` and invokes
+  `detect_k1_for_task(db, candidate.id)`. Failures swallowed by
+  state_transition's WARNING-log wrapper.
+- 4 new tests: idempotency, detect_k1_for_task happy/idempotent/empty
+- 27/27 K-criteria tests green (was 23 + 4 new)
+
+**Functional impact:** at every Task→IN_PROGRESS transition, K1 will
+fire for any unowned side_effect_map row. Currently zero rows on
+dev DB (table empty), so no K1 events yet — but the hook is in place
+for future writes.
+
+**§1.25.2 — DashboardView K1-K6 click-through:**
+
+- `dashboard.html` K-criteria panel: each available K-card is now an
+  `<a>` tag linking to `/ui/audit?kc=K{N}&window=24h`. Hover state
+  with blue border. Inactive (awaiting Phase 1) cards stay as `<div>`.
+- New "→ full audit log" link top-right of K-panel (default `/ui/audit`).
+- "→ click to review N events in audit log" hint shown on cards with
+  tripped > 0.
+- Live render verified: `/ui/audit?kc=K1` and `/ui/audit?kc=K4` URLs
+  present in rendered HTML; body 127KB.
+
+**§1.25.3 — K4 auto-instrumentation integration tests:**
+
+- 2 new contract tests verifying the pipeline.py:1487 hook behaviour:
+  - `test_pipeline_challenge_path_invocation_triggers_k4`: when
+    execute + same-model challenge LLMCalls land + detect_k4 invoked
+    (mirroring pipeline.py exactly), K4 row appears in log; idempotency
+    asserts count==1 not 2+.
+  - `test_pipeline_challenge_path_quiet_when_models_differ`: distinct
+    models → no K4 logged; count==0.
+- These are *contract tests* for the auto-instrumentation hook — not
+  full pipeline E2E (would require challenger.py + LLM mocks).
+
+**Cumulative session totals after §1.25:**
+
+| Metric | Value |
+|---|---|
+| Commits ahead of session start | 14 |
+| Deterministic test count | 154 (148 + 4 K1/idempotency + 2 K4 integration) |
+| K-detectors implemented | K1 (Execution + Task), K2, K4 (idempotent) |
+| K-detectors auto-instrumented | K1 (Task→IN_PROGRESS x2 callsites), K4 (challenge LLMCall path) |
+| K-detectors schema-blocked | K3, K5, K6 |
+| Dashboard K-cards clickable | 6 (when available); link to /ui/audit?kc=KN |
+| Auto-instrumentation hook points | 3 (pipeline orchestrator claim, execute API claim, challenge LLMCall) |

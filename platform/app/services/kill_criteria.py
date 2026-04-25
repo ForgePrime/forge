@@ -99,6 +99,17 @@ def log_kill_criterion(
     return event
 
 
+def _k1_already_logged_for_se(db: Session, side_effect_id: int) -> bool:
+    """Idempotency check: has K1 already been logged for this
+    side_effect_map row?"""
+    return (
+        db.query(KillCriteriaEventLog.id)
+        .filter(KillCriteriaEventLog.kc_code == "K1")
+        .filter(KillCriteriaEventLog.reason.like(f"%side_effect_map.id={side_effect_id} %"))
+        .first()
+    ) is not None
+
+
 def detect_k1_unowned_side_effects(
     db: Session,
     execution_id: int,
@@ -108,6 +119,11 @@ def detect_k1_unowned_side_effects(
     at execute time.
 
     Returns the list of K1 events logged (empty if no unowned side-effects).
+
+    **Idempotent per side_effect_map.id**: if K1 has already been logged
+    for a particular side_effect row (matched by `reason LIKE
+    '%side_effect_map.id={N} %'`), it is skipped. Prevents duplicate
+    events on retries / re-runs of the post_commit hook.
 
     Per CONTRACT §B.1: each event carries a reason naming the specific
     side_effect_map.id and kind for traceability.
@@ -131,6 +147,8 @@ def detect_k1_unowned_side_effects(
 
     out: list[KillCriteriaEventLog] = []
     for se in unowned:
+        if _k1_already_logged_for_se(db, se.id):
+            continue
         reason = (
             f"K1 fired: side_effect_map.id={se.id} kind={se.kind!r} "
             f"on decision_id={se.decision_id} has owner=NULL at execute time "
@@ -140,6 +158,58 @@ def detect_k1_unowned_side_effects(
             db,
             "K1",
             reason,
+            decision_id=se.decision_id,
+            evidence_set_id=se.evidence_set_id,
+        )
+        out.append(event)
+    return out
+
+
+def detect_k1_for_task(
+    db: Session,
+    task_id: int,
+) -> list[KillCriteriaEventLog]:
+    """K1 — Unowned side-effect, scoped to a Task.
+
+    Walks Decisions linked to this Task (via decisions.task_id) and logs
+    K1 for any side_effect_map row with owner IS NULL. Used as a
+    post_commit hook on Task -> IN_PROGRESS transitions.
+
+    Idempotent per side_effect_map.id (delegates to detect_k1
+    idempotency logic).
+
+    Returns the list of K1 events newly logged.
+    """
+    decision_ids = [
+        row[0]
+        for row in db.query(Decision.id).filter(Decision.task_id == task_id).all()
+    ]
+    if not decision_ids:
+        return []
+
+    unowned = (
+        db.query(SideEffectMap)
+        .filter(SideEffectMap.decision_id.in_(decision_ids))
+        .filter(SideEffectMap.owner.is_(None))
+        .all()
+    )
+    if not unowned:
+        return []
+
+    out: list[KillCriteriaEventLog] = []
+    for se in unowned:
+        if _k1_already_logged_for_se(db, se.id):
+            continue
+        reason = (
+            f"K1 fired: side_effect_map.id={se.id} kind={se.kind!r} "
+            f"on decision_id={se.decision_id} has owner=NULL at execute time "
+            f"(task_id={task_id})"
+        )
+        event = log_kill_criterion(
+            db,
+            "K1",
+            reason,
+            task_id=task_id,
             decision_id=se.decision_id,
             evidence_set_id=se.evidence_set_id,
         )
@@ -313,6 +383,7 @@ __all__ = [
     "VALID_KC_CODES",
     "log_kill_criterion",
     "detect_k1_unowned_side_effects",
+    "detect_k1_for_task",
     "detect_k2_uncited_ac_in_verify",
     "detect_k4_solo_verifier",
     "tripped_in_last_24h",

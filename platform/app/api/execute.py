@@ -124,9 +124,17 @@ def get_execute(
         db.rollback()
         return Response(status_code=204)
 
-    # Claim task
+    # Claim task — fire K1 detection at execute time per ADR-028 §K1.
+    # Hook never breaks the claim path (failures caught inside post_commit
+    # wrapper in commit_status_transition).
     now = dt.datetime.now(dt.timezone.utc)
-    commit_status_transition(candidate, entity_type="task", target_state="IN_PROGRESS")
+    def _k1_hook_execute():
+        from app.services.kill_criteria import detect_k1_for_task
+        detect_k1_for_task(db, candidate.id)
+    commit_status_transition(
+        candidate, entity_type="task", target_state="IN_PROGRESS",
+        post_commit=_k1_hook_execute,
+    )
     candidate.agent = agent
     candidate.started_at = now
 

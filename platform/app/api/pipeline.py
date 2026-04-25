@@ -891,8 +891,16 @@ def orchestrate(
                     "workspace": workspace, "workspace_infra": infra_info,
                     "stopped_reason": "paused"}
 
-        # Claim
-        commit_status_transition(candidate, entity_type="task", target_state="IN_PROGRESS")
+        # Claim — also fire K1 detection at execute time per ADR-028 §K1.
+        # Wrapped in defensive lambda + try/except inside commit_status_transition
+        # post_commit; failure NEVER breaks the claim path.
+        def _k1_hook_orchestrator():
+            from app.services.kill_criteria import detect_k1_for_task
+            detect_k1_for_task(db, candidate.id)
+        commit_status_transition(
+            candidate, entity_type="task", target_state="IN_PROGRESS",
+            post_commit=_k1_hook_orchestrator,
+        )
         candidate.agent = "orchestrator-cli"
         candidate.started_at = dt.datetime.now(dt.timezone.utc)
         _update_run(db, run_id,

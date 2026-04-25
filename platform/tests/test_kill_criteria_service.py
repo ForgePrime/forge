@@ -28,6 +28,7 @@ try:
     )
     from app.services.kill_criteria import (
         VALID_KC_CODES,
+        detect_k1_for_task,
         detect_k1_unowned_side_effects,
         detect_k2_uncited_ac_in_verify,
         detect_k4_solo_verifier,
@@ -252,6 +253,132 @@ def test_tripped_in_last_24h_empty_project_list_returns_zero(db_session):
 
 def test_valid_kc_codes_is_complete():
     assert VALID_KC_CODES == {"K1", "K2", "K3", "K4", "K5", "K6"}
+
+
+# --- Integration: pipeline.py challenge LLMCall path triggers detect_k4 ----
+
+
+def test_pipeline_challenge_path_invocation_triggers_k4(db_session, project_decision):
+    """Verifies the Forge auto-instrumentation contract:
+    when an `execute` LLMCall + a same-model `challenge` LLMCall are both
+    written for an Execution AND detect_k4_solo_verifier is invoked
+    (as pipeline.py:1487 does after challenge LLMCall flush), a K4 event
+    appears in the log.
+
+    This is a *contract test* for the auto-instrumentation path, NOT a
+    full pipeline E2E (that would require challenger.py + LLM mocks).
+    Verifies the behavior at the precise hook point.
+    """
+    proj, dec = project_decision
+    task = _make_task(db_session, proj)
+    exec_ = Execution(task_id=task.id, agent="test-agent", status="VALIDATING")
+    db_session.add(exec_)
+    db_session.flush()
+
+    # Mirror the pipeline.py pattern: execute LLMCall first, then
+    # challenge LLMCall, then auto-detect K4.
+    _make_llm_call(db_session, exec_.id, purpose="execute", model="claude-opus-4-7", project_id=proj.id)
+    _make_llm_call(db_session, exec_.id, purpose="challenge", model="claude-opus-4-7", project_id=proj.id)
+
+    # The auto-instrumentation hook (matches pipeline.py:1487 exactly)
+    detect_k4_solo_verifier(db_session, exec_.id)
+    db_session.flush()
+
+    # Verify K4 event exists for this execution (and only one, per idempotency)
+    from sqlalchemy import func as sqlfunc
+    count = (
+        db_session.query(sqlfunc.count(KillCriteriaEventLog.id))
+        .filter(KillCriteriaEventLog.kc_code == "K4")
+        .filter(KillCriteriaEventLog.reason.like(f"%execution_id={exec_.id}:%"))
+        .scalar()
+    )
+    assert count == 1
+
+
+def test_pipeline_challenge_path_quiet_when_models_differ(db_session, project_decision):
+    """Auto-instrumentation invocation produces NO K4 event when the
+    challenger uses a different model — distinct-actor satisfied."""
+    proj, dec = project_decision
+    task = _make_task(db_session, proj)
+    exec_ = Execution(task_id=task.id, agent="test-agent", status="VALIDATING")
+    db_session.add(exec_)
+    db_session.flush()
+    _make_llm_call(db_session, exec_.id, purpose="execute", model="claude-opus-4-7", project_id=proj.id)
+    _make_llm_call(db_session, exec_.id, purpose="challenge", model="claude-sonnet-4-6", project_id=proj.id)
+
+    result = detect_k4_solo_verifier(db_session, exec_.id)
+    db_session.flush()
+    assert result is None  # no K4 logged
+
+    from sqlalchemy import func as sqlfunc
+    count = (
+        db_session.query(sqlfunc.count(KillCriteriaEventLog.id))
+        .filter(KillCriteriaEventLog.kc_code == "K4")
+        .filter(KillCriteriaEventLog.reason.like(f"%execution_id={exec_.id}:%"))
+        .scalar()
+    )
+    assert count == 0
+
+
+# --- K1 idempotency + detect_k1_for_task -----------------------------------
+
+
+def test_detect_k1_idempotent_per_side_effect(db_session, project_decision):
+    """Repeated invocation does NOT duplicate K1 events for same se row."""
+    proj, dec = project_decision
+    task = _make_task(db_session, proj)
+    exec_ = Execution(task_id=task.id, agent="test-agent", status="PROMPT_ASSEMBLED")
+    db_session.add(exec_)
+    db_session.flush()
+    dec.execution_id = exec_.id
+    db_session.add(SideEffectMap(decision_id=dec.id, kind="api_call", owner=None))
+    db_session.flush()
+
+    first = detect_k1_unowned_side_effects(db_session, exec_.id)
+    second = detect_k1_unowned_side_effects(db_session, exec_.id)
+    third = detect_k1_unowned_side_effects(db_session, exec_.id)
+
+    assert len(first) == 1
+    assert second == []  # idempotent
+    assert third == []
+
+
+def test_detect_k1_for_task_finds_unowned_via_decision_task_link(db_session, project_decision):
+    """detect_k1_for_task walks Decisions via decisions.task_id, finds
+    side_effect_map rows with owner=NULL, logs K1 events."""
+    proj, dec = project_decision
+    task = _make_task(db_session, proj)
+    # Link decision to the task directly (not via Execution)
+    dec.task_id = task.id
+    db_session.add(SideEffectMap(decision_id=dec.id, kind="db_write", owner=None))
+    db_session.add(SideEffectMap(decision_id=dec.id, kind="api_call", owner="bob"))
+    db_session.flush()
+
+    events = detect_k1_for_task(db_session, task.id)
+    assert len(events) == 1  # only the unowned one
+    assert events[0].kc_code == "K1"
+    assert events[0].task_id == task.id
+
+
+def test_detect_k1_for_task_idempotent(db_session, project_decision):
+    proj, dec = project_decision
+    task = _make_task(db_session, proj)
+    dec.task_id = task.id
+    db_session.add(SideEffectMap(decision_id=dec.id, kind="db_write", owner=None))
+    db_session.flush()
+
+    a = detect_k1_for_task(db_session, task.id)
+    b = detect_k1_for_task(db_session, task.id)
+    assert len(a) == 1
+    assert b == []
+
+
+def test_detect_k1_for_task_returns_empty_when_no_decisions(db_session, project_decision):
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    # Task has no Decision linked
+    events = detect_k1_for_task(db_session, task.id)
+    assert events == []
 
 
 # --- K2: detect_k2_uncited_ac_in_verify -------------------------------------
