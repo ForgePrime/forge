@@ -58,3 +58,13 @@ Thumbs.db
 # Smoke-test artifacts (PLAN_PRE_FLIGHT Stage 0.3 — regenerated per run)
 platform/smoke_results.json
 platform/smoke_findings_to_create.jsonl
+
+# Forge redesign bundle (large; lives on dev machine, referenced via design_canonical/README.md)
+platform/docs/Forge redesign - standalone.html
+platform/docs/Forge_redesign_template_unpacked.html
+
+# Vendor JS extracted from the redesign bundle (React/ReactDOM/Babel runtime — not Forge IP).
+# Forge-authored extracted modules (_application-javascript, _text-jsx, inline_babel) ARE tracked.
+platform/docs/forge_redesign_extracted/b6264c9d_text-javascript.txt
+platform/docs/forge_redesign_extracted/c63700f7_text-javascript.txt
+platform/docs/forge_redesign_extracted/11200eec_text-javascript.txt

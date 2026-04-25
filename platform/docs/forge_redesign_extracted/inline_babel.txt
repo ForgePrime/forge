@@ -1,0 +1,96 @@
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      if (!e.data || typeof e.data !== 'object') return;
+      if (e.data.type === '__activate_edit_mode') document.getElementById('fr-tweaks').classList.add('show');
+      if (e.data.type === '__deactivate_edit_mode') document.getElementById('fr-tweaks').classList.remove('show');
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+
+    document.querySelectorAll('#fr-tweaks .fr-row').forEach(row => {
+      row.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button'); if (!btn) return;
+        const group = row.dataset.group; const val = btn.dataset.val;
+        row.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+        setTweaks(t => {
+          const next = { ...t, [group]: val };
+          window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [group]: val } }, '*');
+          return next;
+        });
+      });
+    });
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const { ForgeApp, DesignCanvas, DCSection, DCArtboard } = window;
+  if (!DesignCanvas || !ForgeApp) return <div style={{padding: 40}}>loading…</div>;
+
+  const t = tweaks.theme;
+
+  return (
+    <DesignCanvas>
+      <DCSection id="steward" title="Steward desk · governs cascade_restore"
+        subtitle="OBJ-CGAID: cascade-safe restore of tenant_isolation_v3 on prod-eu-2. Every screen keeps Stage, data tier, and kill-criteria visible.">
+        <DCArtboard id="dashboard" label="Dashboard · trust-debt + M1–M7 + K1–K6" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/dashboard" />
+        </DCArtboard>
+        <DCArtboard id="obj-overview" label="OBJ-CGAID · Overview (blocking decision, chosen alt, unowned SE)" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/objective/OBJ-CGAID" initialTab="overview" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="cgaid" title="CGAID + cascade-aware artifacts"
+        subtitle="Alternatives with impact deltas; side-effect map; Cascade DoD. Stage 3 in progress.">
+        <DCArtboard id="alt" label="Alternatives · 3 paths, chosen ALT-A" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/objective/OBJ-CGAID" initialTab="cgaid" />
+        </DCArtboard>
+        <DCArtboard id="sidefx" label="Side-Effect Map · SE-04/SE-05 unowned → K1" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/objective/OBJ-CGAID" initialTab="sidefx" />
+        </DCArtboard>
+        <DCArtboard id="dod" label="Cascade DoD · 6 clauses, only 1 signed" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/objective/OBJ-CGAID" initialTab="dod" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="tabs" title="One tab, one task"
+        subtitle="Decisions, AC with epistemic tags, tasks, sources.">
+        <DCArtboard id="decisions" label="Decisions · 3 open, recommendations + reasoning + alternatives" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/objective/OBJ-CGAID" initialTab="decisions" />
+        </DCArtboard>
+        <DCArtboard id="ac" label="AC · tags INVENTED / DERIVED / ADR-CITED / STEWARD-AUTHORED" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/objective/OBJ-CGAID" initialTab="ac" />
+        </DCArtboard>
+        <DCArtboard id="tasks" label="Tasks · click for runtime drawer" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/objective/OBJ-CGAID" initialTab="tasks" initialTaskDrawer="T-exec-02" />
+        </DCArtboard>
+        <DCArtboard id="sources" label="Sources · tiered · cited_ac count" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/objective/OBJ-CGAID" initialTab="sources" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="deep" title="Steward audit + governance"
+        subtitle="Forensic plane. Autonomy ladder is evidence-gated.">
+        <DCArtboard id="audit" label="/audit · gate spectrum, ADR citation rate, K-trips" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/audit" />
+        </DCArtboard>
+        <DCArtboard id="autonomy" label="/settings/autonomy · L2 pinned, evidence to L3" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/settings/autonomy" />
+        </DCArtboard>
+        <DCArtboard id="billing" label="/billing · LLM spend & caps" width={1400} height={1100}>
+          <ForgeApp theme={t} initialRoute="/billing" />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);

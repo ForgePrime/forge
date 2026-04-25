@@ -1,0 +1,263 @@
+// Forge — Dashboard view
+// ----------------------
+// Steward-first. Trust-debt hero, metrics 1-7, kill criteria K1-K6, objectives list.
+
+function DashboardView({ C, go, openTask }) {
+  const { MOCK, Pill, SectionLabel, TierBadge, GateChip, SANS, MONO } = window;
+  const td = MOCK.trustDebt;
+  const total = td.open_decisions + td.side_effects_unowned + td.gate_partials + td.adr_uncited_ac + td.tier_misclassified;
+
+  return (
+    <div data-screen-label="Dashboard · Steward desk" data-screen-justification="§22 · removable? NO — only place trust-debt sums become 0; primary entry to recovery routes" style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {/* HERO · §22 — Theorem-priority cards (replace generic trust-debt) */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: -0.3, color: C.text }}>
+            4 critical theorem violations block soundness claims.
+          </h1>
+          <span style={{ fontFamily: MONO, fontSize: 11, color: C.textDim }}>13:42 · today · {MOCK.project.env}</span>
+        </div>
+        <p style={{ margin: 0, fontSize: 13, color: C.textMuted, lineHeight: 1.5, maxWidth: 880 }}>
+          Per <span style={{ fontFamily: MONO, color: C.text }}>EPISTEMIC_CONTINUITY_ASSESSMENT.md</span> §3, these are the four highest-leverage fixes ordered by severity and conditions closed. Forge halts before guessing — but only when the gate is enforcing. Every card maps to a roadmap phase.
+        </p>
+
+        <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+          {MOCK.assessmentPriorities.map((p, i) => (
+            <PriorityCard key={p.id} C={C} p={p} n={i + 1}
+              go={go}
+              openTask={openTask} />
+          ))}
+        </div>
+      </div>
+
+      {/* Legacy trust-debt secondary panel (still shows the day-to-day items) */}
+      <div>
+        <SectionLabel color={C.textMuted}>Today's trust-debt · contract-level items</SectionLabel>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+          <TrustDebtCard C={C} n={td.open_decisions}       label="Open decisions"    sub="type=ambiguity · blocks /plan" col={C.rose}    onClick={() => go('/objective/OBJ-CGAID')} />
+          <TrustDebtCard C={C} n={td.side_effects_unowned} label="Side-effects unowned" sub="K1 · owner=NULL in SE-map"   col={C.rose}    onClick={() => go('/objective/OBJ-CGAID')} />
+          <TrustDebtCard C={C} n={td.gate_partials}        label="Gate PARTIAL"       sub="K5 · blocks promote"          col={C.amber}   onClick={() => go('/audit')} />
+          <TrustDebtCard C={C} n={td.adr_uncited_ac}       label="AC without ADR"     sub="K2 · INVENTED tag set"         col={C.amber}   onClick={() => go('/objective/OBJ-CGAID')} />
+          <TrustDebtCard C={C} n={td.tier_misclassified}   label="Tier misclass"      sub="K3 · data-class drift"         col={C.textMuted} onClick={() => go('/audit')} />
+        </div>
+      </div>
+
+      {/* METRICS 1-7 */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <SectionLabel color={C.textMuted} style={{ marginBottom: 0 }}>Steward metrics · M1–M7</SectionLabel>
+          <button onClick={() => go('/audit')} style={{
+            background: 'transparent', border: 'none', color: C.accent, fontSize: 11, cursor: 'pointer',
+            fontFamily: SANS, padding: 0, marginLeft: 'auto',
+          }}>open /audit →</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+          {MOCK.metrics.map((m) => <MetricCard key={m.id} C={C} m={m} />)}
+        </div>
+      </div>
+
+      {/* KILL CRITERIA K1-K6 */}
+      <div>
+        <SectionLabel color={C.textMuted}>Kill criteria · K1–K6 · tripped in last 24h</SectionLabel>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {MOCK.killCriteria.map((k) => {
+            const hot = k.tripped_24h > 0;
+            return (
+              <div key={k.id} style={{
+                padding: '10px 12px', background: C.panel, border: `1px solid ${C.border}`,
+                borderLeft: `3px solid ${hot ? C.rose : C.border2}`, borderRadius: 3,
+                display: 'flex', flexDirection: 'column', gap: 4,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 11, color: hot ? C.rose : C.textMuted, fontWeight: 700 }}>{k.id}</span>
+                  <span style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>{k.label}</span>
+                  <div style={{ flex: 1 }} />
+                  {hot
+                    ? <Pill color={C.rose} bg={C.roseBg} border={`${C.rose}66`}>{k.tripped_24h}× · {k.last}</Pill>
+                    : <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>clear</span>}
+                </div>
+                <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, textWrap: 'pretty' }}>{k.desc}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Split: objectives + live feed */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
+        {/* OBJECTIVES */}
+        <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center' }}>
+            <SectionLabel color={C.textMuted} style={{ marginBottom: 0 }}>Objectives</SectionLabel>
+            <div style={{ flex: 1 }} />
+            <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>stage · tier · trust-debt</span>
+          </div>
+          {MOCK.objectives.map((o, i) => {
+            const stCol = o.status === 'ACHIEVED' ? C.emerald
+                        : o.open_decisions > 0 || o.side_effects_unowned > 0 ? C.rose
+                        : C.accent;
+            const stBg  = o.status === 'ACHIEVED' ? C.emeraldBg
+                        : o.open_decisions > 0 || o.side_effects_unowned > 0 ? C.roseBg
+                        : C.accentBg;
+            const pct = Math.round((o.tasks_done / Math.max(1, o.tasks_total)) * 100);
+            const td = (o.open_decisions || 0) + (o.side_effects_unowned || 0) + (o.gate_partials || 0);
+            return (
+              <button key={o.id} onClick={() => go(`/objective/${o.id}`)} style={{
+                display: 'grid', gridTemplateColumns: '120px 1fr 110px 110px 70px 80px', alignItems: 'center',
+                gap: 12, width: '100%', padding: '10px 14px', background: 'transparent',
+                border: 'none', borderTop: i > 0 ? `1px solid ${C.border}` : 'none',
+                cursor: 'pointer', textAlign: 'left', color: C.text, fontFamily: SANS,
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted, fontWeight: 500 }}>{o.id}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim }}>Stage {o.stage}/4 · {o.priority}</span>
+                </div>
+                <span style={{ fontSize: 13, color: C.text, fontWeight: 500, lineHeight: 1.35, textWrap: 'pretty' }}>{o.title}</span>
+                <TierBadge C={C} tier={o.data_class_tier} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ flex: 1, height: 4, background: C.panel2, borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: stCol }} />
+                  </div>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textMuted, minWidth: 34, textAlign: 'right' }}>{o.tasks_done}/{o.tasks_total}</span>
+                </div>
+                <Pill color={stCol} bg={stBg} border={`${stCol}33`}>{o.status}</Pill>
+                {td > 0
+                  ? <Pill color={C.rose} bg={C.roseBg} border={`${C.rose}44`}>{td} open</Pill>
+                  : <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim }}>clear</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* LIVE FEED */}
+        <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 4, background: C.emerald, animation: 'pulse 1.6s infinite' }} />
+            <SectionLabel color={C.textMuted} style={{ marginBottom: 0 }}>Live orchestration</SectionLabel>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => openTask('T-exec-02')} style={{
+              background: 'transparent', border: 'none', color: C.accent, fontSize: 11, cursor: 'pointer',
+              fontFamily: SANS, padding: 0,
+            }}>open T-exec-02 →</button>
+          </div>
+          <div style={{ padding: 8, fontFamily: MONO, fontSize: 11, display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+            {MOCK.liveFeed.map((l, i) => {
+              const col = l.lvl === 'warn' ? C.amber
+                        : l.lvl === 'ok'   ? C.emerald
+                        : l.lvl === 'halt' ? C.rose
+                        : C.textMuted;
+              return (
+                <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 6px', borderRadius: 2 }}>
+                  <span style={{ color: C.textDim, flexShrink: 0, width: 34 }}>{l.t}</span>
+                  <span style={{ color: col, flexShrink: 0, width: 54, fontWeight: 600, textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.4, paddingTop: 1 }}>{l.who}</span>
+                  <span style={{ color: C.text, flex: 1, lineHeight: 1.45, textWrap: 'pretty' }}>{l.msg}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PriorityCard({ C, p, n, go, openTask }) {
+  const { MONO, SANS, Pill } = window;
+  const tone = p.severity === 'critical' ? C.rose : p.severity === 'high' ? C.amber : C.textMuted;
+  const toneBg = p.severity === 'critical' ? C.roseBg : p.severity === 'high' ? C.amberBg : C.panel2;
+  const onOpen = () => {
+    if (p.action === 'audit') go('/audit');
+    else if (p.action === 'drawer') openTask('T-exec-02');
+  };
+  return (
+    <button onClick={onOpen} style={{
+      textAlign: 'left', padding: '14px 16px', borderRadius: 3,
+      border: `1px solid ${tone}55`, borderLeft: `3px solid ${tone}`,
+      background: toneBg, cursor: 'pointer', color: C.text, fontFamily: 'inherit',
+      display: 'flex', flexDirection: 'column', gap: 6,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontFamily: MONO, fontSize: 9.5, color: tone, fontWeight: 700, letterSpacing: 0.6 }}>
+          PRIORITY {n}
+        </span>
+        <Pill color={tone} bg="transparent" border={`${tone}66`}>{p.tag}</Pill>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim, fontWeight: 700 }}>phase {p.phase}</span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontFamily: MONO, fontSize: 28, fontWeight: 600, color: tone, lineHeight: 1 }}>{p.count}</span>
+        <span style={{ fontFamily: MONO, fontSize: 11, color: C.textDim }}>/ target {p.target}</span>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.text, lineHeight: 1.3, textWrap: 'pretty' }}>{p.title}</div>
+      <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4, textWrap: 'pretty', fontFamily: MONO }}>{p.sub}</div>
+
+      <div style={{
+        marginTop: 4, paddingTop: 6, borderTop: `1px solid ${tone}33`,
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim, fontWeight: 700, letterSpacing: 0.6 }}>CLOSES</span>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: tone, fontWeight: 600 }}>{p.closes}</span>
+      </div>
+    </button>
+  );
+}
+
+function TrustDebtCard({ C, n, label, sub, col, onClick }) {
+  const { MONO } = window;
+  const hot = n > 0;
+  return (
+    <button onClick={onClick} style={{
+      textAlign: 'left', padding: '12px 14px', borderRadius: 3,
+      border: `1px solid ${hot ? col : C.border}`,
+      borderLeft: `3px solid ${col}`,
+      background: hot ? (col === C.rose ? C.roseBg : col === C.amber ? C.amberBg : C.panel) : C.panel,
+      cursor: 'pointer', color: C.text, fontFamily: 'inherit',
+      display: 'flex', flexDirection: 'column', gap: 2,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontSize: 26, fontWeight: 600, color: hot ? col : C.textDim, fontFamily: MONO, lineHeight: 1 }}>{n}</span>
+        {hot && <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={col} strokeWidth="1.5" strokeLinecap="round"><path d="M3 2 L7 5 L3 8"/></svg>}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginTop: 6 }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: C.textMuted, textWrap: 'pretty', fontFamily: window.MONO }}>{sub}</div>
+    </button>
+  );
+}
+
+function MetricCard({ C, m }) {
+  const { MONO } = window;
+  const width = 120, height = 24;
+  const vals = m.trend;
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * width;
+    const y = max === min ? height / 2 : height - ((v - min) / (max - min)) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+
+  // colour: good if moving toward target; we do a simple heuristic
+  const trendCol = vals[vals.length - 1] >= vals[0] ? C.emerald : C.amber;
+
+  return (
+    <div style={{
+      padding: '10px 12px', background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3,
+      display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, fontWeight: 700 }}>{m.id}</span>
+        <span style={{ fontSize: 10.5, color: C.textMuted, fontWeight: 600, textWrap: 'pretty', lineHeight: 1.2 }}>{m.label}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+        <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 600, color: C.text }}>{m.value}</span>
+        <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim }}>/ {m.target}</span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="20" preserveAspectRatio="none" style={{ marginTop: 2 }}>
+        <polyline points={pts} fill="none" stroke={trendCol} strokeWidth="1.2" />
+      </svg>
+    </div>
+  );
+}
+
+Object.assign(window, { DashboardView });

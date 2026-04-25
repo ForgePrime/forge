@@ -1,0 +1,1308 @@
+// Forge — Task drawer + Audit + Stubs + Shell
+// --------------------------------------------
+
+function TaskDrawer({ C, taskId, onClose, go }) {
+  const { MOCK, Pill, EpistemicTag, GateChip, SANS, MONO } = window;
+  const task = MOCK.tasks.find((t) => t.id === taskId) || { id: taskId, name: 'Task', type: 'execute', status: 'IN_PROGRESS', agent: 'sonnet-4.5' };
+  const rt = MOCK.runtime[taskId] || MOCK.runtime['T-exec-02'];
+  const [openD, setOpenD] = React.useState(new Set(['D1']));
+  const toggle = (id) => {
+    const n = new Set(openD);
+    n.has(id) ? n.delete(id) : n.add(id);
+    setOpenD(n);
+  };
+
+  return ReactDOM.createPortal(
+    <div data-screen-label="Task drawer · DID/DID-NOT/CONCLUSION" data-screen-justification="§22 · removable? NO — 7 disclosures + solo-verifier warning + next-state CTA only render here" onClick={onClose} style={{
+      position: 'absolute', inset: 0, background: 'rgba(10,8,6,.45)', zIndex: 200,
+      display: 'flex', justifyContent: 'flex-end',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: 680, height: '100%', background: C.bg, borderLeft: `1px solid ${C.border}`,
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* header */}
+        <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.textMuted }}>{task.id}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{task.name}</span>
+          <div style={{ flex: 1 }} />
+          <Pill color={C.accent} bg={C.accentBg}>{task.status}</Pill>
+          <Pill color={C.textMuted} bg={C.panel2}>{task.type}</Pill>
+          <button onClick={onClose} style={{
+            background: 'transparent', border: 'none', color: C.textMuted, cursor: 'pointer',
+            width: 24, height: 24, fontSize: 18, lineHeight: 1, borderRadius: 3,
+          }}>×</button>
+        </div>
+
+        {/* solo-verifier warning */}
+        {rt.soloVerifier && (
+          <div style={{ padding: '10px 18px', background: C.roseBg, borderBottom: `1px solid ${C.rose}44`, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Pill color={C.rose} bg="transparent" border={`${C.rose}66`}>K4 SOLO-VERIFIER</Pill>
+            <span style={{ fontSize: 12, color: C.text }}>Executor and challenger are the same model. Restricted tier → halted.</span>
+          </div>
+        )}
+
+        {/* §C10 / P20 — BLOCKED state w/ uncertainty_state */}
+        {rt.epistemicState && (
+          <div style={{
+            padding: '12px 18px', background: C.roseBg,
+            borderBottom: `1px solid ${C.rose}44`,
+            display: 'flex', flexDirection: 'column', gap: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Pill color={C.rose} bg="transparent" border={`${C.rose}66`}>{rt.epistemicState.status}</Pill>
+              <span style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>
+                Execution halted · {rt.epistemicState.unknowns.length} uncertainty items require resolution
+              </span>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>
+                TTL {rt.epistemicState.ttl_minutes}m · ADR-011
+              </span>
+            </div>
+
+            {/* current vs. proposed gate behaviour */}
+            <div style={{ display: 'flex', gap: 8, fontFamily: MONO, fontSize: 10.5 }}>
+              <div style={{ flex: 1, padding: '6px 10px', background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+                <div style={{ color: C.textDim, fontWeight: 700, letterSpacing: 0.6, fontSize: 9.5 }}>TODAY · POST-HOC</div>
+                <div style={{ color: C.amber, fontWeight: 700, fontSize: 14, marginTop: 2 }}>{rt.epistemicState.post_hoc_warnings} WARNINGs</div>
+                <div style={{ color: C.textMuted, fontSize: 10 }}>contract_validator emits, agent ships</div>
+              </div>
+              <div style={{ flex: 1, padding: '6px 10px', background: C.panel, border: `1px solid ${C.rose}55`, borderRadius: 3 }}>
+                <div style={{ color: C.textDim, fontWeight: 700, letterSpacing: 0.6, fontSize: 9.5 }}>PHASE F.4 · PRE-GATE</div>
+                <div style={{ color: C.rose, fontWeight: 700, fontSize: 14, marginTop: 2 }}>{rt.epistemicState.pre_gate_blocks} BLOCKS</div>
+                <div style={{ color: C.textMuted, fontSize: 10 }}>VerdictEngine halts before LLM</div>
+              </div>
+            </div>
+
+            {/* uncertainty_state JSONB items */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {rt.epistemicState.unknowns.map((u) => {
+                const tone = u.kind === 'UNKNOWN' ? C.rose : C.amber;
+                const toneBg = u.kind === 'UNKNOWN' ? C.roseBg : C.amberBg;
+                return (
+                  <div key={u.id} style={{
+                    padding: '8px 10px', background: C.panel,
+                    border: `1px solid ${tone}55`, borderLeft: `3px solid ${tone}`,
+                    borderRadius: 3, display: 'flex', flexDirection: 'column', gap: 4,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 9.5, color: tone, fontWeight: 700, letterSpacing: 0.5 }}>{u.id}</span>
+                      <Pill color={tone} bg={toneBg} border={`${tone}55`}>{u.kind}</Pill>
+                      <div style={{ flex: 1 }} />
+                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>conf {u.confidence.toFixed(2)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.text, lineHeight: 1.4, fontWeight: 500, textWrap: 'pretty' }}>{u.claim}</div>
+                    <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: MONO, lineHeight: 1.4, textWrap: 'pretty' }}>
+                      <span style={{ color: tone, fontWeight: 700 }}>why critical:</span> {u.why_critical}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                      {u.requires.map((r, i) => (
+                        <span key={i} style={{
+                          fontFamily: MONO, fontSize: 9.5, padding: '2px 6px',
+                          background: C.panel2, border: `1px solid ${C.border}`,
+                          borderRadius: 2, color: C.textMuted,
+                        }}>requires · {r}</span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{
+              fontFamily: MONO, fontSize: 10.5, color: C.textMuted,
+              padding: '6px 10px', background: C.panel3,
+              border: `1px solid ${C.border}`, borderRadius: 3,
+            }}>
+              POST /executions/T-exec-02/resolve-uncertainty &nbsp;·&nbsp; Steward only
+            </div>
+          </div>
+        )}
+
+        <div style={{ flex: 1, overflow: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* DID */}
+          <Section C={C} label="Did" col={C.accent}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {rt.did.map((d, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, fontFamily: MONO, fontSize: 11.5 }}>
+                  <span style={{ color: C.textDim, width: 44 }}>{d.t}</span>
+                  <span style={{ color: C.accent, width: 70, fontWeight: 600, textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.5, paddingTop: 1 }}>{d.action}</span>
+                  <span style={{ color: C.text, flex: 1, lineHeight: 1.5, textWrap: 'pretty' }}>{d.detail}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          {/* DID NOT */}
+          <Section C={C} label="Did not" col={C.amber}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {rt.didNot.map((d, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, fontSize: 12 }}>
+                  <span style={{ color: C.amber, fontFamily: MONO, fontWeight: 700, fontSize: 11, paddingTop: 1 }}>✗</span>
+                  <span style={{ color: C.text, minWidth: 180, fontWeight: 500 }}>{d.label}</span>
+                  <span style={{ color: C.textMuted, flex: 1, lineHeight: 1.5, fontFamily: MONO, fontSize: 11, textWrap: 'pretty' }}>→ {d.reason}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          {/* CONCLUSION */}
+          <Section C={C} label="Conclusion" col={C.purple}>
+            <div style={{
+              padding: 12, background: C.panel, border: `1px solid ${C.border}`,
+              borderLeft: `2px solid ${C.purple}`, borderRadius: 3,
+              fontSize: 12.5, color: C.text, lineHeight: 1.55, textWrap: 'pretty',
+            }}>{rt.conclusion}</div>
+          </Section>
+
+          {/* §C1 / P-B · Context projection — what agent saw vs. what dropped */}
+          {MOCK.contextProjection && MOCK.contextProjection[taskId] && (() => {
+            const cp = MOCK.contextProjection[taskId];
+            const usedPct = (cp.used / cp.budget_tokens * 100).toFixed(0);
+            const tone = cp.verdict === 'AT_RISK' ? C.rose : C.emerald;
+            return (
+              <Section C={C} label={`Context projection · ${cp.strategy} · ${cp.verdict}`} col={tone}>
+                <div style={{
+                  padding: 12, background: C.panel, border: `1px solid ${tone}44`,
+                  borderLeft: `2px solid ${tone}`, borderRadius: 3,
+                  display: 'flex', flexDirection: 'column', gap: 10,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 10.5 }}>
+                    <span style={{ color: C.textDim, fontWeight: 700, letterSpacing: 0.5 }}>BUDGET</span>
+                    <div style={{ flex: 1, height: 6, background: C.panel3, border: `1px solid ${C.border}`, borderRadius: 1, overflow: 'hidden' }}>
+                      <div style={{ width: `${usedPct}%`, height: '100%', background: C.accent }} />
+                    </div>
+                    <span style={{ color: C.text }}>{cp.used.toLocaleString()} / {cp.budget_tokens.toLocaleString()} tok</span>
+                  </div>
+
+                  <div>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: C.emerald, fontWeight: 700, letterSpacing: 0.6, marginBottom: 4 }}>PROJECTED · {cp.projected.length}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {cp.projected.map((p) => (
+                        <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '70px 90px 1fr 60px', gap: 8, fontFamily: MONO, fontSize: 10.5, padding: '3px 0' }}>
+                          <span style={{ color: C.textDim }}>{p.kind}</span>
+                          <span style={{ color: C.accent }}>{p.id}</span>
+                          <span style={{ color: C.text, textWrap: 'pretty' }}>{p.label}</span>
+                          <span style={{ color: C.textMuted, textAlign: 'right' }}>{p.tokens}t</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: C.rose, fontWeight: 700, letterSpacing: 0.6, marginBottom: 4 }}>
+                      DROPPED · {cp.dropped.length} · would re-enter under causal-BFS (Phase B.4)
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {cp.dropped.map((d) => (
+                        <div key={d.id} style={{
+                          padding: '6px 8px', background: C.roseBg,
+                          border: `1px solid ${C.rose}33`, borderLeft: `2px solid ${C.rose}`, borderRadius: 2,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 10.5 }}>
+                            <span style={{ color: C.textDim, width: 70 }}>{d.kind}</span>
+                            <span style={{ color: C.accent, width: 90 }}>{d.id}</span>
+                            <span style={{ color: C.text, flex: 1, textWrap: 'pretty' }}>{d.label}</span>
+                            <span style={{ color: C.textMuted }}>hop {cp.causal_distance[d.id.replace('-', '_')] || '?'}</span>
+                            <span style={{ color: C.textMuted, textAlign: 'right' }}>{d.tokens}t</span>
+                          </div>
+                          <div style={{ fontFamily: MONO, fontSize: 10, color: C.rose, marginTop: 2, lineHeight: 1.4, textWrap: 'pretty' }}>
+                            invariant at risk · {d.invariant_at_risk}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Section>
+            );
+          })()}
+
+          {/* §C11 / P-F.6 · Structured handoff to next stage */}
+          {MOCK.structuredHandoff && MOCK.structuredHandoff[taskId] && (() => {
+            const h = MOCK.structuredHandoff[taskId];
+            return (
+              <Section C={C} label={`Handoff to ${h.to_stage} · ${h.mode}`} col={C.indigo}>
+                <div style={{
+                  padding: 12, background: C.panel, border: `1px solid ${C.border}`,
+                  borderLeft: `2px solid ${C.indigo}`, borderRadius: 3,
+                  display: 'flex', flexDirection: 'column', gap: 10,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 11 }}>
+                    <span style={{ color: C.textDim, fontWeight: 700, letterSpacing: 0.5 }}>TO</span>
+                    <span style={{ color: C.text }}>{h.to_agent}</span>
+                    <div style={{ flex: 1 }} />
+                    <Pill color={C.indigo} bg={C.indigoBg} border={`${C.indigo}55`}>{h.bytes_structured}B structured</Pill>
+                    <Pill color={C.textMuted} bg={C.panel2}>{h.bytes_nl_only}B NL only (legacy)</Pill>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1, fontFamily: MONO, fontSize: 10.5 }}>
+                    {Object.entries(h.payload).map(([k, v]) => (
+                      <div key={k} style={{
+                        display: 'grid', gridTemplateColumns: '160px 1fr',
+                        gap: 10, padding: '4px 0',
+                        borderTop: `1px dashed ${C.border}`,
+                      }}>
+                        <span style={{ color: C.textDim, fontWeight: 700, letterSpacing: 0.4 }}>{k}</span>
+                        <span style={{ color: C.text, textWrap: 'pretty', wordBreak: 'break-word' }}>
+                          {Array.isArray(v) ? v.map((x) => typeof x === 'object' ? JSON.stringify(x) : x).join(' · ')
+                            : typeof v === 'object' ? JSON.stringify(v)
+                            : String(v)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{
+                    padding: '8px 10px', background: C.panel3, border: `1px solid ${C.border}`, borderRadius: 3,
+                    fontFamily: MONO, fontSize: 10.5, color: C.textMuted, lineHeight: 1.5, textWrap: 'pretty',
+                  }}>
+                    <span style={{ color: C.rose, fontWeight: 700 }}>Lemma 3:</span> summary-only transfer destroys second-order constraints. Phase F.6 makes structured the default — challenger gets entity chain, NL is metadata.
+                  </div>
+                </div>
+              </Section>
+            );
+          })()}
+
+          {/* DISCLOSURES */}
+          <Section C={C} label="Disclosures · 7 required" col={C.indigo}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {rt.disclosures.map((d) => {
+                const open = openD.has(d.id);
+                return (
+                  <div key={d.id} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+                    <button onClick={() => toggle(d.id)} style={{
+                      width: '100%', padding: '8px 12px', background: 'transparent', border: 'none',
+                      display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+                      fontFamily: SANS, color: C.text, textAlign: 'left',
+                    }}>
+                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.indigo, fontWeight: 700 }}>{d.id}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500 }}>{d.label}</span>
+                      <div style={{ flex: 1 }} />
+                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>{open ? '−' : '+'}</span>
+                    </button>
+                    {open && (
+                      <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {d.v.map((line, i) => (
+                          <div key={i} style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted, lineHeight: 1.5, textWrap: 'pretty' }}>
+                            · {line}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        </div>
+
+        {/* §7 next-state CTA · sticky */}
+        <div style={{
+          padding: '10px 14px', borderTop: `1px solid ${C.border}`, background: C.panel3,
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>next state · waits on you</span>
+            <Pill color={C.rose} bg={C.roseBg} border={`${C.rose}44`}>blocked · DEC-CGAID-01</Pill>
+            <span
+              onClick={() => { onClose && onClose(); go && go(`/execution/${taskId}/causal`); }}
+              style={{
+                marginLeft: 'auto', fontFamily: MONO, fontSize: 10.5, color: C.accent, cursor: 'pointer',
+                textDecoration: 'underline', textDecorationColor: `${C.accent}55`, textUnderlineOffset: 2,
+              }}
+              title="§C12 · CausalEdge replay graph"
+            >L4 · causal →</span>
+            <span
+              onClick={() => { onClose && onClose(); go && go(`/execution/${taskId}/trace`); }}
+              style={{
+                fontFamily: MONO, fontSize: 10.5, color: C.accent, cursor: 'pointer',
+                textDecoration: 'underline', textDecorationColor: `${C.accent}55`, textUnderlineOffset: 2,
+              }}
+              title="§18 · drop to PromptElement audit"
+            >L5 · raw trace →</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={{
+              flex: 1, padding: '8px 10px', background: C.emerald, color: '#fff', border: 'none',
+              borderRadius: 3, cursor: 'pointer', fontSize: 12, fontFamily: SANS, fontWeight: 600,
+            }}>Approve · rebuild from base</button>
+            <button style={{
+              padding: '8px 12px', background: C.panel, color: C.text, border: `1px solid ${C.border}`,
+              borderRadius: 3, cursor: 'pointer', fontSize: 12, fontFamily: SANS,
+            }}>Challenge</button>
+            <button style={{
+              padding: '8px 12px', background: C.panel, color: C.text, border: `1px solid ${C.border}`,
+              borderRadius: 3, cursor: 'pointer', fontSize: 12, fontFamily: SANS,
+            }}>Reject</button>
+            <button style={{
+              padding: '8px 12px', background: C.rose, color: '#fff', border: 'none',
+              borderRadius: 3, cursor: 'pointer', fontSize: 12, fontFamily: SANS, fontWeight: 500,
+            }}>Halt</button>
+          </div>
+          <div style={{
+            padding: '6px 10px', background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3,
+            fontFamily: MONO, fontSize: 11, color: C.textDim,
+          }}>/approve · /reject · /ask "…"</div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function Section({ C, label, col, children }) {
+  const { MONO } = window;
+  return (
+    <div>
+      <div style={{
+        fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.2,
+        textTransform: 'uppercase', color: col, marginBottom: 8,
+      }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+// -------------- Audit (Steward Audit console) --------------
+function AuditView({ C, go, openTask }) {
+  const { MOCK, Pill, SectionLabel, GateChip, TierBadge, MONO, SANS } = window;
+  const spectrum = MOCK.gateSpectrum;
+  const counts = { PASS: 0, PARTIAL: 0, WEAK: 0, FAIL: 0 };
+  spectrum.forEach((g) => counts[g.verdict] = (counts[g.verdict] || 0) + 1);
+  const adrCited = MOCK.acList.filter((a) => a.tag !== 'INVENTED').length;
+  const tierMis = 1; // demo
+
+  return (
+    <div data-screen-label="Audit · Steward console" data-screen-justification="§22 · removable? NO — kill-criteria recovery (§16) and ADR citation forensics live nowhere else" style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 22, maxWidth: 1100 }}>
+      <div>
+        <div style={{ fontFamily: MONO, fontSize: 11, color: C.textDim, marginBottom: 4 }}>/audit</div>
+        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 600, letterSpacing: -0.3, color: C.text }}>Steward audit console</h1>
+        <p style={{ margin: 0, fontSize: 13, color: C.textMuted, lineHeight: 1.5, maxWidth: 780 }}>
+          Forensic view across every LLM call, gate verdict, ADR citation, tier classification, and contract delta. Filter by time, objective, model, or kill-criterion.
+        </p>
+      </div>
+
+      {/* §C6 / P7 — 75× .status= violations panel */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <SectionLabel color={C.rose} style={{ marginBottom: 0 }}>Universal Gating breach · 75× .status= sites bypass GateRegistry</SectionLabel>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, letterSpacing: 0.4 }}>VERDICT_ENGINE_MODE</span>
+          <ModeToggle C={C} mode={MOCK.gateViolations.mode} />
+        </div>
+        <div style={{
+          padding: 14, background: C.panel,
+          border: `1px solid ${C.rose}44`, borderLeft: `3px solid ${C.rose}`, borderRadius: 3,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 12 }}>
+            <span style={{ fontFamily: MONO, fontSize: 32, fontWeight: 600, color: C.rose, lineHeight: 1 }}>{MOCK.gateViolations.total}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>direct .status= assignments across 9 files</span>
+              <span style={{ fontSize: 11, color: C.textMuted, fontFamily: MONO, textWrap: 'pretty' }}>
+                Topology theorem: state transitions don't create CausalEdge rows; invariants and evidence requirements skip the gate. Phase A.4 closes this.
+              </span>
+            </div>
+            <div style={{ flex: 1 }} />
+            <Pill color={C.rose} bg={C.roseBg} border={`${C.rose}66`}>phase A.4 · highest leverage</Pill>
+          </div>
+
+          {/* Stacked bar by file */}
+          <div style={{ display: 'flex', gap: 1, height: 22, marginBottom: 8, borderRadius: 2, overflow: 'hidden' }}>
+            {MOCK.gateViolations.byFile.map((f, i) => (
+              <div key={i} title={`${f.file} · ${f.count} sites · ${f.kind}`}
+                   style={{
+                     flex: f.count, background: i % 2 === 0 ? C.rose : `${C.rose}cc`,
+                     display: 'flex', alignItems: 'center', justifyContent: 'center',
+                     fontFamily: MONO, fontSize: 9.5, color: '#fff', fontWeight: 700,
+                   }}>{f.count}</div>
+            ))}
+          </div>
+
+          {/* Per-file rows */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4 }}>
+            {MOCK.gateViolations.byFile.map((f, i) => (
+              <div key={i} style={{
+                display: 'grid', gridTemplateColumns: '1.5fr 60px 1fr 90px',
+                gap: 12, padding: '6px 0', alignItems: 'center',
+                borderTop: i > 0 ? `1px dashed ${C.border}` : 'none',
+              }}>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.text }}>{f.file}</span>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.rose, fontWeight: 700 }}>{f.count} sites</span>
+                <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textMuted }}>{f.kind}</span>
+                <Pill color={C.amber} bg={C.amberBg} border={`${C.amber}55`}>shadow · log only</Pill>
+              </div>
+            ))}
+          </div>
+
+          <div style={{
+            marginTop: 12, padding: '8px 10px', background: C.panel3,
+            border: `1px solid ${C.border}`, borderRadius: 3,
+            fontFamily: MONO, fontSize: 11, color: C.textMuted, lineHeight: 1.5,
+          }}>
+            <span style={{ color: C.text, fontWeight: 700 }}>Cutover plan · A.1 → A.4:</span> EvidenceSet entity · GateRegistry static dict · VerdictEngine shadow → enforce · pre-commit grep gate. Each step is additive with zero blast radius until A.4.
+          </div>
+        </div>
+      </div>
+
+      {/* Gate spectrum */}
+      <div>
+        <SectionLabel color={C.textMuted}>Gate spectrum · last 8 gates</SectionLabel>
+        <div style={{ padding: 14, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+            {['PASS', 'PARTIAL', 'WEAK', 'FAIL'].map((v) => (
+              <div key={v} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <GateChip C={C} verdict={v} />
+                <span style={{ fontFamily: MONO, fontSize: 12, color: C.text, fontWeight: 600 }}>{counts[v] || 0}</span>
+              </div>
+            ))}
+            <div style={{ flex: 1 }} />
+            <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim }}>
+              median: PASS · WEAK rate {(counts.WEAK + counts.FAIL) / spectrum.length * 100}%
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 2, height: 28 }}>
+            {spectrum.map((g) => {
+              const col = g.verdict === 'PASS' ? C.emerald : g.verdict === 'FAIL' ? C.rose : C.amber;
+              return (
+                <div key={g.id} title={`${g.id} · ${g.phase} · ${g.verdict} · ${g.at}`} style={{
+                  flex: 1, background: col, opacity: g.verdict === 'PASS' ? 1 : 0.7,
+                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 2,
+                  fontFamily: MONO, fontSize: 8.5, color: '#fff', fontWeight: 700,
+                }}>{g.phase[0].toUpperCase()}</div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontFamily: MONO, fontSize: 9.5, color: C.textDim }}>
+            <span>{spectrum[0].at}</span><span>{spectrum[spectrum.length - 1].at}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* §C2 / P5 · Schema↔ADR mapping */}
+      <div>
+        <SectionLabel color={C.amber}>Schema ↔ ADR mapping · invariant coverage on tier-bearing tables</SectionLabel>
+        <div style={{
+          padding: 14, background: C.panel, border: `1px solid ${C.amber}44`,
+          borderLeft: `3px solid ${C.amber}`, borderRadius: 3,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 12 }}>
+            <span style={{ fontFamily: MONO, fontSize: 32, fontWeight: 600, color: C.amber, lineHeight: 1 }}>
+              {Math.round(MOCK.schemaSourceMap.coverage * 100)}%
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>
+                {MOCK.schemaSourceMap.mapped} of {MOCK.schemaSourceMap.mapped + MOCK.schemaSourceMap.unmapped} columns linked to an ADR
+              </span>
+              <span style={{ fontSize: 11, color: C.textMuted, fontFamily: MONO, textWrap: 'pretty' }}>
+                Migrations on unmapped columns can break ADR-stated invariants without tripping a gate. <span style={{ color: C.text }}>SchemaSourceMap</span> is the missing edge in DataPath proofs.
+              </span>
+            </div>
+            <div style={{ flex: 1 }} />
+            <Pill color={C.amber} bg={C.amberBg} border={`${C.amber}66`}>phase F.7 · {MOCK.schemaSourceMap.unmapped} unmapped</Pill>
+          </div>
+
+          {/* Per-table grid */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {MOCK.schemaSourceMap.tables.map((t, i) => {
+              const tone = t.status === 'OK' ? C.emerald : t.status === 'PARTIAL' ? C.amber : C.rose;
+              const pct = t.columns > 0 ? t.mapped / t.columns : 0;
+              return (
+                <div key={t.table} style={{
+                  display: 'grid', gridTemplateColumns: '180px 70px 1fr 90px 1.4fr 90px',
+                  gap: 12, padding: '8px 0', alignItems: 'center',
+                  borderTop: i > 0 ? `1px dashed ${C.border}` : 'none',
+                }}>
+                  <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.text, fontWeight: 600 }}>{t.table}</span>
+                  <TierBadge C={C} tier={t.tier} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ flex: 1, height: 6, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 1, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct * 100}%`, height: '100%', background: tone }} />
+                    </div>
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: C.textMuted, width: 40 }}>{t.mapped}/{t.columns}</span>
+                  </div>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: t.adrs.length > 0 ? C.accent : C.rose }}>
+                    {t.adrs.length > 0 ? t.adrs.join(', ') : 'NO ADR'}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textMuted, lineHeight: 1.4, textWrap: 'pretty' }}>
+                    {t.invariants.join(' · ')}
+                  </span>
+                  <Pill color={tone} bg={tone === C.emerald ? C.emeraldBg : tone === C.amber ? C.amberBg : C.roseBg} border={`${tone}55`}>{t.status}</Pill>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{
+            marginTop: 12, padding: '8px 10px', background: C.panel3,
+            border: `1px solid ${C.border}`, borderRadius: 3,
+            fontFamily: MONO, fontSize: 11, color: C.textMuted, lineHeight: 1.5,
+          }}>
+            <span style={{ color: C.text, fontWeight: 700 }}>Migration gate (phase F.7):</span> alembic upgrade rejected when any column delta touches an ADR-mapped invariant without an ADR amendment in the same PR. <span style={{ color: C.rose, fontWeight: 700 }}>wal_replay (T1, 0/5)</span> is the highest-risk row — touching it today is unsafe.
+          </div>
+        </div>
+      </div>
+
+      {/* Row of audit metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        <AuditCard C={C} title="ADR citation rate" value={`${Math.round(adrCited / MOCK.acList.length * 100)}%`} sub={`${adrCited} of ${MOCK.acList.length} AC cite an ADR or SRC`} col={C.emerald} />
+        <AuditCard C={C} title="Contract drift" value="4.0%" sub="stated vs. revealed on last 20 runs" col={C.amber} />
+        <AuditCard C={C} title="Tier misclass" value={String(tierMis)} sub="SE-05 tier=T1 but owner=NULL → drift" col={C.rose} />
+        <AuditCard C={C} title="Solo-verifier incidents" value="1" sub="K4 tripped 09:47 on T-ver-pre" col={C.rose} />
+      </div>
+
+      {/* Last 24h table */}
+      <div>
+        <SectionLabel color={C.textMuted}>Last 24h · kill-criteria trips</SectionLabel>
+        <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: '54px 1.4fr 1.1fr 130px 64px 240px',
+            padding: '8px 14px', gap: 10, borderBottom: `1px solid ${C.border}`,
+            fontFamily: MONO, fontSize: 9.5, color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6,
+          }}>
+            <span>K</span><span>Event</span><span>Context</span><span>Task</span><span>At</span><span>Recovery · §16</span>
+          </div>
+          {[
+            { k: 'K1', ev: 'Side-effect SE-05 owner=NULL', ctx: 'token_svc · T1', task: 'T-exec-02', at: '13:41',
+              rollback: 'revert restore txn · T-exec-02',
+              retry:    'reassign owner → re-execute',
+              accept:   'sign waiver · ADR-0061' },
+            { k: 'K4', ev: 'Challenger == executor', ctx: 'sonnet-4.5 vs sonnet-4.5 on T1', task: 'T-ver-pre', at: '09:47',
+              rollback: 'discard verdict',
+              retry:    'route to opus-4 challenger',
+              accept:   '— · forbidden on T1' },
+            { k: 'K5', ev: 'Promote attempt on WEAK gate', ctx: 'G-05 · WEAK · execute', task: 'T-exec-05', at: '11:48',
+              rollback: 'unpromote · pin to STRONG',
+              retry:    're-run gate-spectrum',
+              accept:   'sign override · ADR-0062' },
+          ].map((r, i) => (
+            <div key={i} style={{
+              display: 'grid', gridTemplateColumns: '54px 1.4fr 1.1fr 130px 64px 240px',
+              padding: '9px 14px', gap: 10, alignItems: 'center',
+              borderTop: i > 0 ? `1px solid ${C.border}` : 'none',
+            }}>
+              <Pill color={C.rose} bg={C.roseBg} border={`${C.rose}44`}>{r.k}</Pill>
+              <span style={{ fontSize: 12.5, color: C.text }}>{r.ev}</span>
+              <span style={{ fontSize: 11.5, color: C.textMuted, fontFamily: MONO }}>{r.ctx}</span>
+              <span style={{ fontSize: 11, color: C.accent, fontFamily: MONO, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: `${C.accent}55` }}
+                    onClick={() => openTask && openTask(r.task)}>{r.task}</span>
+              <span style={{ fontSize: 11, color: C.textDim, fontFamily: MONO }}>{r.at}</span>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <RecoveryBtn C={C} tone="rose"    label="rollback" hint={r.rollback} disabled={false} />
+                <RecoveryBtn C={C} tone="amber"   label="retry"    hint={r.retry}    disabled={false} />
+                <RecoveryBtn C={C} tone="muted"   label="accept"   hint={r.accept}   disabled={r.accept.startsWith('—')} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModeToggle({ C, mode }) {
+  const { MONO } = window;
+  const modes = ['off', 'shadow', 'enforce'];
+  return (
+    <div style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 3, overflow: 'hidden' }}>
+      {modes.map((m) => {
+        const active = m === mode;
+        const tone = m === 'enforce' ? C.emerald : m === 'shadow' ? C.amber : C.textDim;
+        return (
+          <span key={m} style={{
+            padding: '3px 8px', fontFamily: MONO, fontSize: 10, fontWeight: 700,
+            letterSpacing: 0.5, textTransform: 'uppercase',
+            background: active ? tone : 'transparent',
+            color: active ? '#fff' : C.textMuted,
+            borderRight: m !== 'enforce' ? `1px solid ${C.border}` : 'none',
+          }}>{m}</span>
+        );
+      })}
+    </div>
+  );
+}
+
+function RecoveryBtn({ C, tone, label, hint, disabled }) {
+  const { MONO } = window;
+  const palette = {
+    rose:  { bg: C.roseBg,   br: `${C.rose}55`,   fg: C.rose },
+    amber: { bg: C.amberBg,  br: `${C.amber}55`,  fg: C.amber },
+    muted: { bg: C.panel,    br: C.border,        fg: C.textMuted },
+  }[tone] || { bg: C.panel, br: C.border, fg: C.text };
+  return (
+    <button
+      title={hint}
+      disabled={disabled}
+      style={{
+        padding: '3px 7px', background: palette.bg, color: palette.fg,
+        border: `1px solid ${palette.br}`, borderRadius: 3,
+        fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+        textTransform: 'uppercase', cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >{label}</button>
+  );
+}
+
+function AuditCard({ C, title, value, sub, col }) {
+  const { MONO } = window;
+  return (
+    <div style={{
+      padding: 14, background: C.panel, border: `1px solid ${C.border}`,
+      borderLeft: `3px solid ${col}`, borderRadius: 3,
+    }}>
+      <div style={{ fontSize: 11.5, color: C.textMuted, fontWeight: 600, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 600, color: C.text, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 10.5, color: C.textDim, marginTop: 6, fontFamily: MONO, textWrap: 'pretty' }}>{sub}</div>
+    </div>
+  );
+}
+
+// -------------- Stubs (autonomy, billing) --------------
+function StubView({ C, title, sub, go, kind }) {
+  const { MONO, SANS } = window;
+  return (
+    <div style={{ padding: 40, maxWidth: 720 }}>
+      <div style={{ fontFamily: MONO, fontSize: 11, color: C.textDim, marginBottom: 6 }}>{sub}</div>
+      <h1 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 600, letterSpacing: -0.3, color: C.text }}>{title}</h1>
+      <p style={{ margin: '0 0 20px', fontSize: 13, color: C.textMuted, lineHeight: 1.5, maxWidth: 620 }}>
+        {kind === 'autonomy' && 'Tell Forge how far to run on its own. Promote only with evidence; demote on any violation. Steward holds the key — agents cannot self-promote.'}
+        {kind === 'billing' && 'LLM spend by model, project and day. Hard caps here stop agents mid-task.'}
+      </p>
+      <div style={{ padding: 18, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3, fontFamily: MONO, fontSize: 12, color: C.textMuted, lineHeight: 1.7 }}>
+        {kind === 'autonomy' && (
+          <>
+            Current: <span style={{ color: C.purple, fontWeight: 700 }}>L2 Co-pilot</span> (demoted from L3 after INC-0207)<br/>
+            Evidence to reach L3: 10 clean gate-spectrum runs · 0 K1/K4 trips · Steward signs<br/>
+            Runs toward L3: 7/10 · K-trips: 2 (resets the 14d window)<br/>
+            <span style={{ color: C.textDim }}>OBJ-CGAID pinned L2 · OBJ-013 pinned L2</span>
+          </>
+        )}
+        {kind === 'billing' && (
+          <>
+            MTD: $212.40 of $600 cap · 35%<br/>
+            By model: sonnet-4.5 $164 · haiku-4.5 $33 · opus-4 $15<br/>
+            By project: warehouseflow $94 · billing-v2 $49 · mcp-audit $27<br/>
+          </>
+        )}
+      </div>
+      <div style={{ marginTop: 20 }}>
+        <button onClick={() => go('/dashboard')} style={{
+          padding: '7px 12px', background: 'transparent', border: `1px solid ${C.border}`,
+          borderRadius: 3, color: C.text, cursor: 'pointer', fontSize: 12, fontFamily: SANS,
+        }}>← back to dashboard</button>
+      </div>
+    </div>
+  );
+}
+
+// -------------- AI Dock --------------
+function AIDock({ C, onClose }) {
+  const { MONO, SANS } = window;
+  return (
+    <div style={{
+      width: 340, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.border}`,
+      display: 'flex', flexDirection: 'column',
+    }}>
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>Ask Forge</span>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>· OBJ-CGAID</span>
+        <div style={{ flex: 1 }} />
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 11, color: C.textDim, fontFamily: MONO }}>user · 13:39</div>
+        <div style={{ fontSize: 12.5, color: C.text }}>Why does T-exec-02 want replica rebuild over WAL replay?</div>
+        <div style={{ fontSize: 11, color: C.accent, fontFamily: MONO }}>forge · haiku-4.5 · 1.2s</div>
+        <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, textWrap: 'pretty' }}>
+          ADR-0033 §5 flags 2 unresolved edge cases for WAL replay across a schema-versioned gap. Rebuild from base backup is 40m slower but the invariant is clean. This is DEC-CGAID-01 — it needs your sign.
+          <div style={{ marginTop: 10, padding: '8px 10px', background: C.panel2, borderRadius: 3, fontFamily: MONO, fontSize: 10.5, color: C.textMuted, lineHeight: 1.5 }}>
+            NOT_CHECKED: whether warehouse replication lag tolerates the extra 40m. SE-03 owner: data-eng.
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: 12, borderTop: `1px solid ${C.border}` }}>
+        <div style={{
+          padding: '7px 10px', background: C.panel2, border: `1px solid ${C.border}`,
+          borderRadius: 3, fontFamily: MONO, fontSize: 11.5, color: C.textDim,
+        }}>Ask · /plan · /analyze · /verify</div>
+      </div>
+    </div>
+  );
+}
+
+// -------------- Shell --------------
+function ForgeApp({ theme = 'light', initialRoute = '/dashboard', initialTab = 'overview', initialTaskDrawer = null, initialAiOpen = false }) {
+  const { getTheme, DashboardView, ObjectiveView, MONO, SANS } = window;
+  const C = getTheme(theme === 'dark');
+  const [route, setRoute] = React.useState(initialRoute);
+  const [taskDrawer, setTaskDrawer] = React.useState(initialTaskDrawer);
+  const [aiOpen, setAiOpen] = React.useState(initialAiOpen);
+
+  const go = (r) => setRoute(r);
+  const match = (pattern) => {
+    if (pattern === route) return {};
+    const p = pattern.split('/'), r = route.split('/');
+    if (p.length !== r.length) return null;
+    const params = {};
+    for (let i = 0; i < p.length; i++) {
+      if (p[i].startsWith(':')) params[p[i].slice(1)] = r[i];
+      else if (p[i] !== r[i]) return null;
+    }
+    return params;
+  };
+
+  let content, params;
+  if ((params = match('/dashboard'))) content = <DashboardView C={C} go={go} openTask={setTaskDrawer} />;
+  else if ((params = match('/objective/:id'))) content = <ObjectiveView C={C} objId={params.id} go={go} openTask={setTaskDrawer} initialTab={initialTab} />;
+  else if ((params = match('/audit'))) content = <AuditView C={C} go={go} openTask={setTaskDrawer} />;
+  else if ((params = match('/execution/:id/trace'))) content = <TraceView C={C} taskId={params.id} go={go} />;
+  else if ((params = match('/execution/:id/causal'))) content = <CausalView C={C} taskId={params.id} go={go} />;
+  else if ((params = match('/settings/autonomy'))) content = <StubView C={C} title="Autonomy ladder" sub="/settings/autonomy" go={go} kind="autonomy" />;
+  else if ((params = match('/billing'))) content = <StubView C={C} title="Costs & billing" sub="/billing" go={go} kind="billing" />;
+  else content = <DashboardView C={C} go={go} openTask={setTaskDrawer} />;
+
+  return (
+    <div style={{
+      width: '100%', height: '100%', background: C.bg, color: C.text,
+      fontFamily: SANS, fontSize: 13, display: 'flex', flexDirection: 'column',
+      overflow: 'hidden', position: 'relative',
+    }}>
+      <TopBar C={C} route={route} go={go} aiOpen={aiOpen} setAiOpen={setAiOpen} />
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <SideRail C={C} route={route} go={go} />
+        <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+          {content}
+        </div>
+        {aiOpen && <AIDock C={C} onClose={() => setAiOpen(false)} />}
+      </div>
+      {taskDrawer && <TaskDrawer C={C} taskId={taskDrawer} onClose={() => setTaskDrawer(null)} go={go} />}
+    </div>
+  );
+}
+
+function TopBar({ C, route, go, aiOpen, setAiOpen }) {
+  const { MOCK, Pill, TierBadge, MONO, SANS } = window;
+  const crumbs = route.split('/').filter(Boolean);
+  return (
+    <div style={{
+      height: 46, flexShrink: 0, display: 'flex', alignItems: 'center',
+      padding: '0 14px', gap: 12, borderBottom: `1px solid ${C.border}`,
+      background: C.panel,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{
+          width: 20, height: 20, borderRadius: 3,
+          background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: MONO, fontSize: 11, fontWeight: 700, color: '#fff',
+        }}>F</div>
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text, letterSpacing: -0.1 }}>Forge</span>
+      </div>
+      <div style={{ width: 1, height: 18, background: C.border }} />
+      <button style={{
+        background: 'transparent', border: 'none', color: C.text, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 6, fontFamily: SANS, fontSize: 12.5, fontWeight: 500,
+        padding: '4px 8px', borderRadius: 3,
+      }}>
+        {MOCK.project.name}
+        <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ opacity: .5 }}><path d="M2 3.5 L4.5 6 L7 3.5"/></svg>
+      </button>
+      <TierBadge C={C} tier={MOCK.project.data_class.startsWith('REGULATED') ? 'T1' : 'T2'} />
+      <Pill color={C.purple} bg={C.purpleBg} border={`${C.purple}44`}>autonomy {MOCK.project.autonomy_level}</Pill>
+      <div style={{ fontFamily: MONO, fontSize: 11, color: C.textDim, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {crumbs.map((c, i) => (
+          <React.Fragment key={i}>
+            <span>/</span>
+            <span style={{ color: i === crumbs.length - 1 ? C.text : C.textMuted }}>{c}</span>
+          </React.Fragment>
+        ))}
+      </div>
+      <div style={{ flex: 1 }} />
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+        border: `1px solid ${C.border}`, borderRadius: 3, color: C.textMuted, fontSize: 11.5,
+        background: C.panel2,
+      }}>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="4" cy="4" r="2.8"/><path d="M6 6l2.5 2.5" strokeLinecap="round"/></svg>
+        <span>Search · jump</span>
+        <kbd style={{ fontFamily: MONO, fontSize: 10, padding: '1px 5px', background: C.panel, border: `1px solid ${C.border2}`, borderRadius: 2, color: C.textDim }}>⌘K</kbd>
+      </div>
+      <button onClick={() => setAiOpen(!aiOpen)} style={{
+        padding: '6px 10px', background: aiOpen ? C.accent : 'transparent',
+        color: aiOpen ? '#fff' : C.text, border: `1px solid ${aiOpen ? C.accent : C.border}`,
+        borderRadius: 3, fontFamily: SANS, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M5.5 1.5 L7 4 L9.5 5.5 L7 7 L5.5 9.5 L4 7 L1.5 5.5 L4 4 Z"/></svg>
+        Ask Forge
+      </button>
+    </div>
+  );
+}
+
+function SideRail({ C, route, go }) {
+  const { MOCK, MONO, SANS } = window;
+  const items = [
+    { route: '/dashboard',         label: 'Dashboard', icon: 'grid' },
+    { route: '/objective/OBJ-CGAID', label: 'Objectives', icon: 'layers', match: '/objective/' },
+    { route: '/audit',             label: 'Audit',     icon: 'scroll' },
+    { route: '/settings/autonomy', label: 'Autonomy',  icon: 'lock' },
+    { route: '/billing',           label: 'Billing',   icon: 'coin' },
+  ];
+  const isActive = (it) => it.match ? route.startsWith(it.match) : route === it.route;
+  const Icon = ({ kind }) => {
+    const stroke = 'currentColor';
+    const common = { width: 14, height: 14, viewBox: '0 0 14 14', fill: 'none', stroke, strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    if (kind === 'grid')   return <svg {...common}><rect x="2" y="2" width="4" height="4"/><rect x="8" y="2" width="4" height="4"/><rect x="2" y="8" width="4" height="4"/><rect x="8" y="8" width="4" height="4"/></svg>;
+    if (kind === 'layers') return <svg {...common}><path d="M7 1.5 L12.5 4 L7 6.5 L1.5 4 Z"/><path d="M1.5 7 L7 9.5 L12.5 7"/><path d="M1.5 10 L7 12.5 L12.5 10"/></svg>;
+    if (kind === 'scroll') return <svg {...common}><path d="M3 2 h6 a2 2 0 0 1 2 2 v7 a1 1 0 0 0 1 1 H4 a1 1 0 0 1 -1 -1 V3 a1 1 0 0 1 1 -1 Z"/><path d="M5 5 h4 M5 7 h4 M5 9 h3"/></svg>;
+    if (kind === 'lock')   return <svg {...common}><rect x="3" y="6" width="8" height="6" rx="1"/><path d="M5 6 V4 a2 2 0 0 1 4 0 V6"/></svg>;
+    if (kind === 'coin')   return <svg {...common}><circle cx="7" cy="7" r="5"/><path d="M5.5 7 h3 M7 5.5 v3"/></svg>;
+    return null;
+  };
+  return (
+    <div style={{
+      width: 200, flexShrink: 0, borderRight: `1px solid ${C.border}`,
+      background: C.panel, padding: '10px 6px',
+      display: 'flex', flexDirection: 'column', gap: 1, overflow: 'auto',
+    }}>
+      {items.map((it) => {
+        const a = isActive(it);
+        return (
+          <button key={it.route} onClick={() => go(it.route)} style={{
+            display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px',
+            border: 'none', background: a ? C.panel2 : 'transparent',
+            color: a ? C.text : C.textMuted, cursor: 'pointer', borderRadius: 3,
+            fontFamily: SANS, fontSize: 12.5, fontWeight: a ? 600 : 500,
+            textAlign: 'left', borderLeft: `2px solid ${a ? C.accent : 'transparent'}`,
+          }}>
+            <Icon kind={it.icon} /><span>{it.label}</span>
+          </button>
+        );
+      })}
+      <div style={{ height: 10 }} />
+      <div style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: C.textDim, padding: '0 10px', marginBottom: 4 }}>Objectives</div>
+      {MOCK.objectives.map((o) => {
+        const a = route === `/objective/${o.id}`;
+        const stCol = o.status === 'ACHIEVED' ? C.emerald : (o.open_decisions || o.side_effects_unowned) ? C.rose : C.accent;
+        return (
+          <button key={o.id} onClick={() => go(`/objective/${o.id}`)} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+            border: 'none', background: a ? C.panel2 : 'transparent', cursor: 'pointer', borderRadius: 3,
+            color: a ? C.text : C.textMuted, fontFamily: SANS, fontSize: 11.5,
+            textAlign: 'left', borderLeft: `2px solid ${a ? C.accent : 'transparent'}`,
+          }}>
+            <span style={{ width: 5, height: 5, borderRadius: 3, background: stCol, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim, flexShrink: 0 }}>{o.id.replace('OBJ-', '')}</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.title}</span>
+            {(o.open_decisions + o.side_effects_unowned) > 0 && <span style={{ color: C.rose, fontFamily: MONO, fontSize: 10, fontWeight: 700 }}>{o.open_decisions + o.side_effects_unowned}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// -------------- TraceView · §18 · Level-5 raw prompt audit --------------
+function TraceView({ C, taskId, go }) {
+  const { MOCK, Pill, EpistemicTag, SectionLabel, MONO, SANS } = window;
+  const trace = (MOCK.promptTrace && MOCK.promptTrace[taskId]) || null;
+  const [openSec, setOpenSec] = React.useState(() => new Set(trace ? trace.sections.map((s) => s.id) : []));
+  const [filter, setFilter] = React.useState(null); // null | 'INVENTED' | 'DERIVED' | 'ADR-CITED' | 'STEWARD-AUTHORED'
+  const toggle = (id) => setOpenSec((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  if (!trace) {
+    return (
+      <div style={{ padding: 40, maxWidth: 720 }}>
+        <div style={{ fontFamily: MONO, fontSize: 11, color: C.textDim, marginBottom: 6 }}>/execution/{taskId}/trace</div>
+        <h1 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 600, color: C.text }}>No raw trace recorded</h1>
+        <p style={{ margin: 0, fontSize: 13, color: C.textMuted, maxWidth: 620, lineHeight: 1.5 }}>
+          Forge only persists assembled prompts for tasks at tier T1 or where a kill-criterion fired.
+          {taskId} fits neither.
+        </p>
+      </div>
+    );
+  }
+
+  const totalEl = trace.sections.reduce((n, s) => n + s.elements.length, 0);
+
+  return (
+    <div data-screen-label="Trace · L5 raw prompt" data-screen-justification="§22 · removable? NO — only place PromptElement provenance + INVENTED spans become directly auditable" style={{ padding: 28, maxWidth: 1100, display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {/* breadcrumb · §14 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: MONO, fontSize: 10.5, color: C.textDim }}>
+        <span onClick={() => go && go('/audit')} style={{ cursor: 'pointer', color: C.accent, textDecoration: 'underline', textDecorationColor: `${C.accent}55` }}>/audit</span>
+        <span>›</span>
+        <span>/execution/{taskId}/trace</span>
+        <span onClick={() => go && go(`/execution/${taskId}/causal`)} style={{ marginLeft: 14, cursor: 'pointer', color: C.accent, textDecoration: 'underline', textDecorationColor: `${C.accent}55` }}>L4 · causal →</span>
+        <span style={{ marginLeft: 'auto' }}>L5 · raw prompt audit · §18</span>
+      </div>
+
+      {/* header */}
+      <div>
+        <h1 style={{ margin: '0 0 6px', fontSize: 24, fontWeight: 600, letterSpacing: -0.3, color: C.text }}>
+          What the executor actually saw
+        </h1>
+        <p style={{ margin: 0, fontSize: 13, color: C.textMuted, lineHeight: 1.5, maxWidth: 760, textWrap: 'pretty' }}>
+          Verbatim prompt assembled for <code style={{ fontFamily: MONO, color: C.accent }}>{trace.task}</code> at {trace.assembled_at}.
+          Every span is tagged with provenance; INVENTED spans are spans the model wrote without a source and are the first place to look on any incident.
+        </p>
+      </div>
+
+      {/* metadata strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+        <Meta C={C} k="model"        v={trace.model} />
+        <Meta C={C} k="phase"        v={trace.phase} />
+        <Meta C={C} k="input tok"    v={trace.input_tokens.toLocaleString()} />
+        <Meta C={C} k="output tok"   v={trace.output_tokens.toLocaleString()} />
+        <Meta C={C} k="sections"     v={`${trace.sections.length} · ${totalEl} elements`} />
+        <Meta C={C} k="content hash" v={trace.hash} mono />
+      </div>
+
+      {/* tag summary · clickable filter */}
+      <div>
+        <SectionLabel color={C.textDim}>Provenance · click to filter elements</SectionLabel>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {Object.entries(trace.tag_summary).map(([k, n]) => {
+            const active = filter === k;
+            return (
+              <button key={k} onClick={() => setFilter(active ? null : k)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px',
+                background: active ? C.panel2 : C.panel,
+                border: `1px solid ${active ? C.accent : C.border}`,
+                borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                <EpistemicTag C={C} tag={k} />
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.text, fontWeight: 700 }}>×{n}</span>
+              </button>
+            );
+          })}
+          {filter && (
+            <button onClick={() => setFilter(null)} style={{
+              padding: '4px 8px', background: 'transparent', border: `1px solid ${C.border}`,
+              borderRadius: 3, cursor: 'pointer', fontFamily: MONO, fontSize: 10.5,
+              color: C.textMuted, letterSpacing: 0.5,
+            }}>clear filter</button>
+          )}
+          <div style={{ flex: 1 }} />
+          {trace.tag_summary.INVENTED > 0 && (
+            <span style={{
+              padding: '4px 8px', background: C.roseBg, border: `1px solid ${C.rose}55`, borderRadius: 3,
+              fontFamily: MONO, fontSize: 10.5, color: C.rose, fontWeight: 700,
+            }}>
+              {trace.tag_summary.INVENTED} INVENTED span{trace.tag_summary.INVENTED > 1 ? 's' : ''} · would block under F.4
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* sections */}
+      <div>
+        <SectionLabel color={C.textDim}>PromptSections · click to fold</SectionLabel>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {trace.sections.map((s) => {
+            const open = openSec.has(s.id);
+            return (
+              <div key={s.id} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+                <button onClick={() => toggle(s.id)} style={{
+                  width: '100%', padding: '10px 14px', background: 'transparent', border: 'none',
+                  display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
+                  fontFamily: SANS, color: C.text, textAlign: 'left',
+                }}>
+                  <span style={{ fontFamily: MONO, fontSize: 10, color: C.indigo, fontWeight: 700 }}>{s.id}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{s.label}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim }}>{s.tokens} tok</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textMuted }}>← {s.source}</span>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontFamily: MONO, fontSize: 11, color: C.textDim }}>{open ? '−' : '+'}</span>
+                </button>
+                {open && (
+                  <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {s.elements.filter((e) => !filter || e.kind === filter).map((e) => {
+                      const tone = e.kind === 'INVENTED' ? C.rose
+                                 : e.kind === 'ADR-CITED' ? C.emerald
+                                 : e.kind === 'STEWARD-AUTHORED' ? C.purple
+                                 : C.amber;
+                      const dim = filter && e.kind !== filter;
+                      return (
+                      <div key={e.id} style={{
+                        background: C.panel3, border: `1px solid ${C.border}`,
+                        borderLeft: `3px solid ${tone}`,
+                        borderRadius: 3, padding: '8px 10px', opacity: dim ? 0.35 : 1,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                          <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, fontWeight: 700 }}>{e.id}</span>
+                          <EpistemicTag C={C} tag={e.kind} />
+                          <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>range {e.range}</span>
+                          <div style={{ flex: 1 }} />
+                          <span style={{ fontFamily: MONO, fontSize: 10, color: C.accent }}>← {e.src}</span>
+                          {e.kind === 'INVENTED' && (
+                            <Pill color={C.rose} bg="transparent" border={`${C.rose}66`}>NO PROVENANCE</Pill>
+                          )}
+                        </div>
+                        <div style={{ fontFamily: MONO, fontSize: 11.5, color: C.text, lineHeight: 1.55, textWrap: 'pretty', whiteSpace: 'pre-wrap' }}>{e.text}</div>
+                        {/* §C8 / P8 · evidence-hop · if span has a source, link to where it lives */}
+                        {e.kind !== 'INVENTED' && e.src && (
+                          <div style={{
+                            marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${C.border}`,
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            fontFamily: MONO, fontSize: 10, color: C.textMuted,
+                          }}>
+                            <span style={{ color: C.textDim, fontWeight: 700, letterSpacing: 0.5 }}>EVIDENCE</span>
+                            <span style={{ color: C.text }}>{e.src}</span>
+                            <div style={{ flex: 1 }} />
+                            <span style={{ color: C.accent, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: `${C.accent}55` }}>open in audit ›</span>
+                          </div>
+                        )}
+                      </div>
+                      );
+                    })}
+                    {filter && s.elements.filter((e) => e.kind === filter).length === 0 && (
+                      <div style={{
+                        padding: '10px 12px', fontFamily: MONO, fontSize: 11,
+                        color: C.textDim, textAlign: 'center',
+                        border: `1px dashed ${C.border}`, borderRadius: 3,
+                      }}>no <EpistemicTag C={C} tag={filter} /> elements in this section</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* response preview */}
+      <div>
+        <SectionLabel color={C.textDim}>Response · raw, before parsers</SectionLabel>
+        <div style={{
+          padding: 14, background: C.panel, border: `1px solid ${C.border}`,
+          borderLeft: `3px solid ${C.purple}`, borderRadius: 3,
+          fontFamily: MONO, fontSize: 11.5, color: C.text, lineHeight: 1.55, whiteSpace: 'pre-wrap', textWrap: 'pretty',
+        }}>{trace.response_preview}</div>
+      </div>
+    </div>
+  );
+}
+
+function Meta({ C, k, v, mono }) {
+  const { MONO } = window;
+  return (
+    <div style={{ padding: 10, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+      <div style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>{k}</div>
+      <div style={{ fontFamily: mono ? MONO : undefined, fontSize: mono ? 11 : 12.5, color: C.text, fontWeight: mono ? 400 : 600, wordBreak: 'break-all' }}>{v}</div>
+    </div>
+  );
+}
+
+// -------------- CausalView · §C12 / P7 · CausalEdge replay graph --------------
+// Linear (top-down) DAG of (task → evidence → gate → evidence → gate → verdict).
+// Each node is one append-only CausalEdge row from the proof trail. Click a node
+// to see its evidence_set and invariants_checked. The view answers ONE question:
+// "Why did this artifact reach this status?" — proof, not narrative.
+function CausalView({ C, taskId, go }) {
+  const { MOCK, Pill, SectionLabel, GateChip, MONO, SANS } = window;
+  const graph = (MOCK.causalGraph && MOCK.causalGraph[taskId]) || null;
+  const [sel, setSel] = React.useState(null);
+
+  if (!graph) {
+    return (
+      <div style={{ padding: 40, maxWidth: 720 }}>
+        <div style={{ fontFamily: MONO, fontSize: 11, color: C.textDim, marginBottom: 6 }}>/execution/{taskId}/causal</div>
+        <h1 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 600, color: C.text }}>No causal graph for {taskId}</h1>
+        <p style={{ margin: 0, fontSize: 13, color: C.textMuted, maxWidth: 620, lineHeight: 1.5 }}>
+          CausalEdge rows are written by VerdictEngine.commit(). Tasks that haven't passed through the gate at least once won't appear here.
+        </p>
+      </div>
+    );
+  }
+
+  const node = sel ? graph.nodes.find((n) => n.id === sel) : null;
+  const kindCol = (k) => k === 'task' ? C.indigo
+                     : k === 'evidence' ? C.accent
+                     : k === 'gate' ? C.amber
+                     : k === 'verdict' ? (graph.verdict === 'BLOCKED' ? C.rose : C.emerald)
+                     : C.textMuted;
+  const statusCol = (s) => s === 'PASS' || s === 'COLLECTED' ? C.emerald
+                         : s === 'FAIL' || s === 'BLOCKED' ? C.rose
+                         : s === 'IN_PROGRESS' ? C.accent
+                         : C.amber;
+
+  return (
+    <div data-screen-label="Causal · CausalEdge replay" data-screen-justification="§22 · removable? NO — only place evidence→gate→verdict chain is queryable; deterministic proof of WHY status" style={{ padding: 28, maxWidth: 1200, display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {/* breadcrumb · §14 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: MONO, fontSize: 10.5, color: C.textDim }}>
+        <span onClick={() => go && go('/audit')} style={{ cursor: 'pointer', color: C.accent, textDecoration: 'underline', textDecorationColor: `${C.accent}55` }}>/audit</span>
+        <span>›</span>
+        <span>/execution/{taskId}/causal</span>
+        <span style={{ marginLeft: 'auto' }}>L4 · proof trail · §C12</span>
+      </div>
+
+      {/* header */}
+      <div>
+        <h1 style={{ margin: '0 0 6px', fontSize: 24, fontWeight: 600, letterSpacing: -0.3, color: C.text }}>
+          Why this artifact reached <span style={{ color: graph.verdict === 'BLOCKED' ? C.rose : C.emerald }}>{graph.verdict}</span>
+        </h1>
+        <p style={{ margin: 0, fontSize: 13, color: C.textMuted, lineHeight: 1.5, maxWidth: 820, textWrap: 'pretty' }}>
+          {graph.summary}. Each node is one CausalEdge row from VerdictEngine.commit() — append-only, content-hashed, replayable. {' '}
+          <span style={{ fontFamily: MONO, color: C.textDim }}>{graph.hash}</span>
+        </p>
+      </div>
+
+      {/* legend */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {['task', 'evidence', 'gate', 'verdict'].map((k) => (
+          <div key={k} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+            background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3,
+          }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: kindCol(k) }} />
+            <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textMuted, letterSpacing: 0.5, textTransform: 'uppercase', fontWeight: 700 }}>{k}</span>
+          </div>
+        ))}
+        <div style={{ flex: 1 }} />
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim, alignSelf: 'center' }}>
+          {graph.nodes.length} edges · click a node for evidence_set + invariants
+        </span>
+      </div>
+
+      {/* graph + detail panel side-by-side */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 18 }}>
+        {/* DAG */}
+        <div style={{ padding: 18, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {graph.nodes.map((n, i) => {
+              const tone = kindCol(n.kind);
+              const sCol = statusCol(n.status);
+              const active = sel === n.id;
+              const isLast = i === graph.nodes.length - 1;
+              return (
+                <React.Fragment key={n.id}>
+                  <button onClick={() => setSel(active ? null : n.id)} style={{
+                    display: 'grid', gridTemplateColumns: '60px 90px 1fr auto', gap: 12,
+                    alignItems: 'center', padding: '10px 12px',
+                    background: active ? C.panel2 : C.panel3,
+                    border: `1px solid ${active ? tone : C.border}`,
+                    borderLeft: `3px solid ${tone}`, borderRadius: 3,
+                    cursor: 'pointer', fontFamily: SANS, color: C.text, textAlign: 'left',
+                  }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>{n.ts}</span>
+                    <Pill color={tone} bg="transparent" border={`${tone}66`}>{n.kind}</Pill>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, textWrap: 'pretty' }}>{n.label}</span>
+                    <span style={{
+                      fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                      color: sCol, padding: '2px 6px',
+                      background: sCol === C.rose ? C.roseBg : sCol === C.emerald ? C.emeraldBg : sCol === C.amber ? C.amberBg : C.accentBg,
+                      border: `1px solid ${sCol}55`, borderRadius: 2,
+                    }}>{n.status}</span>
+                  </button>
+                  {!isLast && (() => {
+                    const e = graph.edges.find((x) => x.from === n.id);
+                    return (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '4px 0 4px 30px',
+                      }}>
+                        <span style={{ width: 1, height: 18, background: C.border2 }} />
+                        <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, letterSpacing: 0.4 }}>
+                          ↓ {e ? e.label : 'edge'}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* detail panel */}
+        <div style={{ padding: 16, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3, alignSelf: 'start' }}>
+          {!node ? (
+            <div style={{ fontFamily: MONO, fontSize: 11, color: C.textDim, lineHeight: 1.6, textWrap: 'pretty' }}>
+              Click a node to see its evidence_set, invariants_checked, and actor.
+              <br /><br />
+              The graph is deterministic: re-running the same task with the same evidence produces the same edges.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: kindCol(node.kind), fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                  {node.kind} · {node.id}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginTop: 4, textWrap: 'pretty', lineHeight: 1.4 }}>{node.label}</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <Meta C={C} k="ts"     v={node.ts} mono />
+                <Meta C={C} k="actor"  v={node.actor} mono />
+              </div>
+              {node.items && (
+                <div>
+                  <SectionLabel color={C.textDim}>evidence_set</SectionLabel>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {node.items.map((it, j) => (
+                      <span key={j} style={{
+                        fontFamily: MONO, fontSize: 10.5, padding: '4px 8px',
+                        background: C.panel3, border: `1px solid ${C.border}`,
+                        borderRadius: 2, color: C.text,
+                      }}>{it}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {node.invariants && (
+                <div>
+                  <SectionLabel color={C.textDim}>invariants_checked</SectionLabel>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {node.invariants.map((inv, j) => (
+                      <span key={j} style={{
+                        fontFamily: MONO, fontSize: 10.5, padding: '4px 8px',
+                        background: C.panel3, border: `1px solid ${node.status === 'FAIL' ? C.rose : C.emerald}44`,
+                        borderLeft: `2px solid ${node.status === 'FAIL' ? C.rose : C.emerald}`,
+                        borderRadius: 2, color: C.text,
+                      }}>{inv}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {node.failed && (
+                <div style={{
+                  padding: '8px 10px', background: C.roseBg, border: `1px solid ${C.rose}55`,
+                  borderLeft: `3px solid ${C.rose}`, borderRadius: 3,
+                  fontFamily: MONO, fontSize: 10.5, color: C.text, lineHeight: 1.4,
+                }}>
+                  <span style={{ color: C.rose, fontWeight: 700, letterSpacing: 0.5 }}>FAILED · </span>
+                  {node.failed}
+                </div>
+              )}
+              {node.reason && (
+                <div style={{
+                  padding: '8px 10px', background: C.panel3, border: `1px solid ${C.border}`, borderRadius: 3,
+                  fontFamily: MONO, fontSize: 10.5, color: C.textMuted, lineHeight: 1.5, textWrap: 'pretty',
+                }}>
+                  <span style={{ color: C.text, fontWeight: 700 }}>reason:</span> {node.reason}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* deep links */}
+      <div style={{
+        padding: '10px 14px', background: C.panel3, border: `1px solid ${C.border}`, borderRadius: 3,
+        display: 'flex', alignItems: 'center', gap: 14,
+      }}>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, fontWeight: 700, letterSpacing: 0.6 }}>RELATED</span>
+        <span onClick={() => go && go(`/execution/${taskId}/trace`)} style={{ fontFamily: MONO, fontSize: 11, color: C.accent, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: `${C.accent}55` }}>
+          /execution/{taskId}/trace · L5 raw prompt
+        </span>
+        <span onClick={() => go && go('/audit')} style={{ fontFamily: MONO, fontSize: 11, color: C.accent, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: `${C.accent}55` }}>
+          /audit · gate spectrum
+        </span>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { ForgeApp, TaskDrawer, AuditView, TraceView, CausalView, StubView, AIDock, TopBar, SideRail });
