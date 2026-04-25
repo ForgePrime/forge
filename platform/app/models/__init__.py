@@ -29,6 +29,7 @@ from app.models.contract_revision import ContractRevision
 from app.models.evidence_set import EvidenceSet
 from app.models.idempotent_call import IdempotentCall, DEFAULT_IDEMPOTENCY_TTL_SECONDS
 from app.models.verdict_divergence import VerdictDivergence
+from app.models.causal_edge import CausalEdge
 
 __all__ = [
     "Organization",
@@ -70,4 +71,5 @@ __all__ = [
     "IdempotentCall",
     "DEFAULT_IDEMPOTENCY_TTL_SECONDS",
     "VerdictDivergence",
+    "CausalEdge",
 ]
