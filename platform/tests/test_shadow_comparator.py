@@ -49,7 +49,7 @@ def test_off_mode_is_noop_no_engine_call_no_session_call():
     def factory():
         return session
 
-    compare_and_log(
+    result = compare_and_log(
         session_factory=factory,
         execution_id=1,
         ctx=_ctx(),
@@ -57,6 +57,7 @@ def test_off_mode_is_noop_no_engine_call_no_session_call():
         legacy_passed=True,
         mode="off",
     )
+    assert result is None
     assert session.added == []
     assert session.commits == 0
 
@@ -91,7 +92,7 @@ def test_shadow_mode_no_log_when_both_pass():
         return session
 
     # evidence non-empty -> engine PASSES; legacy_passed=True -> agree
-    compare_and_log(
+    result = compare_and_log(
         session_factory=factory,
         execution_id=1,
         ctx=_ctx(evidence=(42,)),
@@ -101,6 +102,10 @@ def test_shadow_mode_no_log_when_both_pass():
     )
     assert session.added == []
     assert session.commits == 0
+    # Engine verdict still returned for diagnostic + enforce-pattern uniformity
+    assert result is not None
+    assert result.passed is True
+    assert result.rule_code == "all_rules_passed"
 
 
 def test_shadow_mode_no_log_when_both_fail():
@@ -223,6 +228,71 @@ def test_session_commit_failure_swallowed_silently():
     # No exception. The row was added (session.added populated) but commit
     # failed; that's the disclosed swallow-silently behaviour.
     assert len(session.added) == 1
+
+
+# --- Mode: enforce — return engine verdict for caller authority -----------
+
+
+def test_enforce_mode_returns_engine_verdict_when_engine_passes():
+    """enforce mode: engine PASS -> caller uses engine.passed=True."""
+    session = _FakeSession()
+
+    def factory():
+        return session
+
+    result = compare_and_log(
+        session_factory=factory,
+        execution_id=1,
+        ctx=_ctx(evidence=(42,)),
+        rules=(evidence_link_required,),
+        legacy_passed=True,
+        mode="enforce",
+    )
+    assert result is not None
+    assert result.passed is True
+    # No divergence -> no log row
+    assert session.added == []
+
+
+def test_enforce_mode_returns_engine_verdict_when_engine_fails():
+    """enforce: engine FAIL overrides legacy PASS; row logged."""
+    session = _FakeSession()
+
+    def factory():
+        return session
+
+    result = compare_and_log(
+        session_factory=factory,
+        execution_id=1,
+        ctx=_ctx(evidence=()),
+        rules=(evidence_link_required,),
+        legacy_passed=True,  # legacy says pass, engine says fail
+        mode="enforce",
+    )
+    assert result is not None
+    assert result.passed is False
+    assert result.rule_code == "evidence_link_required"
+    # Divergence logged
+    assert len(session.added) == 1
+
+
+def test_enforce_mode_logging_failure_still_returns_verdict():
+    """Even if DB logging fails, enforce mode preserves authority signal."""
+
+    def factory():
+        raise RuntimeError("DB unreachable")
+
+    result = compare_and_log(
+        session_factory=factory,
+        execution_id=1,
+        ctx=_ctx(evidence=()),
+        rules=(evidence_link_required,),
+        legacy_passed=True,  # disagrees with engine fail
+        mode="enforce",
+    )
+    # Critical: enforce mode must NOT lose authority signal due to log failure.
+    assert result is not None
+    assert result.passed is False
 
 
 # --- Multiple disagreements logged independently --------------------------
