@@ -444,3 +444,64 @@ not a silent correction.
 
 **Pending action this turn (one):** push branch `docs/forge-plans-soundness-v1`
 to remote per Q6 user approval. MR creation deferred to next batch.
+
+---
+
+### §1.13 Stage 28.1 — ADR format validator (DONE)
+
+**[2026-04-25 evening, after ratification commit `df842dd` pushed]**
+
+User selected "Recommended" → task #28 (Deterministic ADR Gate Pipeline)
+chosen over task #27 (DashboardView) per AI-autonomy leverage argument.
+
+**Stage 28.1 deliverables:**
+
+- **DONE [CONFIRMED via pytest 21/21 green]**:
+  - `platform/scripts/validate_adr.py` — pure stdlib validator, rules
+    R1..R8 + warning W2, ~390 LOC. Pure-fn (P6 deterministic).
+  - `platform/tests/test_validate_adr.py` — 21 tests covering each rule
+    fires/doesn't, baseline filtering, --strict mode, --json output,
+    determinism. All green.
+  - `.pre-commit-config.yaml` — `validate-adr` hook on ADR file changes.
+  - `platform/docs/decisions/.adr_validator_baseline.json` — 50 issues
+    across 26 files frozen as legacy drift.
+  - `platform/docs/PLAN_ADR_GATE_PIPELINE.md` — task #28 plan with stage
+    decomposition (28.1 DONE; 28.2 SQL migration validator pending;
+    28.3 Pydantic schema validator pending; 28.4 lifecycle + CI pending).
+- **DONE [CONFIRMED via final run]**: `python validate_adr.py` →
+  28 PASS, 0 WARN, 0 FAIL with baseline applied.
+
+**Findings disclosed during Stage 28.1 first run (CONTRACT §A.6):**
+
+| F# | Finding | Where |
+|---|---|---|
+| F1 | 21 of 28 ADRs lack `## Rationale` section vs canonical template | ADR-009..021, 027 (and originally ADR-028) |
+| F2 | ADR-022 has zero alternatives bullets — FORMAL P21 violation | ADR-022 |
+| F3 | **ADR-028 (just authored) violates `decisions/README.md` rule 1** ("One decision per ADR. Never two.") — single ADR closing 4 coupled decisions | ADR-028 |
+| F4 | Multiple ADRs surface unresolved `[UNKNOWN]` tags without explicit resolution paths | ~18 ADRs |
+
+**§13 Self-check disclosure**: F3 is a personal authoring violation. The
+deliberate choice to close 4 decisions in one ADR (steel-manned in
+ADR-028) is non-compliant with the canonical rule. Disclosed here per
+CONTRACT §A.6/§A.7. Not silently fixed. User decides remediation
+(split into 4 ADRs / write meta-ADR carving exception / amend
+template). Validator's R5 failures on ADR-028 are baselined for now.
+
+**Cross-ref §14:**
+- §1.13 ← §1.12 (user accepted §A.5 deterministic-gate principle)
+- §1.13 → next stage 28.2 (SQL migration validator) blocked on user
+  decision: which finding(s) F1..F4 to remediate first vs proceed
+  with 28.2
+
+**State of pending tasks after §1.13:**
+
+| Task | Status |
+|---|---|
+| #27 DashboardView SSR | pending (paused — task #28 prioritised) |
+| #28 Deterministic ADR Gate Pipeline | in_progress (Stage 28.1 DONE; 28.2/28.3/28.4 pending) |
+
+**Open user decisions (informed by F1-F4):**
+
+1. Remediation for F3 (ADR-028 single-vs-coupled): split / meta-ADR / template amend / leave?
+2. Order: continue Stage 28.2 (SQL migration validator) OR pause to retro-fix F1/F2 in existing ADRs first?
+3. Audit `[UNKNOWN]` tags (F4): commission a sweep, or leave for ad-hoc cleanup?

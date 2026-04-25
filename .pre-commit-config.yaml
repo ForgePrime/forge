@@ -68,3 +68,14 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      # Stage 28.1 of Deterministic ADR Gate Pipeline (task #28).
+      # Runs validate_adr.py against all ADRs. Pre-existing drift is
+      # filtered by .adr_validator_baseline.json next to the ADRs;
+      # NEW issues fail the commit. CI uses --strict (warnings also fail).
+      - id: validate-adr
+        name: 'Stage 28.1: ADR format validator (deterministic gate)'
+        entry: python platform/scripts/validate_adr.py
+        language: system
+        pass_filenames: false
+        files: '^platform/docs/decisions/ADR-.*\.md$'
