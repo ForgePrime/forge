@@ -28,6 +28,15 @@ review.
 | `app/models/causal_edge.py` + `app/evidence/acyclicity.py` (B.1) | DONE | [PYTEST] tests/test_acyclicity.py — 11 tests; strictly older src passes, tolerance window inclusive, beyond-tolerance fails with diagnostic, custom tolerance argument |
 | Shadow-comparator wired into `api/execute.py:277` + `api/pipeline.py:1051` | DONE | [IMPORT] both modules import cleanly with `from app.validation.shadow_comparator import compare_and_log`; mode='off' default keeps zero blast radius |
 | Shadow-comparator wired into `api/pipeline.py:547` (plan_gate) | PARTIAL | [DOCUMENTED] integration point marked with comment block; verdict_divergences.execution_id NOT NULL prevents wiring at plan-ingest time (plan precedes Execution); decision deferred to A.4 cutover |
+| `shadow_comparator` enforce-mode return-value pattern | DONE | [PYTEST] tests/test_shadow_comparator.py — 12 tests; off->None, shadow/enforce->Verdict; DB-failure preserves authority signal; integration test exercises all 3 modes end-to-end |
+| End-to-end integration test (full Phase A stack) | DONE | [PYTEST] tests/test_validation_integration.py — 11 tests; registry+engine+adapter+comparator composition, A.4 cutover-pattern simulation across all 3 modes, determinism preserved |
+| `app/evidence/causal_graph.py` (B.3) — ancestors + minimal_justification | DONE | [PYTEST] tests/test_causal_graph.py — 18 tests; BFS over EdgeSource Protocol, depth limit, relation_filter, dedup, branching, diamond, cycle-termination, shortest-path |
+| `app/evidence/context_projector.py` (B.4) — bridges B.3 graph + L3.3 budget | DONE | [PYTEST] tests/test_context_projector.py — 15 tests; pluggable Classifier Protocol, StaticRelationClassifier maps to FORMAL P15 buckets, end-to-end projection->fit() verified |
+| `app/llm/context_budget.py` (L3.3) — MUST/SHOULD/NICE bucket fitter | DONE | [PYTEST] tests/test_context_budget.py — 14 tests; MUST hard guarantee (no partial admit on overflow), priority order, tie-break by source_ref ascending, input-order independence |
+| `app/llm/model_router.py` (L3.4) — deterministic decision tree | DONE | [PYTEST] tests/test_model_router.py — 22 tests; CRITICAL/IRREVERSIBLE->Opus, FULL/high_complexity->Sonnet, default->Haiku; sonnet_only_mode override; per-family fallback chains |
+| `app/llm/failure_recovery.py` (L3.5) — rule-based retry classification | DONE | [PYTEST] tests/test_failure_recovery.py — 27 tests; 10 ErrorCodes classified; permanent->BLOCK; output-shape->schema-reminder retry; provider/network->same-prompt retry then fallback |
+| `app/llm/cost_tracker.py` (L3.6) — pure-function cost formula + BudgetGuard | DONE | [PYTEST] tests/test_cost_tracker.py — 20 tests; Decimal exact-arithmetic; pre-flight rejection; post-hoc 1.5x overrun warning; KeyError on unknown model; ValueError on negative tokens |
+| `app/validation/rules/root_cause_uniqueness.py` (P21) — RuleAdapter | DONE | [PYTEST] tests/test_root_cause_uniqueness.py — 14 tests; root_cause requires >=2 alternatives each with non-empty rejected_because; no-op for non-root-cause types |
 
 ## Phase A residual (deferred to subsequent commits)
 
