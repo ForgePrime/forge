@@ -20,6 +20,10 @@ from app.validation.rules.contract_validator_adapter import (
     ContractValidatorRuleAdapter,
     contract_validator_rule,
 )
+from app.validation.rules.root_cause_uniqueness import (
+    RootCauseUniquenessRule,
+    root_cause_uniqueness,
+)
 
 __all__ = [
     "EvidenceLinkRequiredRule",
@@ -28,4 +32,6 @@ __all__ = [
     "plan_gate_rule",
     "ContractValidatorRuleAdapter",
     "contract_validator_rule",
+    "RootCauseUniquenessRule",
+    "root_cause_uniqueness",
 ]
