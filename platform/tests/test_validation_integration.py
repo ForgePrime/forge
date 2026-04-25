@@ -54,10 +54,10 @@ def _decision_accept_ctx(*, evidence: tuple[int, ...], decision_id: int = 1) -> 
 
 
 def test_registry_lookup_returns_evidence_rule_for_decision_accept():
-    """The GateRegistry has the EvidenceLinkRequiredRule wired for this transition."""
+    """The GateRegistry has EvidenceLinkRequiredRule wired (among others)."""
     rules = gr.lookup_rules("decision", "ANALYZING", "ACCEPTED")
-    assert len(rules) == 1
-    assert rules[0].rule_code == "evidence_link_required"
+    rule_codes = {r.rule_code for r in rules}
+    assert "evidence_link_required" in rule_codes
 
 
 def test_full_stack_enforce_mode_with_evidence_passes():

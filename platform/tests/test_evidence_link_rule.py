@@ -90,20 +90,24 @@ EVIDENCE_REQUIRED_DECISION_TRANSITIONS = [
 
 
 def test_decision_to_accepted_has_evidence_rule():
-    """ANALYZING -> ACCEPTED is gated by EvidenceLinkRequiredRule."""
+    """ANALYZING -> ACCEPTED carries EvidenceLinkRequiredRule (among others)."""
     rules = gr.lookup_rules("decision", "ANALYZING", "ACCEPTED")
-    assert len(rules) == 1
-    assert rules[0].rule_code == "evidence_link_required"
+    rule_codes = {r.rule_code for r in rules}
+    assert "evidence_link_required" in rule_codes
 
 
 def test_all_4_evidence_required_transitions_have_rule():
-    """All 4 enumerated decision transitions carry the rule."""
+    """All 4 enumerated decision transitions carry the evidence rule.
+
+    Other rules may also be wired (e.g. root_cause_uniqueness from F.5);
+    assertion is on presence of evidence_link_required, not exclusivity.
+    """
     for entity, from_s, to_s in EVIDENCE_REQUIRED_DECISION_TRANSITIONS:
         rules = gr.lookup_rules(entity, from_s, to_s)
-        assert len(rules) == 1, (
-            f"{entity} {from_s}->{to_s}: expected 1 rule, got {len(rules)}"
+        rule_codes = {r.rule_code for r in rules}
+        assert "evidence_link_required" in rule_codes, (
+            f"{entity} {from_s}->{to_s}: missing evidence_link_required rule"
         )
-        assert rules[0].rule_code == "evidence_link_required"
 
 
 def test_open_to_analyzing_has_no_rule():

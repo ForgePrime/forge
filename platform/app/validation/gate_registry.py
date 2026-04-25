@@ -31,7 +31,7 @@ REJECT (the registry is the spec, not a catalog of observed behavior).
 from __future__ import annotations
 
 from app.validation.rule_adapter import RuleAdapter
-from app.validation.rules import evidence_link_required
+from app.validation.rules import evidence_link_required, root_cause_uniqueness
 
 # --- Per-entity transition lists -------------------------------------------
 # Sources verified 2026-04-25 via grep of app/models/*.py CheckConstraints.
@@ -116,17 +116,27 @@ _ORCHESTRATE_RUN_TRANSITIONS: tuple[tuple[str, str], ...] = (
 # Per-transition rule overrides. Empty tuple is the default for any
 # transition not in this map — placeholder for stages A.3+ to wire rule
 # adapters. Entries here are concrete rules already implemented and
-# binding (Stage A.1+).
+# binding.
 #
-# Decision transitions to permanent states (ACCEPTED, CLOSED, MITIGATED)
-# require >=1 EvidenceSet — closes FORMAL P16 at the state-transition
-# gate. OPEN/ANALYZING/DEFERRED are work-in-progress states where
-# evidence is legitimately still being collected, so no rule there.
+# Decision permanent-state transitions (ACCEPTED, CLOSED, MITIGATED):
+# - evidence_link_required (P16): >=1 EvidenceSet linked.
+# - root_cause_uniqueness (P21, F.5): for Decision.type='root_cause',
+#   require >=2 alternatives_considered each with rejected_because.
+#   Self-skips for non-root-cause Decision types — safe to add to all
+#   Decision permanent transitions.
+#
+# Both rules compose via VerdictEngine fail-fast: empty evidence is
+# caught first; if evidence present, root_cause check runs.
+_DECISION_PERMANENT_RULES: tuple[RuleAdapter, ...] = (
+    evidence_link_required,
+    root_cause_uniqueness,
+)
+
 _RULE_OVERRIDES: dict[tuple[str, str, str], tuple[RuleAdapter, ...]] = {
-    ("decision", "ANALYZING", "ACCEPTED"): (evidence_link_required,),
-    ("decision", "ANALYZING", "MITIGATED"): (evidence_link_required,),
-    ("decision", "ACCEPTED", "CLOSED"): (evidence_link_required,),
-    ("decision", "MITIGATED", "CLOSED"): (evidence_link_required,),
+    ("decision", "ANALYZING", "ACCEPTED"): _DECISION_PERMANENT_RULES,
+    ("decision", "ANALYZING", "MITIGATED"): _DECISION_PERMANENT_RULES,
+    ("decision", "ACCEPTED", "CLOSED"): _DECISION_PERMANENT_RULES,
+    ("decision", "MITIGATED", "CLOSED"): _DECISION_PERMANENT_RULES,
 }
 
 
