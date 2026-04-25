@@ -253,7 +253,7 @@ def _extract_file_ref(text: str) -> str | None:
 # --- Check runners ---------------------------------------------------------
 
 
-def check_http(method: str, path: str, base_url: str) -> dict[str, Any]:
+def check_http(method: str, path: str, base_url: str, bearer_token: str | None = None) -> dict[str, Any]:
     """Attempt an HTTP call to the platform. Return a verdict dict.
 
     Substitutes generic placeholders in path:
@@ -262,9 +262,11 @@ def check_http(method: str, path: str, base_url: str) -> dict[str, Any]:
         {pos} → 0
         {rule_id}, {finding_id}, etc. → 1
 
-    Caller is expected to interpret the result alongside the tracker
-    claim; this only reports HTTP-level outcome (status code, response
-    body shape sample).
+    If TRACKER paths omit the /api/v1 prefix used by current routing,
+    re-tries with the prefix prepended on initial 404 / 401.
+
+    bearer_token: optional auth token. If provided, included as
+        Authorization: Bearer <token> header.
     """
     expanded = (
         path.replace("{id}", "1")
@@ -280,47 +282,65 @@ def check_http(method: str, path: str, base_url: str) -> dict[str, Any]:
     )
     # Drop any remaining {var} segments — represented as 'placeholder'
     expanded = re.sub(r"\{[^}]+\}", "placeholder", expanded)
-    url = f"{base_url.rstrip('/')}{expanded}"
 
     if method != "GET":
         # Mutating call against a foreign DB is unsafe in a verifier;
         # report as untestable-without-fixture.
         return {
             "status": STATUS_UNTESTABLE,
-            "evidence": f"{method} {url}: mutating call skipped to avoid side-effects on smoke run",
+            "evidence": f"{method} {expanded}: mutating call skipped to avoid side-effects on smoke run",
         }
 
-    try:
-        req = urllib.request.Request(url, method="GET")
-        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SEC) as resp:
-            code = resp.getcode()
-            body_sample = resp.read(2048).decode("utf-8", errors="replace")
-            shape_sample = body_sample[:200]
-            ok = 200 <= code < 300
-            return {
-                "status": STATUS_VERIFIED if ok else STATUS_DIVERGED,
-                "evidence": f"GET {url} → {code}; body[:200]={shape_sample!r}",
-                "diverged_reason": None if ok else f"HTTP {code}",
+    # Try the literal path first; if 404 or 401, retry with /api/v1 prefix.
+    candidate_paths = [expanded]
+    if not expanded.startswith("/api/v1") and not expanded.startswith("/health"):
+        candidate_paths.append("/api/v1" + expanded)
+
+    last_error: dict[str, Any] | None = None
+    for cp in candidate_paths:
+        url = f"{base_url.rstrip('/')}{cp}"
+        try:
+            headers = {}
+            if bearer_token:
+                headers["Authorization"] = f"Bearer {bearer_token}"
+            req = urllib.request.Request(url, method="GET", headers=headers)
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SEC) as resp:
+                code = resp.getcode()
+                body_sample = resp.read(2048).decode("utf-8", errors="replace")
+                shape_sample = body_sample[:200]
+                ok = 200 <= code < 300
+                return {
+                    "status": STATUS_VERIFIED if ok else STATUS_DIVERGED,
+                    "evidence": f"GET {url} -> {code}; body[:200]={shape_sample!r}",
+                    "diverged_reason": None if ok else f"HTTP {code}",
+                }
+        except urllib.error.HTTPError as e:
+            last_error = {
+                "status": STATUS_DIVERGED,
+                "evidence": f"GET {url} -> HTTP {e.code} {e.reason}",
+                "diverged_reason": f"HTTP {e.code} {e.reason}",
             }
-    except urllib.error.HTTPError as e:
-        # 4xx/5xx — diverged from claim of success
-        return {
-            "status": STATUS_DIVERGED,
-            "evidence": f"GET {url} → HTTP {e.code} {e.reason}",
-            "diverged_reason": f"HTTP {e.code} {e.reason}",
-        }
-    except urllib.error.URLError as e:
-        return {
-            "status": STATUS_UNREACHABLE,
-            "evidence": f"GET {url}: {type(e).__name__}: {e.reason}",
-            "diverged_reason": None,
-        }
-    except (TimeoutError, OSError) as e:
-        return {
-            "status": STATUS_UNREACHABLE,
-            "evidence": f"GET {url}: {type(e).__name__}: {e!s}",
-            "diverged_reason": None,
-        }
+            # On 404 / 401, fall through and try next candidate path
+            if e.code not in (404, 401):
+                return last_error
+        except urllib.error.URLError as e:
+            return {
+                "status": STATUS_UNREACHABLE,
+                "evidence": f"GET {url}: {type(e).__name__}: {e.reason}",
+                "diverged_reason": None,
+            }
+        except (TimeoutError, OSError) as e:
+            return {
+                "status": STATUS_UNREACHABLE,
+                "evidence": f"GET {url}: {type(e).__name__}: {e!s}",
+                "diverged_reason": None,
+            }
+
+    return last_error or {
+        "status": STATUS_DIVERGED,
+        "evidence": f"GET {expanded}: no candidate path returned 2xx",
+        "diverged_reason": "no_candidate_succeeded",
+    }
 
 
 def check_structural(target: str, project_root: Path) -> dict[str, Any]:
@@ -381,6 +401,7 @@ def run(
     findings_out_path: Path,
     base_url: str,
     project_root: Path,
+    bearer_token: str | None = None,
 ) -> int:
     if not tracker_path.exists():
         print(f"[FAIL] tracker not found: {tracker_path}", file=sys.stderr)
@@ -421,7 +442,7 @@ def run(
                 "evidence": cls["rationale"],
             }
         elif check_type == "http":
-            verdict = check_http(cls["method"], cls["path"], base_url)
+            verdict = check_http(cls["method"], cls["path"], base_url, bearer_token=bearer_token)
         elif check_type == "structural":
             verdict = check_structural(cls["check_target"], project_root)
         else:
@@ -514,6 +535,10 @@ def main() -> int:
     ap.add_argument("--findings-out", default=str(DEFAULT_FINDINGS_OUT), type=Path)
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
     ap.add_argument("--project-root", default=str(Path.cwd()), type=Path)
+    ap.add_argument(
+        "--bearer-token", default=None,
+        help="Optional Bearer token for authenticated endpoints.",
+    )
     args = ap.parse_args()
     return run(
         tracker_path=args.tracker,
@@ -521,6 +546,7 @@ def main() -> int:
         findings_out_path=args.findings_out,
         base_url=args.base_url,
         project_root=args.project_root,
+        bearer_token=args.bearer_token,
     )
 
 
