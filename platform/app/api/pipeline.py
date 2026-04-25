@@ -31,6 +31,7 @@ from app.services.test_runner import verify_ac_tests, detect_language
 from app.validation.rule_adapter import EvaluationContext
 from app.validation.rules import contract_validator_rule, plan_gate_rule
 from app.validation.shadow_comparator import compare_and_log
+from app.validation.state_transition import commit_status_transition
 from app.services.git_verify import ensure_repo, snapshot_head, commit_all, diff_report
 from app.services.kr_measurer import measure_kr
 from app.services.delivery_extractor import extract_from_delivery
@@ -891,7 +892,7 @@ def orchestrate(
                     "stopped_reason": "paused"}
 
         # Claim
-        candidate.status = "IN_PROGRESS"
+        commit_status_transition(candidate, entity_type="task", target_state="IN_PROGRESS")
         candidate.agent = "orchestrator-cli"
         candidate.started_at = dt.datetime.now(dt.timezone.utc)
         _update_run(db, run_id,
@@ -1000,10 +1001,10 @@ def orchestrate(
                 _enforce_budget(db, proj)
             except HTTPException as ex:
                 # Budget hit during orchestration — stop loop, mark task back to TODO
-                candidate.status = "TODO"
+                commit_status_transition(candidate, entity_type="task", target_state="TODO")
                 candidate.agent = None
                 candidate.started_at = None
-                execution.status = "FAILED"
+                commit_status_transition(execution, entity_type="execution", target_state="FAILED")
                 db.commit()
                 results.append({
                     "task": candidate.external_id,
@@ -1261,9 +1262,9 @@ def orchestrate(
                             if m.measured_value is not None:
                                 kr.current_value = m.measured_value
                                 if m.target_hit:
-                                    kr.status = "ACHIEVED"
+                                    commit_status_transition(kr, entity_type="key_result", target_state="ACHIEVED")
                                 elif kr.status == "NOT_STARTED":
-                                    kr.status = "IN_PROGRESS"
+                                    commit_status_transition(kr, entity_type="key_result", target_state="IN_PROGRESS")
 
                             # P5.2 — silent-fail surfacing: when the measurement command
                             # crashed (timeout/rc!=0) OR ran cleanly but emitted no parseable
@@ -1313,7 +1314,7 @@ def orchestrate(
                     "verification_issues": verification_issues,
                 }
                 if verification_issues:
-                    execution.status = "REJECTED"
+                    commit_status_transition(execution, entity_type="execution", target_state="REJECTED")
                     fix_hint = (
                         f"Verification failed (Forge-executed checks, not AI self-report): "
                         + "; ".join(verification_issues)
@@ -1324,9 +1325,9 @@ def orchestrate(
                     continue
 
                 # All checks passed
-                execution.status = "ACCEPTED"
+                commit_status_transition(execution, entity_type="execution", target_state="ACCEPTED")
                 execution.completed_at = dt.datetime.now(dt.timezone.utc)
-                candidate.status = "DONE"
+                commit_status_transition(candidate, entity_type="task", target_state="DONE")
                 candidate.completed_at = dt.datetime.now(dt.timezone.utc)
                 db.commit()
 
@@ -1511,13 +1512,13 @@ def orchestrate(
                 accepted = True
                 break
             else:
-                execution.status = "REJECTED"
+                commit_status_transition(execution, entity_type="execution", target_state="REJECTED")
                 fix_hint = val.fix_instructions
                 db.commit()
 
         if not accepted:
-            execution.status = "FAILED"
-            candidate.status = "FAILED"
+            commit_status_transition(execution, entity_type="execution", target_state="FAILED")
+            commit_status_transition(candidate, entity_type="task", target_state="FAILED")
             candidate.fail_reason = f"Max retries ({max_retries}) reached. Last fix_hint: {fix_hint[:300]}"
             db.commit()
             results.append({"task": candidate.external_id, "status": "FAILED", "attempts": task_attempts})
@@ -1684,7 +1685,7 @@ def task_retry(slug: str, external_id: str, db: Session = Depends(get_db)):
         raise HTTPException(409, f"Task is {t.status}; only FAILED/DONE/SKIPPED can be retried")
 
     previous_status = t.status
-    t.status = "TODO"
+    commit_status_transition(t, entity_type="task", target_state="TODO")
     t.started_at = None
     t.completed_at = None
     t.agent = None

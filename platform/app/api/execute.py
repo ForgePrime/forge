@@ -34,6 +34,7 @@ from app.config import settings
 from app.validation.rule_adapter import EvaluationContext
 from app.validation.rules import contract_validator_rule
 from app.validation.shadow_comparator import compare_and_log
+from app.validation.state_transition import commit_status_transition
 
 router = APIRouter(prefix="/api/v1", tags=["execution"])
 
@@ -125,7 +126,7 @@ def get_execute(
 
     # Claim task
     now = dt.datetime.now(dt.timezone.utc)
-    candidate.status = "IN_PROGRESS"
+    commit_status_transition(candidate, entity_type="task", target_state="IN_PROGRESS")
     candidate.agent = agent
     candidate.started_at = now
 
@@ -243,8 +244,8 @@ def post_deliver(
 
     # Check max attempts
     if execution.attempt_number > settings.max_delivery_attempts:
-        execution.status = "FAILED"
-        task.status = "FAILED"
+        commit_status_transition(execution, entity_type="execution", target_state="FAILED")
+        commit_status_transition(task, entity_type="task", target_state="FAILED")
         task.fail_reason = f"Max delivery attempts ({settings.max_delivery_attempts}) exceeded"
         db.commit()
         raise HTTPException(422, f"Max attempts exceeded ({settings.max_delivery_attempts})")
@@ -343,9 +344,9 @@ def post_deliver(
     ))
 
     if result.all_pass:
-        execution.status = "ACCEPTED"
+        commit_status_transition(execution, entity_type="execution", target_state="ACCEPTED")
         execution.completed_at = dt.datetime.now(dt.timezone.utc)
-        task.status = "DONE"
+        commit_status_transition(task, entity_type="task", target_state="DONE")
         task.completed_at = dt.datetime.now(dt.timezone.utc)
 
         # Save changes from delivery
@@ -424,7 +425,7 @@ def post_deliver(
         }
 
     else:
-        execution.status = "REJECTED"
+        commit_status_transition(execution, entity_type="execution", target_state="REJECTED")
         execution.attempt_number += 1
         # Extend lease
         execution.lease_expires_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=15)
@@ -454,10 +455,10 @@ def post_heartbeat(execution_id: int, db: Session = Depends(get_db)):
         raise HTTPException(410, "Execution expired")
 
     if execution.lease_renewals >= settings.max_lease_renewals:
-        execution.status = "EXPIRED"
+        commit_status_transition(execution, entity_type="execution", target_state="EXPIRED")
         task = db.query(Task).filter(Task.id == execution.task_id).first()
         if task:
-            task.status = "TODO"
+            commit_status_transition(task, entity_type="task", target_state="TODO")
             task.agent = None
         db.commit()
         raise HTTPException(410, f"Max renewals ({settings.max_lease_renewals}) exceeded")
@@ -484,10 +485,10 @@ def post_fail(execution_id: int, body: dict, db: Session = Depends(get_db)):
     if len(reason) < 50:
         raise HTTPException(422, "Reason must be >= 50 characters")
 
-    execution.status = "FAILED"
+    commit_status_transition(execution, entity_type="execution", target_state="FAILED")
     task = db.query(Task).filter(Task.id == execution.task_id).first()
     if task:
-        task.status = "FAILED"
+        commit_status_transition(task, entity_type="task", target_state="FAILED")
         task.fail_reason = reason
 
     _audit(db, task.project_id if task else None, "execution", execution.id, "failed", f"agent:{execution.agent}",

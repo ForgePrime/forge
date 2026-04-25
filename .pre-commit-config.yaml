@@ -53,3 +53,18 @@ repos:
   #   rev: v8.18.4
   #   hooks:
   #     - id: gitleaks
+
+  # --- Local hooks ---
+  - repo: local
+    hooks:
+      # PLAN_GATE_ENGINE A.4 cutover invariant: zero direct
+      # `entity.status = "X"` outside the canonical write-path
+      # (app/validation/state_transition.py). Detected via grep.
+      # Catches ad-hoc reintroduction of bypass paths after the
+      # 33-site cutover landed in commit (this commit).
+      - id: no-direct-status-assign
+        name: 'A.4 invariant: no direct .status = "X" outside state_transition'
+        entry: bash -c 'matches=$(grep -rn "\.status\s*=\s*[\"\x27]" platform/app --include="*.py" 2>/dev/null | grep -v "verdict_engine\|state_transition\|__pycache__"); if [ -n "$matches" ]; then echo "FAIL — direct .status= outside state_transition.py:"; echo "$matches"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true

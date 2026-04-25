@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.database import get_db
 from app.models import Project, Task, AcceptanceCriterion, Guideline, Decision, Finding, AuditLog, Knowledge, Objective, KeyResult
 from app.services.tenant import assert_project_in_org, current_org_id
+from app.validation.state_transition import commit_status_transition
 
 router = APIRouter(prefix="/api/v1", tags=["projects"])
 
@@ -570,20 +571,20 @@ def triage_finding(finding_id: int, body: FindingTriageRequest, db: Session = De
         db.add(task)
         db.flush()
 
-        f.status = "APPROVED"
+        commit_status_transition(f, entity_type="finding", target_state="APPROVED")
         f.triage_reason = body.reason
         f.created_task_id = task.id
         db.commit()
         return {"status": "APPROVED", "created_task": new_ext}
 
     elif body.action == "defer":
-        f.status = "DEFERRED"
+        commit_status_transition(f, entity_type="finding", target_state="DEFERRED")
         f.triage_reason = body.reason or "Deferred"
         db.commit()
         return {"status": "DEFERRED"}
 
     elif body.action == "reject":
-        f.status = "REJECTED"
+        commit_status_transition(f, entity_type="finding", target_state="REJECTED")
         f.triage_reason = body.reason or "Rejected"
         db.commit()
         return {"status": "REJECTED"}

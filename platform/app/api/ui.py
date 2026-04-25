@@ -13,6 +13,7 @@ from app.models import (
     Project, Task, Objective, KeyResult, Knowledge, Decision, Finding,
     Execution, LLMCall, TestRun, AcceptanceCriterion,
 )
+from app.validation.state_transition import commit_status_transition
 from app.api.pipeline import task_report as api_task_report, _workspace
 from app.api.projects import (
     create_project as api_create_project, ProjectCreate,
@@ -934,7 +935,7 @@ def ui_orchestrate_run_resume(run_id: int, request: Request, background_tasks: B
     proj = db.query(Project).filter(Project.id == run.project_id).first()
     _assert_project_in_current_org(db, proj.slug, request)
     if run.status == "PAUSED":
-        run.status = "RUNNING"
+        commit_status_transition(run, entity_type="orchestrate_run", target_state="RUNNING")
         run.pause_requested = False
         run.resumed_at = dt.datetime.now(dt.timezone.utc)
         run.progress_message = "Resuming from pause..."
