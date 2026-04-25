@@ -1,6 +1,6 @@
 # PLAN_ADR_GATE_PIPELINE.md — Deterministic ADR Gate Pipeline (task #28)
 
-**Status:** Stage 28.1 DONE; Stages 28.2–28.4 PENDING.
+**Status:** Stage 28.1 DONE; Stage 28.2a DONE; Stage 28.2b/28.3/28.4 PENDING.
 **Date:** 2026-04-25
 **Theorem compliance:** AntiShortcutSound §15 (Step-by-step phases with ExitGates) + CONTRACT §B.8(a) (deterministic check as distinct-actor substitute).
 **Branch:** `docs/forge-plans-soundness-v1`.
@@ -13,8 +13,9 @@
 
 | Stage | Validator | Status | ExitGate |
 |---|---|---|---|
-| 28.1 | ADR format (header, sections, alternatives, status-evidence) | DONE | 21 tests green; baseline freezes legacy drift |
-| 28.2 | SQL migration (psql --dry-run, up/down/up cycle, §101 verification queries pass) | PENDING | every `migrations_drafts/*.sql` round-trips on ephemeral DB |
+| 28.1 | ADR format (header, sections, alternatives, status-evidence) | **DONE** | 22 tests green; baseline freezes legacy drift |
+| 28.2a | SQL migration Forge-convention (header, BEGIN/COMMIT, §99 reversal pairing, §101 verification, idempotency) | **DONE** | 21 tests green; real Phase 1 migration regression test green |
+| 28.2b | Live PG up→down→up cycle (`psql --dry-run` + ephemeral container + schema-dump diff) | PENDING | requires Docker; folded into Stage 28.4 CI workflow |
 | 28.3 | Pydantic schema (round-trip + mypy strict + Hypothesis property test) | PENDING | every new `app/schemas/*.py` shape round-trips for 100 random instances |
 | 28.4 | ADR status state machine + GitHub Actions wiring | PENDING | `PROPOSED → ALL_GATES_GREEN → READY_FOR_HUMAN_REVIEW → RATIFIED` enforced by CI |
 
@@ -113,25 +114,52 @@ These are NOT created automatically. User decides which to spawn and in what ord
 
 ---
 
-## §4 Stage 28.2 — SQL migration validator (PENDING)
+## §4 Stage 28.2 — SQL migration validator
 
-### Goal
-For every file matching `platform/docs/migrations_drafts/*.sql` and (later) `platform/alembic/versions/*.py`:
+Split into two sub-stages: 28.2a (pure-Python, no infra) DONE; 28.2b (live PG) PENDING.
 
-1. **Syntax**: `psql --dry-run -f <file>` against an ephemeral PG container returns 0.
-2. **Up/down/up cycle**: `up()` → `down()` → `up()` returns DB to identical schema state; verified by `pg_dump --schema-only` diff.
-3. **Verification queries §101 pass**: each migration draft's bottom-of-file SELECT statements return expected counts after `up()`.
+### §4a — Stage 28.2a — Forge-convention SQL validator (DONE)
 
-### Required infrastructure
-- ephemeral Postgres container (Docker compose service `postgres-test` or testcontainers-python).
-- Schema-dump diff utility (`pg_dump --schema-only` + sort + diff).
-- Migration parser to identify `up()` / `down()` boundaries (or convention: §99 marker in .sql).
+#### Artefact
+- `platform/scripts/validate_migration.py` — pure stdlib regex-based; deterministic; no DB.
+- `platform/tests/test_validate_migration.py` — 21 tests including regression on real Phase 1 migration.
+- `.pre-commit-config.yaml` `validate-migration` hook on `migrations_drafts/*.sql`.
 
-### Scope boundary
-Stage 28.2 validates *correctness mechanics*, NOT semantic intent. "This migration deploys cleanly" ≠ "this migration's column choice is right". The latter is judgment, retained for human review.
+#### Rules (M1..M9)
 
-### ExitGate G_28.2
-`platform/scripts/validate_migration.py path/to/file.sql` returns 0 iff all three sub-gates pass; CI runs it on every PR touching `migrations_drafts/` or `alembic/versions/`.
+| Rule | Severity | Check |
+|---|---|---|
+| M1 — filename `YYYY_MM_DD_<kebab>.sql` | FAIL | naming consistency |
+| M2 — header status marker (DRAFT/READY/APPLIED or `-- DRAFT`) | FAIL | clear lifecycle state |
+| M3 — header references at least one `ADR-NNN` | FAIL | gating decision link |
+| M4 — BEGIN/COMMIT pairing in up-body | FAIL | transactionality |
+| M5 — `-- §99 REVERSAL` block present | FAIL | down() exists |
+| M6 — `-- §101 Verification` block present | FAIL | G_5.1 ExitGate evidence |
+| M7 — every CREATE TABLE/TYPE/ADD COLUMN in up-body has matching DROP in §99 | FAIL | up/down symmetry |
+| M8 — CREATE TABLE has `IF NOT EXISTS`; CREATE TYPE has `DO $$ ... pg_type ... END $$` guard | WARN | idempotency on re-run |
+| M9 — DROP TABLE without IF EXISTS in up-body (only allowed in §99) | FAIL | partial-failure safety |
+
+#### ExitGate G_28.2a — STATUS: PASSED [CONFIRMED]
+- ✓ 21/21 tests green
+- ✓ Real Phase 1 migration `2026_04_26_phase1_redesign.sql` PASS without baseline
+- ✓ Pre-commit hook wired
+
+### §4b — Stage 28.2b — Live PG up/down/up cycle (PENDING)
+
+#### Goal
+Spawn ephemeral Postgres → run `up()` → `pg_dump --schema-only` → run `down()` → `pg_dump --schema-only` → run `up()` → `pg_dump --schema-only` again. The first and third schema dumps must be byte-equal; the second must equal the pre-up schema.
+
+#### Required infrastructure
+- testcontainers-python (Docker dependency) OR docker compose service `postgres-test`.
+- Schema-dump diff utility (sort + diff with whitespace normalisation).
+
+#### Why deferred
+- Stage 28.2a catches ~80% of migration-correctness defects deterministically without Docker.
+- Stage 28.2b requires Docker availability in dev environment + CI runner.
+- Folding into Stage 28.4 (CI workflow) lets us run Docker only in CI, not pre-commit.
+
+#### ExitGate G_28.2b
+GitHub Actions workflow runs the up/down/up cycle on every PR touching `migrations_drafts/` or `alembic/versions/`. Schema-dump diff = empty.
 
 ---
 

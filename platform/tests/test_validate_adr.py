@@ -274,6 +274,20 @@ def test_main_strict_fails_on_warning(tmp_path):
     assert rc_strict == 1   # warning fails in strict mode
 
 
+def test_main_strict_promotes_w2_to_r9_in_json(tmp_path, capsys):
+    """In --strict, W2 ([UNKNOWN]) renames to R9 with FAIL severity."""
+    body = VALID_BODY + "\nSome `[UNKNOWN]` claim.\n"
+    p = write_adr(tmp_path, "ADR-099-sample-strict.md", body)
+    validate_adr.main([str(p), "--no-baseline", "--strict", "--json"])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    rules = [i["rule"] for i in payload[0]["issues"]]
+    severities = {i["severity"] for i in payload[0]["issues"]}
+    assert "R9" in rules
+    assert "W2" not in rules
+    assert "FAIL" in severities
+
+
 def test_main_json_output(tmp_path, capsys):
     p = write_adr(tmp_path, "ADR-099-sample-valid.md", VALID_BODY)
     validate_adr.main([str(p), "--no-baseline", "--json"])

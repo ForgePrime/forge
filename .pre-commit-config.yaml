@@ -72,10 +72,24 @@ repos:
       # Stage 28.1 of Deterministic ADR Gate Pipeline (task #28).
       # Runs validate_adr.py against all ADRs. Pre-existing drift is
       # filtered by .adr_validator_baseline.json next to the ADRs;
-      # NEW issues fail the commit. CI uses --strict (warnings also fail).
+      # NEW issues fail the commit. CI uses --strict (warnings also fail;
+      # W2 is escalated to R9 visibly in --strict).
       - id: validate-adr
         name: 'Stage 28.1: ADR format validator (deterministic gate)'
         entry: python platform/scripts/validate_adr.py
         language: system
         pass_filenames: false
         files: '^platform/docs/decisions/ADR-.*\.md$'
+
+      # Stage 28.2a of Deterministic ADR Gate Pipeline (task #28).
+      # Validates Forge SQL migration conventions (header, BEGIN/COMMIT,
+      # reversal §99 pairing, verification §101, idempotency markers).
+      # Pre-existing drift filtered by .migration_validator_baseline.json.
+      # Live PG up/down/up cycle is Stage 28.2b (deferred to CI workflow
+      # in Stage 28.4 — requires Docker).
+      - id: validate-migration
+        name: 'Stage 28.2a: SQL migration validator (Forge conventions)'
+        entry: python platform/scripts/validate_migration.py
+        language: system
+        pass_filenames: false
+        files: '^platform/docs/migrations_drafts/.*\.sql$'

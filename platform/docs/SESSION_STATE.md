@@ -505,3 +505,69 @@ template). Validator's R5 failures on ADR-028 are baselined for now.
 1. Remediation for F3 (ADR-028 single-vs-coupled): split / meta-ADR / template amend / leave?
 2. Order: continue Stage 28.2 (SQL migration validator) OR pause to retro-fix F1/F2 in existing ADRs first?
 3. Audit `[UNKNOWN]` tags (F4): commission a sweep, or leave for ad-hoc cleanup?
+
+---
+
+### §1.14 D1+D2+D3 ratification + Stage 28.2a (DONE)
+
+**[2026-04-25 evening]**
+
+User accepted all 3 recommendations: D1=c (amend rule 1), D2=a (continue 28.2),
+D3=c (W2→R9 in --strict).
+
+**D1 — `decisions/README.md` rule 1 amended:**
+- Default still: one-decision per ADR.
+- **Coupled-decision exception** allowed iff: (a) tightly-coupled by single
+  artefact, (b) coupling rationale documented, (c) `## Composite consequence`
+  section present. Cap: ≤4 decisions.
+- Rule 6 (≥2 alternatives) extended: each individual decision in a coupled
+  bundle MUST satisfy ≥2.
+- ADR-028 retroactively conformant.
+
+**D3 — Validator W2→R9 escalation visible in --strict:**
+- `validate_adr.py` post-processes issues when `--strict` set: rule W2
+  becomes "R9", severity "WARN" → "FAIL", message rewritten to cite §6.
+- New test `test_main_strict_promotes_w2_to_r9_in_json` confirms.
+- `pytest`: 22/22 green.
+
+**D2 — Stage 28.2a SQL migration validator (DONE):**
+- **DONE [CONFIRMED via pytest 21/21 green]**:
+  - `platform/scripts/validate_migration.py` — pure stdlib, ~330 LOC.
+    Rules M1..M9 covering: filename pattern, header status marker, ADR
+    reference, BEGIN/COMMIT pairing, §99 reversal block, §101 verification
+    block, up/down symmetry (CREATE→DROP pairing for tables/types/columns),
+    idempotency markers, no destructive defaults.
+  - `platform/tests/test_validate_migration.py` — 21 tests covering each
+    rule fires/doesn't, baseline filtering, --strict, --json,
+    determinism. **Includes regression on real Phase 1 migration**
+    (`2026_04_26_phase1_redesign.sql` PASS without baseline = the
+    migration is *Forge-convention-compliant by construction*).
+  - `.pre-commit-config.yaml` — `validate-migration` hook on
+    `migrations_drafts/*.sql`.
+- **DONE [CONFIRMED via final run]**: `python validate_migration.py` →
+  1 PASS, 0 WARN, 0 FAIL on the Phase 1 draft.
+- **Stage 28.2b deferred** to Stage 28.4 (live PG up/down/up cycle requires
+  Docker; folded into GitHub Actions workflow).
+
+**Total deterministic gate coverage after §1.14:**
+- ADR format (Stage 28.1): R1..R8 + R9 (strict-mode UNKNOWN escalation).
+- SQL migration Forge-convention (Stage 28.2a): M1..M9.
+- **43 total deterministic tests** (22 + 21) running in <2s.
+
+**State of pending tasks after §1.14:**
+
+| Task | Status |
+|---|---|
+| #27 DashboardView SSR | pending (paused — task #28 prioritised) |
+| #28 Deterministic ADR Gate Pipeline | in_progress (Stage 28.1 + 28.2a DONE; 28.2b/28.3/28.4 pending) |
+
+**Cross-ref §14:**
+- §1.14 ← §1.13 (D1+D2+D3 follow-ups identified)
+- §1.14 → next stage 28.3 (Pydantic schema validator) which depends on
+  Phase 1 schema files existing → which depends on migration applied
+  → which depends on ADR-028 RATIFIED + alembic baseline (§1.12 partial)
+
+**Open follow-ups (not yet acted on, awaiting user direction):**
+- F1 retro-fix `## Rationale` for ADR-009..021,027 (~5–7 PD bulk)
+- F2 fix ADR-022 alternatives bullets (~0.5 PD)
+- F4 sweep `[UNKNOWN]` tags or accept --strict R9 as ongoing forcing function

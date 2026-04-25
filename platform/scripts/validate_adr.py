@@ -37,6 +37,12 @@ baseline entry, it is silently filtered. Any NEW issue still fails.
 Exit code semantics: a "FAIL" is a structural defect that the validator
 catches deterministically; a "WARN" is a soft signal that needs human
 judgment. CI gate uses --strict; pre-commit uses default.
+
+In --strict mode, W2 ([UNKNOWN] tags) is renamed and re-severitied to
+R9 FAIL — every new ADR submission is required to either resolve all
+[UNKNOWN] tags before merge OR document the blocking gate explicitly
+in a baselined entry. This forces resolution-path discipline at
+authoring time per AntiShortcutSound §6.
 """
 
 from __future__ import annotations
@@ -408,6 +414,20 @@ def main(argv: list[str] | None = None) -> int:
         baseline_path = args.baseline if args.baseline is not None else default_baseline_path()
         baseline = load_baseline(baseline_path)
         results = apply_baseline(raw_results, baseline)
+
+    # --strict mode: W2 ([UNKNOWN] tags) is escalated to R9 FAIL, visibly
+    # in the output (not only at exit-code level). New submissions can't
+    # silently pass with unresolved UNKNOWNs.
+    if args.strict:
+        for r in results:
+            for i in r.issues:
+                if i.rule == "W2":
+                    i.rule = "R9"
+                    i.severity = "FAIL"
+                    i.message = (
+                        "[UNKNOWN] tag(s) present without resolution path "
+                        "(R9 = W2 in --strict; AntiShortcutSound §6)"
+                    )
 
     if args.json:
         print(json.dumps([r.to_dict() for r in results], indent=2))

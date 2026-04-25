@@ -80,12 +80,12 @@ REVERSIBLE | COMPENSATABLE | RECONSTRUCTABLE | IRREVERSIBLE — [explain].
 
 ## Rules
 
-1. **One decision per ADR.** Never two. If two coupled, write both ADRs and reference each other.
+1. **Default: one decision per ADR.** **Coupled-decision exception:** an ADR MAY close 2–4 decisions atomically iff (a) the decisions are tightly coupled by a single artefact (schema migration, contract bundle, deployment unit) such that ratifying one without the others creates a partial state; (b) the ADR enumerates the coupling rationale in a dedicated section; (c) the ADR has a `## Composite consequence` block listing the cross-decision blast radius. **Cap:** ≤4 decisions per ADR; >4 = split. **Default still:** prefer one-decision ADRs unless the coupling is structural (not just thematic). Amended 2026-04-25 per Forge ADR Gate Pipeline finding F3.
 2. **Immutable once RATIFIED.** Errors produce a new ADR that Supersedes the prior; never edit-in-place.
 3. **Evidence-first** per CONTRACT §B.1. `[CONFIRMED]` requires runtime evidence or direct citation; reading code without executing is `[ASSUMED]`.
 4. **Non-trivial claims tagged** per CONTRACT §B.2. No untagged assertion about state/contract/cascade/external-system.
 5. **Peer review required before RATIFIED** per ADR-003. Self-authored ADRs are DRAFT until distinct-actor review.
-6. **Alternatives enumerate ≥ 2** per FORMAL P21 Root Cause Uniqueness.
+6. **Alternatives enumerate ≥ 2** per FORMAL P21 Root Cause Uniqueness. **Coupled-decision ADRs:** each individual decision in the bundle MUST satisfy this rule (≥2 alternatives per decision).
 
 ## How to submit a new ADR
 
