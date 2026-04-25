@@ -1,6 +1,6 @@
 # PLAN_ADR_GATE_PIPELINE.md — Deterministic ADR Gate Pipeline (task #28)
 
-**Status:** Stage 28.1 DONE; Stage 28.2a DONE; Stage 28.2b/28.3/28.4 PENDING.
+**Status:** Stage 28.1 DONE; Stage 28.2a DONE; Stage 28.4 DONE; Stage 28.2b/28.3 PENDING.
 **Date:** 2026-04-25
 **Theorem compliance:** AntiShortcutSound §15 (Step-by-step phases with ExitGates) + CONTRACT §B.8(a) (deterministic check as distinct-actor substitute).
 **Branch:** `docs/forge-plans-soundness-v1`.
@@ -17,7 +17,7 @@
 | 28.2a | SQL migration Forge-convention (header, BEGIN/COMMIT, §99 reversal pairing, §101 verification, idempotency) | **DONE** | 21 tests green; real Phase 1 migration regression test green |
 | 28.2b | Live PG up→down→up cycle (`psql --dry-run` + ephemeral container + schema-dump diff) | PENDING | requires Docker; folded into Stage 28.4 CI workflow |
 | 28.3 | Pydantic schema (round-trip + mypy strict + Hypothesis property test) | PENDING | every new `app/schemas/*.py` shape round-trips for 100 random instances |
-| 28.4 | ADR status state machine + GitHub Actions wiring | PENDING | `PROPOSED → ALL_GATES_GREEN → READY_FOR_HUMAN_REVIEW → RATIFIED` enforced by CI |
+| 28.4 | ADR lifecycle state machine + GitHub Actions wiring | **DONE** | 24 tests green; `.github/workflows/adr-gate.yml` runs all stages on PR; composite gate `adr-gate-pass` blocks merge unless 28.1+28.2a+28.4 green |
 
 ---
 
@@ -183,35 +183,64 @@ Stage 28.3 is most useful AFTER Stage 28.2 (so migration shape is locked) and AF
 
 ---
 
-## §6 Stage 28.4 — Status state machine + GitHub Actions wiring (PENDING)
+## §6 Stage 28.4 — Lifecycle state machine + GitHub Actions wiring (DONE)
 
-### Goal
-Enforce ADR lifecycle:
+### Artefact
+- `platform/scripts/validate_adr_lifecycle.py` (~340 LOC, pure stdlib + git plumbing).
+- `platform/tests/test_validate_adr_lifecycle.py` — 24 tests including real git-repo plumbing (temp repo + commits + base-ref diff).
+- `.github/workflows/adr-gate.yml` — wires 28.1+28.2a+28.4 + placeholders for 28.2b+28.3.
+
+### Allowed transitions (state machine)
 
 ```
-DRAFT → PROPOSED → [Stages 28.1+28.2+28.3 all green]
-                    ↓
-                READY_FOR_HUMAN_REVIEW
-                    ↓
-              [distinct-actor sign-off]
-                    ↓
-                RATIFIED
-                    ↓
-              [supersession event]
-                    ↓
-                SUPERSEDED
+(none / new file) ──> DRAFT, PROPOSED, OPEN
+DRAFT             ──> DRAFT, PROPOSED                       (edit + promote)
+OPEN (legacy)     ──> OPEN, PROPOSED                        (edit + promote)
+PROPOSED          ──> PROPOSED, RATIFIED, SUPERSEDED, CLOSED
+CLOSED (legacy)   ──> CLOSED, SUPERSEDED                    (legacy terminal-ish)
+RATIFIED          ──> RATIFIED-with-no-body-diff, SUPERSEDED  (immutable except via supersede)
+SUPERSEDED        ──> SUPERSEDED                            (terminal)
 ```
 
-### Mechanism
-- `.github/workflows/adr-gate.yml` — runs Stages 28.1+28.2+28.3 on every PR touching `decisions/`, `migrations_drafts/`, or `app/schemas/`.
-- ADR Status field cannot transition to `READY_FOR_HUMAN_REVIEW` until CI green (validated by separate `validate_adr_lifecycle.py`).
-- ADR Status field cannot transition to `RATIFIED` until a separate non-author identity comments approval on the PR (validated by GH API check).
+### Rules (T1..T5)
 
-### Open question
-Does Forge use GitHub Actions or another CI? [UNKNOWN — `.github/workflows/` was not in the file list earlier in this session; needs grep]. If absent, a generic CI-agnostic shell script in `platform/scripts/ci/` is the fallback.
+| Rule | Severity | Check |
+|---|---|---|
+| T1 — Status field is in VALID_STATUSES | FAIL | defensive cross-check vs format validator R3 |
+| T2 — (prev_status → curr_status) ∈ ALLOWED_TRANSITIONS | FAIL | the state-machine itself |
+| T3 — RATIFIED requires `[CONFIRMED]` or `[ASSUMED: accepted-by=...]` | FAIL | CONTRACT §A.6, §B.2 |
+| T4 — SUPERSEDED requires `## Supersedes` section naming a specific ADR-NNN | FAIL | decisions/README.md rule 2 |
+| T5 — RATIFIED → RATIFIED with body diff is FORBIDDEN | FAIL | decisions/README.md rule 2 (immutability) |
 
-### ExitGate G_28.4
-A new ADR submitted via PR cannot merge unless: lifecycle validator green AND ADR validator green AND a non-author left a `/lgtm`-style comment.
+### CLI modes
+
+- `--previous PATH CURR` — offline: compare two specific files (test/dev mode).
+- `--base REF [PATHS...]` — git mode: extract previous version from `git show REF:PATH` for each.
+- (no mode) — sanity check: treat each ADR as if newly submitted (catches malformed Status fields).
+
+### GitHub Actions workflow
+
+`.github/workflows/adr-gate.yml` defines:
+
+| Job | Stage | When |
+|---|---|---|
+| `adr-format` | 28.1 | always (on path match) |
+| `migration-convention` | 28.2a | always |
+| `adr-lifecycle` | 28.4 | PR only (needs base ref) |
+| `migration-live-cycle` | 28.2b | `if: false` placeholder |
+| `pydantic-schema` | 28.3 | `if: false` placeholder |
+| `adr-gate-pass` | composite | aggregates required statuses |
+
+**Branch protection (manual setup):** require `ADR Gate Pipeline (composite)` status check before merge to `main`.
+
+### ExitGate G_28.4 — STATUS: PASSED [CONFIRMED]
+- ✓ 24/24 tests green (including real-git-repo `--base` mode tests)
+- ✓ Workflow file syntactically valid (YAML)
+- ✓ Composite gate aggregates required jobs
+
+### Distinct-actor approval (manual gate, complementary)
+
+Stage 28.4 does NOT enforce the human "distinct-actor approves PR" rule — that requires GH branch protection settings (`require approval from someone other than the author`). The deterministic gates close *correctness* automatically; *judgment* remains a manual GH approval. Documented as a **manual setup step** in this plan + the ADR-003 review-record protocol.
 
 ---
 

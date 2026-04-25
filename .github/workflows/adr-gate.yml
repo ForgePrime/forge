@@ -1,0 +1,143 @@
+name: ADR Gate Pipeline
+
+# Stage 28.4 of Deterministic ADR Gate Pipeline (task #28).
+# Runs the deterministic validators on every PR touching ADRs, migration
+# drafts, or schema files. Per CONTRACT §B.8(a): deterministic checks
+# substitute for human review on the *correctness portion* of submissions;
+# human distinct-actor reserved for *judgment portions*.
+#
+# Stage 28.1 — ADR format validator (R1..R8 + R9 in --strict)
+# Stage 28.2a — SQL migration Forge-convention validator (M1..M9)
+# Stage 28.2b — Live PG up/down/up cycle (TODO; placeholder job)
+# Stage 28.3 — Pydantic schema validator (TODO; placeholder job)
+# Stage 28.4 — This file (lifecycle state machine + workflow wiring)
+
+on:
+  pull_request:
+    paths:
+      - 'platform/docs/decisions/**'
+      - 'platform/docs/migrations_drafts/**'
+      - 'platform/app/schemas/**'
+      - 'platform/scripts/validate_*.py'
+      - 'platform/tests/test_validate_*.py'
+      - '.github/workflows/adr-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'platform/docs/decisions/**'
+      - 'platform/docs/migrations_drafts/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Stage 28.1 — ADR format
+  adr-format:
+    name: 'Stage 28.1: ADR format validator'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Run validate_adr.py --strict (W2 → R9 visibly)
+        run: python platform/scripts/validate_adr.py --strict
+      - name: Run validate_adr unit tests
+        run: python -m pytest platform/tests/test_validate_adr.py -q
+
+  # Stage 28.2a — SQL migration Forge conventions
+  migration-convention:
+    name: 'Stage 28.2a: SQL migration validator'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Run validate_migration.py --strict
+        run: python platform/scripts/validate_migration.py --strict
+      - name: Run validate_migration unit tests
+        run: python -m pytest platform/tests/test_validate_migration.py -q
+
+  # Stage 28.4 — ADR lifecycle state machine
+  adr-lifecycle:
+    name: 'Stage 28.4: ADR lifecycle state machine'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history so --base ${{ base_ref }} can resolve
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Fetch base ref
+        run: git fetch --no-tags --depth=1 origin ${{ github.base_ref }}
+      - name: Validate ADR transitions vs origin/${{ github.base_ref }}
+        run: |
+          python platform/scripts/validate_adr_lifecycle.py \
+            --base origin/${{ github.base_ref }}
+      - name: Run validate_adr_lifecycle unit tests
+        run: python -m pytest platform/tests/test_validate_adr_lifecycle.py -q
+
+  # Stage 28.2b — Live PG up/down/up cycle (PLACEHOLDER — implementation pending)
+  # Spawns ephemeral Postgres, applies migration up(), down(), up() again,
+  # diffs schema dumps. See PLAN_ADR_GATE_PIPELINE.md §4b.
+  migration-live-cycle:
+    name: 'Stage 28.2b: live PG cycle (placeholder)'
+    runs-on: ubuntu-latest
+    if: false  # TODO: enable when validate_migration_cycle.py is implemented
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: forge_test
+          POSTGRES_PASSWORD: forge_test
+          POSTGRES_DB: forge_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U forge_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - name: TODO — invoke validate_migration_cycle.py
+        run: echo "Stage 28.2b implementation pending — see PLAN_ADR_GATE_PIPELINE.md §4b"
+
+  # Stage 28.3 — Pydantic schema validator (PLACEHOLDER — depends on app/schemas/ existing)
+  pydantic-schema:
+    name: 'Stage 28.3: Pydantic schema (placeholder)'
+    runs-on: ubuntu-latest
+    if: false  # TODO: enable when app/schemas/ is populated post-migration
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - name: TODO — Hypothesis round-trip + mypy --strict on app/schemas/
+        run: echo "Stage 28.3 implementation pending — depends on Phase 1 schema files"
+
+  # Aggregate gate: all required jobs must pass for the ADR gate to be green.
+  # Branch protection rule should require this status check before merge.
+  adr-gate-pass:
+    name: 'ADR Gate Pipeline (composite)'
+    needs: [adr-format, migration-convention, adr-lifecycle]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Composite status
+        run: |
+          echo "format:        ${{ needs.adr-format.result }}"
+          echo "migration:     ${{ needs.migration-convention.result }}"
+          echo "lifecycle:     ${{ needs.adr-lifecycle.result }}"
+          if [[ "${{ needs.adr-format.result }}" != "success" ]] || \
+             [[ "${{ needs.migration-convention.result }}" != "success" ]] || \
+             [[ "${{ needs.adr-lifecycle.result }}" != "success" && "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "::error::One or more ADR Gate stages failed"
+            exit 1
+          fi
+          echo "ADR Gate Pipeline: ALL STAGES GREEN"

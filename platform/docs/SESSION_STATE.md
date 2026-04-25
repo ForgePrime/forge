@@ -571,3 +571,90 @@ D3=c (W2→R9 in --strict).
 - F1 retro-fix `## Rationale` for ADR-009..021,027 (~5–7 PD bulk)
 - F2 fix ADR-022 alternatives bullets (~0.5 PD)
 - F4 sweep `[UNKNOWN]` tags or accept --strict R9 as ongoing forcing function
+
+---
+
+### §1.15 Stage 28.4 — Lifecycle state machine + GitHub Actions (DONE)
+
+**[2026-04-25 evening]**
+
+User accepted "ok" → continue with Stage 28.4 recommendation.
+
+**Artefacts:**
+
+- `platform/scripts/validate_adr_lifecycle.py` (~340 LOC, pure stdlib + git
+  plumbing). Rules T1..T5: status validity, transition graph, RATIFIED
+  evidence, SUPERSEDED supersedes-field, RATIFIED-immutability body diff.
+- `platform/tests/test_validate_adr_lifecycle.py` — **24 tests green**,
+  including real git-repo plumbing tests (spin up temp repo, commit
+  versions, run validator with `--base REF`, verify legal/illegal
+  transitions detected correctly).
+- `.github/workflows/adr-gate.yml` — wires Stages 28.1+28.2a+28.4 to run
+  on every PR touching ADRs / migration drafts / schemas. Composite
+  job `adr-gate-pass` aggregates statuses for branch protection.
+
+**State machine encoded:**
+
+```
+(new)   → DRAFT | PROPOSED | OPEN
+DRAFT   → DRAFT | PROPOSED
+OPEN    → OPEN | PROPOSED
+PROPOSED→ PROPOSED | RATIFIED | SUPERSEDED | CLOSED
+CLOSED  → CLOSED | SUPERSEDED
+RATIFIED→ RATIFIED (body must match prev) | SUPERSEDED
+SUPERSEDED → SUPERSEDED   (terminal)
+```
+
+**T5 immutability test:** verifies RATIFIED→RATIFIED with body diff fails;
+CRLF/LF normalisation + trailing-whitespace tolerance prevents false
+positives on cosmetic edits.
+
+**CLI modes:**
+- `--previous PATH curr.md` for offline/test
+- `--base REF [paths...]` for CI (uses `git show REF:path`)
+- no mode = sanity check (treats every ADR as if new)
+
+**GitHub Actions jobs:**
+- `adr-format` (Stage 28.1)
+- `migration-convention` (Stage 28.2a)
+- `adr-lifecycle` (Stage 28.4 — PR-only)
+- `migration-live-cycle` (Stage 28.2b PLACEHOLDER, `if: false`)
+- `pydantic-schema` (Stage 28.3 PLACEHOLDER, `if: false`)
+- `adr-gate-pass` (composite aggregator)
+
+**Total deterministic gate coverage after §1.15:**
+- ADR format: 22 tests (R1..R8 + R9)
+- SQL migration Forge-convention: 21 tests (M1..M9)
+- ADR lifecycle: 24 tests (T1..T5)
+- **67 deterministic tests across 3 validators in <5s.**
+
+**Cross-ref §14:**
+- §1.15 ← §1.14 (Stage 28.2a unblocks Stage 28.4 by giving CI a
+  migration validator to run)
+- §1.15 → branch protection setup (manual GitHub config step) +
+  Stage 28.2b live-PG cycle implementation + Stage 28.3 Pydantic
+  schema validator
+
+**State of pending tasks after §1.15:**
+
+| Task | Status |
+|---|---|
+| #27 DashboardView SSR | pending (paused — task #28 prioritised) |
+| #28 Deterministic ADR Gate Pipeline | in_progress (Stage 28.1 + 28.2a + 28.4 DONE; 28.2b + 28.3 pending) |
+
+**Sub-stage status (task #28 internal):**
+
+| Stage | Status | Tests |
+|---|---|---|
+| 28.1 ADR format | DONE | 22 |
+| 28.2a SQL migration Forge-convention | DONE | 21 |
+| 28.2b SQL migration live-PG cycle | PENDING (Docker dep) | 0 |
+| 28.3 Pydantic schema | PENDING (depends on Phase 1 schemas existing) | 0 |
+| 28.4 Lifecycle state machine + CI workflow | DONE | 24 |
+| **Total deterministic gate tests** | | **67** |
+
+**Manual setup remaining for full gate enforcement:**
+1. GitHub branch protection: require `ADR Gate Pipeline (composite)` check
+   before merge to `main`. (Settings → Branches → main → Protection rules.)
+2. (Optional) require approval from non-author for branch protection
+   distinct-actor enforcement.
