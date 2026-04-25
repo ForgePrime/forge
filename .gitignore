@@ -68,3 +68,7 @@ platform/docs/Forge_redesign_template_unpacked.html
 platform/docs/forge_redesign_extracted/b6264c9d_text-javascript.txt
 platform/docs/forge_redesign_extracted/c63700f7_text-javascript.txt
 platform/docs/forge_redesign_extracted/11200eec_text-javascript.txt
+
+# Local DB backups (taken before destructive operations like Phase 1 migration).
+# Stay on dev machine; never committed.
+platform/backups/

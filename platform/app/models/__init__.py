@@ -30,6 +30,13 @@ from app.models.evidence_set import EvidenceSet
 from app.models.idempotent_call import IdempotentCall, DEFAULT_IDEMPOTENCY_TTL_SECONDS
 from app.models.verdict_divergence import VerdictDivergence
 from app.models.causal_edge import CausalEdge
+# Phase 1 redesign integration (ADR-028 RATIFIED 2026-04-25)
+from app.models.epistemic import EpistemicTag, ObjectiveStage, AutonomyPinned
+from app.models.alternative import Alternative
+from app.models.side_effect_map import SideEffectMap
+from app.models.cascade_dod_item import CascadeDodItem
+from app.models.kill_criteria_event_log import KillCriteriaEventLog
+from app.models.trust_debt_snapshot import TrustDebtSnapshot
 
 __all__ = [
     "Organization",
@@ -72,4 +79,13 @@ __all__ = [
     "DEFAULT_IDEMPOTENCY_TTL_SECONDS",
     "VerdictDivergence",
     "CausalEdge",
+    # Phase 1 redesign integration
+    "EpistemicTag",
+    "ObjectiveStage",
+    "AutonomyPinned",
+    "Alternative",
+    "SideEffectMap",
+    "CascadeDodItem",
+    "KillCriteriaEventLog",
+    "TrustDebtSnapshot",
 ]
