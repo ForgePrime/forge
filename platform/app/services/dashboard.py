@@ -217,19 +217,42 @@ def compute_metrics(db: Session, org_id: int | None) -> list[MetricSnapshot]:
         status="UNAVAILABLE",
     ))
 
-    # M2 — ADR citation rate on AC: heuristic from existing AC.source_ref
-    # (true M2 needs epistemic_tag enum from Phase 1; this is a lower-bound proxy).
+    # M2 — ADR citation rate on AC: typed when epistemic_tag column exists,
+    # heuristic otherwise.
     if _has_column(AcceptanceCriterion, "epistemic_tag"):
-        # Phase 1 column applied — compute exact: count(epistemic_tag IN (ADR_CITED, SPEC_DERIVED)) / total
-        # (left for post-migration; not yet applied)
+        # Phase 1 column applied — compute exact: count(epistemic_tag IN
+        # {ADR_CITED, SPEC_DERIVED, EMPIRICALLY_OBSERVED, TOOL_VERIFIED,
+        # STEWARD_AUTHORED}) / count(total). INVENTED + NULL = un-cited.
+        total_ac = (
+            db.query(sqlfunc.count(AcceptanceCriterion.id))
+            .join(Task, AcceptanceCriterion.task_id == Task.id)
+            .filter(Task.project_id.in_(project_ids) if project_ids else False)
+            .scalar() or 0
+        )
+        cited = (
+            db.query(sqlfunc.count(AcceptanceCriterion.id))
+            .join(Task, AcceptanceCriterion.task_id == Task.id)
+            .filter(Task.project_id.in_(project_ids) if project_ids else False)
+            .filter(
+                AcceptanceCriterion.epistemic_tag.in_(
+                    ["ADR_CITED", "SPEC_DERIVED", "EMPIRICALLY_OBSERVED",
+                     "TOOL_VERIFIED", "STEWARD_AUTHORED"]
+                )
+            )
+            .scalar() or 0
+        )
+        ratio = (cited / total_ac) if total_ac > 0 else None
         m2 = MetricSnapshot(
             id="M2", label="ADR citation rate on AC",
-            value=None, target=0.95, unit="ratio",
-            desc="AC rows with epistemic_tag ∈ {ADR_CITED, SPEC_DERIVED}",
-            available=False,
-            awaits="(post-Phase-1 logic not yet implemented)",
+            value=round(ratio, 2) if ratio is not None else None,
+            target=0.95, unit="ratio",
+            desc=("AC rows with epistemic_tag ∈ {ADR_CITED, SPEC_DERIVED, "
+                  "EMPIRICALLY_OBSERVED, TOOL_VERIFIED, STEWARD_AUTHORED} "
+                  "/ total. NULL + INVENTED = un-cited."),
+            available=ratio is not None,
+            awaits="(none — exact metric over Phase 1 epistemic_tag column)",
             source="acceptance_criteria.epistemic_tag",
-            status="UNAVAILABLE",
+            status=_metric_status(ratio, 0.95, lower_is_better=False),
         )
     else:
         # Pre-migration heuristic: AC rows with non-NULL source_ref / total
