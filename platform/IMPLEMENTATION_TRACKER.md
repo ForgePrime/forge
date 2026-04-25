@@ -3,6 +3,41 @@
 Każdy element z architektury z weryfikowalnym statusem. Kontrakt: żaden element nie jest "DONE" bez EXECUTED evidence.
 
 Last verified: **2026-04-16** via real HTTP calls against running server (port 8012).
+Validation-layer additions (Phase A + B.1): **2026-04-25** via pytest-only (no live HTTP); see §"Phase A+B.1 validation infrastructure" below.
+
+---
+
+## Phase A + B.1 validation infrastructure (added 2026-04-25)
+
+Per PLAN_GATE_ENGINE / PLAN_MEMORY_CONTEXT. All claims verified via pytest;
+none verified via live HTTP (platform not running for this session).
+88 tests pass across the 7 validation+evidence test files; per CONTRACT
+§B.8, all entries here are [ASSUMED: agent-analysis] pending distinct-actor
+review.
+
+| Component | Status | Evidence |
+|-----------|--------|----------|
+| `app/validation/verdict_engine.py` (pure VerdictEngine + replay-deterministic stub) | DONE | [PYTEST] tests/test_verdict_engine_stub.py — 4 tests pass; empty-rules → REJECTED, all-pass → composite PASS, fail-fast short-circuit, P6 determinism |
+| `app/validation/gate_registry.py` (6 entities × 44 transitions populated) | DONE | [PYTEST] tests/test_gate_registry.py — 15 tests pass; entity-set match, EXPECTED_COUNTS, every to_state in CheckConstraint enum, no self-transitions, no DB imports |
+| `app/validation/rules/evidence_link_required.py` (P16 closure) | DONE | [PYTEST] tests/test_evidence_link_rule.py — 14 tests; ANALYZING→ACCEPTED + 3 other Decision permanent-state transitions gated |
+| `app/validation/rules/plan_gate_adapter.py` (A.3 wrapper) | DONE | [PYTEST] tests/test_legacy_rule_adapters.py 8 plan_gate tests; pass paths + fail paths + multi-violation summary + determinism |
+| `app/validation/rules/contract_validator_adapter.py` (A.3 wrapper) | DONE | [PYTEST] tests/test_legacy_rule_adapters.py 5 contract_validator tests; chore-bypass + short-reasoning fail + missing-key defensive |
+| `app/validation/shadow_comparator.py` (compare_and_log helper) | DONE | [PYTEST] tests/test_shadow_comparator.py — 9 tests; mode=off no-op, mode=shadow log on disagree, factory failure swallowed, multi-call independent |
+| `app/models/verdict_divergence.py` | DONE | [IMPORT] `from app.models import VerdictDivergence` exits 0 |
+| `app/models/idempotent_call.py` + `app/validation/idempotency.py` (A.5 P1) | DONE | [PYTEST] tests/test_idempotency.py — 19 tests; canonical hash determinism, in-memory store hit/miss/expiry, P1 invariant (factory invoked AT MOST ONCE per key+args within TTL) |
+| `app/models/causal_edge.py` + `app/evidence/acyclicity.py` (B.1) | DONE | [PYTEST] tests/test_acyclicity.py — 11 tests; strictly older src passes, tolerance window inclusive, beyond-tolerance fails with diagnostic, custom tolerance argument |
+| Shadow-comparator wired into `api/execute.py:277` + `api/pipeline.py:1051` | DONE | [IMPORT] both modules import cleanly with `from app.validation.shadow_comparator import compare_and_log`; mode='off' default keeps zero blast radius |
+| Shadow-comparator wired into `api/pipeline.py:547` (plan_gate) | PARTIAL | [DOCUMENTED] integration point marked with comment block; verdict_divergences.execution_id NOT NULL prevents wiring at plan-ingest time (plan precedes Execution); decision deferred to A.4 cutover |
+
+## Phase A residual (deferred to subsequent commits)
+
+| Component | Status | Reason |
+|-----------|--------|--------|
+| A.1 work item 4: app-level Decision-insert gate (FK / trigger raising IntegrityError on no-evidence-link insert) | DEFERRED | Implemented as state-transition gate (A.1.4 commit) instead. Insert-time FK enforcement deferred to A.4 cutover when 75 .status= sites are wrapped — at which point state-transition gate becomes canonical insert-flow enforcement. |
+| A.3 replay harness over 100 historical Executions | DEFERRED | Needs DB connection + populated DB. Once shadow mode runs ≥1 week with FORGE_VERDICT_ENGINE_MODE=shadow, that data fuels the replay test. |
+| A.4 enforcement cutover (75 .status= sites across 9 files) | DEFERRED | Mechanical refactor; needs DB to verify wrapped paths don't regress legacy flow. |
+| A.5 DBIdempotencyStore (production backend for IdempotencyStore Protocol) | DEFERRED | Protocol + InMemoryIdempotencyStore in place; DB-backed store needs migration to be applied first. |
+| A.5 mcp_server middleware integration (4 mutating tools accept idempotency_key) | DEFERRED | Once DB store exists, wire into MCP tool dispatch path. |
 
 ---
 
