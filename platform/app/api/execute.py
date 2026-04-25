@@ -31,6 +31,9 @@ from app.models import (
 from app.services.prompt_parser import assemble_prompt
 from app.services.contract_validator import validate_delivery, CheckResult
 from app.config import settings
+from app.validation.rule_adapter import EvaluationContext
+from app.validation.rules import contract_validator_rule
+from app.validation.shadow_comparator import compare_and_log
 
 router = APIRouter(prefix="/api/v1", tags=["execution"])
 
@@ -276,6 +279,32 @@ def post_deliver(
     ac_verif_map = {ac.position: ac.verification for ac in task.acceptance_criteria}
     result = validate_delivery(delivery, contract, task.type, prev_attempt_dict,
                                ac_verifications=ac_verif_map)
+
+    # Phase A.3 shadow-mode comparator. Default mode='off' is a no-op
+    # short-circuit; flip via FORGE_VERDICT_ENGINE_MODE=shadow once the
+    # canary window opens. Disagreements -> verdict_divergences row.
+    # Legacy `result` remains authoritative; this call NEVER raises.
+    compare_and_log(
+        session_factory=lambda: db,
+        execution_id=execution.id,
+        ctx=EvaluationContext(
+            entity_type="execution",
+            entity_id=execution.id,
+            from_state="DELIVERED",
+            to_state="VALIDATING",
+            artifact={
+                "delivery": delivery,
+                "contract": contract,
+                "task_type": task.type,
+                "prev_attempt": prev_attempt_dict,
+                "ac_verifications": ac_verif_map,
+            },
+            evidence=(),
+        ),
+        rules=(contract_validator_rule,),
+        legacy_passed=result.all_pass,
+        legacy_reason=getattr(result, "fix_instructions", None) or None,
+    )
 
     # Duplicate detection: if current hash matches any previous attempt → WARNING
     for pa in prev_attempts:

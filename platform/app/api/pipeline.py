@@ -28,6 +28,9 @@ from app.services.claude_cli import invoke_claude, CLIResult
 from app.services.prompt_parser import assemble_prompt
 from app.services.contract_validator import validate_delivery, CheckResult
 from app.services.test_runner import verify_ac_tests, detect_language
+from app.validation.rule_adapter import EvaluationContext
+from app.validation.rules import contract_validator_rule, plan_gate_rule
+from app.validation.shadow_comparator import compare_and_log
 from app.services.git_verify import ensure_repo, snapshot_head, commit_all, diff_report
 from app.services.kr_measurer import measure_kr
 from app.services.delivery_extractor import extract_from_delivery
@@ -548,6 +551,34 @@ def plan_from_objective(slug: str, body: PlanRequest, db: Session = Depends(get_
     ref_violations = validate_plan_requirement_refs(
         tasks_data, project_has_source_docs=has_sources,
     )
+
+    # Phase A.3 shadow-mode comparator. Mode='off' is a no-op; flip to
+    # 'shadow' once canary opens. This call NEVER raises.
+    # NOTE: no execution_id at plan-gate time (plan precedes Execution);
+    # using project_id as the divergence FK target is incorrect for the
+    # current schema (verdict_divergences.execution_id NOT NULL). Skip
+    # logging here until A.4 wiring decides on a Plan-level entity FK.
+    # The shadow call is left commented to mark the integration point
+    # without inserting bad data. Tracked in commit body.
+    # compare_and_log(
+    #     session_factory=lambda: db,
+    #     execution_id=...,  # NEEDS: Plan entity or proj-level audit row
+    #     ctx=EvaluationContext(
+    #         entity_type="plan",
+    #         entity_id=proj.id,
+    #         from_state="__init__",
+    #         to_state="VALIDATED",
+    #         artifact={
+    #             "tasks_data": tasks_data,
+    #             "project_has_source_docs": has_sources,
+    #         },
+    #         evidence=(),
+    #     ),
+    #     rules=(plan_gate_rule,),
+    #     legacy_passed=(not ref_violations),
+    #     legacy_reason="; ".join(ref_violations) if ref_violations else None,
+    # )
+
     if ref_violations:
         raise HTTPException(400, {
             "error": "plan_traceability_gate: tasks missing requirement_refs",
@@ -1050,6 +1081,30 @@ def orchestrate(
             ac_verif_map = {ac.position: ac.verification for ac in candidate.acceptance_criteria}
             val = validate_delivery(delivery, contract_def, candidate.type, None,
                                     ac_verifications=ac_verif_map)
+
+            # Phase A.3 shadow-mode comparator. Mode='off' default = no-op.
+            # Logs to verdict_divergences only on engine-vs-legacy disagree.
+            compare_and_log(
+                session_factory=lambda: db,
+                execution_id=execution.id,
+                ctx=EvaluationContext(
+                    entity_type="execution",
+                    entity_id=execution.id,
+                    from_state="DELIVERED",
+                    to_state="VALIDATING",
+                    artifact={
+                        "delivery": delivery,
+                        "contract": contract_def,
+                        "task_type": candidate.type,
+                        "prev_attempt": None,
+                        "ac_verifications": ac_verif_map,
+                    },
+                    evidence=(),
+                ),
+                rules=(contract_validator_rule,),
+                legacy_passed=val.all_pass,
+                legacy_reason=getattr(val, "fix_instructions", None) or None,
+            )
             execution.delivery = delivery
             execution.validation_result = {
                 "all_pass": val.all_pass,
