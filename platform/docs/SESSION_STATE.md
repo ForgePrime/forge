@@ -997,3 +997,77 @@ PG cycle in CI (postgres service spin-up + restore + cycle).
 - Retro-fix legacy ADR drift (F1 / F2 from §1.13)
 - Phase 2 work per UX_DESIGN §11 Constellation map (8-12 PD if user
   chooses to enact)
+
+---
+
+### §1.20 Kill-criteria event writer + DashboardView K-panel auto-degrade
+
+**[2026-04-25 evening]**
+
+User: "lecimy z pracami dalej" → built foundational K1-K6 instrumentation
+substrate.
+
+**Artefacts:**
+
+- `platform/app/services/kill_criteria.py` (~140 LOC):
+  - `log_kill_criterion(db, kc_code, reason, *, objective_id, decision_id,
+    task_id, evidence_set_id)` — pure writer, validates payload (kc_code
+    ∈ K1..K6, reason ≥5 chars, at-least-one entity ref) before INSERT.
+    Mirrors DB CHECK constraints so failures surface at call site.
+  - `detect_k1_unowned_side_effects(db, execution_id)` — concrete K1
+    predicate. Reads side_effect_map rows linked to the Execution's
+    Decisions; logs K1 for every owner-NULL row found. Returns logged
+    events.
+  - `tripped_in_last_24h(db, kc_code, *, project_ids)` — count helper
+    powering DashboardView K1-K6 panel. Returns `(count, last_at)`.
+- `platform/tests/test_kill_criteria_service.py` — **13 tests green**
+  (live DB integration; rolled-back per test):
+  - log_kill_criterion validation (4 reject paths + 1 accept-objective-only)
+  - detect_k1 happy path (1 owned + 1 unowned → 1 K1 event)
+  - detect_k1 returns [] when all owned + when no decisions
+  - tripped_in_last_24h count + last_at + invalid-code rejection +
+    empty-project-list returns zero
+- DashboardView `compute_kill_criteria` updated to:
+  - Probe `kill_criteria_event_log` table availability via metadata
+  - When available: read counts from `tripped_in_last_24h` per K-code;
+    set `available=True`, `tripped_24h=N`, `last_at=...`
+  - When unavailable: legacy "awaiting Phase 1" presentation (defensive
+    fallback for partial-migration environments)
+
+**Bugs found + fixed during §1.20 (CONTRACT §A.6):**
+
+- 3 Phase 1 models (`Alternative`, `SideEffectMap`, `CascadeDodItem`)
+  inherited `TimestampMixin` which adds an `updated_at` column. The
+  migration only created `created_at` for these tables — INSERT failed
+  with `column "updated_at" of relation ... does not exist`. **Fixed**:
+  removed TimestampMixin, declared `created_at` directly. (This is the
+  same prediction error class as §3 CrossCheck — model assumptions vs
+  applied schema.)
+
+**Live verification on dev DB [CONFIRMED 2026-04-25]:**
+
+K1-K6 panel auto-degrade:
+```
+K1: tripped_24h=0  available=True
+K2: tripped_24h=0  available=True
+K3: tripped_24h=0  available=True
+K4: tripped_24h=0  available=True
+K5: tripped_24h=0  available=True
+K6: tripped_24h=0  available=True
+```
+
+All 6 K-criteria now show "0 last 24h (clean)" green pills instead of
+"awaiting Phase 1" yellow pills. As detection helpers are wired to
+their lifecycle hooks (next step), real K-events will populate.
+
+**Total deterministic gate test count: 132** (119 from §1.19 + 13 new
+K-criteria). All offline validators run in <2s; live DB tests in ~1s.
+
+**State of pending tasks:**
+
+| Task | Status |
+|---|---|
+| #34 K-criteria writer + K-panel auto-degrade | **completed** |
+| (open) K-criteria instrumentation wiring | not started — separate per-K decision |
+| (open) Trust-debt formula ratification | governance, not code |
+| (open) Retro-fix ADR drift F1/F2 | low-priority cleanup |

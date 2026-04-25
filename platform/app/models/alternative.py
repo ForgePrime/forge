@@ -12,15 +12,16 @@ created the underlying table; this model maps onto it.
 
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Integer, ForeignKey, SmallInteger, Text, CheckConstraint, UniqueConstraint, Index
+import datetime as dt
+from sqlalchemy import BigInteger, Integer, ForeignKey, SmallInteger, Text, CheckConstraint, UniqueConstraint, Index, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func as sqlfunc
 
 from app.database import Base
-from app.models.base import TimestampMixin
 
 
-class Alternative(Base, TimestampMixin):
+class Alternative(Base):
     """One CGAID alternative considered for a Decision.
 
     Each Decision has 0..N alternatives (P21 require ≥2 for root_cause type).
@@ -52,6 +53,10 @@ class Alternative(Base, TimestampMixin):
     )
     impact_deltas: Mapped[list | None] = mapped_column(JSONB)
     rejected_because: Mapped[str | None] = mapped_column(Text)
+    # Created-at only (no updated_at column on this table per migration §3).
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=sqlfunc.now(), nullable=False
+    )
 
     # Optional ORM relationships (defined here for clarity; Decision side
     # adds `alternatives` backref in app/models/decision.py).

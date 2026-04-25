@@ -360,19 +360,61 @@ _K_DEFINITIONS = [
 
 
 def compute_kill_criteria(db: Session, org_id: int | None) -> list[KillCriterionSnapshot]:
-    """Compute K1..K6 last-24h fired counts. All require kill_criteria_event_log
-    (Phase 1 §6). Until applied, all are flagged unavailable."""
+    """Compute K1..K6 last-24h fired counts.
+
+    Reads `kill_criteria_event_log` (Phase 1 migration §6, applied 2026-04-25).
+    When a K-code has zero events in the 24h window the panel renders
+    "clean" (green) instead of the legacy "awaiting Phase 1" pill — the
+    table existing IS the availability signal.
+
+    Instrumentation that *writes* to the log lives in
+    `app/services/kill_criteria.py` (e.g. `detect_k1_unowned_side_effects`).
+    Each detection helper is wired to its appropriate lifecycle hook
+    separately; this aggregator is read-only.
+    """
     out: list[KillCriterionSnapshot] = []
-    # Heuristic check: does the table exist as a model? (We'd add it later.)
-    has_log = False  # always False until app/models/kill_criteria_event_log.py is added
-    for kid, label, desc in _K_DEFINITIONS:
-        out.append(KillCriterionSnapshot(
-            id=kid, label=label, desc=desc,
-            tripped_24h=0,
-            last_at=None,
-            available=has_log,
-            awaits="kill_criteria_event_log table (Phase 1 migration §6) + KC firing instrumentation",
-        ))
+    project_ids = _project_id_filter(db, org_id)
+
+    # Defensive `_has_table` check — if migration hasn't been applied on
+    # this DB, fall back to "awaiting" rendering rather than 500-erroring
+    # the whole dashboard. Cheap: just probe metadata once.
+    try:
+        from app.models import KillCriteriaEventLog
+        has_log = "kill_criteria_event_log" in KillCriteriaEventLog.__table__.metadata.tables
+    except (ImportError, AttributeError):
+        has_log = False
+
+    if has_log:
+        from app.services.kill_criteria import tripped_in_last_24h
+        for kid, label, desc in _K_DEFINITIONS:
+            try:
+                count, last_at = tripped_in_last_24h(
+                    db, kid, project_ids=project_ids if project_ids else None,
+                )
+            except Exception:
+                # If the table exists but query fails (e.g., migration partial),
+                # degrade to unavailable rather than crashing the panel.
+                count, last_at, available = 0, None, False
+            else:
+                available = True
+            out.append(KillCriterionSnapshot(
+                id=kid, label=label, desc=desc,
+                tripped_24h=count,
+                last_at=last_at,
+                available=available,
+                awaits="(none — Phase 1 migration applied; instrumentation per K-criterion is incremental)",
+            ))
+    else:
+        # Pre-migration / model-not-loaded fallback: keep legacy "awaiting"
+        # presentation so the dashboard still renders.
+        for kid, label, desc in _K_DEFINITIONS:
+            out.append(KillCriterionSnapshot(
+                id=kid, label=label, desc=desc,
+                tripped_24h=0,
+                last_at=None,
+                available=False,
+                awaits="kill_criteria_event_log table (Phase 1 migration §6) + KC firing instrumentation",
+            ))
     return out
 
 

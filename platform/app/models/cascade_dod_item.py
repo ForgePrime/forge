@@ -10,12 +10,12 @@ from __future__ import annotations
 import datetime as dt
 from sqlalchemy import BigInteger, Integer, SmallInteger, String, Text, ForeignKey, CheckConstraint, UniqueConstraint, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func as sqlfunc
 
 from app.database import Base
-from app.models.base import TimestampMixin
 
 
-class CascadeDodItem(Base, TimestampMixin):
+class CascadeDodItem(Base):
     """One DoD checkpoint on an Objective.
 
     `signed_by` + `signed_at` are paired: both NULL or both NOT NULL
@@ -45,5 +45,9 @@ class CascadeDodItem(Base, TimestampMixin):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     signed_by: Mapped[str | None] = mapped_column(String(128))
     signed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # Created-at only (no updated_at column on this table per migration §5).
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=sqlfunc.now(), nullable=False
+    )
 
     objective = relationship("Objective", foreign_keys=[objective_id])

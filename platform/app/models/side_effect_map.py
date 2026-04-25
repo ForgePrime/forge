@@ -11,15 +11,16 @@ underlying table; this model maps onto it.
 
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Integer, String, Boolean, ForeignKey, CheckConstraint
+import datetime as dt
+from sqlalchemy import BigInteger, Integer, String, Boolean, ForeignKey, CheckConstraint, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func as sqlfunc
 
 from app.database import Base
-from app.models.base import TimestampMixin
 
 
-class SideEffectMap(Base, TimestampMixin):
+class SideEffectMap(Base):
     """One side-effect entry on a Decision.
 
     K1 (owner-required) fires when `owner IS NULL` at execute time.
@@ -45,6 +46,10 @@ class SideEffectMap(Base, TimestampMixin):
     )
     blocking: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     impact_deltas: Mapped[list | None] = mapped_column(JSONB)
+    # Created-at only (no updated_at column on this table per migration §4).
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=sqlfunc.now(), nullable=False
+    )
 
     decision = relationship("Decision", foreign_keys=[decision_id])
     evidence_set = relationship("EvidenceSet", foreign_keys=[evidence_set_id])
