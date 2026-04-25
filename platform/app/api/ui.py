@@ -257,6 +257,32 @@ def index(request: Request, db: Session = Depends(get_db)):
     })
 
 
+@router.get("/dashboard", response_class=HTMLResponse)
+def dashboard_view(request: Request, db: Session = Depends(get_db)):
+    """Phase 1 redesign DashboardView (PoC).
+
+    HERO trust-debt + active-K6, M1..M7 metrics, K1..K6 kill-criteria,
+    Objectives list. Most data points await Phase 1 migration; UI flags
+    them with "awaiting Phase 1 migration" pills rather than silent stubs
+    (CONTRACT §A.6).
+    """
+    from app.services.dashboard import compute_dashboard, dashboard_to_dict
+    org_id = _current_org_id(request)
+    data = compute_dashboard(db, org_id)
+    return templates.TemplateResponse(request, "dashboard.html", {
+        "d": dashboard_to_dict(data),
+    })
+
+
+@router.get("/dashboard.json", response_class=JSONResponse)
+def dashboard_json(request: Request, db: Session = Depends(get_db)):
+    """Same data as /ui/dashboard, JSON-encoded. Used by tests + future
+    HTMX partial refresh."""
+    from app.services.dashboard import compute_dashboard, dashboard_to_dict
+    org_id = _current_org_id(request)
+    return JSONResponse(dashboard_to_dict(compute_dashboard(db, org_id)))
+
+
 @router.post("/projects")
 def ui_create_project(
     request: Request,

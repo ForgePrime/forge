@@ -658,3 +658,90 @@ positives on cosmetic edits.
    before merge to `main`. (Settings → Branches → main → Protection rules.)
 2. (Optional) require approval from non-author for branch protection
    distinct-actor enforcement.
+
+---
+
+### §1.16 Task #27 — DashboardView SSR PoC (Option B graceful fallback)
+
+**[2026-04-25 evening]**
+
+User accepted "next" → pivot to task #27 per recommendation.
+
+**Approach: Option B (graceful fallback)** — build the view reading
+existing data + falling back gracefully on Phase 1 columns that don't
+exist yet on prod schema. Per CONTRACT §A.6 false-completeness avoidance:
+unavailable data points render explicit "(awaiting Phase 1 migration)"
+pills, never silent stubs. As columns light up post-migration, the view
+auto-degrades the unavailable flags via `getattr(model, field, None)`
+introspection.
+
+**Artefacts:**
+
+- `platform/app/services/dashboard.py` (~280 LOC) — pure aggregator:
+  - `compute_hero(db, org_id)` — trust-debt + active K6 + open-decisions
+    + open-findings (reuses existing `_compute_trust_debt` from tier1.py)
+  - `compute_metrics(db, org_id)` — M1..M7 with per-metric `available`
+    flag + `awaits` clause documenting what schema/data unblocks it
+  - `compute_kill_criteria(db, org_id)` — K1..K6 with canonical labels
+    from redesign mock; all `available=False` until kill_criteria_event_log
+    table exists
+  - `list_objectives(db, org_id)` — uses `_has_column` introspection on
+    Objective model; fields like `epistemic_tag`/`stage`/`autonomy_pinned`
+    flagged unavailable when migration not applied
+  - `compute_dashboard(db, org_id)` — top-level aggregator
+  - `dashboard_to_dict(d)` — JSON-friendly serialisation
+- `platform/app/templates/dashboard.html` (~170 lines Tailwind+Jinja):
+  - HERO panel with trust-debt index ("⚠ indicative only" badge per
+    ADR-028 D7 since formula not yet Steward-ratified)
+  - M1..M7 grid with per-metric "awaiting Phase 1" pills
+  - K1..K6 grid with stable IDs + descriptions
+  - Objectives table with stage / epistemic / autonomy columns rendering
+    "Phase 1" italic pill where unavailable
+  - Phase 1 readiness footer documenting the 4 unblock steps
+- `platform/app/api/ui.py` — added 2 routes:
+  - `GET /ui/dashboard` → HTML (uses dashboard.html template)
+  - `GET /ui/dashboard.json` → JSON (machine-readable, for tests + future
+    HTMX partial refresh)
+- `platform/tests/test_dashboard_view.py` — **16 tests green**:
+  - `_metric_status` pure-fn classifier (6 tests)
+  - K1..K6 stable IDs + canonical labels match redesign mock (drift sentinel)
+  - M1..M7 stable IDs + Phase 1-blocked metrics flagged unavailable
+  - HeroSnapshot + ObjectiveSummary serialisation contract
+  - Determinism (P6) for kill-criteria
+  - Template Jinja-parse smoke + full TemplateResponse render with
+    minimal Request scope
+
+**Live-verification on running platform:**
+
+- Platform up at http://localhost:8012 (uvicorn auto-reloaded after edit).
+- `curl /health` → HTTP 200
+- `curl /ui/dashboard` → HTTP 303 → `/ui/login?next=/ui/dashboard`
+  (auth middleware working; route is registered; new code is live)
+- Full authenticated rendering pending future user session.
+
+**Honest disclosure (CONTRACT §A.6):**
+
+What works on prod data NOW:
+- HERO trust-debt (4 components from existing entities)
+- HERO open-Decisions / open-Findings counts
+- M2 heuristic (AC source_ref non-NULL ratio) — partial proxy
+- Objectives list (existing fields: external_id, title, status, priority,
+  KR counts, project_slug, autonomy_optout)
+
+What displays "awaiting Phase 1" until migration applied:
+- All of M1, M3, M4, M5, M6, M7 (require Phase 1 schema or other entities)
+- All of K1..K6 (require kill_criteria_event_log table)
+- Objective.stage, .epistemic_tag, .autonomy_pinned columns
+- Trust-debt formula ratification (Steward sign-off pending)
+
+**Cross-ref §14:**
+- §1.16 ← §1.15 (gate substrate complete enables visible UI work)
+- §1.16 → migration application (post-alembic-baseline) which lights
+  up the "awaiting" panels automatically
+
+**State of pending tasks after §1.16:**
+
+| Task | Status |
+|---|---|
+| #27 DashboardView SSR | **completed (PoC)** — 16 tests green; route registered; live 303→login |
+| #28 Deterministic ADR Gate Pipeline | in_progress (Stage 28.1 + 28.2a + 28.4 DONE; 28.2b + 28.3 pending) |
