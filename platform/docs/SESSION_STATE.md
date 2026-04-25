@@ -834,3 +834,88 @@ Pure-stdlib + Pydantic; runs in <5s; no DB / no network.
   values once kill-criteria firing instrumentation + alternatives writes
   + side_effect_map writes happen (not yet wired)
 - §1.17 → Stage 28.2b live PG up/down/up cycle (only remaining 28.* stage)
+
+---
+
+### §1.18 §100 backfill on dev DB + M2 typed metric (autonomous batch follow-up)
+
+**[2026-04-25 evening, same autonomous batch]**
+
+After §1.17 model wiring landed, ran the §100 backfill on dev DB to
+populate the new columns and let DashboardView demonstrate the
+graceful-fallback degradation in real time.
+
+**§1.18.1 — §100 backfill applied (one-off SQL on dev DB):**
+- ADJUSTED heuristic: original draft assumed `tasks.objective_id` FK,
+  but Forge's tasks link to objectives via `tasks.completes_kr_ids ARRAY`
+  (no direct FK). Used `objective.status` + KR progress instead.
+- SQL run via `docker exec -i platform-db-1 psql ... << EOF` block.
+- Outcome [CONFIRMED via psql output]:
+  - `objectives.stage` populated for all 1192 rows:
+    452 VERIFY (status=ACHIEVED) + 2 EXEC (ACTIVE w/ ≥1 ACHIEVED KR) +
+    31 PLAN (ACTIVE w/ KRs but none achieved) + 707 KICKOFF (ACTIVE w/o KRs)
+  - `objectives.autonomy_pinned`: 45 rows set to 'L0' (autonomy_optout=true);
+    1147 rows NULL (follow project default)
+- Disclosure (CONTRACT §A.1): the heuristic is ASSUMED-quality, not
+  CONFIRMED. It maps lifecycle outcome to phase, which is a defensible
+  one-shot proxy but should be re-verified per-objective by Stewards
+  during Phase 1 acceptance review. Not silently "blessed" as truth.
+
+**§1.18.2 — DashboardView M2 typed metric (commit `904ebec`):**
+- `compute_metrics` updated to compute M2 against typed
+  `acceptance_criteria.epistemic_tag` column (the column existed,
+  but the typed-branch was placeholder `available=False`).
+- Counts AC rows with epistemic_tag IN
+  {ADR_CITED, SPEC_DERIVED, EMPIRICALLY_OBSERVED, TOOL_VERIFIED,
+   STEWARD_AUTHORED} / total. NULL + INVENTED count as un-cited.
+- Live result on dev DB [CONFIRMED via SessionLocal smoke run]:
+  M2 = 0.0 / target 0.95, `available=True`, `status=BELOW_TARGET`.
+  Accurate baseline — no AC has been tagged yet; metric will rise as
+  authoring workflow tags ACs.
+- DashboardView "awaiting Phase 1" pill on M2 is **gone**; metric now
+  flows real data.
+- 16 dashboard tests still green after change.
+
+**§1.18.3 — Live DashboardView verification on dev DB (smoke):**
+
+```
+hero.trust_debt_total: 542
+hero.open_decisions: 478
+hero.project_count: 916
+objectives count: 50 (limit; 1192 total)
+first 5 objectives: stage=PLAN, stage_available=True
+M2: 0.0 / 0.95 (BELOW_TARGET; available=True)
+```
+
+DashboardView graceful-fallback path is now visibly degrading:
+- `stage_available=True` for all objectives (column populated)
+- `epistemic_tag` still shows "untagged" pill (column exists, no data)
+- `autonomy_pinned` shows real 'L0' for 45 rows + "—" for the rest
+- M2 shows real 0.0 instead of "awaiting Phase 1" pill
+
+**Final autonomous-batch state:**
+
+| Task | Status | Tests | Lines |
+|---|---|---|---|
+| #29 Apply Phase 1 migration | completed | 5 §101 verifications green | 0 (one-off psql) |
+| #30 Phase 1 SQLAlchemy models | completed | smoke import OK | 374 |
+| #31 Pydantic ImpactDelta | completed | 25 round-trip tests | 105 schema + 175 tests |
+| #32 Stage 28.3 CI wiring | completed | composite gate now requires Stage 28.3 | small wiring |
+| #1.18 backfill + M2 typed | recorded | 16 dashboard tests still green | 32 (M2 update) |
+
+**Total deterministic test count after autonomous batch: 108 tests, <5s runtime.**
+
+**Commits this batch (5):**
+- `0ef2abe` — UX_DESIGN §11 Constellation map (from second session)
+- `f44c973` — Phase 1 SQLAlchemy models
+- `eb7b7a7` — Stage 28.3 Pydantic ImpactDelta + CI wiring
+- `904ebec` — DashboardView M2 typed metric
+
+**Open work remaining at end of batch:**
+- Stage 28.2b live PG up→down→up cycle (Docker dep; ~3-5h)
+- Kill-criteria firing instrumentation (multi-day; per-K-criterion hooks)
+- Trust-debt formula ratification (Steward sign-off)
+- Backfill remaining ADR drift findings (F1, F2 from §1.13)
+
+**Branch state**: `docs/forge-plans-soundness-v1` 5 commits ahead of
+origin start of session (`9a2bbb0`); all pushed to GitHub.
