@@ -1,4 +1,4 @@
-# ADR-004 — Calibration constants (α, τ, W, q_min, risk weights)
+# ADR-004 — Calibration constants (α, τ, W, q_min, risk weights, idempotency TTL)
 
 **Status:** CLOSED (content DRAFT — engineering defaults pending calibration-study supersession + distinct-actor review per ADR-003) [ASSUMED: engineering-default values, solo-author per CONTRACT §B.8]
 **Date:** 2026-04-24
@@ -54,6 +54,15 @@ The constants:
 - **Supersession trigger**: post-launch Steward reviews top-10 severe historical incidents; any FailureMode representing ≥20% of incident severity gets weight ≥ 2× average. Superseding ADR.
 - **[ASSUMED: uniform is worst-calibration starting point acknowledged per ADR-004 §Alternatives B; intentionally starts "wrong" to force recalibration via signal accumulation]**
 
+### idempotency_ttl (A.5 MCP idempotency)
+- **Starting value**: `idempotency_ttl = 86400 seconds (24 hours)`
+- **Applies to**: TTL boundary on `idempotent_calls.expires_at` per (tool, idempotency_key, args_hash) cache entry. Within TTL, duplicate calls return cached result; after TTL, the entry is stale and the next call re-executes (overwriting the entry with a new TTL).
+- **Computation**: `expires_at = now() + idempotency_ttl` at the moment of cache write.
+- **Rationale**: 24h covers typical retry windows (CI re-runs, manual operator retries, webhook re-deliveries from GitHub) without indefinitely caching stale state. Most Executions complete in < 15 min per MVP_SCOPE latency target; 24h is ~100x that = comfortable safety margin.
+- **Per-tool override path**: future ADR may specify different TTL per tool (e.g. `forge_decision` longer than `forge_finding`); for MVP a single global value suffices.
+- **Supersession trigger**: if observed cache hit rate after expiry shows users actually want longer caching (analytics from `idempotent_calls` row counts vs. observed retries), widen. If stale-result complaints surface, narrow.
+- **[ASSUMED: 86400s is engineering-default per common HTTP idempotency-key conventions (Stripe = 24h); real value pending production-traffic calibration]**
+
 ### ADR-013 N=3 retry limit
 - Not originally in ADR-004 scope but linked here: challenger-refuted retry limit = 3 (per ADR-013). Tracked as calibration constant.
 
@@ -106,7 +115,47 @@ COMPENSATABLE — values revisable via new ADR superseding this one. But histori
 
 none
 
+## Quick reference — machine-grepable constant table
+
+Each constant appears in `- key: value` bullet form so PLAN_PRE_FLIGHT
+T_{0.2} grep predicates can verify presence deterministically. All
+values [ASSUMED: engineering-default-pending-calibration-study] unless
+noted.
+
+- W: 30 days
+- q_min[L1.success_rate]: 0.5
+- q_min[L1.rollback_rate]: 0.5
+- q_min[L1.evidence_sufficiency]: 0.5
+- q_min[L1.confabulation_rate]: 0.5
+- q_min[L2.success_rate]: 0.6
+- q_min[L2.rollback_rate]: 0.6
+- q_min[L2.evidence_sufficiency]: 0.6
+- q_min[L2.confabulation_rate]: 0.6
+- q_min[L3.success_rate]: 0.7
+- q_min[L3.rollback_rate]: 0.7
+- q_min[L3.evidence_sufficiency]: 0.7
+- q_min[L3.confabulation_rate]: 0.7
+- q_min[L4.success_rate]: 0.8
+- q_min[L4.rollback_rate]: 0.8
+- q_min[L4.evidence_sufficiency]: 0.8
+- q_min[L4.confabulation_rate]: 0.8
+- q_min[L5.success_rate]: 0.9
+- q_min[L5.rollback_rate]: 0.9
+- q_min[L5.evidence_sufficiency]: 0.9
+- q_min[L5.confabulation_rate]: 0.9
+- tau: 0.01
+- alpha[capability_default]: 0.8
+- idempotency_ttl: 86400
+- clock_skew_tolerance: 5
+- impact_closure_review_cost_threshold: 100
+
+(Note: `q_min` has 20 entries = 4 components × 5 levels; PLAN_PRE_FLIGHT
+T_{0.2} grep `^- q_min\[` expects ≥20 matches. Same convention extends
+when adding per-capability `alpha[<capability>]` bullets — current MVP
+uses single uniform `alpha[capability_default]`.)
+
 ## Versioning
 
 - v1 (2026-04-24) — skeleton OPEN.
 - v2 (2026-04-24) — CLOSED on engineering-default values tagged [ASSUMED: pending-calibration-study]; α=0.8 uniform, τ=0.01, W=30d, q_min linear 0.5→0.9 per L1-L5, w_m=1/|M| uniform sum-to-1; mandatory supersession after 3 months production data. Content DRAFT.
+- v2.1 (2026-04-25) — added `idempotency_ttl = 86400s` to close PLAN_GATE_ENGINE A.5 entry-condition gap. Tagged [ASSUMED: engineering-default per Stripe-style 24h convention]. Added quick-reference section in machine-grepable `- key: value` form so PLAN_PRE_FLIGHT T_{0.2} grep predicates verify deterministically. Also added explicit values for `clock_skew_tolerance: 5 seconds` and `impact_closure_review_cost_threshold: 100` (referenced by FORMAL §7 but missing from v2 enumeration). Same content-DRAFT status.
