@@ -169,6 +169,73 @@ def test_enforce_mode_passes_other_decision_transitions_without_evidence():
 # --- StateTransitionRejected exception structure ------------------------
 
 
+def test_post_commit_hook_runs_after_status_set_in_off_mode():
+    """post_commit fires after entity.status mutation succeeds (off mode)."""
+    entity = _FakeEntity(status="OPEN")
+    seen_status: list[str] = []
+
+    def hook():
+        seen_status.append(entity.status)
+
+    commit_status_transition(
+        entity, entity_type="decision", target_state="ANALYZING",
+        mode="off", post_commit=hook,
+    )
+    assert entity.status == "ANALYZING"
+    assert seen_status == ["ANALYZING"]  # observed AFTER the transition
+
+
+def test_post_commit_hook_runs_in_shadow_mode():
+    entity = _FakeEntity(status="OPEN")
+    calls: list[int] = []
+
+    def hook():
+        calls.append(1)
+
+    commit_status_transition(
+        entity, entity_type="decision", target_state="ANALYZING",
+        mode="shadow", post_commit=hook,
+    )
+    assert entity.status == "ANALYZING"
+    assert calls == [1]
+
+
+def test_post_commit_hook_failure_logged_not_raised():
+    """A hook that raises must NOT propagate out of commit_status_transition.
+    The transition succeeds, the hook failure is logged at WARNING."""
+    entity = _FakeEntity(status="OPEN")
+
+    def boom():
+        raise RuntimeError("hook crashed")
+
+    # Must not raise
+    commit_status_transition(
+        entity, entity_type="decision", target_state="ANALYZING",
+        mode="off", post_commit=boom,
+    )
+    assert entity.status == "ANALYZING"
+
+
+def test_post_commit_hook_does_not_fire_in_enforce_when_rejected():
+    """If enforce-mode rule rejects the transition, status is NOT set
+    AND post_commit MUST NOT fire (no transition observed)."""
+    entity = _FakeEntity(status="ANALYZING")
+    calls: list[int] = []
+
+    def hook():
+        calls.append(1)
+
+    # ANALYZING -> ACCEPTED requires evidence; provide none → REJECTED
+    with pytest.raises(StateTransitionRejected):
+        commit_status_transition(
+            entity, entity_type="decision", target_state="ACCEPTED",
+            evidence=(),  # empty → P16 rejects
+            mode="enforce", post_commit=hook,
+        )
+    assert entity.status == "ANALYZING"  # unchanged
+    assert calls == []  # hook never invoked
+
+
 def test_state_transition_rejected_carries_diagnostics():
     """Exception fields are populated for caller's logging."""
     entity = _FakeEntity(status="ANALYZING", id=42)

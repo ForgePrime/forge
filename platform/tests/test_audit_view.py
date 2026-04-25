@@ -141,6 +141,90 @@ def test_audit_template_handles_filter_state():
 # --- Live DB end-to-end (real audit data) ----------------------------------
 
 
+# --- Dismissal flow ---------------------------------------------------------
+
+
+def test_audit_template_renders_dismissed_badge(db_session):
+    """When a dismissal Decision exists for a K-event, the row shows
+    a 'Dismissed by DEC-X' badge instead of the Dismiss form."""
+    proj = Project(slug=f"audit-dismiss-{dt.datetime.now().timestamp()}", name="t", goal="t")
+    db_session.add(proj)
+    db_session.flush()
+    dec = Decision(
+        project_id=proj.id, external_id="DEC-AUDIT-2",
+        type="root_cause", issue="i", recommendation="r", status="OPEN",
+    )
+    db_session.add(dec)
+    db_session.flush()
+    log_kill_criterion(db_session, "K4", "test K4 event for dismissal", decision_id=dec.id)
+    db_session.flush()
+    event_row = (
+        db_session.query(KillCriteriaEventLog)
+        .filter(KillCriteriaEventLog.decision_id == dec.id)
+        .one()
+    )
+    # Create a dismissal Decision matching the external_id pattern
+    override = Decision(
+        project_id=proj.id,
+        external_id=f"KC-OVERRIDE-{event_row.id}",
+        type="kc_override",
+        issue=f"Steward dismissal of K-event #{event_row.id}",
+        recommendation="distinct-actor exception per ADR-012 human-in-loop",
+        status="ACCEPTED",
+    )
+    db_session.add(override)
+    db_session.flush()
+
+    counts = {f"K{i}": 0 for i in range(1, 7)}
+    counts["K4"] = 1
+    resp = templates.TemplateResponse(_stub_request(), "audit.html", {
+        "rows": [event_row],
+        "total_rows": 1,
+        "code_counts": counts,
+        "selected_kc": "K4",
+        "selected_window": "24h",
+        "dismissals": {event_row.id: override},
+    })
+    body = resp.body.decode("utf-8")
+    assert f"Dismissed by DEC-{override.id}" in body
+    # Dismiss form should NOT be rendered when already dismissed
+    assert f"audit/dismiss/{event_row.id}" not in body
+
+
+def test_audit_template_renders_dismiss_button_when_active(db_session):
+    """When no dismissal exists, Dismiss button + form are visible."""
+    proj = Project(slug=f"audit-active-{dt.datetime.now().timestamp()}", name="t", goal="t")
+    db_session.add(proj)
+    db_session.flush()
+    dec = Decision(
+        project_id=proj.id, external_id="DEC-ACTIVE-1",
+        type="root_cause", issue="i", recommendation="r", status="OPEN",
+    )
+    db_session.add(dec)
+    db_session.flush()
+    log_kill_criterion(db_session, "K4", "active K4 needing dismiss button", decision_id=dec.id)
+    db_session.flush()
+    event_row = (
+        db_session.query(KillCriteriaEventLog)
+        .filter(KillCriteriaEventLog.decision_id == dec.id)
+        .one()
+    )
+    counts = {f"K{i}": 0 for i in range(1, 7)}
+    counts["K4"] = 1
+    resp = templates.TemplateResponse(_stub_request(), "audit.html", {
+        "rows": [event_row],
+        "total_rows": 1,
+        "code_counts": counts,
+        "selected_kc": "K4",
+        "selected_window": "24h",
+        "dismissals": {},  # none dismissed
+    })
+    body = resp.body.decode("utf-8")
+    assert f"audit/dismiss/{event_row.id}" in body
+    assert "Confirm dismiss" in body
+    assert "active" in body  # status badge
+
+
 def test_audit_template_renders_with_real_27_k4_events(db_session):
     """Smoke check that the actual 27 K4 events from §1.21 audit are visible
     in the rendered template. If the audit was wiped (DELETE FROM), test

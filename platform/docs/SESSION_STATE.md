@@ -1281,3 +1281,72 @@ Compliance/Steward surface for K-event review.
   protocol; UI not yet wired
 - 27 historical K4 findings — Steward review (case-by-case dismiss vs
   treat as real)
+
+---
+
+### §1.24 post_commit hook + Steward dismissal flow + K3 schema-blocked disclosure
+
+**[2026-04-25 evening]**
+
+User: "pierwsze z brzegu, ale wykonaj kilka zadań w jednej sesji" — three
+chained items in one batch.
+
+**§1.24.1 — `commit_status_transition` post_commit hook (generic substrate):**
+
+- New optional `post_commit: Callable[[], None] | None = None` parameter.
+- Fires AFTER successful status mutation in all 3 modes (off/shadow/enforce).
+- Failures caught + logged at WARNING — never propagate to caller.
+- Does NOT fire when enforce-mode rule rejects (transition didn't happen).
+- 4 new tests: off-mode runs, shadow-mode runs, hook-crash logged-not-raised,
+  enforce-reject-skips-hook.
+- All 17 state_transition tests green.
+
+This is the foundational substrate for K1/K2/K3 auto-instrumentation
+without modifying every callsite of `commit_status_transition`. Future
+hooks pass `post_commit=lambda: detect_k1(...)` etc.
+
+**§1.24.2 — Steward dismissal flow:**
+
+- `POST /ui/audit/dismiss/{event_id}` endpoint:
+  - Validates K-event exists + visible to current org (tenant scope via
+    decision_id → project_id, OR task_id → project_id, OR fallback to
+    first visible project)
+  - Idempotent: re-dismiss returns 303 redirect (existing override
+    Decision matched by external_id pattern `KC-OVERRIDE-{event_id}`)
+  - Creates Decision with: `type='kc_override'`, `status=ACCEPTED`,
+    `epistemic_tag=STEWARD_AUTHORED`, `recommendation=<reason>`,
+    `task_id=<from event>`, `external_id=KC-OVERRIDE-<event_id>`
+  - Reason: 10–2000 chars (Form validation)
+- `audit_view` extended: LEFT JOIN Decisions matching `KC-OVERRIDE-*`
+  pattern; render "✓ Dismissed by DEC-N" badge OR Dismiss button per row
+- `audit.html` template: Status column + Action column with `<details>`
+  collapsible Dismiss form (textarea + submit button)
+- 2 new tests: dismissed-badge render, active-button render
+- Live-DB smoke: K-event #74 (task#28) resolves to project#3 via task FK;
+  external_id pattern matches; flow ready
+
+**Append-only invariant preserved:** the K-event log row is NEVER
+edited/deleted. Dismissal is recorded as a sibling Decision joined by
+`external_id` pattern. No FK column added to KillCriteriaEventLog.
+
+**§1.24.3 — K3 detector status: schema-blocked (disclosure §A.6):**
+
+K3 ("Tier downgrade without Steward sign") requires a tier classification
+on entities (data_class.tier per redesign mock). Forge's current schema
+has NO tier or data_classification field on any entity (verified via
+grep `tier|classification` over `app/models/*.py`). Implementing K3
+requires a separate ADR + migration. Documented and deferred —
+**`detect_k3_*` helper not added in this batch**.
+
+**Cumulative session totals after §1.24:**
+
+| Metric | Value |
+|---|---|
+| Commits ahead of session start | 13 |
+| Deterministic test count | 148 (145 + 3 new dismissal/audit/hook) |
+| K-detectors implemented | K1, K2, K4 (idempotent) |
+| K-detectors auto-instrumented | K4 only (in pipeline.py) |
+| K-detectors schema-blocked | K3, K5, K6 |
+| Dashboard panels w/ real data | HERO + M2 + K1 + K2 + K4 + Objectives |
+| Steward UI flows | /ui/audit list + dismissal POST |
+| New routes since session start | /dashboard, /dashboard.json, /audit, /audit.json, /audit/dismiss |

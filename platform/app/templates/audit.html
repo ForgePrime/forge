@@ -81,7 +81,8 @@
                 <th class="px-3 py-2 text-left">K-code</th>
                 <th class="px-3 py-2 text-left">Entity ref</th>
                 <th class="px-3 py-2 text-left">Reason</th>
-                <th class="px-3 py-2 text-left">Evidence</th>
+                <th class="px-3 py-2 text-left">Status</th>
+                <th class="px-3 py-2 text-left">Action</th>
             </tr>
         </thead>
         <tbody>
@@ -112,7 +113,33 @@
                     <div class="max-w-md truncate" title="{{ row.reason }}">{{ row.reason }}</div>
                 </td>
                 <td class="px-3 py-2 text-xs">
-                    {% if row.evidence_set_id %}<span class="mono">ES#{{ row.evidence_set_id }}</span>{% else %}<span class="text-slate-400">—</span>{% endif %}
+                    {% set dismissal = (dismissals or {}).get(row.id) %}
+                    {% if dismissal %}
+                    <span class="text-xs px-2 py-0.5 bg-slate-200 text-slate-700 rounded mono"
+                          title="{{ dismissal.recommendation | truncate(120) }}">
+                        ✓ Dismissed by DEC-{{ dismissal.id }}
+                    </span>
+                    {% else %}
+                    <span class="text-xs px-2 py-0.5 bg-rose-50 text-rose-700 rounded">active</span>
+                    {% endif %}
+                </td>
+                <td class="px-3 py-2 text-xs">
+                    {% if not (dismissals or {}).get(row.id) %}
+                    <details>
+                        <summary class="cursor-pointer text-blue-600 hover:underline text-xs">Dismiss</summary>
+                        <form method="post" action="/ui/audit/dismiss/{{ row.id }}" class="mt-2 space-y-1">
+                            {# CSRF token from middleware: client reads forge_csrf cookie. #}
+                            <input type="hidden" name="X-CSRF-Token" value="">
+                            <textarea name="reason" required minlength="10" maxlength="2000" rows="3"
+                                      placeholder="Steward justification (min 10 chars) — e.g. 'distinct-actor exception per ADR-012 human-in-loop override'"
+                                      class="w-64 border border-slate-300 rounded px-2 py-1 text-xs"></textarea>
+                            <button type="submit"
+                                    class="bg-amber-600 text-white px-2 py-1 rounded text-xs hover:bg-amber-700">
+                                Confirm dismiss
+                            </button>
+                        </form>
+                    </details>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

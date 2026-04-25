@@ -283,6 +283,16 @@ def dashboard_json(request: Request, db: Session = Depends(get_db)):
     return JSONResponse(dashboard_to_dict(compute_dashboard(db, org_id)))
 
 
+def _dismissal_external_id(event_id: int) -> str:
+    """Stable external_id pattern for Steward dismissal Decisions.
+
+    Used as a join key from kill_criteria_event_log → decisions so the
+    /ui/audit view can render "Dismissed by DEC-X" badges without adding
+    a new FK column (append-only audit log invariant per Phase 1 §6).
+    """
+    return f"KC-OVERRIDE-{event_id}"
+
+
 @router.get("/audit", response_class=HTMLResponse)
 def audit_view(
     request: Request,
@@ -349,13 +359,130 @@ def audit_view(
     # Now add order_by + limit for the actual row fetch.
     rows = counted_q.order_by(KillCriteriaEventLog.fired_at.desc()).limit(200).all()
 
+    # Dismissal lookup: build map event_id -> Decision (if a kc_override
+    # Decision was filed). The external_id pattern KC-OVERRIDE-<event_id>
+    # is the join key (append-only audit log invariant — no FK on
+    # kill_criteria_event_log).
+    dismissal_keys = [_dismissal_external_id(r.id) for r in rows]
+    dismissal_map: dict[int, Decision] = {}
+    if dismissal_keys:
+        dismissal_rows = (
+            db.query(Decision)
+            .filter(Decision.external_id.in_(dismissal_keys))
+            .all()
+        )
+        for d in dismissal_rows:
+            try:
+                eid = int(d.external_id.replace("KC-OVERRIDE-", ""))
+                dismissal_map[eid] = d
+            except (ValueError, AttributeError):
+                pass
+
     return templates.TemplateResponse(request, "audit.html", {
         "rows": rows,
         "total_rows": total_rows,
         "code_counts": code_counts,
         "selected_kc": kc,
         "selected_window": window,
+        "dismissals": dismissal_map,
     })
+
+
+@router.post("/audit/dismiss/{event_id}")
+def audit_dismiss(
+    event_id: int,
+    request: Request,
+    reason: str = Form(..., min_length=10, max_length=2000),
+    db: Session = Depends(get_db),
+):
+    """Steward dismissal flow for a K-event.
+
+    Records a Decision with `type='kc_override'` referencing the K-event
+    via the stable external_id pattern `KC-OVERRIDE-{event_id}`. The
+    K-event row itself is never edited or deleted (append-only audit).
+
+    The Decision carries:
+      - epistemic_tag = STEWARD_AUTHORED
+      - status = ACCEPTED (Steward sign-off recorded inline)
+      - issue = describes the K-event being dismissed
+      - recommendation = the Steward's dismissal reason
+
+    Org-tenant isolation: the K-event must reference a Decision visible
+    to the current org (via decision_id link to org's projects).
+    """
+    from app.models import KillCriteriaEventLog
+    org_id = _current_org_id(request)
+    project_ids = []
+    q = db.query(Project)
+    if org_id is not None:
+        q = q.filter(Project.organization_id == org_id)
+    project_ids = [p.id for p in q.all()]
+
+    event = db.query(KillCriteriaEventLog).filter(KillCriteriaEventLog.id == event_id).one_or_none()
+    if event is None:
+        raise HTTPException(404, "K-event not found")
+
+    # Tenant scope: if event has a decision_id, that decision must belong
+    # to a visible project. Events with no decision ref are visible only
+    # to events with at least one entity in scope (objective/task).
+    if event.decision_id is not None:
+        owning_project = (
+            db.query(Decision.project_id)
+            .filter(Decision.id == event.decision_id)
+            .scalar()
+        )
+        if owning_project is not None and project_ids and owning_project not in project_ids:
+            raise HTTPException(404, "K-event not visible to current org")
+
+    # Reject duplicate dismissal (idempotent: external_id is UNIQUE-shaped).
+    external_id = _dismissal_external_id(event_id)
+    existing = (
+        db.query(Decision)
+        .filter(Decision.external_id == external_id)
+        .one_or_none()
+    )
+    if existing is not None:
+        # Already dismissed; redirect back rather than 409
+        return RedirectResponse(url="/ui/audit", status_code=303)
+
+    # Determine project_id for the override Decision: prefer the K-event's
+    # decision's project; else derive from task; else first visible project.
+    target_project_id: int | None = None
+    if event.decision_id is not None:
+        target_project_id = (
+            db.query(Decision.project_id)
+            .filter(Decision.id == event.decision_id)
+            .scalar()
+        )
+    if target_project_id is None and event.task_id is not None:
+        target_project_id = (
+            db.query(Task.project_id)
+            .filter(Task.id == event.task_id)
+            .scalar()
+        )
+    if target_project_id is None and project_ids:
+        target_project_id = project_ids[0]
+    if target_project_id is None:
+        raise HTTPException(400, "no project available to attach the override Decision")
+    # Tenant boundary check on resolved project (when scope is non-empty)
+    if project_ids and target_project_id not in project_ids:
+        raise HTTPException(404, "K-event not visible to current org")
+
+    from app.models import EpistemicTag
+    override = Decision(
+        project_id=target_project_id,
+        external_id=external_id,
+        type="kc_override",
+        issue=f"Steward dismissal of K-event #{event_id} ({event.kc_code})",
+        recommendation=reason,
+        status="ACCEPTED",
+        epistemic_tag=EpistemicTag.STEWARD_AUTHORED,
+        execution_id=None,
+        task_id=event.task_id,
+    )
+    db.add(override)
+    db.commit()
+    return RedirectResponse(url="/ui/audit", status_code=303)
 
 
 @router.get("/audit.json", response_class=JSONResponse)

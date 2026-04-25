@@ -27,12 +27,15 @@ permitted transition explicitly per A.2 spec.
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+from typing import Any, Callable
 
 from app.config import settings
 from app.validation import gate_registry as gr
 from app.validation.rule_adapter import EvaluationContext
 from app.validation.verdict_engine import VerdictEngine
+
+_log = logging.getLogger(__name__)
 
 
 class StateTransitionRejected(Exception):
@@ -62,6 +65,7 @@ def commit_status_transition(
     artifact: dict | None = None,
     evidence: tuple[int, ...] = (),
     mode: str | None = None,
+    post_commit: Callable[[], None] | None = None,
 ) -> None:
     """Set entity.status = target_state through the gate machinery.
 
@@ -77,6 +81,12 @@ def commit_status_transition(
         evidence: optional tuple of EvidenceSet IDs (consumed by P16
             EvidenceLinkRequiredRule etc.).
         mode: override of settings.verdict_engine_mode (for tests).
+        post_commit: optional zero-arg callable invoked AFTER the status
+            mutation succeeds. Used for kill-criteria auto-instrumentation
+            and other side-effects that must observe the new state. Failures
+            are caught + logged at WARNING level — they NEVER raise into
+            the caller's transaction. Per CONTRACT §A.6: a hook that needs
+            transactional rollback semantics must NOT be wrapped here.
 
     Raises:
         StateTransitionRejected: only in 'enforce' mode AND only when
@@ -84,14 +94,26 @@ def commit_status_transition(
 
     Side effect:
         Sets entity.status = target_state (always in 'off'/'shadow';
-        only on PASS in 'enforce').
+        only on PASS in 'enforce'). Then invokes post_commit if provided.
     """
     effective_mode = mode if mode is not None else settings.verdict_engine_mode
     from_state = getattr(entity, "status", None) or "__init__"
 
+    def _run_post_commit() -> None:
+        if post_commit is None:
+            return
+        try:
+            post_commit()
+        except Exception as e:  # noqa: BLE001 — must never propagate
+            _log.warning(
+                "post_commit hook failed for %s %s -> %s: %s",
+                entity_type, from_state, target_state, e,
+            )
+
     if effective_mode == "off":
         # Cutover-safe default: identical behaviour to direct assignment.
         entity.status = target_state
+        _run_post_commit()
         return
 
     # Build evaluation context.
@@ -128,11 +150,13 @@ def commit_status_transition(
             # at every call site.)
         # Registered with empty rules: allow through.
         entity.status = target_state
+        _run_post_commit()
         return
 
     verdict = VerdictEngine.evaluate(ctx, rules=rules)
     if verdict.passed:
         entity.status = target_state
+        _run_post_commit()
         return
 
     if effective_mode == "enforce":
@@ -149,3 +173,4 @@ def commit_status_transition(
     # pure state-transition path the disclosure is the rule_code +
     # reason returned to caller (or just permitted silently here).
     entity.status = target_state
+    _run_post_commit()
