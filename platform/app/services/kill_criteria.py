@@ -37,11 +37,14 @@ from sqlalchemy import func as sqlfunc
 from sqlalchemy.orm import Session
 
 from app.models import (
+    AcceptanceCriterion,
     Decision,
     Execution,
     KillCriteriaEventLog,
+    LLMCall,
     Project,
     SideEffectMap,
+    Task,
 )
 
 
@@ -144,6 +147,100 @@ def detect_k1_unowned_side_effects(
     return out
 
 
+def detect_k2_uncited_ac_in_verify(
+    db: Session,
+    ac_id: int,
+) -> KillCriteriaEventLog | None:
+    """K2 — ADR-uncited AC reached Verify: AcceptanceCriterion has been
+    verified (last_executed_at set) but epistemic_tag is NULL or INVENTED.
+
+    Returns the K2 event row if logged, else None.
+
+    "Reached Verify" is a fuzzy lifecycle term in the redesign mock; in
+    Forge's data model, an AC is considered verified once it has a
+    `last_executed_at` timestamp (B1 trust-debt counter semantics). The
+    epistemic_tag enum values that count as "cited" are everything EXCEPT
+    `INVENTED` (and NULL).
+    """
+    ac = db.query(AcceptanceCriterion).filter(AcceptanceCriterion.id == ac_id).one_or_none()
+    if ac is None:
+        return None
+    if ac.last_executed_at is None:
+        # AC has not been verified — K2 doesn't apply yet.
+        return None
+    # Cited statuses: anything except NULL or INVENTED
+    tag = getattr(ac, "epistemic_tag", None)
+    if tag is not None and str(tag).upper() not in ("INVENTED", "EPISTEMICTAG.INVENTED"):
+        # Tagged as something other than INVENTED → cited.
+        return None
+    # Resolve the task_id ref for entity scope
+    task_id = ac.task_id
+    reason = (
+        f"K2 fired: AcceptanceCriterion.id={ac.id} reached verify "
+        f"(last_executed_at={ac.last_executed_at}) with epistemic_tag={tag!r} "
+        f"(NULL or INVENTED treated as un-cited)"
+    )
+    event = log_kill_criterion(db, "K2", reason, task_id=task_id)
+    return event
+
+
+def detect_k4_solo_verifier(
+    db: Session,
+    execution_id: int,
+) -> KillCriteriaEventLog | None:
+    """K4 — Solo-verifier: the LLMCall with purpose='challenge' on this
+    Execution uses the same model as the LLMCall with purpose='execute'.
+
+    Per ADR-012 distinct-actor: challenger MUST use a different model
+    OR a human-in-loop. K4 fires when the challenger model == executor
+    model AND no human-in-loop indicator (out-of-scope here; assumed False).
+
+    Returns the K4 event row if logged, else None.
+
+    Limitations (CONTRACT §A.1 disclosure):
+    - 'human-in-loop' is not encoded on LLMCall in current schema; this
+      detector treats every same-model executor+challenger pair as K4.
+      Steward override path (per ADR-012) is not modelled here.
+    - If multiple challenge calls exist (retries), only the first is
+      compared — refine when retry semantics matter.
+    """
+    # Find executor model
+    exec_call = (
+        db.query(LLMCall)
+        .filter(LLMCall.execution_id == execution_id)
+        .filter(LLMCall.purpose == "execute")
+        .order_by(LLMCall.id.asc())
+        .first()
+    )
+    challenge_call = (
+        db.query(LLMCall)
+        .filter(LLMCall.execution_id == execution_id)
+        .filter(LLMCall.purpose == "challenge")
+        .order_by(LLMCall.id.asc())
+        .first()
+    )
+    if exec_call is None or challenge_call is None:
+        # No executor/challenger pair → K4 doesn't apply
+        return None
+
+    exec_model = exec_call.model_used or exec_call.model
+    challenge_model = challenge_call.model_used or challenge_call.model
+    if exec_model != challenge_model:
+        return None
+
+    # Resolve task_id via Execution → Task
+    exec_row = db.query(Execution).filter(Execution.id == execution_id).one_or_none()
+    task_id = exec_row.task_id if exec_row is not None else None
+
+    reason = (
+        f"K4 fired: solo-verifier on execution_id={execution_id}: "
+        f"executor LLMCall.id={exec_call.id} model={exec_model!r} == "
+        f"challenger LLMCall.id={challenge_call.id} model={challenge_model!r}"
+    )
+    event = log_kill_criterion(db, "K4", reason, task_id=task_id)
+    return event
+
+
 def tripped_in_last_24h(
     db: Session,
     kc_code: str,
@@ -200,5 +297,7 @@ __all__ = [
     "VALID_KC_CODES",
     "log_kill_criterion",
     "detect_k1_unowned_side_effects",
+    "detect_k2_uncited_ac_in_verify",
+    "detect_k4_solo_verifier",
     "tripped_in_last_24h",
 ]

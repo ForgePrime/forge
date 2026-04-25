@@ -1071,3 +1071,75 @@ K-criteria). All offline validators run in <2s; live DB tests in ~1s.
 | (open) K-criteria instrumentation wiring | not started — separate per-K decision |
 | (open) Trust-debt formula ratification | governance, not code |
 | (open) Retro-fix ADR drift F1/F2 | low-priority cleanup |
+
+---
+
+### §1.21 K2 + K4 detectors + audit script + first real K4 findings
+
+**[2026-04-25 evening, autonomous batch continued]**
+
+Built K2 (ADR-uncited AC) and K4 (solo-verifier) detectors. Added
+ad-hoc audit script. Ran audit on real dev DB → **first concrete
+K-events surfaced**: 27 historical executions where executor and
+challenger LLMCalls used the same model (ADR-012 distinct-actor
+violations).
+
+**Artefacts:**
+
+- `platform/app/services/kill_criteria.py` extended with:
+  - `detect_k2_uncited_ac_in_verify(db, ac_id)` — fires K2 when AC has
+    `last_executed_at` set but `epistemic_tag` ∈ {NULL, INVENTED}
+  - `detect_k4_solo_verifier(db, execution_id)` — fires K4 when
+    LLMCall(purpose='execute').model_used == LLMCall(purpose='challenge').model_used
+    Per ADR-012; uses model_used (post-fallback) in preference to model.
+- `platform/scripts/audit_kill_criteria.py` (~170 LOC) — read-only by
+  default (dry-run); `--record` writes K-events to log; `--json` for
+  machine-readable; `--kc K1,K2,K4` filter.
+- `platform/tests/test_kill_criteria_service.py` extended → 22 tests
+  total (was 13). New tests:
+  - K2 fires on NULL + INVENTED, quiet on cited + un-verified + missing AC
+  - K4 fires on same-model, quiet on different-model + missing-challenger
+  - K4 uses model_used (post-fallback) when set
+
+**Audit results on dev DB [CONFIRMED via `python -m scripts.audit_kill_criteria`]:**
+
+```
+K1: Unowned side-effect — 0 unowned rows (table empty)
+K2: ADR-uncited AC reached Verify — 0 verified AC (no AC has
+    last_executed_at set; legacy AC pre-Phase-1)
+K4: Solo-verifier — 27 of 29 executions tripped K4
+    (executions with both execute + challenge calls)
+```
+
+**K4 events recorded** (`--record` flag): 27 rows written to
+`kill_criteria_event_log`. DashboardView K4 panel now shows
+**"27× last 24h"** (real data, not awaiting):
+
+```
+K4: tripped_24h=27  last_at=2026-04-25 19:39:19.05650  available=True
+```
+
+**Significance:** these are LEGITIMATE distinct-actor violations
+that existed before instrumentation. The K4 detector retroactively
+surfaced them. Each row has full reason text identifying the executor
+model + challenger model + LLMCall.id refs.
+
+**Disclosure (CONTRACT §A.6):**
+- The `audit_kill_criteria.py --record` mutates DB by writing 27 audit
+  rows. This is append-only (audit log; no business data altered).
+  Documented here per §A.5 (selective context).
+- K4 detector treats every same-model executor+challenger pair as
+  violation. Steward-override path (ADR-012 human-in-loop exception)
+  is NOT modelled in current schema — no LLMCall.human_in_loop column.
+  These 27 events may include legitimate Steward overrides; they would
+  need per-event review to dismiss.
+
+**Cumulative test count: 132 + 9 K2/K4 tests = 141 deterministic
+gate-pipeline + dashboard + K-criteria tests, <8s runtime.**
+
+**Cross-ref §14:**
+- §1.21 ← §1.20 (writer + dashboard wiring; need to consume the API)
+- §1.21 → next: K3/K5/K6 detectors require schema/process work
+  (tier model, gate-spectrum taxonomy, contract drift metric); 
+  optionally retro-fix the 27 K4 findings via Steward audit; or wire
+  K1 detection auto-instrumentation into state_transition.

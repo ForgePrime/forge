@@ -29,9 +29,12 @@ try:
     from app.services.kill_criteria import (
         VALID_KC_CODES,
         detect_k1_unowned_side_effects,
+        detect_k2_uncited_ac_in_verify,
+        detect_k4_solo_verifier,
         log_kill_criterion,
         tripped_in_last_24h,
     )
+    from app.models import AcceptanceCriterion, LLMCall, Task
 except Exception as e:  # pragma: no cover
     pytest.skip(f"DB-dependent imports failed: {e}", allow_module_level=True)
 
@@ -249,3 +252,165 @@ def test_tripped_in_last_24h_empty_project_list_returns_zero(db_session):
 
 def test_valid_kc_codes_is_complete():
     assert VALID_KC_CODES == {"K1", "K2", "K3", "K4", "K5", "K6"}
+
+
+# --- K2: detect_k2_uncited_ac_in_verify -------------------------------------
+
+
+_ac_position_counter = [0]
+
+
+def _make_ac(db_session, task, *, source_ref=None, last_executed_at=None, epistemic_tag=None):
+    _ac_position_counter[0] += 1
+    ac = AcceptanceCriterion(
+        task_id=task.id,
+        position=_ac_position_counter[0],
+        text="The system MUST do the thing in the prescribed manner X.",
+        scenario_type="positive",
+        verification="manual",
+        source_ref=source_ref,
+        last_executed_at=last_executed_at,
+        epistemic_tag=epistemic_tag,
+    )
+    db_session.add(ac)
+    db_session.flush()
+    return ac
+
+
+def test_detect_k2_fires_when_ac_verified_and_untagged(db_session, project_decision):
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    ac = _make_ac(
+        db_session, task,
+        last_executed_at=dt.datetime.now(dt.timezone.utc),
+        epistemic_tag=None,
+    )
+    event = detect_k2_uncited_ac_in_verify(db_session, ac.id)
+    assert event is not None
+    assert event.kc_code == "K2"
+    assert event.task_id == task.id
+    assert "epistemic_tag=None" in event.reason or "INVENTED" in event.reason or "None" in event.reason
+
+
+def test_detect_k2_fires_when_ac_verified_and_invented(db_session, project_decision):
+    from app.models import EpistemicTag
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    ac = _make_ac(
+        db_session, task,
+        last_executed_at=dt.datetime.now(dt.timezone.utc),
+        epistemic_tag=EpistemicTag.INVENTED,
+    )
+    event = detect_k2_uncited_ac_in_verify(db_session, ac.id)
+    assert event is not None
+    assert event.kc_code == "K2"
+
+
+def test_detect_k2_quiet_when_ac_not_verified_yet(db_session, project_decision):
+    """AC without last_executed_at = not-yet-verified → K2 doesn't apply."""
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    ac = _make_ac(db_session, task, last_executed_at=None, epistemic_tag=None)
+    event = detect_k2_uncited_ac_in_verify(db_session, ac.id)
+    assert event is None
+
+
+def test_detect_k2_quiet_when_ac_cited(db_session, project_decision):
+    from app.models import EpistemicTag
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    ac = _make_ac(
+        db_session, task,
+        last_executed_at=dt.datetime.now(dt.timezone.utc),
+        epistemic_tag=EpistemicTag.ADR_CITED,
+    )
+    event = detect_k2_uncited_ac_in_verify(db_session, ac.id)
+    assert event is None
+
+
+def test_detect_k2_returns_none_for_missing_ac(db_session):
+    event = detect_k2_uncited_ac_in_verify(db_session, ac_id=999999999)
+    assert event is None
+
+
+# --- K4: detect_k4_solo_verifier --------------------------------------------
+
+
+def _make_llm_call(db_session, exec_id, *, purpose, model, model_used=None, project_id=None):
+    call = LLMCall(
+        execution_id=exec_id,
+        purpose=purpose,
+        model=model,
+        model_used=model_used,
+        project_id=project_id,
+        prompt_hash=f"hash-{purpose}-{exec_id}",
+        prompt_chars=100,
+        prompt_preview=f"{purpose} prompt preview",
+        return_code=0,
+    )
+    db_session.add(call)
+    db_session.flush()
+    return call
+
+
+def test_detect_k4_fires_when_executor_and_challenger_same_model(db_session, project_decision):
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    exec_ = Execution(task_id=task.id, agent="test-agent", status="VALIDATING")
+    db_session.add(exec_)
+    db_session.flush()
+
+    _make_llm_call(db_session, exec_.id, purpose="execute", model="claude-opus-4-7", project_id=proj.id)
+    _make_llm_call(db_session, exec_.id, purpose="challenge", model="claude-opus-4-7", project_id=proj.id)
+
+    event = detect_k4_solo_verifier(db_session, exec_.id)
+    assert event is not None
+    assert event.kc_code == "K4"
+    assert event.task_id == task.id
+    assert "claude-opus-4-7" in event.reason
+
+
+def test_detect_k4_quiet_when_models_differ(db_session, project_decision):
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    exec_ = Execution(task_id=task.id, agent="test-agent", status="VALIDATING")
+    db_session.add(exec_)
+    db_session.flush()
+
+    _make_llm_call(db_session, exec_.id, purpose="execute", model="claude-opus-4-7", project_id=proj.id)
+    _make_llm_call(db_session, exec_.id, purpose="challenge", model="claude-sonnet-4-6", project_id=proj.id)
+
+    event = detect_k4_solo_verifier(db_session, exec_.id)
+    assert event is None
+
+
+def test_detect_k4_quiet_without_challenge_call(db_session, project_decision):
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    exec_ = Execution(task_id=task.id, agent="test-agent", status="IN_PROGRESS")
+    db_session.add(exec_)
+    db_session.flush()
+    _make_llm_call(db_session, exec_.id, purpose="execute", model="claude-opus-4-7", project_id=proj.id)
+    # No challenge call → K4 doesn't apply
+    event = detect_k4_solo_verifier(db_session, exec_.id)
+    assert event is None
+
+
+def test_detect_k4_uses_model_used_when_set(db_session, project_decision):
+    """If LLMCall.model_used is set (actual model after fallback), K4 should
+    compare those, not the requested `model`."""
+    proj, _ = project_decision
+    task = _make_task(db_session, proj)
+    exec_ = Execution(task_id=task.id, agent="test-agent", status="VALIDATING")
+    db_session.add(exec_)
+    db_session.flush()
+
+    # Both requested different models, but both fell back to the same model_used
+    _make_llm_call(db_session, exec_.id, purpose="execute",
+                   model="claude-opus-4-7", model_used="claude-haiku-4-5", project_id=proj.id)
+    _make_llm_call(db_session, exec_.id, purpose="challenge",
+                   model="claude-sonnet-4-6", model_used="claude-haiku-4-5", project_id=proj.id)
+
+    event = detect_k4_solo_verifier(db_session, exec_.id)
+    assert event is not None  # model_used matches → K4
+    assert "claude-haiku-4-5" in event.reason
