@@ -1,4 +1,4 @@
-# ITRP — AI Assistant Instructions
+#  AI Assistant Instructions
 
 ## Session start
 
@@ -38,5 +38,5 @@ No exceptions. Before any question or action.
 | `.ai/framework/MANIFEST.md` | Cultural foundation: 10 principles, 3 operational rules, Definition of Done. |
 | `.ai/framework/OPERATING_MODEL.md` | Operational detail: 4 layers, Stage 0 + 4 stages, 10 artifacts, metrics, governance, Kill Criteria, regulatory alignment, evidentiary appendices. |
 | `.ai/framework/DATA_CLASSIFICATION.md` | Stage 0 Rubric — 4 tiers (Public / Internal / Confidential / Secret), decision tree, routing matrix. |
-| `.ai/framework/PRACTICE_SURVEY.md` | Empirical foundation — retrofit of 18 ITRP incidents against the 10 MANIFEST principles. |
+| `.ai/framework/PRACTICE_SURVEY.md` | Empirical foundation — retrofit of 18  incidents against the 10 MANIFEST principles. |
 | `.ai/framework/WHITEPAPER.md` | Public case — industry data, six pathologies, economic reframing, Linux Kernel precedent. |

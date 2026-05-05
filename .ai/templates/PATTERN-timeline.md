@@ -1,13 +1,13 @@
 ---
 name: add-timeline
-description: KIEDY: dodajesz endpoint modyfikujący dane. Dodaje timeline write point (LOAD/BUY/OVERRIDE/CONFIG).
+description: WHEN: adding an endpoint that modifies data. Adds a timeline write point (LOAD/BUY/OVERRIDE/CONFIG).
 argument-hint: "[endpoint path and operation type]"
 disable-model-invocation: true
 ---
 
 # Instrument Timeline Write Point
 
-Per `.ai/standards.md` §8: każda operacja modyfikująca dane MUSI mieć: operation_id, sequence_number, before/after value, idempotency, retry strategy.
+Per `.ai/standards.md` §8: every data-modifying operation MUST have: operation_id, sequence_number, before/after value, idempotency, retry strategy.
 
 ## For DATA operations (LOAD, BUY, OVERRIDE)
 

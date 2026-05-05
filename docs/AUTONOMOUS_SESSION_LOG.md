@@ -6,7 +6,7 @@
 
 Constraints I apply because user is unavailable to rule:
 
-1. **NO modifications outside Forge repo** — ITRP/FRAMEWORK.md (CGAID manifest) is another project tree; I cannot write there without explicit consent from its owner. Previously established.
+1. **NO modifications outside Forge repo** — .ai/FRAMEWORK.md (CGAID manifest) is another project tree; I cannot write there without explicit consent from its owner. Previously established.
 2. **NO CGAID v1.2 proposal draft** — user flagged this as "dedykowana sesja" earlier. Without explicit go, I skip.
 3. **NO external API credentials assumed** — if a feature needs GitHub/GitLab tokens, Slack webhooks, cloud IaC keys, I skip it and note in log. "Brak evidence runtime = brak implementacji" (contract point 1).
 4. **NO destructive DB migrations without reversibility** — all schema changes must be add-only (new columns/tables nullable) so rollback is trivial.
@@ -32,7 +32,7 @@ Constraints I apply because user is unavailable to rule:
 
 - **PR flow (#7):** needs GitHub/GitLab API token + webhook infra. No creds discoverable in settings. Skip.
 - **Skill Change Log (#8):** requires DB migration (SkillRevision model) + before/after tracking logic. Medium complexity, lower ROI than #4. Deferred.
-- **CGAID v1.2 proposal for ITRP:** user flagged as dedicated session. Skip.
+- **CGAID v1.2 proposal for parent project:** user flagged as dedicated session. Skip.
 - **Cloud IaC / CI/CD / observability stack:** Phase 2 items, require platform decisions (AWS vs GCP, Datadog vs Grafana) I cannot make alone.
 - **Security hardening (SAST, secret rotation):** requires CI platform choice. Partial: I can run security-review skill on existing code but not wire CI.
 
@@ -309,7 +309,7 @@ Commits chronological:
 1 upgrade each category tracked)
 
 Still OUT OF SCOPE this session (deferred to dedicated sessions):
-- CGAID v1.2 proposal for ITRP (requires user editorial input on manifest)
+- CGAID v1.2 proposal for parent project (requires user editorial input on manifest)
 - PR flow (needs GitHub/GitLab API credentials)
 - Prometheus metrics endpoint (needs `prometheus_client` dep approval)
 - Durable background jobs (Celery/RQ — large architectural change)

@@ -1,0 +1,650 @@
+// Forge — MOCK data
+// ------------------
+// Scenario: OBJ-CGAID — "Cascade-safe restore of Postgres tenant_isolation_v3 migration
+// after failed rollout on prod-eu-2. Restore must preserve: audit chain integrity,
+// downstream warehouse replication, and already-issued tenant-scoped tokens."
+//
+// Vocabulary mirrors platform/app/models/*.py. Everything here feeds the redesign:
+// CGAID (Counterfactual-Grounded Alternatives w/ Impact Deltas), Gate spectrum,
+// Side-Effect Map, Cascade DoD, epistemic tags, Stage 0–3 kickoff.
+
+const MOCK = {
+  project: {
+    slug: 'warehouseflow',
+    name: 'Warehouseflow · Acme logistics',
+    env: 'prod-eu-2',
+    contract_md: 'ops-contract-v3.md',
+    contract_version: 'v3.2.1',
+    data_class: 'REGULATED · PII + financial · SOC2 scope C',
+    autonomy_level: 'L2',          // demoted from L3 after last incident
+    autonomy_demoted_reason: 'INC-0207: gate-spectrum partial, shipped anyway',
+    steward: 'mthiel@acme.co',
+    oncall: 'pk@acme.co',
+  },
+
+  // ---- Trust-debt (what's blocking unattended work) ----
+  trustDebt: {
+    open_decisions: 3,      // decisions.status=OPEN AND type='ambiguity'
+    side_effects_unowned: 2, // side_effect_map rows with owner=NULL
+    gate_partials: 1,       // gate_verdicts.verdict='PARTIAL' blocking promote
+    adr_uncited_ac: 1,      // acceptance_criteria.source_ref IS NULL
+    tier_misclassified: 1,  // data_classification.tier ≠ dependency tier
+    stale_sources: 2,
+  },
+
+  // ---- Metrics 1-7 (Steward dashboard) ----
+  metrics: [
+    { id: 'M1', label: 'Cascade-aware decisions',
+      value: 0.76, target: 0.85, unit: 'ratio',
+      desc: 'fraction of decisions where ≥2 downstream systems were explicitly inspected',
+      trend: [0.61, 0.64, 0.68, 0.70, 0.74, 0.76] },
+    { id: 'M2', label: 'ADR citation rate on AC',
+      value: 0.82, target: 0.95, unit: 'ratio',
+      desc: 'AC rows with non-NULL source_ref resolving to an ADR or SRC',
+      trend: [0.58, 0.62, 0.70, 0.75, 0.78, 0.82] },
+    { id: 'M3', label: 'Gate-spectrum median',
+      value: 'B+', target: 'A-', unit: 'grade',
+      desc: 'distribution over PASS/PARTIAL/WEAK/FAIL across last 50 gates',
+      trend: [3.1, 3.2, 3.3, 3.4, 3.4, 3.5] },
+    { id: 'M4', label: 'Contract drift',
+      value: 0.04, target: 0.02, unit: 'ratio',
+      desc: 'diff between stated contract and revealed behaviour on last 20 runs',
+      trend: [0.08, 0.07, 0.06, 0.05, 0.05, 0.04] },
+    { id: 'M5', label: 'Solo-verifier incidents',
+      value: 1, target: 0, unit: 'count',
+      desc: 'cases where the verifier was the same agent that produced the artifact',
+      trend: [3, 2, 2, 1, 1, 1] },
+    { id: 'M6', label: 'Kill-criterion hit rate',
+      value: 0.20, target: 0.10, unit: 'ratio',
+      desc: 'share of tasks that tripped K1–K6 stop conditions',
+      trend: [0.30, 0.28, 0.24, 0.22, 0.21, 0.20] },
+    { id: 'M7', label: 'Autonomy promotions declined',
+      value: 2, target: '≥ evidence demands', unit: 'count',
+      desc: 'count of promotions Steward declined despite clean metrics',
+      trend: [0, 0, 1, 1, 2, 2] },
+  ],
+
+  // ---- Kill criteria K1-K6 ----
+  killCriteria: [
+    { id: 'K1', label: 'Unowned side-effect',
+      desc: 'Any side_effect with owner=NULL at execute time → halt',
+      tripped_24h: 1, last: '13:02' },
+    { id: 'K2', label: 'ADR-uncited AC reached Verify',
+      desc: 'AC with source_ref=NULL entering Verify phase → halt',
+      tripped_24h: 0, last: null },
+    { id: 'K3', label: 'Tier downgrade without Steward sign',
+      desc: 'data_class.tier drop vs. source tier w/o signed ADR → halt',
+      tripped_24h: 0, last: null },
+    { id: 'K4', label: 'Solo-verifier',
+      desc: 'Challenger model == Executor model on restricted tiers → halt',
+      tripped_24h: 1, last: '09:47' },
+    { id: 'K5', label: 'Gate spectrum WEAK → promote',
+      desc: 'Attempt to promote artifact with any gate ≤ WEAK → halt',
+      tripped_24h: 0, last: null },
+    { id: 'K6', label: 'Contract drift > 5%',
+      desc: 'Stated vs. revealed behaviour mismatch >5% → halt',
+      tripped_24h: 0, last: null },
+  ],
+
+  // ---- Objectives (list for sidebar / dashboard) ----
+  objectives: [
+    { id: 'OBJ-CGAID', title: 'Cascade-safe restore of tenant_isolation_v3 on prod-eu-2',
+      status: 'ACTIVE', stage: 3, data_class_tier: 'T1-REGULATED',
+      tasks_total: 11, tasks_done: 4,
+      krs_total: 4, krs_achieved: 1,
+      open_decisions: 3, side_effects_unowned: 2, gate_partials: 1,
+      priority: 'P0', steward_lock: true,
+      autonomy_pinned: 'L2' },
+    { id: 'OBJ-011', title: 'Per-org rate limiter · redis keyspace reshape',
+      status: 'ACTIVE', stage: 2, data_class_tier: 'T2-INTERNAL',
+      tasks_total: 6, tasks_done: 4,
+      krs_total: 2, krs_achieved: 1,
+      open_decisions: 0, side_effects_unowned: 0, gate_partials: 0,
+      priority: 'P1', steward_lock: false, autonomy_pinned: null },
+    { id: 'OBJ-013', title: 'GDPR Art.15 subject-access export',
+      status: 'ACTIVE', stage: 1, data_class_tier: 'T1-REGULATED',
+      tasks_total: 9, tasks_done: 2,
+      krs_total: 3, krs_achieved: 0,
+      open_decisions: 1, side_effects_unowned: 0, gate_partials: 0,
+      priority: 'P1', steward_lock: true, autonomy_pinned: 'L2' },
+    { id: 'OBJ-014', title: 'Challenger cross-model on schema diffs',
+      status: 'ACTIVE', stage: 0, data_class_tier: 'T3-OPEN',
+      tasks_total: 0, tasks_done: 0,
+      krs_total: 0, krs_achieved: 0,
+      open_decisions: 0, side_effects_unowned: 0, gate_partials: 0,
+      priority: 'P2', steward_lock: false, autonomy_pinned: null },
+    { id: 'OBJ-009', title: 'Kill pg_dump nightly path', status: 'ACHIEVED',
+      stage: 4, data_class_tier: 'T2-INTERNAL',
+      tasks_total: 6, tasks_done: 6,
+      krs_total: 2, krs_achieved: 2,
+      open_decisions: 0, side_effects_unowned: 0, gate_partials: 0,
+      priority: 'P1', steward_lock: false, autonomy_pinned: null },
+  ],
+
+  // ---- Stage 0–3 kickoff state for OBJ-CGAID ----
+  stages: {
+    0: { name: 'Framing',       status: 'DONE',  artifact: 'framing.md', signer: 'Steward', signed_at: '2026-04-18 10:14' },
+    1: { name: 'Source-pull',   status: 'DONE',  artifact: '4 SRC ingested + tiered', signer: 'Steward', signed_at: '2026-04-18 15:40' },
+    2: { name: 'Alternatives',  status: 'DONE',  artifact: '3 CGAID alternatives w/ impact deltas', signer: 'Steward', signed_at: '2026-04-19 09:11' },
+    3: { name: 'Plan lock',     status: 'ACTIVE', artifact: 'plan.v2.lock + side_effect_map', signer: null, signed_at: null, blocking: ['DEC-CGAID-01','DEC-CGAID-02','DEC-CGAID-03'] },
+  },
+
+  // ---- CGAID alternatives (Stage 2 artifact, frozen) ----
+  alternatives: [
+    { id: 'ALT-A', label: 'Restore from pre-migration snapshot + re-apply filtered diff',
+      chosen: true,
+      impact: {
+        audit_chain: 'preserved (replay from WAL)',
+        warehouse_replication: 'lag ≤ 9m (acceptable per SLA-03)',
+        tenant_tokens: 'valid (no tenant_id rotation)',
+        cost_usd: 420, wall_clock: '38m', blast_radius: 'contained',
+      },
+      counterfactual: 'If we had no snapshot, we would need Option C (forward-fix). Cost +2.1×, blast radius → org-wide.' },
+    { id: 'ALT-B', label: 'Revert migration via alembic downgrade + manual reconciliation',
+      chosen: false,
+      impact: {
+        audit_chain: 'GAP 04:12-05:47 UTC (irrecoverable)',
+        warehouse_replication: 'full resync ~2h',
+        tenant_tokens: 'invalidated · all 11k users re-auth',
+        cost_usd: 980, wall_clock: '3h 20m', blast_radius: 'org-wide',
+      },
+      counterfactual: 'Would be preferred if tenant tokens had not yet been issued. Baseline failed: 02:14 issuance began.' },
+    { id: 'ALT-C', label: 'Forward-fix: new migration v3.0.1 patching broken constraint',
+      chosen: false,
+      impact: {
+        audit_chain: 'preserved',
+        warehouse_replication: 'no impact',
+        tenant_tokens: 'valid',
+        cost_usd: 280, wall_clock: '6h (spec + review + deploy)',
+        blast_radius: 'low, but leaves corrupted rows live until T+6h',
+      },
+      counterfactual: 'Preferred if data corruption were read-only. Denied: corrupted rows being written to downstream.' },
+  ],
+
+  // ---- Side-Effect Map (rows scanned during Stage 3 planning) ----
+  sideEffects: [
+    { id: 'SE-01', system: 'pg primary · prod-eu-2',         change: 'DDL on tenants.* columns', owner: 'pk@acme.co',   tier: 'T1', validated: true  },
+    { id: 'SE-02', system: 'pg replica · prod-eu-2-ro-1',     change: 'catches up via WAL replay',  owner: 'pk@acme.co',   tier: 'T1', validated: true  },
+    { id: 'SE-03', system: 'warehouse · snowflake.ACME_PROD', change: 'downstream view refresh',    owner: 'data-eng',     tier: 'T2', validated: true  },
+    { id: 'SE-04', system: 'audit_log · clickhouse',          change: 'hash-chain link across gap', owner: 'sec-eng',      tier: 'T1', validated: false },
+    { id: 'SE-05', system: 'token_svc · tenant JWT cache',    change: 'no change expected',         owner: null,           tier: 'T1', validated: false },
+    { id: 'SE-06', system: 'billing pipeline · stripe export', change: 'idempotent replay needed',  owner: 'billing-eng',  tier: 'T2', validated: true  },
+    { id: 'SE-07', system: 'search index · opensearch',       change: 'partial reindex',            owner: 'platform',     tier: 'T3', validated: true  },
+    { id: 'SE-08', system: 'metrics · datadog ingest',        change: 'annotation only',            owner: 'platform',     tier: 'T3', validated: true  },
+  ],
+
+  // ---- Cascade DoD (what "done" means beyond the primary artifact) ----
+  cascadeDoD: [
+    { id: 'CDOD-1', clause: 'Audit hash-chain continuity verified across restore gap', status: 'PENDING', owner: 'sec-eng',     evidence: null },
+    { id: 'CDOD-2', clause: 'Warehouse replication lag returned ≤ 120s on 3 successive checks', status: 'PENDING', owner: 'data-eng', evidence: null },
+    { id: 'CDOD-3', clause: 'All tenant JWTs issued pre-restore validate post-restore', status: 'PENDING', owner: 'sec-eng', evidence: null },
+    { id: 'CDOD-4', clause: 'Billing replay idempotent (no double-invoice)',           status: 'PENDING', owner: 'billing-eng', evidence: null },
+    { id: 'CDOD-5', clause: 'Runbook RB-0207 updated with revealed failure modes',      status: 'PENDING', owner: 'Steward',     evidence: null },
+    { id: 'CDOD-6', clause: 'ADR-0059 "restore vs. forward-fix" committed & cited',     status: 'DONE',    owner: 'Steward',     evidence: 'docs/adr/0059-restore.md' },
+  ],
+
+  // ---- Decisions (ambiguities Forge will not guess) ----
+  decisions: [
+    { id: 'DEC-CGAID-01', type: 'ambiguity', status: 'OPEN', severity: 'critical', confidence: 'low',
+      issue: 'Cross-region replica prod-eu-2-ro-1 lag observed 14m at 02:08 — replay-or-rebuild?',
+      recommendation: 'Rebuild replica from fresh base backup.',
+      reasoning: 'WAL replay across a schema-versioned gap has 2 unresolved edge cases in ADR-0033. A rebuild is 40m longer but has a clean invariant.',
+      alternatives: ['Replay WAL (faster, risk)', 'Rebuild from base backup (slower, safe)'],
+      blocks: 2, task_ref: 'T-exec-02' },
+    { id: 'DEC-CGAID-02', type: 'ambiguity', status: 'OPEN', severity: 'high', confidence: 'medium',
+      issue: 'Tokens issued between 02:14 and 02:47 — honor or rotate?',
+      recommendation: 'Honor. Rotate causes 11k forced re-auth; no evidence of token leakage.',
+      reasoning: 'Token signer key was unchanged; tenant_id binding preserved in JWT claims. ADR-0041 §3 allows honoring under these conditions.',
+      alternatives: ['Honor (no user impact)', 'Rotate (forced re-auth)'],
+      blocks: 1, task_ref: 'T-exec-03' },
+    { id: 'DEC-CGAID-03', type: 'ambiguity', status: 'OPEN', severity: 'medium', confidence: 'medium',
+      issue: 'Audit hash gap 04:12–05:47 — linker row or chain break?',
+      recommendation: 'Linker row with STEWARD_SIGNED=true, pointing to INC-0207.',
+      reasoning: 'Precedent: INC-0129 used linker under similar conditions; compliance review approved.',
+      alternatives: ['Linker row (documented gap)', 'Chain break (forces full reconciliation)'],
+      blocks: 1, task_ref: 'T-exec-04' },
+    { id: 'DEC-CGAID-04', type: 'ambiguity', status: 'RESOLVED', severity: 'high', confidence: 'high',
+      issue: 'Restore target env — prod-eu-2 live or prod-eu-2-staging first?',
+      recommendation: 'Staging first.',
+      reasoning: 'Explicit contract §7.1. Resolved at Stage 1.',
+      alternatives: ['Staging first', 'Live direct'], blocks: 0, task_ref: null,
+      resolved_at: '2026-04-18 11:02', resolved_by: 'Steward' },
+  ],
+
+  // ---- Key Results (KR) ----
+  krs: [
+    { id: 'KR-CGAID-1', position: 1, text: 'Restore completes < 45m wall clock',
+      kr_type: 'numeric', target: 45, current: null, unit: 'min',
+      status: 'PENDING', measurement: 'restore_runner.duration_sec' },
+    { id: 'KR-CGAID-2', position: 2, text: 'Zero audit-chain breaks',
+      kr_type: 'numeric', target: 0, current: 0, unit: 'count',
+      status: 'IN_PROGRESS', measurement: 'audit.verify_chain()' },
+    { id: 'KR-CGAID-3', position: 3, text: 'Tenant JWTs issued pre-restore still validate',
+      kr_type: 'numeric', target: 100, current: 100, unit: '%',
+      status: 'ACHIEVED', measurement: 'jwt.validate_sample(n=512)' },
+    { id: 'KR-CGAID-4', position: 4, text: 'Warehouse replication lag ≤ 120s on 3 consecutive checks',
+      kr_type: 'numeric', target: 120, current: null, unit: 's',
+      status: 'PENDING', measurement: 'snowflake_lag_probe' },
+  ],
+
+  // ---- AC bound to sources, with tags ----
+  // tags ∈ INVENTED | DERIVED | ADR-CITED | STEWARD-AUTHORED
+  acList: [
+    { id: 'AC-1', position: 1,
+      text: 'Restore from pre-migration base backup at 02:08 UTC on prod-eu-2-staging first; only promote to live after green gate spectrum.',
+      scenario_type: 'positive', verification: 'test',
+      test_path: 'tests/restore/test_staging_first.py',
+      source_ref: 'ADR-0059 §2, contract §7.1', tag: 'ADR-CITED',
+      last_run: '13:41', result: 'pass', source_llm_call_id: 4821 },
+    { id: 'AC-2', position: 2,
+      text: 'Every DDL step emits a side_effect_map row with owner ≠ NULL before execute.',
+      scenario_type: 'positive', verification: 'test',
+      test_path: 'tests/restore/test_side_effect_map.py',
+      source_ref: 'ADR-0059 §4', tag: 'ADR-CITED',
+      last_run: '13:41', result: 'pass', source_llm_call_id: 4821 },
+    { id: 'AC-3', position: 3,
+      text: 'audit_log hash-chain gap (if any) must be ≤ 90m and bridged by a STEWARD_SIGNED linker row.',
+      scenario_type: 'edge_case', verification: 'test',
+      test_path: 'tests/audit/test_linker_row.py',
+      source_ref: 'ADR-0033 §5, INC-0129 report', tag: 'ADR-CITED',
+      last_run: '13:41', result: 'pass', source_llm_call_id: 4821 },
+    { id: 'AC-4', position: 4,
+      text: 'Warehouse replica catches up within 120s on 3 successive probes post-restore.',
+      scenario_type: 'positive', verification: 'command',
+      command: 'python ops/probe_snowflake_lag.py --n=3',
+      source_ref: 'SLA-03 §2', tag: 'DERIVED',
+      last_run: null, result: 'pending', source_llm_call_id: 4821 },
+    { id: 'AC-5', position: 5,
+      text: 'All tenant JWTs issued between 02:14 and 02:47 validate against the restored key-binding.',
+      scenario_type: 'edge_case', verification: 'test',
+      test_path: 'tests/tokens/test_cross_restore_validate.py',
+      source_ref: null /* → INVENTED */, tag: 'INVENTED',
+      last_run: null, result: 'uncited', source_llm_call_id: 4855 },
+    { id: 'AC-6', position: 6,
+      text: 'Runbook RB-0207 updated with "revealed failure modes" section before objective ACHIEVED.',
+      scenario_type: 'positive', verification: 'manual',
+      source_ref: 'Steward: mthiel 2026-04-18', tag: 'STEWARD-AUTHORED',
+      last_run: null, result: 'pending', source_llm_call_id: null },
+  ],
+
+  // ---- Tasks (cascade_restore plan) ----
+  tasks: [
+    { id: 'T-ana-01', type: 'analysis',   status: 'DONE',        name: 'Enumerate systems touched by tenant_isolation_v3',
+      agent: 'sonnet-4.5', ceremony: 'full', scope_ref: 'app/migrations/, warehouse/' },
+    { id: 'T-ana-02', type: 'analysis',   status: 'DONE',        name: 'Build side-effect map (8 systems)',
+      agent: 'sonnet-4.5', ceremony: 'full', scope_ref: '—' },
+    { id: 'T-pln-01', type: 'planning',   status: 'DONE',        name: 'CGAID: 3 alternatives with impact deltas',
+      agent: 'opus-4', ceremony: 'full', scope_ref: '—' },
+    { id: 'T-pln-02', type: 'planning',   status: 'DONE',        name: 'Cascade DoD draft (6 clauses)',
+      agent: 'sonnet-4.5', ceremony: 'full', scope_ref: '—' },
+    { id: 'T-exec-01', type: 'execute',   status: 'DONE',        name: 'Snapshot fresh base backup',
+      agent: 'sonnet-4.5', ceremony: 'full', scope_ref: 'ops/backup.py' },
+    { id: 'T-exec-02', type: 'execute',   status: 'IN_PROGRESS', name: 'Restore prod-eu-2-staging + reconcile replica',
+      agent: 'sonnet-4.5', ceremony: 'full', scope_ref: 'ops/restore.py', blocked_by: 'DEC-CGAID-01' },
+    { id: 'T-exec-03', type: 'execute',   status: 'TODO',        name: 'Token continuity verification',
+      agent: '—', ceremony: 'full', scope_ref: 'app/token_svc/', blocked_by: 'DEC-CGAID-02' },
+    { id: 'T-exec-04', type: 'execute',   status: 'TODO',        name: 'Audit linker row for hash-chain gap',
+      agent: '—', ceremony: 'full', scope_ref: 'app/audit/', blocked_by: 'DEC-CGAID-03' },
+    { id: 'T-exec-05', type: 'execute',   status: 'TODO',        name: 'Promote staging → prod-eu-2 (Steward sign-off)',
+      agent: '—', ceremony: 'full', scope_ref: 'ops/promote.py', gate: 'WEAK on gate-spectrum' },
+    { id: 'T-ver-01',  type: 'verify',    status: 'TODO',        name: 'Challenger cross-model on restore diff',
+      agent: 'opus-4 (challenger)', ceremony: 'full', scope_ref: '—' },
+    { id: 'T-doc-01',  type: 'documentation', status: 'TODO',    name: 'RB-0207 revealed failure modes section',
+      agent: '—', ceremony: 'light', scope_ref: 'runbooks/RB-0207.md' },
+  ],
+
+  // ---- §C2 / P5 · Schema↔ADR mapping ----
+  // Every column on a tier-bearing table should be linked to the ADR that
+  // governs its invariants. Unmapped columns mean a migration could break an
+  // ADR-stated invariant and no gate would catch it. SchemaSourceMap is the
+  // missing edge in the proof trail (DataPath nodes lack ADR pointer).
+  schemaSourceMap: {
+    coverage: 0.62,                  // mapped / total columns
+    unmapped: 14, mapped: 23,
+    tables: [
+      { table: 'audit_chain', tier: 'T1', columns: 8, mapped: 8, adrs: ['ADR-0033', 'ADR-0059'],
+        invariants: ['append-only', 'WAL replay linearizable per major'], status: 'OK' },
+      { table: 'token_svc',   tier: 'T1', columns: 6, mapped: 4, adrs: ['ADR-0042'],
+        invariants: ['cache invalidation on restore', 'cross-restore validate'],
+        status: 'PARTIAL', missing: ['cache_ttl', 'last_validated_at'] },
+      { table: 'side_effects', tier: 'T2', columns: 7, mapped: 5, adrs: ['ADR-0059'],
+        invariants: ['owner NOT NULL on T1', 'cascade order deterministic'],
+        status: 'PARTIAL', missing: ['cascade_seq', 'cascade_revert_at'] },
+      { table: 'wal_replay',  tier: 'T1', columns: 5, mapped: 0, adrs: [],
+        invariants: ['(none mapped)'],
+        status: 'UNMAPPED', missing: ['*'] },
+      { table: 'restore_runs', tier: 'T2', columns: 6, mapped: 4, adrs: ['ADR-0059'],
+        invariants: ['runs.status transitions through GateRegistry'],
+        status: 'PARTIAL', missing: ['rollback_target', 'reconcile_at'] },
+      { table: 'output_contracts', tier: 'T2', columns: 5, mapped: 2, adrs: ['ADR-0021'],
+        invariants: ['(*,*) lookup-fallback exists'],
+        status: 'PARTIAL', missing: ['exact_lookup_idx', 'fallback_lookup_idx', 'revision_chain'] },
+    ],
+  },
+
+  // ---- §C12 / P7 · CausalEdge replay graph ----
+  // Every state transition under VerdictEngine writes a CausalEdge:
+  // (subject, from_status, to_status, evidence_set, invariants_checked, verdict, ts).
+  // The replay view reconstructs WHY an artifact reached its current status —
+  // append-only, deterministic, the proof trail. Today this graph isn't queryable;
+  // P7 makes it the canonical "show me how this got ACCEPTED" view.
+  causalGraph: {
+    'T-exec-02': {
+      verdict: 'BLOCKED',
+      root: 'task:T-exec-02',
+      hash: 'sha256:9a4d…21f0',
+      summary: 'Halted at K1 · SE-05 owner=NULL · 0 untracked transitions',
+      nodes: [
+        { id: 'n1', kind: 'task',     label: 'T-exec-02 · cascade restore probe',
+          status: 'IN_PROGRESS', ts: '13:38:02', actor: 'sonnet-4.5' },
+        { id: 'n2', kind: 'evidence', label: 'EvidenceSet ES-114 · contract §7',
+          status: 'COLLECTED', ts: '13:38:14', actor: 'orchestrator',
+          items: ['contract.OutputContract', 'side_effect_map', 'data_classification'] },
+        { id: 'n3', kind: 'gate',     label: 'GateRegistry.check · pre-execute',
+          status: 'PASS', ts: '13:38:15', actor: 'VerdictEngine',
+          invariants: ['contract bound', 'tier resolved', 'agent ≠ challenger'] },
+        { id: 'n4', kind: 'evidence', label: 'EvidenceSet ES-115 · side-effect lookup',
+          status: 'COLLECTED', ts: '13:39:41', actor: 'tool:fs',
+          items: ['SE-01..SE-07 rows', 'token_svc owner=NULL ← K1 trigger'] },
+        { id: 'n5', kind: 'gate',     label: 'GateRegistry.check · K1 owner-required',
+          status: 'FAIL', ts: '13:39:42', actor: 'VerdictEngine',
+          invariants: ['SE.tier=T1 ⇒ owner NOT NULL'],
+          failed: 'SE-05 owner=NULL' },
+        { id: 'n6', kind: 'verdict',  label: 'BLOCKED · halt-before-guess',
+          status: 'BLOCKED', ts: '13:39:42', actor: 'VerdictEngine',
+          reason: 'K1 fail · escalate to Steward' },
+      ],
+      edges: [
+        { from: 'n1', to: 'n2', label: 'requires evidence' },
+        { from: 'n2', to: 'n3', label: 'feeds gate' },
+        { from: 'n3', to: 'n4', label: 'pass → continue' },
+        { from: 'n4', to: 'n5', label: 'feeds gate' },
+        { from: 'n5', to: 'n6', label: 'fail → block' },
+      ],
+    },
+  },
+
+  // ---- §C1 · ContextProjector — what the agent saw vs. what it needed ----
+  // Today: kb_scope is keyword-pruned. Risk: prior substitution at the pruning
+  // boundary. Fix: causal-graph BFS over (decision-relevant) nodes within budget.
+  // The drawer panel exposes WHAT WAS PROJECTED + WHAT WAS DROPPED + budget used.
+  contextProjection: {
+    'T-exec-02': {
+      strategy: 'keyword_scoping',     // current — Phase B.4 swaps this to 'causal_bfs'
+      budget_tokens: 14000, used: 9740,
+      // what the agent received
+      projected: [
+        { kind: 'ADR',      id: 'ADR-0033', tokens: 820,  label: 'WAL replay edge cases',
+          reason: 'matched keyword "WAL"' },
+        { kind: 'ADR',      id: 'ADR-0059', tokens: 1140, label: 'restore vs forward-fix',
+          reason: 'matched keyword "restore"' },
+        { kind: 'CONTRACT', id: 'CTR-cgaid-restore', tokens: 920, label: 'cascade restore output contract',
+          reason: 'bound to task' },
+        { kind: 'SE-MAP',   id: 'SE-MAP', tokens: 1180, label: 'side-effect map (7 rows)',
+          reason: 'requirement_refs hit' },
+        { kind: 'TOOL',     id: 'tool:fs', tokens: 5680, label: 'restore.py + backup.py + reconcile.py',
+          reason: 'invoked at runtime' },
+      ],
+      // what the agent didn't see — but causal-BFS would have included
+      dropped: [
+        { kind: 'ADR',      id: 'ADR-0042', tokens: 760,  label: 'token_svc invalidation rules',
+          reason: 'no keyword match', invariant_at_risk: 'cross-restore validate' },
+        { kind: 'INC',      id: 'INC-0129', tokens: 540,  label: 'last cascade restore postmortem',
+          reason: 'older than scope window', invariant_at_risk: 'audit_chain linker assumption' },
+        { kind: 'ADR',      id: 'ADR-0021', tokens: 480,  label: 'OutputContract lookup-fallback',
+          reason: 'no keyword match', invariant_at_risk: '(*,*) fallback path' },
+      ],
+      // boundary check: are dropped items reachable in 1-2 hops on the causal graph?
+      causal_distance: { ADR_0042: 1, INC_0129: 2, ADR_0021: 2 },
+      verdict: 'AT_RISK', // 3 dropped items within causal distance ≤ 2
+    },
+  },
+
+  // ---- §C3 · ImpactClosure — blast radius for a Decision change ----
+  // transitive_closure(requirement_refs+) → AC invalidated, tasks blocked, KRs at risk
+  impactClosure: {
+    'DEC-CGAID-01': {
+      decision: 'cascade_restore strategy: lock plan now or wait for SE-05 owner?',
+      direct_impact: { ac: 2, tasks: 3, krs: 1 },
+      transitive_impact: { ac: 5, tasks: 8, krs: 2, sources: 4 },
+      ac_invalidated: ['AC-3', 'AC-5', 'AC-7', 'AC-9', 'AC-11'],
+      tasks_blocked: ['T-plan-01', 'T-exec-02', 'T-exec-03', 'T-ver-01', 'T-doc-01', 'T-doc-02', 'T-exec-05', 'T-ver-02'],
+      krs_at_risk: ['KR-restore-rto', 'KR-audit-chain-integrity'],
+      sources_touched: ['ADR-0042', 'ADR-0059', 'INC-0129', 'CTR-cgaid-restore'],
+      hops: [
+        { hop: 1, kind: 'requirement_refs', items: 3, label: 'directly bound AC' },
+        { hop: 2, kind: 'task.blocked_by',  items: 3, label: 'tasks claiming those AC' },
+        { hop: 3, kind: 'ac.kr_link',       items: 1, label: 'KRs measured by those AC' },
+        { hop: 4, kind: 'output.contract',  items: 4, label: 'downstream contracts depending' },
+      ],
+    },
+  },
+
+  // ---- §C7 · ImpactDiff — bounded revision when intent/source changes ----
+  impactDiff: {
+    'SRC-031-rev-3': {
+      source: 'ADR-0059 restore vs. forward-fix',
+      from_rev: 2, to_rev: 3,
+      change_summary: 'added §6 cross-restore validate; tightened §4 owner-required to T1+T2',
+      preserved_ids: ['AC-1', 'AC-2', 'AC-4', 'AC-6', 'AC-8', 'AC-10'],
+      changed_ids:   ['AC-3', 'AC-5'],
+      invalidated_ids: ['AC-7', 'AC-9'],
+      fraction_changed: 0.18,
+      revision_set_size: 4,
+      bound: 0.30, // C2 continuity bound — fraction_changed ≤ bound ⇒ continuous
+      verdict: 'CONTINUOUS', // 0.18 ≤ 0.30
+    },
+  },
+
+  // ---- §C11 · Structured handoff to next stage (challenger, verifier) ----
+  // Today: challenger receives NL delivery text. Phase F.6: structured entity chain.
+  structuredHandoff: {
+    'T-exec-02': {
+      to_stage: 'challenger',
+      to_agent: 'opus-4.5 (independent)',
+      mode: 'STRUCTURED', // shadow today; F.6 makes default
+      payload: {
+        task: { id: 'T-exec-02', type: 'execute', tier: 'T1' },
+        contract: { id: 'CTR-cgaid-restore', revision: 7 },
+        evidence_set: ['ES-114', 'ES-115'],
+        causal_chain_root: 'task:T-exec-02',
+        ac_bindings: [
+          { id: 'AC-3', source_ref: 'ADR-0033 §5, INC-0129 report', verdict: 'expected:pass' },
+          { id: 'AC-5', source_ref: null, tag: 'INVENTED', verdict: 'expected:halt' },
+        ],
+        decision_refs: ['DEC-CGAID-01'],
+        invariants_in_play: ['SE.tier=T1 ⇒ owner NOT NULL', 'WAL replay linearizable per major'],
+        nl_delivery: '<elided · NL is metadata, not the carrier>',
+      },
+      legacy_payload: '(would have been: 1.4kB of NL delivery text only — challenger cannot verify entity chain from prose)',
+      bytes_structured: 2840,
+      bytes_nl_only: 1400,
+    },
+  },
+
+  // ---- Sources (tiered) ----
+  sources: [
+    { id: 'SRC-031', title: 'ADR-0059 restore vs. forward-fix',  category: 'architecture', source_type: 'file',
+      source_ref: 'docs/adr/0059-restore.md',  status: 'ACTIVE',  tier: 'T1', cited_ac: 3 },
+    { id: 'SRC-032', title: 'INC-0207 post-mortem',              category: 'incident',     source_type: 'file',
+      source_ref: 'incidents/0207.md',          status: 'ACTIVE',  tier: 'T1', cited_ac: 0 },
+    { id: 'SRC-033', title: 'ADR-0033 WAL replay edge cases',    category: 'architecture', source_type: 'file',
+      source_ref: 'docs/adr/0033-wal-replay.md', status: 'ACTIVE',  tier: 'T1', cited_ac: 1 },
+    { id: 'SRC-034', title: 'SLA-03 warehouse lag',              category: 'contract',     source_type: 'file',
+      source_ref: 'compliance/sla-03.md',        status: 'REVIEW_NEEDED', tier: 'T2', cited_ac: 1 },
+  ],
+
+  // ---- Live orchestration feed ----
+  liveFeed: [
+    { t: '13:42', lvl: 'info',  who: 'exec',      model: 'sonnet-4.5', msg: 'T-exec-02 · read ops/restore.py (1.2k tok)' },
+    { t: '13:42', lvl: 'warn',  who: 'gate',      model: 'haiku-4.5',  msg: 'T-exec-02 · gate-spectrum PARTIAL on replica reconcile (WAL vs. rebuild)' },
+    { t: '13:41', lvl: 'halt',  who: 'kill',      model: 'system',     msg: 'T-exec-02 · K1 tripped: SE-05 token_svc owner=NULL · halting' },
+    { t: '13:41', lvl: 'info',  who: 'extract',   model: 'haiku-4.5',  msg: 'T-exec-01 · 3 findings, 1 decision opened (DEC-CGAID-01)' },
+    { t: '13:40', lvl: 'ok',    who: 'verify',    model: 'opus-4',     msg: 'T-exec-01 · challenger: base backup integrity OK (sha256 match)' },
+    { t: '13:38', lvl: 'info',  who: 'claim',     model: 'system',     msg: 'T-exec-02 · CLAIMING → IN_PROGRESS · lease 15m' },
+  ],
+
+  // ---- Runtime transcript for a specific task (epistemic tags inline) ----
+  runtime: {
+    'T-exec-02': {
+      did: [
+        { t: '13:38', action: 'claim',     detail: 'Took lease on restore runner (15m)' },
+        { t: '13:39', action: 'read',      detail: 'ops/restore.py · ops/backup.py (2.1k tok)' },
+        { t: '13:40', action: 'plan',      detail: 'Sketched 2-phase reconcile: staging restore → replica catch-up' },
+        { t: '13:41', action: 'execute',   detail: 'Initiated restore on prod-eu-2-staging (in flight)' },
+      ],
+      didNot: [
+        { label: 'Touch prod-eu-2 live',           reason: 'Explicit Stage 1 gate: staging first' },
+        { label: 'Rotate tenant tokens',           reason: 'Pending DEC-CGAID-02' },
+        { label: 'Attempt cross-region failover',  reason: 'Out of scope per ADR-0059' },
+        { label: 'Verify SE-05 (token_svc)',       reason: 'owner=NULL → K1 halt; escalated to Steward' },
+      ],
+      conclusion: 'Staging restore is 63% through. Blocked on DEC-CGAID-01 (replica strategy) before replica catch-up can begin. Recommending rebuild from base backup; awaiting Steward input.',
+      disclosures: [
+        { id: 'D1', label: 'Sources consulted',        v: ['SRC-031', 'SRC-032', 'SRC-033', 'ops/restore.py', 'ops/backup.py'] },
+        { id: 'D2', label: 'Alternatives not taken',   v: ['Forward-fix (ALT-C)', 'Direct live restore (§7.1 forbids)'] },
+        { id: 'D3', label: 'Counterfactual impact',    v: ['If ALT-B chosen: +$560, audit gap 95m, 11k re-auths'] },
+        { id: 'D4', label: 'Assumed invariants',       v: ['WAL replay linearizable across schema change — UNVERIFIED on this major'] },
+        { id: 'D5', label: 'Unchecked downstream',     v: ['opensearch partial reindex — NOT_CHECKED'] },
+        { id: 'D6', label: 'Challenger overlap',       v: ['Executor sonnet-4.5 ≠ challenger opus-4 ✓'] },
+        { id: 'D7', label: 'Confidence self-report',   v: ['0.68 on restore path; 0.42 on audit linker math'] },
+      ],
+      soloVerifier: false, // executor ≠ challenger → safe
+      // ---- §C10 / P20 · BLOCKED state with uncertainty_state JSONB ----
+      // Today this is a WARNING; the redesign promotes it to BLOCKED.
+      // Each entry is something the agent surfaced as missing/critical and would
+      // halt on under Phase F.4. Steward resolves via POST /executions/{id}/resolve-uncertainty.
+      epistemicState: {
+        status: 'BLOCKED',                 // was: IN_PROGRESS w/ WARNING
+        ttl_minutes: 120,                  // ADR-011 — auto-escalate after this
+        unknowns: [
+          { id: 'U1', kind: 'UNKNOWN',
+            claim: 'WAL replay linearizable across schema major',
+            why_critical: 'replica reconcile path; wrong assumption corrupts T1 audit chain',
+            confidence: 0.42,
+            requires: ['SE-02 owner sign-off', 'ADR-0033 §5 disambiguation'] },
+          { id: 'U2', kind: 'UNKNOWN',
+            claim: 'token_svc cache invalidation on restore',
+            why_critical: 'SE-05 owner=NULL → K1 already tripped; cannot proceed',
+            confidence: 0.0,
+            requires: ['SE-05 owner assignment'] },
+          { id: 'U3', kind: 'ASSUMED-NONTRIVIAL',
+            claim: 'restore wall-clock ≈ 38m based on M-2024-09 prior',
+            why_critical: 'P19 promotion: this would currently ship as WARNING',
+            confidence: 0.55,
+            requires: ['Steward [ASSUMED: accepted-by=…]'] },
+        ],
+        // What the post-hoc validator catches today vs. what the pre-LLM gate would catch
+        post_hoc_warnings: 3,
+        pre_gate_blocks: 2,
+      },
+    },
+  },
+
+  // ---- Level-5 raw trace · §18 · what the executor actually saw ----
+  // Each PromptSection is a labeled block of the assembled prompt; PromptElements are
+  // the verbatim ranges with provenance. This is the bottom of the audit ladder.
+  promptTrace: {
+    'T-exec-02': {
+      task: 'T-exec-02',
+      objective: 'OBJ-CGAID',
+      phase: 'execute',
+      model: 'claude-sonnet-4.5',
+      assembled_at: '13:38:41Z',
+      input_tokens: 4823,
+      output_tokens: 612,
+      hash: 'sha256:9f3a…c1d8',
+      sections: [
+        { id: 'PS-01', label: 'system_contract', tokens: 412, source: 'platform/contracts/exec_v3.md',
+          elements: [
+            { id: 'PE-01', kind: 'STEWARD-AUTHORED', range: '1-38',  text: 'You are a Forge executor. You may only act inside the OutputContract bound to this task. You MUST halt before any action whose side_effect.owner is NULL or whose data_class.tier is downgraded.', src: 'contracts/exec_v3.md#L1-38' },
+            { id: 'PE-02', kind: 'ADR-CITED',        range: '39-71', text: 'Reference: ADR-0033 (WAL replay edge cases) — replay is not linearizable across schema majors.', src: 'docs/adr/0033-wal-replay.md' },
+          ]},
+        { id: 'PS-02', label: 'objective_context', tokens: 880, source: 'OBJ-CGAID',
+          elements: [
+            { id: 'PE-03', kind: 'STEWARD-AUTHORED', range: '1-22',  text: 'Objective: restore prod-eu-2 to pre-incident state. Stage 1: staging first. Stage 2: replica catch-up only after DEC-CGAID-01 resolves.', src: 'objectives/OBJ-CGAID.md' },
+            { id: 'PE-04', kind: 'DERIVED',          range: '23-90', text: 'Side-effect map (8 systems) injected: token_svc[T1, owner=NULL] · audit_log[T1, owner=ops-sec] · …', src: 'side_effects/OBJ-CGAID.json' },
+          ]},
+        { id: 'PS-03', label: 'task_spec', tokens: 311, source: 'T-exec-02',
+          elements: [
+            { id: 'PE-05', kind: 'STEWARD-AUTHORED', range: '1-44',  text: 'Execute staging restore on prod-eu-2-staging. Do not touch prod-eu-2 live. Halt if any side_effect lacks owner.', src: 'tasks/T-exec-02.md' },
+          ]},
+        { id: 'PS-04', label: 'evidence_pack', tokens: 1820, source: 'gate_evidence/T-exec-02',
+          elements: [
+            { id: 'PE-06', kind: 'DERIVED',     range: '1-220',  text: 'Tool output: ls ops/ → restore.py, backup.py, reconcile.py (3 files, 14.2KB)', src: 'tool:fs.ls' },
+            { id: 'PE-07', kind: 'DERIVED',     range: '221-980', text: 'Tool output: read ops/restore.py … (1.2k tok, full content elided here)', src: 'tool:fs.read · ops/restore.py' },
+            { id: 'PE-08', kind: 'INVENTED',    range: '981-1130', text: 'Heuristic: WAL replay should converge in ~12min based on prior run M-2024-09. UNVERIFIED on this major.', src: 'model_heuristic · no source' },
+          ]},
+        { id: 'PS-05', label: 'verifier_charter', tokens: 1400, source: 'platform/contracts/verifier_v2.md',
+          elements: [
+            { id: 'PE-09', kind: 'STEWARD-AUTHORED', range: '1-180', text: 'Challenger MUST disagree with executor on at least one of: scope, alternatives, blast-radius. Solo-verifier (challenger==executor) on T1 → K4 halt.', src: 'contracts/verifier_v2.md' },
+          ]},
+      ],
+      // What the executor sent back · raw output before parsers
+      response_preview: '{ "action": "halt", "kill_criterion": "K1", "side_effect": "SE-05", "reason": "owner=NULL on token_svc; staging restore would propagate to T1 system without an owner; escalating to Steward.", "next_state": "BLOCKED", "decision_opened": "DEC-CGAID-01" }',
+      tag_summary: { 'STEWARD-AUTHORED': 4, 'ADR-CITED': 1, 'DERIVED': 3, 'INVENTED': 1 },
+    },
+  },
+
+  // ---- Theorem assessment · 4 CRITICAL gaps from EPISTEMIC_CONTINUITY_ASSESSMENT.md ----
+  // Replaces the generic trust-debt cards on the Steward dashboard with the actual
+  // priority queue from §3 of the assessment. Each card is a CRITICAL violation.
+  assessmentPriorities: [
+    { id: 'P1', tag: 'C6 · P7',  severity: 'critical',
+      title: '75× .status= violations',
+      sub: 'bypass GateRegistry · 9 files · single highest-leverage fix',
+      detail: 'State transitions skip VerdictEngine.commit() — no CausalEdge created, no invariants checked, no evidence requirement verified. Direct instantiation of the topology theorem.',
+      phase: 'A.4', closes: 'C6 primary · C9 partial · C12 gap',
+      action: 'audit', count: 75, target: 0 },
+    { id: 'P2', tag: 'C10 · P20', severity: 'critical',
+      title: '[UNKNOWN] → WARNING, not BLOCK',
+      sub: 'agent continues with missing critical info',
+      detail: 'No BLOCKED execution status. Confabulation detected post-call, not pre-call. Primary activation of the degradation theorem: when MissingCriticalInfo(k)=true, Degradation(j)>0 for all j≥k.',
+      phase: 'F.4', closes: 'C4 · C5 · C10',
+      action: 'drawer', count: 3, target: 0 },
+    { id: 'P3', tag: 'C5 · P19',  severity: 'critical',
+      title: 'Confabulation WARNING ≠ REJECT',
+      sub: '[ASSUMED] on non-trivial claims is logged, not blocked',
+      detail: 'contract_validator.py emits 3 WARNINGs per IMPLEMENTATION_TRACKER.md:126. Prior substitution is detected but the artifact still ships. Promote WARNING → REJECT for non-trivial untagged claims.',
+      phase: 'F.3', closes: 'C4 partial · C5 primary',
+      action: 'audit', count: 3, target: 0 },
+    { id: 'P4', tag: 'C5 · P23',  severity: 'critical',
+      title: 'Challenger non-blocking',
+      sub: 'REFUTED → Finding row, ACCEPTED reachable anyway',
+      detail: 'Cross-model verifier exists but does not re-queue task. Refuted artifacts enter the proof trail as accepted evidence. ACCEPTED must require deterministic check OR challenger PASS.',
+      phase: 'F.6', closes: 'C5 partial · C8 · C12',
+      action: 'audit', count: 1, target: 0 },
+  ],
+
+  // ---- 75× .status= violations by file (Phase A.4 prerequisites) ----
+  // Pre-commit grep result. Each row: file path → count of direct .status assignments
+  // that bypass GateRegistry. P1 fix wraps every site through VerdictEngine.commit().
+  gateViolations: {
+    total: 75, fixed: 0, mode: 'shadow', // VERDICT_ENGINE_MODE
+    byFile: [
+      { file: 'app/services/orchestrator.py',     count: 18, kind: 'execute → ACCEPTED' },
+      { file: 'app/services/contract_validator.py', count: 12, kind: 'output → REJECTED' },
+      { file: 'app/services/plan_gate.py',        count:  9, kind: 'plan → APPROVED' },
+      { file: 'app/services/extract_pipeline.py', count:  8, kind: 'finding → CLOSED' },
+      { file: 'app/services/kr_measurer.py',      count:  7, kind: 'kr → ACHIEVED' },
+      { file: 'app/api/executions.py',            count:  7, kind: 'manual override' },
+      { file: 'app/services/challenger.py',       count:  6, kind: 'verdict → REFUTED/PASS' },
+      { file: 'app/services/budget_guard.py',     count:  5, kind: 'execution → BLOCKED' },
+      { file: 'app/api/decisions.py',             count:  3, kind: 'decision → CLOSED' },
+    ],
+  },
+
+  // ---- Gate-spectrum (last 12 gates for this objective) ----
+  gateSpectrum: [
+    { id: 'G-01', phase: 'plan',    verdict: 'PASS',    weight: 4, at: '09:11' },
+    { id: 'G-02', phase: 'plan',    verdict: 'PASS',    weight: 4, at: '09:40' },
+    { id: 'G-03', phase: 'execute', verdict: 'PASS',    weight: 4, at: '10:14' },
+    { id: 'G-04', phase: 'execute', verdict: 'PASS',    weight: 4, at: '11:02' },
+    { id: 'G-05', phase: 'execute', verdict: 'WEAK',    weight: 2, at: '11:48' },
+    { id: 'G-06', phase: 'verify',  verdict: 'PASS',    weight: 4, at: '12:30' },
+    { id: 'G-07', phase: 'execute', verdict: 'PASS',    weight: 4, at: '13:05' },
+    { id: 'G-08', phase: 'execute', verdict: 'PARTIAL', weight: 3, at: '13:42' },
+  ],
+};
+
+window.MOCK = MOCK;

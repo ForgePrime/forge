@@ -7,13 +7,13 @@
 
 ## 0. What changed vs v1
 
-v1 captured 10 algebraic properties derived from the conversation. Deep-verify against the codebase surfaced two hallucinated file references, one severity misclassification, and — most importantly — **five atomic properties are missing** relative to two formal theorems already in the user's workspace (`ITRP/.ai/theorems/Engineer_Soundness_Completeness.md`, `ITRP/.ai/theorems/Evidence_Only_Decision_Model.md`) and the operational contract (`ITRP/.ai/CONTRACT.md`), plus the user's 8-point satisfaction criterion.
+v1 captured 10 algebraic properties derived from the conversation. Deep-verify against the codebase surfaced two hallucinated file references, one severity misclassification, and — most importantly — **five atomic properties are missing** relative to two formal theorems already in the user's workspace (`../../.ai/theorems/Engineer_Soundness_Completeness.md`, `../../.ai/theorems/Evidence_Only_Decision_Model.md`) and the operational contract (`../../.ai/CONTRACT.md`), plus the user's 8-point satisfaction criterion.
 
 v2 is the **closure** of four sources:
 - v1 (10 dynamical/structural properties)
-- Engineer Soundness & Completeness Theorem (8 conditions) — `ITRP/.ai/theorems/Engineer_Soundness_Completeness.md`
-- Evidence-Only Decision Model Theorem (8 conditions) — `ITRP/.ai/theorems/Evidence_Only_Decision_Model.md`
-- Operational Contract (§A 7 silences, §B 5 format templates + 3 self-check triggers + 4 subagent rules, non-trivial triggers) — `ITRP/.ai/CONTRACT.md`
+- Engineer Soundness & Completeness Theorem (8 conditions) — `../../.ai/theorems/Engineer_Soundness_Completeness.md`
+- Evidence-Only Decision Model Theorem (8 conditions) — `../../.ai/theorems/Evidence_Only_Decision_Model.md`
+- Operational Contract (§A 7 silences, §B 5 format templates + 3 self-check triggers + 4 subagent rules, non-trivial triggers) — `../../.ai/CONTRACT.md`
 - User's satisfaction criterion (8 points, delivered 2026-04-22)
 
 After deduplication, **24 atomic properties** remain. Each one has: formula, operational meaning, binding in Forge (concrete entity or rule), acceptance signal. The mapping table in §10 shows exactly which source condition is covered by which atomic property.
@@ -563,7 +563,7 @@ Reading: for every typed contract schema and every invariant registered against 
 
 ### 11.3 CGAID framework alignment declaration
 
-Forge v2 is **not a new framework**. Forge is the **platform-level implementation** of CGAID (Contract-Governed AI Delivery, `ITRP/.ai/framework/FRAMEWORK.md` v2.0, 2026-04-19). Hierarchy:
+Forge v2 is **not a new framework**. Forge is the **platform-level implementation** of CGAID (Contract-Governed AI Delivery, `../../.ai/framework/FRAMEWORK.md` v2.0, 2026-04-19). Hierarchy:
 
 ```
 CGAID Framework (MANIFEST + OPERATING_MODEL + DATA_CLASSIFICATION + PRACTICE_SURVEY + WHITEPAPER)

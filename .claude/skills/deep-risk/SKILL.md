@@ -78,7 +78,7 @@ detailed rubrics.
 This weights probability-impact as the core, with velocity, detectability,
 and reversibility as aggravating factors.
 
-**ITRP calibration** (financial data / production system — conservative thresholds):
+**project calibration** (financial data / production system — conservative thresholds):
 - 3-8: Monitor (low risk)
 - 9-12: Plan mitigation
 - 13+: Prioritize / escalate
@@ -155,4 +155,4 @@ Scope: {what's assessed} | Horizon: {time frame}
 
 ## Provenance
 
-Adapted from [Deep-Process](https://github.com/Deep-Process/deep-process) `deep-risk` v1.0.0. ITRP-specific additions: financial/compliance lens, integration lens, conservative calibration thresholds, MASKS interaction type.
+Adapted from [Deep-Process](https://github.com/Deep-Process/deep-process) `deep-risk` v1.0.0. project-specific additions: financial/compliance lens, integration lens, conservative calibration thresholds, MASKS interaction type.

@@ -84,7 +84,7 @@ Design (Phase G.1):
 **Slash commands:**
 - `/ingest <file|url>` — pulls content into `Knowledge`, assigns `SRC-NNN` external id.
 - `/analyze <src-id>` — extracts inconsistencies, assumptions, unknowns.
-- `/grill <topic>` — forces disambiguation of unclear requirements (from ITRP `commands.md`).
+- `/grill <topic>` — forces disambiguation of unclear requirements (from `.ai/commands.md`).
 
 **Entities written:**
 - `Knowledge(source_ref='SRC-NNN', scope_tags, content)`
@@ -97,7 +97,7 @@ Design (Phase G.1):
 ### Stage 2: Plan
 
 **Slash commands:**
-- `/plan <feature or change>` — anti-shortcut planning (pre-commitment + code reading + phased plan). See ITRP `.claude/skills/plan/SKILL.md`.
+- `/plan <feature or change>` — anti-shortcut planning (pre-commitment + code reading + phased plan). See `.claude/skills/plan/SKILL.md`.
 - `/objective <text>` — creates `Objective` with measurable Key Results.
 - `/decide <question>` — opens `Decision` (blocks plan approval if status OPEN).
 - `/change-request <scope>` — modifies existing plan; `ImpactDiff` reports bounded delta (Phase C.5).
@@ -257,7 +257,7 @@ Per `app/services/slash_commands.py`:
 
 | Command | Purpose | Reference |
 |---|---|---|
-| `/plan <feature>` | Anti-shortcut planning | ITRP `.claude/skills/plan/` |
+| `/plan <feature>` | Anti-shortcut planning | `.claude/skills/plan/` |
 | `/ingest <src>` | Ingest source material | Stage 1 |
 | `/analyze <src>` | Extract inconsistencies | Stage 1 |
 | `/grill <topic>` | Force disambiguation | Stage 1 |

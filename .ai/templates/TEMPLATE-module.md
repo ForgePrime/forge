@@ -1,15 +1,15 @@
 ---
 name: new-module
-description: KIEDY: tworzysz nowy moduł backendowy. Scaffold 8+ plików wg standardu.
+description: WHEN: creating a new backend module. Scaffolds 8+ files per standard.
 argument-hint: "[module name]"
 disable-model-invocation: true
 ---
 
 # Implement Module — Reference Architecture
 
-Przeczytaj `.ai/standards.md` §2 (Backend) i §6 (Modele danych) przed rozpoczęciem.
+Read `.ai/standards.md` §2 (Backend) and §6 (Data Models) before starting.
 
-Pracuj jak architekt który projektuje rozwiązanie zanim napisze pierwszą linię kodu — każdy komponent ma jasno zdefiniowaną odpowiedzialność i granicę.
+Work like an architect who designs the solution before writing the first line of code — every component has a clearly defined responsibility and boundary.
 
 ## Scaffold Structure
 
@@ -27,10 +27,10 @@ backend/app/modules/{module_name}/
 └── mappers.py           # RAW → Domain → API transformation (CRITICAL — no mapping in router/service).
 ```
 
-## 3 warstwy modeli (standards.md §6)
+## 3 model layers (standards.md §6)
 
 ```python
-# types.py — Storage model (1:1 z BQ/Firestore)
+# types.py — Storage model (1:1 with BQ/Firestore)
 class InvoiceRow(TypedDict):
     invoice_id: str
     amount: float
@@ -51,7 +51,7 @@ class InvoiceResponse(BaseModel):
     eligible: bool
 ```
 
-Mapper converts between them. **Brak `data["field"]` poza mapperem.**
+Mapper converts between them. **No `data["field"]` outside the mapper.**
 
 ## Rules per layer
 

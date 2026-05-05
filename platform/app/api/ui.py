@@ -13,6 +13,7 @@ from app.models import (
     Project, Task, Objective, KeyResult, Knowledge, Decision, Finding,
     Execution, LLMCall, TestRun, AcceptanceCriterion,
 )
+from app.validation.state_transition import commit_status_transition
 from app.api.pipeline import task_report as api_task_report, _workspace
 from app.api.projects import (
     create_project as api_create_project, ProjectCreate,
@@ -253,6 +254,287 @@ def index(request: Request, db: Session = Depends(get_db)):
         trust_debt = None
     return templates.TemplateResponse(request, "index.html", {
         "projects": projects, "project": None, "trust_debt": trust_debt,
+    })
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+def dashboard_view(request: Request, db: Session = Depends(get_db)):
+    """Phase 1 redesign DashboardView (PoC).
+
+    HERO trust-debt + active-K6, M1..M7 metrics, K1..K6 kill-criteria,
+    Objectives list. Most data points await Phase 1 migration; UI flags
+    them with "awaiting Phase 1 migration" pills rather than silent stubs
+    (CONTRACT §A.6).
+    """
+    from app.services.dashboard import compute_dashboard, dashboard_to_dict
+    org_id = _current_org_id(request)
+    data = compute_dashboard(db, org_id)
+    return templates.TemplateResponse(request, "dashboard.html", {
+        "d": dashboard_to_dict(data),
+    })
+
+
+@router.get("/dashboard.json", response_class=JSONResponse)
+def dashboard_json(request: Request, db: Session = Depends(get_db)):
+    """Same data as /ui/dashboard, JSON-encoded. Used by tests + future
+    HTMX partial refresh."""
+    from app.services.dashboard import compute_dashboard, dashboard_to_dict
+    org_id = _current_org_id(request)
+    return JSONResponse(dashboard_to_dict(compute_dashboard(db, org_id)))
+
+
+def _dismissal_external_id(event_id: int) -> str:
+    """Stable external_id pattern for Steward dismissal Decisions.
+
+    Used as a join key from kill_criteria_event_log → decisions so the
+    /ui/audit view can render "Dismissed by DEC-X" badges without adding
+    a new FK column (append-only audit log invariant per Phase 1 §6).
+    """
+    return f"KC-OVERRIDE-{event_id}"
+
+
+@router.get("/audit", response_class=HTMLResponse)
+def audit_view(
+    request: Request,
+    db: Session = Depends(get_db),
+    kc: str = Query("", description="filter by K-code: K1..K6 or empty for all"),
+    window: str = Query("24h", description="time window: 24h | 7d | 30d | all"),
+):
+    """Phase 1 redesign /audit view — append-only K-criteria event log.
+
+    Steward / Compliance surface for reviewing K1-K6 firings. Filters by
+    K-code + time window. Counts per K-code at the top.
+    """
+    from app.models import KillCriteriaEventLog
+    org_id = _current_org_id(request)
+    project_ids = []
+    q = db.query(Project)
+    if org_id is not None:
+        q = q.filter(Project.organization_id == org_id)
+    project_ids = [p.id for p in q.all()]
+
+    # Build base query — scope to visible projects via decision_id link
+    visible_decision_subq = (
+        db.query(Decision.id).filter(Decision.project_id.in_(project_ids))
+        if project_ids else db.query(Decision.id).filter(False)
+    )
+
+    base_q = db.query(KillCriteriaEventLog).filter(
+        (KillCriteriaEventLog.decision_id.in_(visible_decision_subq))
+        | (KillCriteriaEventLog.decision_id.is_(None))
+    )
+
+    # Time window
+    now = dt.datetime.now(dt.timezone.utc)
+    if window == "24h":
+        since = now - dt.timedelta(hours=24)
+    elif window == "7d":
+        since = now - dt.timedelta(days=7)
+    elif window == "30d":
+        since = now - dt.timedelta(days=30)
+    else:
+        since = None
+
+    if since is not None:
+        base_q = base_q.filter(KillCriteriaEventLog.fired_at >= since)
+
+    # Per-K-code counts (always over the same time window)
+    code_counts: dict[str, int] = {}
+    for code in ("K1", "K2", "K3", "K4", "K5", "K6"):
+        cnt = (
+            base_q.with_entities(sqlfunc.count(KillCriteriaEventLog.id))
+            .filter(KillCriteriaEventLog.kc_code == code)
+            .scalar() or 0
+        )
+        code_counts[code] = cnt
+
+    # Apply kc filter — but compute total_rows BEFORE adding order_by
+    # (with_entities + count + order_by produces invalid SQL).
+    counted_q = base_q
+    if kc:
+        counted_q = counted_q.filter(KillCriteriaEventLog.kc_code == kc)
+    total_rows = (
+        counted_q.with_entities(sqlfunc.count(KillCriteriaEventLog.id)).scalar() or 0
+    )
+    # Now add order_by + limit for the actual row fetch.
+    rows = counted_q.order_by(KillCriteriaEventLog.fired_at.desc()).limit(200).all()
+
+    # Dismissal lookup: build map event_id -> Decision (if a kc_override
+    # Decision was filed). The external_id pattern KC-OVERRIDE-<event_id>
+    # is the join key (append-only audit log invariant — no FK on
+    # kill_criteria_event_log).
+    dismissal_keys = [_dismissal_external_id(r.id) for r in rows]
+    dismissal_map: dict[int, Decision] = {}
+    if dismissal_keys:
+        dismissal_rows = (
+            db.query(Decision)
+            .filter(Decision.external_id.in_(dismissal_keys))
+            .all()
+        )
+        for d in dismissal_rows:
+            try:
+                eid = int(d.external_id.replace("KC-OVERRIDE-", ""))
+                dismissal_map[eid] = d
+            except (ValueError, AttributeError):
+                pass
+
+    return templates.TemplateResponse(request, "audit.html", {
+        "rows": rows,
+        "total_rows": total_rows,
+        "code_counts": code_counts,
+        "selected_kc": kc,
+        "selected_window": window,
+        "dismissals": dismissal_map,
+    })
+
+
+@router.post("/audit/dismiss/{event_id}")
+def audit_dismiss(
+    event_id: int,
+    request: Request,
+    reason: str = Form(..., min_length=10, max_length=2000),
+    db: Session = Depends(get_db),
+):
+    """Steward dismissal flow for a K-event.
+
+    Records a Decision with `type='kc_override'` referencing the K-event
+    via the stable external_id pattern `KC-OVERRIDE-{event_id}`. The
+    K-event row itself is never edited or deleted (append-only audit).
+
+    The Decision carries:
+      - epistemic_tag = STEWARD_AUTHORED
+      - status = ACCEPTED (Steward sign-off recorded inline)
+      - issue = describes the K-event being dismissed
+      - recommendation = the Steward's dismissal reason
+
+    Org-tenant isolation: the K-event must reference a Decision visible
+    to the current org (via decision_id link to org's projects).
+    """
+    from app.models import KillCriteriaEventLog
+    org_id = _current_org_id(request)
+    project_ids = []
+    q = db.query(Project)
+    if org_id is not None:
+        q = q.filter(Project.organization_id == org_id)
+    project_ids = [p.id for p in q.all()]
+
+    event = db.query(KillCriteriaEventLog).filter(KillCriteriaEventLog.id == event_id).one_or_none()
+    if event is None:
+        raise HTTPException(404, "K-event not found")
+
+    # Tenant scope: if event has a decision_id, that decision must belong
+    # to a visible project. Events with no decision ref are visible only
+    # to events with at least one entity in scope (objective/task).
+    if event.decision_id is not None:
+        owning_project = (
+            db.query(Decision.project_id)
+            .filter(Decision.id == event.decision_id)
+            .scalar()
+        )
+        if owning_project is not None and project_ids and owning_project not in project_ids:
+            raise HTTPException(404, "K-event not visible to current org")
+
+    # Reject duplicate dismissal (idempotent: external_id is UNIQUE-shaped).
+    external_id = _dismissal_external_id(event_id)
+    existing = (
+        db.query(Decision)
+        .filter(Decision.external_id == external_id)
+        .one_or_none()
+    )
+    if existing is not None:
+        # Already dismissed; redirect back rather than 409
+        return RedirectResponse(url="/ui/audit", status_code=303)
+
+    # Determine project_id for the override Decision: prefer the K-event's
+    # decision's project; else derive from task; else first visible project.
+    target_project_id: int | None = None
+    if event.decision_id is not None:
+        target_project_id = (
+            db.query(Decision.project_id)
+            .filter(Decision.id == event.decision_id)
+            .scalar()
+        )
+    if target_project_id is None and event.task_id is not None:
+        target_project_id = (
+            db.query(Task.project_id)
+            .filter(Task.id == event.task_id)
+            .scalar()
+        )
+    if target_project_id is None and project_ids:
+        target_project_id = project_ids[0]
+    if target_project_id is None:
+        raise HTTPException(400, "no project available to attach the override Decision")
+    # Tenant boundary check on resolved project (when scope is non-empty)
+    if project_ids and target_project_id not in project_ids:
+        raise HTTPException(404, "K-event not visible to current org")
+
+    from app.models import EpistemicTag
+    override = Decision(
+        project_id=target_project_id,
+        external_id=external_id,
+        type="kc_override",
+        issue=f"Steward dismissal of K-event #{event_id} ({event.kc_code})",
+        recommendation=reason,
+        status="ACCEPTED",
+        epistemic_tag=EpistemicTag.STEWARD_AUTHORED,
+        execution_id=None,
+        task_id=event.task_id,
+    )
+    db.add(override)
+    db.commit()
+    return RedirectResponse(url="/ui/audit", status_code=303)
+
+
+@router.get("/audit.json", response_class=JSONResponse)
+def audit_json(
+    request: Request,
+    db: Session = Depends(get_db),
+    kc: str = Query(""),
+    window: str = Query("24h"),
+):
+    """JSON variant of /ui/audit — for tests + future HTMX partial refresh."""
+    from app.models import KillCriteriaEventLog
+    org_id = _current_org_id(request)
+    project_ids = []
+    q = db.query(Project)
+    if org_id is not None:
+        q = q.filter(Project.organization_id == org_id)
+    project_ids = [p.id for p in q.all()]
+    visible_decision_subq = (
+        db.query(Decision.id).filter(Decision.project_id.in_(project_ids))
+        if project_ids else db.query(Decision.id).filter(False)
+    )
+    base_q = db.query(KillCriteriaEventLog).filter(
+        (KillCriteriaEventLog.decision_id.in_(visible_decision_subq))
+        | (KillCriteriaEventLog.decision_id.is_(None))
+    )
+    now = dt.datetime.now(dt.timezone.utc)
+    since = {
+        "24h": now - dt.timedelta(hours=24),
+        "7d": now - dt.timedelta(days=7),
+        "30d": now - dt.timedelta(days=30),
+    }.get(window, None)
+    if since is not None:
+        base_q = base_q.filter(KillCriteriaEventLog.fired_at >= since)
+    if kc:
+        base_q = base_q.filter(KillCriteriaEventLog.kc_code == kc)
+    rows = base_q.order_by(KillCriteriaEventLog.fired_at.desc()).limit(200).all()
+    return JSONResponse({
+        "rows": [
+            {
+                "id": r.id,
+                "kc_code": r.kc_code,
+                "fired_at": r.fired_at.isoformat() if r.fired_at else None,
+                "objective_id": r.objective_id,
+                "decision_id": r.decision_id,
+                "task_id": r.task_id,
+                "evidence_set_id": r.evidence_set_id,
+                "reason": r.reason,
+            }
+            for r in rows
+        ],
+        "kc_filter": kc,
+        "window": window,
     })
 
 
@@ -934,7 +1216,7 @@ def ui_orchestrate_run_resume(run_id: int, request: Request, background_tasks: B
     proj = db.query(Project).filter(Project.id == run.project_id).first()
     _assert_project_in_current_org(db, proj.slug, request)
     if run.status == "PAUSED":
-        run.status = "RUNNING"
+        commit_status_transition(run, entity_type="orchestrate_run", target_state="RUNNING")
         run.pause_requested = False
         run.resumed_at = dt.datetime.now(dt.timezone.utc)
         run.progress_message = "Resuming from pause..."

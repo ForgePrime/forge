@@ -1,5 +1,5 @@
 #!/bin/bash
-# ITRP Standards Enforcement Hook
+#  Standards Enforcement Hook
 # Runs after every Edit/Write on Python and TypeScript files.
 # Catches violations that skills alone cannot enforce deterministically.
 #

@@ -31,6 +31,10 @@ from app.models import (
 from app.services.prompt_parser import assemble_prompt
 from app.services.contract_validator import validate_delivery, CheckResult
 from app.config import settings
+from app.validation.rule_adapter import EvaluationContext
+from app.validation.rules import contract_validator_rule
+from app.validation.shadow_comparator import compare_and_log
+from app.validation.state_transition import commit_status_transition
 
 router = APIRouter(prefix="/api/v1", tags=["execution"])
 
@@ -120,9 +124,17 @@ def get_execute(
         db.rollback()
         return Response(status_code=204)
 
-    # Claim task
+    # Claim task — fire K1 detection at execute time per ADR-028 §K1.
+    # Hook never breaks the claim path (failures caught inside post_commit
+    # wrapper in commit_status_transition).
     now = dt.datetime.now(dt.timezone.utc)
-    candidate.status = "IN_PROGRESS"
+    def _k1_hook_execute():
+        from app.services.kill_criteria import detect_k1_for_task
+        detect_k1_for_task(db, candidate.id)
+    commit_status_transition(
+        candidate, entity_type="task", target_state="IN_PROGRESS",
+        post_commit=_k1_hook_execute,
+    )
     candidate.agent = agent
     candidate.started_at = now
 
@@ -240,8 +252,8 @@ def post_deliver(
 
     # Check max attempts
     if execution.attempt_number > settings.max_delivery_attempts:
-        execution.status = "FAILED"
-        task.status = "FAILED"
+        commit_status_transition(execution, entity_type="execution", target_state="FAILED")
+        commit_status_transition(task, entity_type="task", target_state="FAILED")
         task.fail_reason = f"Max delivery attempts ({settings.max_delivery_attempts}) exceeded"
         db.commit()
         raise HTTPException(422, f"Max attempts exceeded ({settings.max_delivery_attempts})")
@@ -276,6 +288,32 @@ def post_deliver(
     ac_verif_map = {ac.position: ac.verification for ac in task.acceptance_criteria}
     result = validate_delivery(delivery, contract, task.type, prev_attempt_dict,
                                ac_verifications=ac_verif_map)
+
+    # Phase A.3 shadow-mode comparator. Default mode='off' is a no-op
+    # short-circuit; flip via FORGE_VERDICT_ENGINE_MODE=shadow once the
+    # canary window opens. Disagreements -> verdict_divergences row.
+    # Legacy `result` remains authoritative; this call NEVER raises.
+    compare_and_log(
+        session_factory=lambda: db,
+        execution_id=execution.id,
+        ctx=EvaluationContext(
+            entity_type="execution",
+            entity_id=execution.id,
+            from_state="DELIVERED",
+            to_state="VALIDATING",
+            artifact={
+                "delivery": delivery,
+                "contract": contract,
+                "task_type": task.type,
+                "prev_attempt": prev_attempt_dict,
+                "ac_verifications": ac_verif_map,
+            },
+            evidence=(),
+        ),
+        rules=(contract_validator_rule,),
+        legacy_passed=result.all_pass,
+        legacy_reason=getattr(result, "fix_instructions", None) or None,
+    )
 
     # Duplicate detection: if current hash matches any previous attempt → WARNING
     for pa in prev_attempts:
@@ -314,9 +352,9 @@ def post_deliver(
     ))
 
     if result.all_pass:
-        execution.status = "ACCEPTED"
+        commit_status_transition(execution, entity_type="execution", target_state="ACCEPTED")
         execution.completed_at = dt.datetime.now(dt.timezone.utc)
-        task.status = "DONE"
+        commit_status_transition(task, entity_type="task", target_state="DONE")
         task.completed_at = dt.datetime.now(dt.timezone.utc)
 
         # Save changes from delivery
@@ -395,7 +433,7 @@ def post_deliver(
         }
 
     else:
-        execution.status = "REJECTED"
+        commit_status_transition(execution, entity_type="execution", target_state="REJECTED")
         execution.attempt_number += 1
         # Extend lease
         execution.lease_expires_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=15)
@@ -425,10 +463,10 @@ def post_heartbeat(execution_id: int, db: Session = Depends(get_db)):
         raise HTTPException(410, "Execution expired")
 
     if execution.lease_renewals >= settings.max_lease_renewals:
-        execution.status = "EXPIRED"
+        commit_status_transition(execution, entity_type="execution", target_state="EXPIRED")
         task = db.query(Task).filter(Task.id == execution.task_id).first()
         if task:
-            task.status = "TODO"
+            commit_status_transition(task, entity_type="task", target_state="TODO")
             task.agent = None
         db.commit()
         raise HTTPException(410, f"Max renewals ({settings.max_lease_renewals}) exceeded")
@@ -455,10 +493,10 @@ def post_fail(execution_id: int, body: dict, db: Session = Depends(get_db)):
     if len(reason) < 50:
         raise HTTPException(422, "Reason must be >= 50 characters")
 
-    execution.status = "FAILED"
+    commit_status_transition(execution, entity_type="execution", target_state="FAILED")
     task = db.query(Task).filter(Task.id == execution.task_id).first()
     if task:
-        task.status = "FAILED"
+        commit_status_transition(task, entity_type="task", target_state="FAILED")
         task.fail_reason = reason
 
     _audit(db, task.project_id if task else None, "execution", execution.id, "failed", f"agent:{execution.agent}",

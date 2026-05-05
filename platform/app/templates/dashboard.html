@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}Forge — Steward Dashboard{% endblock %}
+{% block content %}
+
+{# Phase 1 redesign — DashboardView SSR PoC.
+   canonical: ../docs/design_canonical/ → Forge redesign DashboardView.
+   Most M1-M7 + all K1-K6 + epistemic_tag/stage/autonomy_pinned columns
+   require Phase 1 migration. Until applied, those panels render explicit
+   "(awaiting Phase 1 migration)" pills — never silent stubs. #}
+
+<div class="flex items-center justify-between mb-4">
+    <div>
+        <h1 class="text-2xl font-bold">Steward Dashboard</h1>
+        <p class="text-xs text-slate-500 mt-0.5">
+            Trust-debt hero · M1–M7 · K1–K6 · Objectives.
+            Computed at <span class="mono">{{ d.computed_at | replace("T", " ") | truncate(19, true, "") }}Z</span>.
+        </p>
+    </div>
+    <div class="flex items-center gap-2 text-xs">
+        <span class="bg-amber-50 text-amber-800 border border-amber-200 px-2 py-1 rounded">
+            Phase 1 PoC — partial data
+        </span>
+        <a href="/ui/" class="text-blue-600 hover:underline">← Projects</a>
+    </div>
+</div>
+
+{# --- HERO panel ----------------------------------------------------------- #}
+{% set h = d.hero %}
+{% set debt_class = "rose" if h.trust_debt_total > 5 else ("amber" if h.trust_debt_total > 0 else "emerald") %}
+<div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {# Trust-debt index #}
+        <div class="md:col-span-2">
+            <div class="text-xs uppercase tracking-wide font-semibold text-slate-500">
+                Trust-debt index
+                {% if not h.trust_debt_formula_ratified %}
+                <span class="ml-1 text-amber-700" title="Formula INVENTED in redesign mock; awaits Steward sign-off per ADR-028.">
+                    ⚠ indicative only
+                </span>
+                {% endif %}
+            </div>
+            <div class="flex items-baseline gap-3 mt-1">
+                <span class="text-4xl font-bold text-{{ debt_class }}-700">{{ h.trust_debt_total }}</span>
+                <span class="text-sm text-slate-500">across {{ h.project_count }} project{{ "s" if h.project_count != 1 else "" }}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-3 text-xs">
+                {% for key, label in [
+                    ('unaudited_approvals',         'Unaudited approvals'),
+                    ('manual_scenarios_unrun',      'Manual scenarios unrun'),
+                    ('findings_dismissed_no_reason','Dismissed without reason'),
+                    ('stale_analyses',              'Stale analyses'),
+                ] %}
+                <div class="bg-slate-50 border border-slate-200 rounded p-2">
+                    <div class="text-slate-500">{{ label }}</div>
+                    <div class="font-bold text-slate-800">{{ h.trust_debt_components[key] }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        {# Active K6 #}
+        <div>
+            <div class="text-xs uppercase tracking-wide font-semibold text-slate-500">Active K6 (24h)</div>
+            <div class="text-3xl font-bold text-slate-700 mt-1">
+                {% if h.active_k6_available %}{{ h.active_k6_24h }}{% else %}—{% endif %}
+            </div>
+            {% if not h.active_k6_available %}
+            <div class="text-xs text-amber-700 mt-1">awaiting kill_criteria_event_log (Phase 1 §6)</div>
+            {% else %}
+            <div class="text-xs text-slate-500 mt-1">contract-drift halts in last 24h</div>
+            {% endif %}
+        </div>
+
+        {# Open Decisions / Findings #}
+        <div>
+            <div class="text-xs uppercase tracking-wide font-semibold text-slate-500">Open queue</div>
+            <div class="flex items-baseline gap-2 mt-1">
+                <span class="text-3xl font-bold text-blue-700">{{ h.open_decisions }}</span>
+                <span class="text-xs text-slate-500">decisions</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-1">
+                <span class="text-2xl font-bold text-rose-700">{{ h.open_findings }}</span>
+                <span class="text-xs text-slate-500">findings</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- M1..M7 panel --------------------------------------------------------- #}
+<div class="mb-6">
+    <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-2">
+        Steward metrics · M1–M7
+    </h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {% for m in d.metrics %}
+        <div class="bg-white border border-slate-200 rounded-lg p-3 {% if not m.available %}opacity-75{% endif %}">
+            <div class="flex items-center justify-between">
+                <span class="mono text-xs font-bold text-slate-500">{{ m.id }}</span>
+                {% if not m.available %}
+                <span class="text-[10px] bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded">awaiting Phase 1</span>
+                {% elif m.status == "AT_TARGET" %}
+                <span class="text-[10px] bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">at target</span>
+                {% elif m.status == "BELOW_TARGET" %}
+                <span class="text-[10px] bg-rose-100 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded">below target</span>
+                {% endif %}
+            </div>
+            <div class="text-sm font-semibold text-slate-800 mt-1">{{ m.label }}</div>
+            <div class="flex items-baseline gap-2 mt-1">
+                <span class="text-2xl font-bold {% if m.available %}text-slate-800{% else %}text-slate-400{% endif %}">
+                    {% if m.value is none %}—{% else %}{{ m.value }}{% endif %}
+                </span>
+                <span class="text-xs text-slate-500">/ {{ m.target }} {{ m.unit }}</span>
+            </div>
+            <div class="text-xs text-slate-500 mt-2">{{ m.desc }}</div>
+            {% if not m.available %}
+            <div class="text-[10px] text-slate-400 mt-2 italic">awaits: {{ m.awaits }}</div>
+            {% else %}
+            <div class="text-[10px] text-slate-400 mt-2">source: {{ m.source }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{# --- K1..K6 panel --------------------------------------------------------- #}
+<div class="mb-6">
+    <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+            Kill criteria · K1–K6 (last 24h)
+        </h2>
+        <a href="/ui/audit?window=24h"
+           class="text-xs text-blue-600 hover:underline">→ full audit log</a>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {% for k in d.kill_criteria %}
+        {# Cards become clickable links to /ui/audit when active.
+           Available + tripped > 0: link to filter by this K-code.
+           Available + tripped = 0: link still active (filter shows "no events"). #}
+        {% if k.available %}
+        <a href="/ui/audit?kc={{ k.id }}&window=24h"
+           class="block bg-white border border-slate-200 rounded-lg p-3 hover:border-blue-400 hover:shadow-sm transition">
+        {% else %}
+        <div class="block bg-white border border-slate-200 rounded-lg p-3 opacity-75">
+        {% endif %}
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="mono text-xs font-bold text-slate-700">{{ k.id }}</span>
+                    {% if not k.available %}
+                    <span class="text-[10px] bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded">awaiting Phase 1</span>
+                    {% elif k.tripped_24h > 0 %}
+                    <span class="text-[10px] bg-rose-100 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded">{{ k.tripped_24h }}× last 24h</span>
+                    {% else %}
+                    <span class="text-[10px] bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">clean</span>
+                    {% endif %}
+                </div>
+                {% if k.last_at %}<span class="text-[10px] text-slate-500 mono">{{ k.last_at }}</span>{% endif %}
+            </div>
+            <div class="text-sm font-semibold text-slate-800 mt-1">{{ k.label }}</div>
+            <div class="text-xs text-slate-500 mt-1">{{ k.desc }}</div>
+            {% if not k.available %}
+            <div class="text-[10px] text-slate-400 mt-2 italic">awaits: {{ k.awaits }}</div>
+            {% elif k.tripped_24h > 0 %}
+            <div class="text-[10px] text-blue-600 mt-2">→ click to review {{ k.tripped_24h }} event{{ "s" if k.tripped_24h != 1 else "" }} in audit log</div>
+            {% endif %}
+        {% if k.available %}
+        </a>
+        {% else %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+
+{# --- Objectives list ------------------------------------------------------ #}
+<div class="mb-6">
+    <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-2">
+        Objectives ({{ d.objectives | length }})
+    </h2>
+    {% if d.objectives | length == 0 %}
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-6 text-center text-sm text-slate-500">
+        No objectives yet in your projects. <a href="/ui/" class="text-blue-600 hover:underline">Create one →</a>
+    </div>
+    {% else %}
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-slate-50 border-b border-slate-200">
+                <tr class="text-xs text-slate-500 uppercase tracking-wide">
+                    <th class="px-3 py-2 text-left">ID</th>
+                    <th class="px-3 py-2 text-left">Title</th>
+                    <th class="px-3 py-2 text-left">Status</th>
+                    <th class="px-3 py-2 text-left">Stage</th>
+                    <th class="px-3 py-2 text-left">Epistemic</th>
+                    <th class="px-3 py-2 text-left">Autonomy</th>
+                    <th class="px-3 py-2 text-right">KR</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in d.objectives %}
+                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                    <td class="px-3 py-2 mono text-xs">
+                        <a href="/ui/projects/{{ o.project_slug }}/objectives/{{ o.external_id }}" class="text-blue-600 hover:underline">
+                            {{ o.external_id }}
+                        </a>
+                    </td>
+                    <td class="px-3 py-2">
+                        <div class="font-medium">{{ o.title | truncate(80) }}</div>
+                        <div class="text-xs text-slate-500 mono">{{ o.project_slug }} · P{{ o.priority }}</div>
+                    </td>
+                    <td class="px-3 py-2">
+                        <span class="text-xs px-2 py-0.5 rounded
+                            {% if o.status == 'ACHIEVED' %}bg-emerald-100 text-emerald-700
+                            {% elif o.status == 'ACTIVE' %}bg-blue-100 text-blue-700
+                            {% elif o.status == 'ABANDONED' %}bg-rose-100 text-rose-700
+                            {% else %}bg-slate-100 text-slate-700{% endif %}">
+                            {{ o.status }}
+                        </span>
+                    </td>
+                    <td class="px-3 py-2">
+                        {% if o.stage_available and o.stage %}
+                        <span class="text-xs mono px-2 py-0.5 bg-slate-100 text-slate-700 rounded">{{ o.stage }}</span>
+                        {% elif o.stage_available %}
+                        <span class="text-xs text-slate-400">—</span>
+                        {% else %}
+                        <span class="text-[10px] text-amber-700 italic" title="awaits Phase 1 migration §2">Phase 1</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-2">
+                        {% if o.epistemic_tag_available and o.epistemic_tag %}
+                        <span class="text-xs mono px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded">{{ o.epistemic_tag | replace("_", "-") }}</span>
+                        {% elif o.epistemic_tag_available %}
+                        <span class="text-xs text-slate-400">untagged</span>
+                        {% else %}
+                        <span class="text-[10px] text-amber-700 italic" title="awaits Phase 1 migration §2">Phase 1</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-2">
+                        {% if o.autonomy_pinned_available and o.autonomy_pinned %}
+                        <span class="text-xs mono px-2 py-0.5 bg-purple-100 text-purple-700 rounded">{{ o.autonomy_pinned }}</span>
+                        {% elif o.autonomy_optout %}
+                        <span class="text-xs px-2 py-0.5 bg-amber-100 text-amber-800 rounded">opt-out (legacy)</span>
+                        {% elif o.autonomy_pinned_available %}
+                        <span class="text-xs text-slate-400">—</span>
+                        {% else %}
+                        <span class="text-[10px] text-amber-700 italic" title="awaits Phase 1 migration §2">Phase 1</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-right">
+                        <span class="text-xs mono">
+                            {{ o.kr_done }}/{{ o.kr_total }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+{# --- Phase 1 readiness footer -------------------------------------------- #}
+<div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-xs text-slate-700">
+    <div class="font-semibold mb-1">Phase 1 readiness — what unlocks the "awaiting" items</div>
+    <ol class="list-decimal pl-5 space-y-0.5">
+        <li>Apply migration <span class="mono">platform/docs/migrations_drafts/2026_04_26_phase1_redesign.sql</span> to dev DB (after alembic baseline).</li>
+        <li>Add SQLAlchemy models for <span class="mono">alternatives</span>, <span class="mono">side_effect_map</span>, <span class="mono">cascade_dod_item</span>, <span class="mono">kill_criteria_event_log</span>, <span class="mono">trust_debt_snapshot</span>.</li>
+        <li>Wire kill-criteria firing into existing GateRegistry hooks → populates K1–K6 last-24h counts.</li>
+        <li>Steward signs trust-debt formula → removes "indicative only" badge from HERO.</li>
+    </ol>
+    <div class="mt-2 text-[10px] text-slate-500">
+        Per CONTRACT §A.6 (false-completeness avoidance): metrics flagged "awaiting" are explicitly
+        unavailable, never silently stubbed. As columns light up, this view picks them up automatically.
+    </div>
+</div>
+
+{% endblock %}

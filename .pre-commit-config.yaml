@@ -53,3 +53,54 @@ repos:
   #   rev: v8.18.4
   #   hooks:
   #     - id: gitleaks
+
+  # --- Local hooks ---
+  - repo: local
+    hooks:
+      # PLAN_GATE_ENGINE A.4 cutover invariant: zero direct
+      # `entity.status = "X"` outside the canonical write-path
+      # (app/validation/state_transition.py). Detected via grep.
+      # Catches ad-hoc reintroduction of bypass paths after the
+      # 33-site cutover landed in commit (this commit).
+      - id: no-direct-status-assign
+        name: 'A.4 invariant: no direct .status = "X" outside state_transition'
+        entry: bash -c 'matches=$(grep -rn "\.status\s*=\s*[\"\x27]" platform/app --include="*.py" 2>/dev/null | grep -v "verdict_engine\|state_transition\|__pycache__"); if [ -n "$matches" ]; then echo "FAIL — direct .status= outside state_transition.py:"; echo "$matches"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Stage 28.1 of Deterministic ADR Gate Pipeline (task #28).
+      # Runs validate_adr.py against all ADRs. Pre-existing drift is
+      # filtered by .adr_validator_baseline.json next to the ADRs;
+      # NEW issues fail the commit. CI uses --strict (warnings also fail;
+      # W2 is escalated to R9 visibly in --strict).
+      - id: validate-adr
+        name: 'Stage 28.1: ADR format validator (deterministic gate)'
+        entry: python platform/scripts/validate_adr.py
+        language: system
+        pass_filenames: false
+        files: '^platform/docs/decisions/ADR-.*\.md$'
+
+      # Stage 28.2a of Deterministic ADR Gate Pipeline (task #28).
+      # Validates Forge SQL migration conventions (header, BEGIN/COMMIT,
+      # reversal §99 pairing, verification §101, idempotency markers).
+      # Pre-existing drift filtered by .migration_validator_baseline.json.
+      # Live PG up/down/up cycle is Stage 28.2b (deferred to CI workflow
+      # in Stage 28.4 — requires Docker).
+      - id: validate-migration
+        name: 'Stage 28.2a: SQL migration validator (Forge conventions)'
+        entry: python platform/scripts/validate_migration.py
+        language: system
+        pass_filenames: false
+        files: '^platform/docs/migrations_drafts/.*\.sql$'
+
+      # Stage 28.3 of Deterministic ADR Gate Pipeline (task #28).
+      # Pydantic round-trip property tests on app/schemas/ — catches AI
+      # silent-fill bugs (wrong type into discriminated-union variant,
+      # missing discriminator, extra fields) at commit time.
+      - id: validate-pydantic-schemas
+        name: 'Stage 28.3: Pydantic schema round-trip (ADR-028 D3 self-adjointness)'
+        entry: bash -c 'cd platform && python -m pytest tests/test_impact_delta_round_trip.py -q'
+        language: system
+        pass_filenames: false
+        files: '^platform/(app/schemas/.*\.py|tests/test_impact_delta_round_trip\.py)$'

@@ -21,6 +21,8 @@ import datetime as dt
 import logging
 from sqlalchemy.orm import Session
 
+from app.validation.state_transition import commit_status_transition
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +58,7 @@ def mark_orphan_runs_interrupted(db: Session, *,
     for run in stale:
         try:
             prev_status = run.status
-            run.status = "INTERRUPTED"
+            commit_status_transition(run, entity_type="orchestrate_run", target_state="INTERRUPTED")
             existing_err = (run.error or "").strip()
             note = (
                 f"Orphaned at startup ({now.isoformat()}): row was '{prev_status}' "
@@ -110,7 +112,7 @@ def release_in_progress_tasks(
     touched: list[int] = []
     for t in stuck:
         try:
-            t.status = "TODO"
+            commit_status_transition(t, entity_type="task", target_state="TODO")
             t.started_at = None
             t.agent = None
             # Release any active execution lease so the next claim doesn't collide
@@ -162,7 +164,7 @@ def mark_running_runs_interrupted_on_shutdown(
     for run in active:
         try:
             prev = run.status
-            run.status = "INTERRUPTED"
+            commit_status_transition(run, entity_type="orchestrate_run", target_state="INTERRUPTED")
             run.finished_at = now
             note = (
                 f"Graceful shutdown ({now.isoformat()}): server SIGTERM while run was '{prev}'. "

@@ -4,7 +4,7 @@ description: >
   ALWAYS ACTIVE standards guardian. Before every code modification, outputs
   GUARD CHECK with layer classification and violation scan. Blocks HARD RULE
   violations (non-negotiable). Warns on SOFT RULE violations (user can override).
-  This is the single source of truth for ITRP architecture rules — /develop
+  This is the single source of truth for architecture rules — /develop
   delegates to these rules, not duplicates them.
 user-invocable: false
 # user-invocable: false means Claude auto-invokes this when relevant.
@@ -15,7 +15,7 @@ user-invocable: false
 
 # Standards Guardian
 
-You are the standards guardian for ITRP. This skill defines the **single source of truth** for architecture rules. Other skills (`/develop`, `/review`, `/preflight`) reference these rules — they do NOT redefine them.
+You are the standards guardian. This skill defines the **single source of truth** for architecture rules. Other skills (`/develop`, `/review`, `/preflight`) reference these rules — they do NOT redefine them.
 
 ## Before every Edit/Write — output required
 

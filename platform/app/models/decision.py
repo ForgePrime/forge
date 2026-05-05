@@ -4,6 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin
+from app.models.epistemic import epistemic_tag_pg_enum, EpistemicTag
 
 
 class Decision(Base, TimestampMixin):
@@ -28,6 +29,9 @@ class Decision(Base, TimestampMixin):
     severity: Mapped[str | None] = mapped_column(String(10))
     confidence: Mapped[str | None] = mapped_column(String(10))
     alternatives_considered: Mapped[dict | None] = mapped_column(JSONB)
+    # Phase 1 redesign (ADR-028 D2 revised): epistemic basis of this Decision.
+    # NULL = untagged legacy row.
+    epistemic_tag: Mapped[EpistemicTag | None] = mapped_column(epistemic_tag_pg_enum)
     resolution_notes: Mapped[str | None] = mapped_column(Text)
 
     project: Mapped["Project"] = relationship(back_populates="decisions")

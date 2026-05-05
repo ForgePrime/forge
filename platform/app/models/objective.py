@@ -5,6 +5,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin
 
+# Phase 1 redesign — stage + autonomy_pinned columns (per ADR-028 D4 + D-companion).
+# CHECK constraints declared on the columns below; values match
+# app.models.epistemic.{ObjectiveStage, AutonomyPinned} enums.
+
 
 # Objective DAG dependency (mockup 03v2). Acyclic enforced at application layer.
 objective_dependencies = Table(
@@ -42,6 +46,14 @@ class Objective(Base, TimestampMixin):
     challenger_checks: Mapped[list | None] = mapped_column(JSONB)
     # P3.4 — narrow KB to a specific subset of source IDs (per-objective focus)
     kb_focus_ids: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
+    # Phase 1 redesign (ADR-028 D4 revised): VARCHAR(8) + CHECK; consistent
+    # with existing `status` pattern. NULL = "stage unknown" (legacy rows
+    # before backfill or ambiguous classification).
+    stage: Mapped[str | None] = mapped_column(String(8))
+    # Phase 1 redesign (ADR-028 D4 companion): autonomy level pinned per
+    # objective. NULL = follow project default. autonomy_optout BOOLEAN
+    # retained above for transition.
+    autonomy_pinned: Mapped[str | None] = mapped_column(String(8))
 
     key_results: Mapped[list["KeyResult"]] = relationship(
         back_populates="objective", cascade="all, delete-orphan", order_by="KeyResult.position"

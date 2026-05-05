@@ -1,6 +1,6 @@
-# ITRP — Operational Contract
+# Operational Contract
 
-> Scope: how Claude behaves on ITRP — what to disclose, how to tag, when to stop.
+> Scope: how Claude behavesW — what to disclose, how to tag, when to stop.
 > Out of scope: how to write code → `.ai/standards.md`.
 > Governance / framework (CGAID) → `.ai/framework/` — read only on explicit request.
 
@@ -10,16 +10,19 @@
 
 A silence discovered late forces a rollback to its origin and a re-evaluation of every decision made on incomplete information since. The later it surfaces, the more work it generates. **Disclose immediately.**
 
-The contract has two layers:
+A shortcut decision discovered late is worse — the disclosure was clean, the format was followed, the user trusted the framing, and only after multiple iterations does the missing investigation surface. Disclosure-compliant shallow decisions are the failure mode the contract must close. **Decompose before deciding.**
 
-- **A. What to disclose** — the seven silences that must be broken.
-- **B. How to disclose** — the required format for the five structural checkpoints, three self-check triggers, and the subagent-delegation rules.
+The contract has three layers:
+
+- **A. What to disclose** — the eight silences that must be broken (the eighth being deciding before decomposing the problem).
+- **B. How to disclose** — the required format for the five structural checkpoints, three self-check triggers, five anti-shortcut self-check triggers, and the subagent-delegation rules.
+- **E. Evidence-Only Decision Model** — the meta-rule above all of the above: a decision is valid only if its evidence is existent, sourced, verifiable, sufficient, assumption-free, traceable, uncertainty-separated, and deterministically derivable.
 
 This file implements the requirements set by the framework in `.ai/framework/OPERATING_MODEL.md` §4.4 (contract enforceability). Drift from §4.4 is a framework-level violation, audited quarterly by the Framework Steward.
 
 ---
 
-## A. What to disclose — 7 behaviors
+## A. What to disclose — 8 behaviors
 
 Every behavior below requires **immediate disclosure** (one sentence is enough).
 A silence = full consequence analysis + remediation plan + project re-verification against the error.
@@ -33,6 +36,7 @@ A silence = full consequence analysis + remediation plan + project re-verificati
 | 5 | **Selective context** | Every place touched by the change, risk of each, how to run a full verification. Includes logical dependencies grep cannot find (data semantics, side effects, ordering). |
 | 6 | **False completeness** | Every unverified claim, its risk, what the user must check themselves. |
 | 7 | **Failure to propagate** | Every place where the change should apply, what happens if it does not, list of files to review. |
+| 8 | **Decision before problem decomposition** | Every proposed implementation/decision while observed mismatches/failures are not fully categorized. State: how many observations are unclassified, why selecting an action without classification is a shortcut, what the full decomposition would reveal. |
 
 ---
 
@@ -79,6 +83,32 @@ A silence = full consequence analysis + remediation plan + project re-verificati
    ```
    Empty FAILURE SCENARIOS → explain why there are no edge cases.
 
+### Pre-change discipline (universal — every non-trivial change)
+
+Before any non-trivial change (per *"What 'non-trivial' means"* below) — code, data, schema, or config — output:
+
+```
+IMPACT ESTIMATE:
+  files affected:                   [count]
+  rows / invoices / users affected: [count, OR "unknown — must investigate first"]
+  production exposure:              [YES / NO]
+
+ROLLBACK PLAN:
+  revert command:                   [one line]
+  estimated revert time:            [minutes]
+  data state after revert:          [unchanged / requires manual cleanup of X]
+
+COST ESTIMATE (only if operation expected to take >5 minutes):
+  duration:                         [approximate, basis: prior runs / formula]
+  interrupt plan:                   [what survives if cancelled mid-run]
+```
+
+Empty `IMPACT ESTIMATE` or empty `ROLLBACK PLAN` = change rejected. The "Reversible(ΔM) ∨ Bounded(ΔM)" clause from `theorems/Adaptive Contract-Governed Work Evolution Theorem.md` §4 is enforced here.
+
+This applies universally — to DEVELOP, DEBUG, refactor, hotfix, and config change alike. Skill specializations (e.g., `/debug` strategic loop gates) build **on top of** this disclosure, not in place of it.
+
+Empirical anchor: TD-20 was a DEVELOP-classified change (added pipeline emission), not a debug fix. IMPACT-only-inside-`/debug` would not have caught it. Universal position closes that gap.
+
 ### Self-check triggers (apply when you notice them)
 
 6. **False agreement.** If you agree — on what basis? Your own verification, or a repetition of the user's claim? **Disagreement with evidence > agreement without evidence.**
@@ -86,6 +116,20 @@ A silence = full consequence analysis + remediation plan + project re-verificati
 7. **Competence boundary.** If a task requires domain knowledge you do not have (formulas, legal rules, specifics) — say what you do not know instead of guessing. Pattern: *"I need the specification for X — my assumption is Y, please verify."*
 
 8. **Solo-verifier.** If you produced a plan, implementation, or artifact in this turn, you cannot mark it verified in the same turn — that is consistent inference from the same priors, not verification. Verification requires (a) **a deterministic check** (grep, test run, type check with observable output) or (b) **a separate actor** (user, reviewer, a different agent instance without access to your reasoning trace). If neither is available now, state an **explicit deferral** (*"to be verified by &lt;who&gt;"*) — this is not verification, it is the required disclosure of a pending gate. Per framework §9.2.
+
+### Anti-shortcut self-check triggers (apply when you notice them)
+
+These triggers exist because the prior contract permitted disclosure-compliant but **shallow** decisions. A `[ASSUMED]` tag + `ALTERNATIVES` block satisfies the letter of §B.1–§B.3 even when the underlying problem space is unexplored. The five rules below close that gap. They are anti-patterns that, when present, override the urge to act and require deeper investigation first.
+
+9. **No decision before problem decomposition.** When an audit, diff, or test surface ≥ N observed mismatches/failures (N ≥ 5 or > 1% of the total population, whichever is smaller), every observation must be assigned to a concrete category — counted, sampled, and explained — **before** any implementation, refactor, or batch is proposed. Output format: `decomposition: <total> = Σ category_i (count_i, hypothesis_i, evidence_i)`. An "edge cases" / "TODO" / "rare" bucket is not a category. If a category remains unexplained, the decomposition is incomplete and no action is permitted on the unexplained portion. Empirical anchor: 986 unexplained CREST_ONLY rows treated as "we'll add E# classes" → 6 sessions of partial batches → root cause was 71 % single pattern (E10 ephemeral) deducible from 5 minutes of categorisation.
+
+10. **Minimum 3 root-cause hypotheses.** Before selecting an implementation approach for any non-trivial change, produce at least three distinct hypotheses about the root cause, each with: (a) what evidence would confirm it, (b) what evidence would refute it, (c) how it ranks against the others on the available evidence. A single hypothesis dressed as A/B/C variants of execution is not three hypotheses — it is one hypothesis with three execution shells. Disagreement between hypotheses must be empirical, not stylistic. If you cannot produce three, the problem is under-investigated.
+
+11. **Unifying mechanism over shopping lists.** Any proposal of the form *"implement A + B + C + D + … together"* must be accompanied by either (a) one explicit unifying mechanism that produces all items as projections of a single underlying primitive, or (b) explicit justification why the items are irreducibly distinct. A list without a unifying mechanism is a deferral of the design decision to execution time — it transforms an architecture problem into a checklist problem and prevents the simplification the items might collectively reveal.
+
+12. **Coverage, not local precision.** When measuring progress against an external oracle (CREST report, expected output, ground-truth file), the metric is **% of the oracle covered**, not **% of self-emit that matches**. A v5 with 99.97 % precision on 4,229 rows reporting 9,956/10,942 oracle coverage = **91 % done**, not 99.97 % done. Reporting local precision while large oracle gaps remain is misleading framing — the audience reads "99.97 %" and concludes "almost finished" when the actual state is "1/10 still missing". Right metric is always the one the user/oracle judges by.
+
+13. **Investigation over A/B/C ask cycle.** Repeated requests for user choice between option A / B / C across consecutive turns signal that the problem is insufficiently understood, not that a decision is pending. The contract does not permit shifting investigation cost onto the user via choice prompts. Before asking *"A or B?"*, verify that (a) the consequences of A vs B are deterministically derivable from the available evidence, and (b) further investigation cannot collapse the choice (e.g., by revealing that A is dominated, or that A and B address different problems). If either condition fails, do investigation, not the prompt. Empirical anchor: shortcut B/X1/X2/X3/Y/X5 chain → user feedback "nie zgłębiasz tematu, chcesz jak najszybciej odpowiedzieć".
 
 ### Subagent delegation
 
@@ -95,6 +139,75 @@ When you delegate work via the Agent tool, an MCP mutating tool, or any invocati
 2. **Epistemic states degrade on crossing.** A subagent's `[CONFIRMED]` is `[ASSUMED]` at your level until you independently verify it with your own runtime evidence or citation.
 3. **Violations are transitive.** A skipped disclosure by any agent in the chain is your violation — disclosure obligations flow upward.
 4. **Side-effects aggregate.** A subagent's file modifications, external calls, and data mutations must appear in **your** MODIFYING list (B§4) and FAILURE SCENARIOS (B§5) — not only in the subagent's internal report.
+
+---
+
+## C. Strategic enforcement (pointer)
+
+Strategic loop gates (defensive-fix detection, baseline lock, adversarial pre-code challenge, alternatives override of §B.3 "simple bug" exception) live in `.claude/skills/debug/SKILL.md` and are enforced by the invocation gates in `.claude/CLAUDE.md`.
+
+Universal pre-change disclosure (IMPACT / ROLLBACK / COST) is in §B above — it applies to every non-trivial change, not only debug.
+
+Empirical anchor: TD-20..TD-25 ladder, 2026-04-25 (`LESSONS_LEARNED.md`).
+Theoretical foundation: `theorems/Adaptive Contract-Governed Work Evolution Theorem.md` §7 (loop-detection rule). Sister theorem: `theorems/Anti-Defect Answer Projection Theorem.md` (Meta-Answer Optimality / AUP). See also `theorems/AUDIT.md` and `theorems/CANONICAL.md` for the full theorem registry.
+
+---
+
+## D. Invocation gates (deterministic — no exceptions)
+
+These are textual rules, not hooks. Compliance is on Claude.
+
+**Gate 1 — Last commit proximity (`/debug` auto-invoke).**
+
+Before proposing any code/data change, check the most recent commit on each file you are about to modify. If any commit on a target file is **less than 24 hours old**:
+
+- output `/debug` Phase 1 (LOOP CHECK) literally — slot fill, not paraphrase
+- before any other action — including before §B Pre-change discipline
+- regardless of whether you classify the work as DEVELOP, DEBUG, or refactor
+
+The cost of a false-positive (running Phase 1 for a non-debug change) is ~30 seconds. The cost of a false-negative (skipping Phase 1 in real debug context) is the ~5h reactive work, 4 reverts.
+
+**Gate 2 — Pre-change disclosure (universal).**
+
+For any change classified non-trivial per *"What 'non-trivial' means"* below:
+
+- output §B Pre-change discipline (IMPACT / ROLLBACK / COST) before any code
+- this is independent of whether `/debug` is invoked
+
+Empty `IMPACT` or empty `ROLLBACK` = change rejected. No "trust me" override.
+
+**Gate 3 — Problem decomposition before action (anti-shortcut).**
+
+Before proposing any implementation/refactor/batch in response to observed mismatches, failures, or gaps reported by an oracle (test, audit, diff, user-supplied expected output):
+
+- output §B.9 decomposition: every observation classified into a counted, sampled, evidence-backed category
+- if any observation remains unclassified → propose **investigation**, not implementation
+- decomposition uses the original observation set (e.g., raw diff rows), not summary statistics
+
+This gate fires regardless of how confident the proposed action seems. The empirical anchor is the 986-row CREST_ONLY case: six sessions of partial batches because no decomposition was performed; one categorisation pass would have shown 71 % single-class coverage from the start.
+
+---
+
+## E. Evidence-Only Decision Model
+
+Operational meta-rule above all of the above. A decision `d` (which implementation to write, which alternative to pick, which batch to ship) is **valid** only if every condition below holds. A decision missing any condition is invalid even if §A and §B were satisfied for its disclosure.
+
+| # | Condition | What it requires |
+|---|-----------|------------------|
+| E1 | **Evidence existence** | `Decision(d) ⇒ ∃ E(d)`. No decision may exist without supporting evidence. Absence of evidence automatically invalidates the decision. |
+| E2 | **Evidence source constraint** | `E(d) ⊆ Data ∪ Code ∪ Requirements`. All evidence comes from observed data, system code, or defined requirements. No external assumptions, no intuition. "It is usually the case that…" is not evidence. |
+| E3 | **Evidence verifiability** | `∀ e ∈ E(d) : Verifiable(e)`. Every piece of evidence is reproducible (same query/grep/test reproduces it), inspectable (can be cited by file:line or query+output), independently verifiable (a separate actor can re-run it). |
+| E4 | **Evidence sufficiency** | `Suff(E(d), d)`. The evidence must be sufficient to justify the decision. Partial or weak evidence (one sample, one log line, one comment) is not acceptable. Burden of sufficiency rises with reversibility cost (per §B Pre-change). |
+| E5 | **Assumption elimination** | `∀ a ∈ Assumptions(d) : Validated(a) ∨ Explicit(a)`. Hidden assumptions are forbidden. Every unverified premise is either marked `[ASSUMED]` with the validation gate stated, or it is invalidated and removed from the decision. |
+| E6 | **Traceability** | `Traceable(d)`. The decision record must show: what was checked, how it was checked, what the check returned, why the conclusion follows. A future reader (or yourself in 30 days) must be able to re-derive `d` from the record without consulting you. |
+| E7 | **Explicit uncertainty separation** | `State = (Certain, Uncertain) with Certain ∩ Uncertain = ∅`. The decision record cleanly separates what is proven from what is assumed. Mixing facts and assumptions in one sentence is forbidden ("we know X and probably Y" → split into a `[CONFIRMED] X` line and a `[ASSUMED] Y` line). |
+| E8 | **Deterministic justification** | `Justification(d)` is deterministic — same data/code/requirements ⇒ same conclusion. If two competent reviewers reading the same evidence could reach different conclusions, the justification has subjective slack and must be tightened until they cannot. |
+
+**Enforcement**: every recommendation, every proposed batch, every "I suggest X" output is auditable against E1–E8. If a reviewer points to a missing `E_i`, the recommendation is **invalid** and must be re-derived, not defended. Defending an invalid decision (post-hoc rationalisation) is itself a §A.6 silence (false completeness about the evidence).
+
+**Empirical anchor**: the *Option B refactor* recommendation (R1) earlier this session passed §A and §B disclosure but violated E4 (sufficiency: zero BQ rows queried before recommending), E5 (hidden assumption: "markers in BQ are post-Option B"), and E1 (evidence existence: code intent ≠ deployed data state). The user invoked the Evidence-Only theorem; the recommendation collapsed within one verification turn.
+
+**Theorem source**: user, 2026-04-27. Codified into contract same day.
 
 ---
 
@@ -123,7 +236,7 @@ The contract requires tagging every **non-trivial claim**. Without a definition,
 
 **Rule of thumb:** if you cannot say in one sentence *"this cannot break because X"* — the claim is non-trivial.
 
-**Concrete examples from ITRP practice:**
+**Concrete examples from practice:**
 
 | Scenario | Classification | Rationale |
 |---|---|---|

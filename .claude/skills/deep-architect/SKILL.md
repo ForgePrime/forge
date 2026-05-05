@@ -158,7 +158,7 @@ Assemble the final architecture document using the format below.
 
 - **Input from:** `/plan` Faza 2 (system mapping) — existing architecture to build on
 - **Output to:** `/deep-risk` (architecture risks), `/plan` Faza 5 (implementation phases from ADRs)
-- **ITRP constraint:** Architecture must follow `.ai/standards.md` layering: Repository → Mapper → Domain → Service → Router
+- **constraint:** Architecture must follow `.ai/standards.md` layering: Repository → Mapper → Domain → Service → Router
 
 ## Provenance
 

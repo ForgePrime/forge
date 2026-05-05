@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Forge — K-criteria Audit{% endblock %}
+{% block content %}
+
+{# Phase 1 redesign — /ui/audit view.
+   Append-only audit log of K1..K6 firings (kill_criteria_event_log).
+   Filters: K-code, time window, entity scope.
+   Per ADR-028 + UX_DESIGN §11: this is the Compliance/Steward surface
+   for reviewing kill-criteria triggers and dismissing false positives. #}
+
+<div class="flex items-center justify-between mb-4">
+    <div>
+        <h1 class="text-2xl font-bold">K-criteria Audit Log</h1>
+        <p class="text-xs text-slate-500 mt-0.5">
+            Append-only firing log for K1..K6. Each row references the
+            entity (objective / decision / task) + reason text. Steward
+            review surface.
+        </p>
+    </div>
+    <div class="flex items-center gap-2 text-xs">
+        <a href="/ui/dashboard" class="text-blue-600 hover:underline">← Dashboard</a>
+    </div>
+</div>
+
+{# Filter controls #}
+<div class="bg-white border border-slate-200 rounded-lg p-3 mb-4">
+    <form method="get" action="/ui/audit" class="flex items-center gap-3 text-sm flex-wrap">
+        <div>
+            <label class="text-xs text-slate-500 uppercase tracking-wide">K-code</label>
+            <select name="kc" class="ml-2 border border-slate-300 rounded px-2 py-1 text-sm">
+                <option value="" {% if not selected_kc %}selected{% endif %}>all</option>
+                {% for code in ["K1","K2","K3","K4","K5","K6"] %}
+                <option value="{{ code }}" {% if selected_kc == code %}selected{% endif %}>{{ code }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="text-xs text-slate-500 uppercase tracking-wide">Window</label>
+            <select name="window" class="ml-2 border border-slate-300 rounded px-2 py-1 text-sm">
+                <option value="24h" {% if selected_window == "24h" %}selected{% endif %}>last 24h</option>
+                <option value="7d" {% if selected_window == "7d" %}selected{% endif %}>last 7d</option>
+                <option value="30d" {% if selected_window == "30d" %}selected{% endif %}>last 30d</option>
+                <option value="all" {% if selected_window == "all" %}selected{% endif %}>all time</option>
+            </select>
+        </div>
+        <button type="submit" class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm">Apply</button>
+        <span class="text-xs text-slate-500 ml-2">
+            {{ rows | length }} of {{ total_rows }} matching
+        </span>
+    </form>
+</div>
+
+{# Per-K-code summary #}
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+    {% for code in ["K1","K2","K3","K4","K5","K6"] %}
+    {% set count = code_counts.get(code, 0) %}
+    <a href="?kc={{ code }}&window={{ selected_window or '24h' }}"
+       class="block bg-white border border-slate-200 rounded p-2 hover:bg-slate-50 transition">
+        <div class="flex items-center justify-between">
+            <span class="mono text-xs font-bold text-slate-700">{{ code }}</span>
+            <span class="text-{% if count > 0 %}rose{% else %}emerald{% endif %}-600 text-xs font-semibold">
+                {{ count }}
+            </span>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+{# Event rows #}
+{% if rows | length == 0 %}
+<div class="bg-emerald-50 border border-emerald-200 rounded-lg p-6 text-center text-sm text-emerald-700">
+    ✓ No K-events in this window. Stay skeptical anyway — empty log just
+    means no firings yet, not that the system is sound.
+</div>
+{% else %}
+<div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200">
+            <tr class="text-xs text-slate-500 uppercase tracking-wide">
+                <th class="px-3 py-2 text-left">When</th>
+                <th class="px-3 py-2 text-left">K-code</th>
+                <th class="px-3 py-2 text-left">Entity ref</th>
+                <th class="px-3 py-2 text-left">Reason</th>
+                <th class="px-3 py-2 text-left">Status</th>
+                <th class="px-3 py-2 text-left">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr class="border-t border-slate-100 hover:bg-slate-50">
+                <td class="px-3 py-2 mono text-xs whitespace-nowrap">
+                    {{ row.fired_at.strftime("%Y-%m-%d %H:%M:%S") if row.fired_at else "—" }}
+                </td>
+                <td class="px-3 py-2">
+                    <span class="text-xs px-2 py-0.5 rounded mono font-semibold
+                        {% if row.kc_code == 'K1' %}bg-rose-100 text-rose-700
+                        {% elif row.kc_code == 'K2' %}bg-amber-100 text-amber-800
+                        {% elif row.kc_code == 'K3' %}bg-orange-100 text-orange-700
+                        {% elif row.kc_code == 'K4' %}bg-purple-100 text-purple-700
+                        {% elif row.kc_code == 'K5' %}bg-blue-100 text-blue-700
+                        {% elif row.kc_code == 'K6' %}bg-rose-100 text-rose-700
+                        {% endif %}">
+                        {{ row.kc_code }}
+                    </span>
+                </td>
+                <td class="px-3 py-2 text-xs">
+                    {% if row.objective_id %}<span class="mono">obj#{{ row.objective_id }}</span>{% endif %}
+                    {% if row.decision_id %}<span class="mono">dec#{{ row.decision_id }}</span>{% endif %}
+                    {% if row.task_id %}<span class="mono">task#{{ row.task_id }}</span>{% endif %}
+                    {% if not (row.objective_id or row.decision_id or row.task_id) %}<span class="text-slate-400">—</span>{% endif %}
+                </td>
+                <td class="px-3 py-2 text-xs text-slate-700">
+                    <div class="max-w-md truncate" title="{{ row.reason }}">{{ row.reason }}</div>
+                </td>
+                <td class="px-3 py-2 text-xs">
+                    {% set dismissal = (dismissals or {}).get(row.id) %}
+                    {% if dismissal %}
+                    <span class="text-xs px-2 py-0.5 bg-slate-200 text-slate-700 rounded mono"
+                          title="{{ dismissal.recommendation | truncate(120) }}">
+                        ✓ Dismissed by DEC-{{ dismissal.id }}
+                    </span>
+                    {% else %}
+                    <span class="text-xs px-2 py-0.5 bg-rose-50 text-rose-700 rounded">active</span>
+                    {% endif %}
+                </td>
+                <td class="px-3 py-2 text-xs">
+                    {% if not (dismissals or {}).get(row.id) %}
+                    <details>
+                        <summary class="cursor-pointer text-blue-600 hover:underline text-xs">Dismiss</summary>
+                        <form method="post" action="/ui/audit/dismiss/{{ row.id }}" class="mt-2 space-y-1">
+                            {# CSRF token from middleware: client reads forge_csrf cookie. #}
+                            <input type="hidden" name="X-CSRF-Token" value="">
+                            <textarea name="reason" required minlength="10" maxlength="2000" rows="3"
+                                      placeholder="Steward justification (min 10 chars) — e.g. 'distinct-actor exception per ADR-012 human-in-loop override'"
+                                      class="w-64 border border-slate-300 rounded px-2 py-1 text-xs"></textarea>
+                            <button type="submit"
+                                    class="bg-amber-600 text-white px-2 py-1 rounded text-xs hover:bg-amber-700">
+                                Confirm dismiss
+                            </button>
+                        </form>
+                    </details>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if rows | length >= 200 %}
+<div class="text-xs text-slate-500 text-center mt-3">
+    Showing first 200 rows. Tighten filters to narrow.
+</div>
+{% endif %}
+{% endif %}
+
+<div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-xs text-slate-700">
+    <strong>Steward note:</strong> these events are append-only audit. To
+    dismiss a false positive (e.g. a K4 event where Steward overrode
+    distinct-actor per ADR-012 human-in-loop exception), record the
+    dismissal as a separate Decision with type='kill_criterion_override'
+    referencing the event. The event row itself is never edited or deleted.
+</div>
+
+{% endblock %}

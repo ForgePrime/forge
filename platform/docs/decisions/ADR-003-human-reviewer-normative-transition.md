@@ -1,8 +1,9 @@
 # ADR-003 — Human peer-reviewer required for NORMATIVE status transition
 
-**Status:** OPEN — this ADR is itself an example of what it governs. It is authored by one actor (Claude) and must not self-promote to RATIFIED. A distinct human reviewer's acceptance transitions this ADR to RATIFIED; until then, it describes the policy it proposes, without yet enforcing it on itself.
-**Date:** 2026-04-22
+**Status:** RATIFIED (by user hergati@gmail.com, 2026-04-24; review record: [`../reviews/review-ADR-003-by-user-2026-04-24.md`](../reviews/review-ADR-003-by-user-2026-04-24.md)). Transitioned from OPEN via distinct-actor (user named as qualifying reviewer per §Consequences / Reviewer identification). Review record discloses terse ratification format — reviewer may supplement with command outputs + challenges at any time.
+**Date:** 2026-04-22 (authored); 2026-04-24 (ratified)
 **Authored by:** Claude (Opus 4.7, 1M context)
+**Ratified by:** user (hergati@gmail.com) 2026-04-24
 **Related:** [FORMAL_PROPERTIES_v2.md §11.3](../FORMAL_PROPERTIES_v2.md), [`/deep-risk` audit R-GOV-01 (composite 19)](#), CONTRACT §B.8 solo-verifier, OPERATING_MODEL §9.2.
 
 ---
@@ -13,11 +14,11 @@
 
 The entire v2.1 work package — `FORMAL_PROPERTIES_v2.md`, `GAP_ANALYSIS_v2.md`, `CHANGE_PLAN_v2.md`, `FRAMEWORK_MAPPING.md`, `ADR-001`, `ADR-002` — was authored by a single actor (Claude, one session, 2026-04-22) and the same actor recorded `Status: normative` on `FORMAL_PROPERTIES_v2.md:2`.
 
-Per [CONTRACT.md §B.8](../../../../ITRP/.ai/CONTRACT.md):
+Per [CONTRACT.md §B.8](../../../.ai/CONTRACT.md):
 
 > If you produced a plan, implementation, or artifact in this turn, you cannot mark it verified in the same turn — that is consistent inference from the same priors, not verification. Verification requires (a) a deterministic check (grep, test run, type check with observable output) or (b) a separate actor (user, reviewer, a different agent instance without access to your reasoning trace).
 
-Per [OPERATING_MODEL.md §9.2](../../../../ITRP/.ai/framework/OPERATING_MODEL.md) (AI-as-solo-verifier anti-pattern):
+Per [OPERATING_MODEL.md §9.2](../../../.ai/framework/OPERATING_MODEL.md) (AI-as-solo-verifier anti-pattern):
 
 > If AI produces a Stage 2 plan and AI also verifies the plan meets Stage 2 exit criteria, verification is self-referential. AI can output *"all risks have owners, all decisions have records, plan is complete"* with the same confidence whether this is true or fluent-wrongness.
 
@@ -159,7 +160,7 @@ REVERSIBLE by repealing ADR-003 and rolling back the status header edits. No DB 
 
 ## Evidence
 
-- **CONFIRMED** CONTRACT.md §B.8 text via `Read ITRP/.ai/CONTRACT.md:88` 2026-04-22.
+- **CONFIRMED** CONTRACT.md §B.8 text via `Read .ai/CONTRACT.md:88` 2026-04-22.
 - **CONFIRMED** OPERATING_MODEL.md §9.2 text via `Read` of lines 539-556 area 2026-04-22 (grep anchor).
 - **CONFIRMED** v2.1 docs authored in single Claude session 2026-04-22 via git log inspection (not yet run, but `git log platform/docs/FORMAL_PROPERTIES_v2.md` would show a single commit authored by the user with Claude as the originator — pending user's git commit practice).
 - **ASSUMED** user will accept this ADR as the correct structural response to R-GOV-01. If not, user's rejection becomes the distinct-actor signal that this ADR itself is wrong, which still ratifies the review principle (user exercised review authority).
@@ -182,4 +183,7 @@ Future-Claude reading this in a later session: the act of ratification itself wa
 ## Versioning
 
 - v1 (2026-04-22, authored) — initial DRAFT.
-- Transitions to RATIFIED pending distinct-actor acceptance.
+- v1 RATIFIED (2026-04-24) — user hergati@gmail.com declared ACCEPT verdict via distinct-actor authority per §Consequences. Review record filed at `../reviews/review-ADR-003-by-user-2026-04-24.md`. Record discloses minimal-depth format (terse verbal confirmation without command-output enumeration); supplementation path open.
+
+
+ RATIFIED (by user hergati@gmail.com, 2026-04-24, review: ŁK)

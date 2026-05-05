@@ -28,6 +28,10 @@ from app.services.claude_cli import invoke_claude, CLIResult
 from app.services.prompt_parser import assemble_prompt
 from app.services.contract_validator import validate_delivery, CheckResult
 from app.services.test_runner import verify_ac_tests, detect_language
+from app.validation.rule_adapter import EvaluationContext
+from app.validation.rules import contract_validator_rule, plan_gate_rule
+from app.validation.shadow_comparator import compare_and_log
+from app.validation.state_transition import commit_status_transition
 from app.services.git_verify import ensure_repo, snapshot_head, commit_all, diff_report
 from app.services.kr_measurer import measure_kr
 from app.services.delivery_extractor import extract_from_delivery
@@ -548,6 +552,34 @@ def plan_from_objective(slug: str, body: PlanRequest, db: Session = Depends(get_
     ref_violations = validate_plan_requirement_refs(
         tasks_data, project_has_source_docs=has_sources,
     )
+
+    # Phase A.3 shadow-mode comparator. Mode='off' is a no-op; flip to
+    # 'shadow' once canary opens. This call NEVER raises.
+    # NOTE: no execution_id at plan-gate time (plan precedes Execution);
+    # using project_id as the divergence FK target is incorrect for the
+    # current schema (verdict_divergences.execution_id NOT NULL). Skip
+    # logging here until A.4 wiring decides on a Plan-level entity FK.
+    # The shadow call is left commented to mark the integration point
+    # without inserting bad data. Tracked in commit body.
+    # compare_and_log(
+    #     session_factory=lambda: db,
+    #     execution_id=...,  # NEEDS: Plan entity or proj-level audit row
+    #     ctx=EvaluationContext(
+    #         entity_type="plan",
+    #         entity_id=proj.id,
+    #         from_state="__init__",
+    #         to_state="VALIDATED",
+    #         artifact={
+    #             "tasks_data": tasks_data,
+    #             "project_has_source_docs": has_sources,
+    #         },
+    #         evidence=(),
+    #     ),
+    #     rules=(plan_gate_rule,),
+    #     legacy_passed=(not ref_violations),
+    #     legacy_reason="; ".join(ref_violations) if ref_violations else None,
+    # )
+
     if ref_violations:
         raise HTTPException(400, {
             "error": "plan_traceability_gate: tasks missing requirement_refs",
@@ -859,8 +891,16 @@ def orchestrate(
                     "workspace": workspace, "workspace_infra": infra_info,
                     "stopped_reason": "paused"}
 
-        # Claim
-        candidate.status = "IN_PROGRESS"
+        # Claim — also fire K1 detection at execute time per ADR-028 §K1.
+        # Wrapped in defensive lambda + try/except inside commit_status_transition
+        # post_commit; failure NEVER breaks the claim path.
+        def _k1_hook_orchestrator():
+            from app.services.kill_criteria import detect_k1_for_task
+            detect_k1_for_task(db, candidate.id)
+        commit_status_transition(
+            candidate, entity_type="task", target_state="IN_PROGRESS",
+            post_commit=_k1_hook_orchestrator,
+        )
         candidate.agent = "orchestrator-cli"
         candidate.started_at = dt.datetime.now(dt.timezone.utc)
         _update_run(db, run_id,
@@ -969,10 +1009,10 @@ def orchestrate(
                 _enforce_budget(db, proj)
             except HTTPException as ex:
                 # Budget hit during orchestration — stop loop, mark task back to TODO
-                candidate.status = "TODO"
+                commit_status_transition(candidate, entity_type="task", target_state="TODO")
                 candidate.agent = None
                 candidate.started_at = None
-                execution.status = "FAILED"
+                commit_status_transition(execution, entity_type="execution", target_state="FAILED")
                 db.commit()
                 results.append({
                     "task": candidate.external_id,
@@ -1050,6 +1090,30 @@ def orchestrate(
             ac_verif_map = {ac.position: ac.verification for ac in candidate.acceptance_criteria}
             val = validate_delivery(delivery, contract_def, candidate.type, None,
                                     ac_verifications=ac_verif_map)
+
+            # Phase A.3 shadow-mode comparator. Mode='off' default = no-op.
+            # Logs to verdict_divergences only on engine-vs-legacy disagree.
+            compare_and_log(
+                session_factory=lambda: db,
+                execution_id=execution.id,
+                ctx=EvaluationContext(
+                    entity_type="execution",
+                    entity_id=execution.id,
+                    from_state="DELIVERED",
+                    to_state="VALIDATING",
+                    artifact={
+                        "delivery": delivery,
+                        "contract": contract_def,
+                        "task_type": candidate.type,
+                        "prev_attempt": None,
+                        "ac_verifications": ac_verif_map,
+                    },
+                    evidence=(),
+                ),
+                rules=(contract_validator_rule,),
+                legacy_passed=val.all_pass,
+                legacy_reason=getattr(val, "fix_instructions", None) or None,
+            )
             execution.delivery = delivery
             execution.validation_result = {
                 "all_pass": val.all_pass,
@@ -1206,9 +1270,9 @@ def orchestrate(
                             if m.measured_value is not None:
                                 kr.current_value = m.measured_value
                                 if m.target_hit:
-                                    kr.status = "ACHIEVED"
+                                    commit_status_transition(kr, entity_type="key_result", target_state="ACHIEVED")
                                 elif kr.status == "NOT_STARTED":
-                                    kr.status = "IN_PROGRESS"
+                                    commit_status_transition(kr, entity_type="key_result", target_state="IN_PROGRESS")
 
                             # P5.2 — silent-fail surfacing: when the measurement command
                             # crashed (timeout/rc!=0) OR ran cleanly but emitted no parseable
@@ -1258,7 +1322,7 @@ def orchestrate(
                     "verification_issues": verification_issues,
                 }
                 if verification_issues:
-                    execution.status = "REJECTED"
+                    commit_status_transition(execution, entity_type="execution", target_state="REJECTED")
                     fix_hint = (
                         f"Verification failed (Forge-executed checks, not AI self-report): "
                         + "; ".join(verification_issues)
@@ -1269,9 +1333,9 @@ def orchestrate(
                     continue
 
                 # All checks passed
-                execution.status = "ACCEPTED"
+                commit_status_transition(execution, entity_type="execution", target_state="ACCEPTED")
                 execution.completed_at = dt.datetime.now(dt.timezone.utc)
-                candidate.status = "DONE"
+                commit_status_transition(candidate, entity_type="task", target_state="DONE")
                 candidate.completed_at = dt.datetime.now(dt.timezone.utc)
                 db.commit()
 
@@ -1421,6 +1485,18 @@ def orchestrate(
                         db.flush()
                         total_cost += chal.llm_call_meta.get("cost_usd") or 0
 
+                        # K4 auto-instrumentation: detect solo-verifier (challenger
+                        # model == executor model) per ADR-012 distinct-actor.
+                        # Idempotent per-execution; safe to call after every
+                        # challenge LLMCall creation. Failures here MUST NOT
+                        # break the pipeline — wrap in defensive try.
+                        try:
+                            from app.services.kill_criteria import detect_k4_solo_verifier
+                            detect_k4_solo_verifier(db, execution.id)
+                        except Exception:
+                            # Logged-only audit; never raises into the executor path.
+                            pass
+
                     for cf in chal.new_findings:
                         ext_id = _next_external_id(db, proj.id, Finding, "F")
                         db.add(Finding(
@@ -1456,13 +1532,13 @@ def orchestrate(
                 accepted = True
                 break
             else:
-                execution.status = "REJECTED"
+                commit_status_transition(execution, entity_type="execution", target_state="REJECTED")
                 fix_hint = val.fix_instructions
                 db.commit()
 
         if not accepted:
-            execution.status = "FAILED"
-            candidate.status = "FAILED"
+            commit_status_transition(execution, entity_type="execution", target_state="FAILED")
+            commit_status_transition(candidate, entity_type="task", target_state="FAILED")
             candidate.fail_reason = f"Max retries ({max_retries}) reached. Last fix_hint: {fix_hint[:300]}"
             db.commit()
             results.append({"task": candidate.external_id, "status": "FAILED", "attempts": task_attempts})
@@ -1629,7 +1705,7 @@ def task_retry(slug: str, external_id: str, db: Session = Depends(get_db)):
         raise HTTPException(409, f"Task is {t.status}; only FAILED/DONE/SKIPPED can be retried")
 
     previous_status = t.status
-    t.status = "TODO"
+    commit_status_transition(t, entity_type="task", target_state="TODO")
     t.started_at = None
     t.completed_at = None
     t.agent = None

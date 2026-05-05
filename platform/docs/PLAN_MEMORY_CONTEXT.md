@@ -1,0 +1,571 @@
+# PLAN: Memory & Context — Causal DAG + Context Projection
+
+**Status:** DRAFT — pending distinct-actor review per ADR-003.
+**Date:** 2026-04-23
+**Depends on:** PLAN_GATE_ENGINE complete (G_A = PASS).
+**Must complete before:** PLAN_QUALITY_ASSURANCE (D.2 property tests need G_{B.1}; C.3 ImpactClosure needs G_{B.2}), PLAN_CONTRACT_DISCIPLINE (E.1 ContractSchema needs ContextProjector at G_{B.4}).
+**ROADMAP phases:** B.1 → B.4.
+**Source spec:** FORMAL_PROPERTIES_v2.md P14, P15. (Note: CausalEdge history produced here is the data substrate for P4 Q_n rolling window; full P4 closure handled at Phase E E.3 ContinuousAutonomy stage, not this plan.)
+**Soundness theorem source:** `.ai/theorems/Context-Complete Evidence-Guided Agent Process.md`.
+
+---
+
+## Soundness conditions addressed
+
+| Theorem condition | Source theorem | What "addressed" means | Closed in |
+|---|---|---|---|
+| **1** — RequiredInfo(i) ⊆ C_i | CCEGAP | ContextProjector delivers the minimal justification frontier to the agent — C_i is now formally computed, not session-dependent | Stage B.4 exit |
+| **3** — O_i derived from C_i, R_i, E_<i | CCEGAP | B.1 establishes the DAG structure (necessary condition only — ancestor edge exists); condition 3 proper — the agent's output is actually *derived from* E_<i at generation time — is only closed at B.4 when ContextProjector delivers E_<i into C_i. B.1 alone guarantees only presence of ancestor edges, not derivation. | Stage B.4 exit (B.1 is a prerequisite, not a closure point) |
+| **C3** — Timely delivery | ECITP | All required info materialized in P_i BEFORE F_i executes; no post-hoc compensation. Enforced at Execution state transition (pending → IN_PROGRESS). | Stage B.5 exit (WARN); auto-promotes to REJECT at G_{E.1} |
+| **C6** — Topology preservation | ECITP | Semantic dependency relations (requirement ↔ risk ↔ AC ↔ test) survive transfer via `causal_edges.relation_semantic` ENUM; CausalGraph exposes relation-typed queries. | Stage B.6 exit (WARN); promotes to REJECT at G.9 |
+| **§2.3** — Evidence continuity | ECITP | B.4 T2b property test over 10,000 random DAG+task pairs: every decision-relevant ancestor edge in `Relevant(E_i)` appears in `ContextProjection(task_j)` for j > i. Not just spot-check on 10 historical — structural propagation enforced. | Stage B.4 exit (strengthened from T2 spot-check) |
+| **§8** — Source Consistency (no silent contradictions) | FC | SourceConflictDetector emits `source_conflicts` rows for literal-value mismatches on `(entity_ref, field_name)` across Knowledge; unresolved conflict in task ancestor closure → Execution BLOCKED. Deterministic (hash-equality), no LLM. | Stage B.7 exit |
+
+Conditions 2 (Suff), 4 (A_i propagated), 5 (deterministic T_i), 6 (gate), 7 (Missing→Stop) are NOT closed by this plan. They depend on PLAN_GATE_ENGINE (5, 6) and PLAN_CONTRACT_DISCIPLINE (2, 4, 7).
+
+---
+
+## Theorem variable bindings
+
+```
+C_i = {codebase after previous stage} ∪ {CausalEdge projection for current task}
+R_i = FORMAL_PROPERTIES_v2 P14 (causal DAG), P15 (projection)
+A_i = listed explicitly per stage
+T_i = pytest / property-test (hypothesis) / grep — no LLM-in-loop
+O_i = {CausalEdge table, CausalGraph service, ContextProjector, context_projections table}
+G_i = all T_i pass AND existing tests green AND distinct-actor spot-check where noted
+```
+
+**Condition 1 — how it is closed:** Before B.4, `C_i` was defined by session priors (what the agent happened to have in context). After B.4, `C_i = ContextProjector.project(task, budget_tokens)` — a deterministic BFS over the causal DAG filtered by `scope_tags ∪ requirement_refs`. RequiredInfo(i) is now formally bounded.
+
+**Residual gap (disclosed):** ContextProjector can only project what is *in* the DAG. Implicit invariants and tribal knowledge not captured as CausalEdge entries remain outside C_i. This gap is tracked in AUTONOMOUS_AGENT_FAILURE_MODES.md §2.4 and is not closed by this plan.
+
+---
+
+## Stage B.1 — CausalEdge table + acyclicity trigger
+
+**Closes:** P14 structural foundation — history becomes a DAG with enforced acyclicity.
+
+**Entry conditions:**
+- G_A = PASS (Phase A exit gate, all 5 stages).
+
+**A_{B.1}:**
+- `src.created_at < dst.created_at` acyclicity trigger — [ASSUMED: this is the chosen mechanism per FORMAL_PROPERTIES_v2 P14 binding]. [UNKNOWN: clock-skew tolerance value — must be set by ADR-004. ADR-004 is not yet authored on disk as of 2026-04-23 (platform/docs/decisions/ contains only ADR-001..003). B.1 is BLOCKED until ADR-004 file exists with `Status: CLOSED` — see Q1.]
+- Unique constraint scope: `(src_type, src_id, dst_type, dst_id, relation)` — [ASSUMED: adding `created_at` to unique key would make idempotent re-insert impossible; leave it out per standard pattern. If wrong → duplicate edges on re-run of backfill]. Mitigation: B.2 tests idempotency explicitly.
+
+**Work:**
+1. Alembic migration: `causal_edges(id, src_type, src_id, dst_type, dst_id, relation, created_at)`.
+2. Unique constraint: `(src_type, src_id, dst_type, dst_id, relation)`.
+3. DB trigger or app-level check: reject insert where `src.created_at >= dst.created_at` (acyclicity via clock).
+4. App-level insert gate: `Decision | Change | Finding` insert requires ≥ 1 CausalEdge to an ancestor OR `is_objective_root = true` (adds nullable-defaulting `is_objective_root` boolean column to the three entities in this B.1 migration). Root exception must be explicit at insert time — no silent bypass.
+
+**Exit test T_{B.1} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+# exits 0
+
+# T2: unique constraint idempotency
+pytest tests/test_causal_edge_unique.py -x
+# PASS: inserting same (src_type, src_id, dst_type, dst_id, relation) twice → second raises IntegrityError
+
+# T3: acyclicity — property test
+pytest tests/property/test_causal_acyclicity.py -x --hypothesis-seed=0
+# PASS: 10,000 random edge inserts never produce a cycle (hypothesis)
+
+# T4: insert gate
+pytest tests/test_causal_insert_gate.py -x
+# PASS: Decision insert with no ancestor edge → rejected (root exception: Objective root documented)
+
+# T5: regression
+pytest tests/ -x
+# all existing + Gate Engine tests green
+```
+
+**Gate G_{B.1}:** T1–T5 pass → PASS.
+
+---
+
+## Stage B.2 — Idempotent backfill of existing FKs
+
+**Closes:** P14 — existing causal relations in schema become edges in the DAG.
+
+**Entry conditions:**
+- G_{B.1} = PASS.
+
+**A_{B.2}:**
+- 10 known FK-based causal relations per GAP_ANALYSIS_v2 §P14 (after ADR-002 corrections) PLUS the `task_dependencies` table (required for PLAN_QUALITY_ASSURANCE C.3 walk):
+  `Task.origin_finding_id`, `AcceptanceCriterion.source_ref`, `AcceptanceCriterion.source_llm_call_id`, `Finding.source_llm_call_id`, `Finding.execution_id`, `Decision.execution_id`, `Decision.task_id`, `Change.execution_id`, `Change.task_id`, `Knowledge.source_ref`, `task_dependencies.(src_task_id, dst_task_id, relation)` — [CONFIRMED via GAP_ANALYSIS_v2 §P14; `task_dependencies` added per cross-plan dependency with C.3].
+- `Finding.source_execution_id` was a hallucinated column (GAP_ANALYSIS_v2 §0 correction 2) — [CONFIRMED: use `Finding.execution_id`].
+- `Decision.blocked_by_decisions` does not exist in DB (GAP_ANALYSIS_v2 §0 correction 1) — [CONFIRMED: omit from backfill].
+- Relation type assignment (e.g. `Task.origin_finding_id` → relation='produced_by') — [ASSUMED: mapping in backfill script; distinct-actor spot-check required per T3].
+
+**Work:**
+1. `scripts/backfill_causal_edges.py` — reads each of 10 FK relations, inserts CausalEdge rows. Idempotent: uses `INSERT OR IGNORE` / `ON CONFLICT DO NOTHING`.
+2. Script takes `--dry-run` flag for pre-production review.
+
+**Exit test T_{B.2} (deterministic):**
+```bash
+# T1: idempotency
+python scripts/backfill_causal_edges.py && python scripts/backfill_causal_edges.py
+# row count identical after second run (no duplicates)
+
+# T2: FK coverage (10 FK relations + task_dependencies)
+pytest tests/test_backfill_coverage.py -x
+# PASS: for each of 10 FK relations + task_dependencies, at least one edge exists in causal_edges after backfill
+
+# T2b: task_dependencies specifically backfilled (required by PLAN_QUALITY_ASSURANCE C.3)
+pytest tests/test_backfill_task_dependencies.py -x
+# PASS: every task_dependencies row has a corresponding causal_edges row with relation='depends_on'
+
+# T3: relation-type spot-check [MANUAL, SLA: 5 working days from B.2 code-complete]
+# distinct actor reviews 20 random edges: verify relation type matches semantic intent
+# Record: docs/reviews/review-backfill-edges-by-<actor>-<date>.md
+# Escalation: if SLA exceeded, B.2 auto-reverts to BLOCKED; Steward must name fallback reviewer.
+
+# T4: regression
+pytest tests/ -x
+# all tests green
+```
+
+**Gate G_{B.2}:** T1–T2b automated + T4 green + T3 distinct-actor review record filed (within SLA) → PASS.
+
+---
+
+## Stage B.3 — CausalGraph service
+
+**Closes:** P14 operational — graph queries available as pure Python service.
+
+**Entry conditions:**
+- G_{B.2} = PASS.
+
+**A_{B.3}:**
+- BFS depth limit for `ancestors()` — [UNKNOWN: not specified in FORMAL_PROPERTIES_v2 or ADR-004. See Q3 in open questions table. B.3 is BLOCKED until platform owner names a value via a recorded Decision (format: `[ASSUMED: accepted-by=<role>, date=YYYY-MM-DD]` per CONTRACT §B.2). Default=10 is a strawman, not a resolution.]
+- `minimal_justification()` definition: shortest path vs minimum weight? — [ASSUMED: shortest path (hop count) for simplicity; minimum weight requires P10 risk weights which are Phase D. Acceptable assumption — document].
+
+**Work:**
+1. `app/evidence/causal_graph.py`:
+   - `ancestors(node, depth=10, relation_filter=None) → List[CausalEdge]` — BFS over `causal_edges` table.
+   - `minimal_justification(node) → List[CausalEdge]` — shortest path to root.
+   - Pure Python: no side effects, no writes, no external calls.
+
+**Exit test T_{B.3} (deterministic):**
+```bash
+# T1: ancestors correctness
+pytest tests/test_causal_graph.py::test_ancestors -x
+# PASS: known fixture graph — ancestors(node_D) returns {A, B, C} for known DAG A→B→C→D
+
+# T2: minimal_justification
+pytest tests/test_causal_graph.py::test_minimal_justification -x
+# PASS: minimal_justification(node_D) returns shortest path [A→B→C→D] not longer detour
+
+# T3: purity check
+grep -n "session\|db\.\|commit\|add(" app/evidence/causal_graph.py
+# exits 1 (no matches — pure reads only)
+
+# T4: regression
+pytest tests/ -x
+# all tests green
+```
+
+**Gate G_{B.3}:** T1–T4 pass → PASS.
+
+---
+
+## Stage B.4 — ContextProjector + prompt assembly integration
+
+**Closes:** P15 (context projection) — **condition 1 of soundness theorem fully closed here**.
+
+**Entry conditions:**
+- G_{B.3} = PASS.
+
+**A_{B.4}:**
+- Budget unit: tokens or characters? — [ASSUMED: tokens, matching LLM context window accounting. If wrong → projection may over- or under-fill context]. Mitigation: T1 tests with 10 canonical fixtures to catch systematic over/under-fill.
+- Priority order for pruning under budget: [ASSUMED: must-guidelines → recent decisions → evidence → knowledge, per FORMAL_PROPERTIES_v2 P15 binding. Document in code].
+- `scope_tags ∪ requirement_refs` filter source — [UNKNOWN: must grep-verify `task.scope_tags` and `task.requirement_refs` field existence in current schema before B.4 starts. See Q2. B.4 is BLOCKED on Q2 resolution.]
+
+**Work:**
+1. `app/evidence/context_projector.py`:
+   - `project(task, budget_tokens) → ContextProjection` — BFS over CausalGraph, filtered by `scope_tags ∪ requirement_refs`, pruned by priority order.
+   - Deterministic: same task + same budget + same DAG state → same projection.
+2. `context_projections` table migration: stores projection per Execution for audit.
+3. `app/prompt_parser.py` integration: use `ContextProjector.project()` when `CAUSAL_PROJECTION=on` flag set.
+4. Default: `CAUSAL_PROJECTION=off` — behind flag until B.4 exit gate passed.
+
+**Exit test T_{B.4} (deterministic):**
+```bash
+# T1: budget compliance — 10 canonical fixtures
+pytest tests/test_context_projector.py::test_budget_compliance -x
+# PASS: projection token count ≤ budget_tokens for all 10 fixtures
+
+# T2: fidelity — 10 historical executions (spot-check)
+pytest tests/test_context_projector.py::test_fidelity -x
+# PASS: for each historical execution, projection contains every Decision the agent's
+# reasoning referenced (spot-check via parsing stored reasoning text)
+# [ASSUMED: systematic coverage gap for novel task types — mitigated by T2b below]
+
+# T2b: evidence continuity — property-based test (closes ECITP §2.3)
+pytest tests/property/test_evidence_continuity.py -x --hypothesis-seed=0
+# PASS: for a random valid CausalEdge DAG G and random task t:
+#   let E_rel = {e | e ∈ ancestors(t, G) AND e.relation_semantic ∈ decision_relevant_set}
+#   let P = ContextProjector.project(t, budget_tokens=large_enough_to_fit_all)
+#   assert E_rel ⊆ P.structured_fields (every decision-relevant ancestor edge
+#   appears in projection; no silent drop).
+# Hypothesis strategy: generate 10,000 DAG+task pairs; zero false-negatives allowed.
+# Closes ECITP §2.3 Evidence continuity and mitigates §5 Degradation by preventing
+# prior substitution due to unpropagated evidence.
+
+# T2c: lossless decomposition — property-based test (closes AIOS A1 first half)
+pytest tests/property/test_lossless_decomposition.py -x --hypothesis-seed=0
+# AIOS Axiom 1: Decompose(Σ) → Σ_i must satisfy ⋃ Σ_i = Σ ∧ InfoLoss = 0.
+# PASS: for a random Objective with N decomposed Tasks:
+#   let Σ_global = Objective's relevant CausalGraph subgraph (scope_tags ∪ requirement_refs)
+#   let Σ_i = ContextProjector.project(task_i, budget_tokens=large_enough) for each task_i
+#   assert union(Σ_i for i) ⊇ Σ_global (every global element appears in at least one task's projection)
+#   assert InfoLoss = |Σ_global - union(Σ_i)| = 0
+# Hypothesis: 10,000 random (Objective, N_tasks) pairs with 2-20 tasks per Objective.
+# Zero false-negatives allowed. Closes AIOS A1 decomposition lossless property.
+
+# T3: determinism
+pytest tests/test_context_projector.py::test_determinism -x
+# PASS: same (task_id, budget) called 3 times → identical projection output
+
+# T4: context_projections audit trail
+pytest tests/test_context_projector.py::test_audit_persistence -x
+# PASS: each project() call persists a row in context_projections
+
+# T5: flag off = no behavior change
+pytest tests/ -x  # with CAUSAL_PROJECTION=off (default)
+# all existing tests green — flag off means projector not invoked
+
+# T6: flag on smoke
+pytest tests/test_context_projector_integration.py -x  # with CAUSAL_PROJECTION=on
+# PASS: prompt assembly uses projection, not raw session context
+```
+
+**Gate G_{B.4}:** T1–T2, T2b, T3–T6 pass → PASS.
+**CCEGAP Condition 1 achieved:** C_i is now formally `ContextProjector.project(task, budget_tokens)` — RequiredInfo(i) is bounded by the DAG projection, not session priors.
+**ECITP §2.3 Evidence continuity closed:** T2b property test proves `Relevant(E_i) ⊆ P_j for all j > i where relevant` over 10,000 random DAG+task pairs, not just 10 historical spot-check. Systematic coverage gap from v1 closed.
+
+---
+
+## Stage B.5 — TimelyDeliveryGate
+
+**Closes:** ECITP C3 (Timely delivery — all required info present in P_i BEFORE F_i executes). Source: `.ai/theorems/Epistemic_Continuity_and_Information_Topology_Preservation_for_AI_Agent_Systems.md` §3 C3.
+
+**Rationale (ESC-3 root-cause uniqueness):** ECITP C3 requires that "all information required by stage i is delivered before F_i is executed — no stage may compensate after the fact." Three candidate enforcement points were considered:
+1. Inline check in `prompt_parser.py` before LLM call — **rejected**: too late; Execution has already transitioned to IN_PROGRESS, so gate-failure would require rollback, contradicting F.4 no-auto-fill and violating ECITP Lemma 4 (broken continuity amplifies revision cost).
+2. Gate at `Execution.status` transition (pending → IN_PROGRESS) — **chosen**: atomic with state machine; failure prevents transition, preserving invariant "IN_PROGRESS implies materialized P_i"; consistent with F.4 BLOCKED pattern.
+3. Both 1 + 2 — **rejected**: duplicated enforcement, higher maintenance cost, no additional guarantee because (2) subsumes (1).
+
+**Entry conditions:**
+- G_{B.4} = PASS (ContextProjector exists and produces `ContextProjection` rows).
+- G_{E.1} = PASS for full enforcement (ContractSchema.required_context(task) needed to define what counts as "required"). **Phased rollout:** B.5 may start in WARN mode before E.1; promotes to REJECT at G_{E.1} = PASS.
+
+**A_{B.5}:**
+- Required-context schema source: `ContractSchema.required_context(task) → Set[FieldRef]` per task type — [UNKNOWN: schema not yet defined; depends on E.1 ContractSchema. B.5 enforcement is WARN-only until G_{E.1} = PASS, then promotes to REJECT]. Mitigation: seed minimum required_context = `{scope_tags, requirement_refs, ancestor_findings}` for all task types until ContractSchema arrives.
+
+**Work:**
+1. `app/validation/timely_delivery_gate.py`:
+   - `TimelyDeliveryGate.check(execution) → Verdict` — returns PASS iff `execution.context_projection_id IS NOT NULL` AND for every `FieldRef f ∈ ContractSchema.required_context(execution.task)`: `f ∈ execution.context_projection.structured_fields`.
+2. Alembic migration: `executions.context_projection_id UUID FK NOT NULL constraint deferred` (SET NULL allowed in pending state; enforced at IN_PROGRESS transition).
+3. GateRegistry entry: `(Execution, pending, IN_PROGRESS) → [TimelyDeliveryGate]`.
+4. Phase toggle: env var `TIMELY_DELIVERY_MODE ∈ {WARN, REJECT}`; default WARN; switches to REJECT when G_{E.1} = PASS is recorded in `feature_flags` table.
+
+**Exit test T_{B.5} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: transition blocked without projection (REJECT mode)
+pytest tests/test_timely_delivery_gate.py::test_no_projection_blocks -x
+# PASS: Execution.status=pending, context_projection_id=NULL, transition to IN_PROGRESS → blocked
+
+# T3: transition blocked when projection missing required field (REJECT mode)
+pytest tests/test_timely_delivery_gate.py::test_missing_field_blocks -x
+# PASS: projection lacking 'requirement_refs' when task.requirement_refs non-empty → blocked
+
+# T4: WARN mode emits Finding but allows transition
+pytest tests/test_timely_delivery_gate.py::test_warn_mode_emits_finding -x
+# PASS: WARN mode → Finding inserted, Execution.status advances to IN_PROGRESS
+
+# T5: no NL-only fallback in prompt_parser
+grep -nE "session_context|raw_prompt_fallback|fallback.*projection" app/prompt_parser.py
+# exits 1 (no matches — fallback path explicitly removed)
+
+# T6: regression
+pytest tests/ -x
+```
+
+**Gate G_{B.5}:** T1–T6 pass → PASS. **ECITP C3 closed** in WARN mode at G_{B.5}; auto-promotes to REJECT at G_{E.1}.
+
+**ESC-4 impact completeness:** touches `executions` table (new NOT NULL FK), `prompt_parser.py` (removes fallback), `GateRegistry`, `ContextProjector` (no changes — consumer-side), and adds dependency from Phase F.10 (StructuredTransferGate reuses same `required_context` schema). **ESC-5 invariants preserved:** F.4 BLOCKED semantic unchanged; B.4 ContextProjector interface unchanged (additive). **ESC-7 failure modes:** (a) novel task type with empty `required_context` → defaults to minimum seed; (b) race between projection compute and transition → FK NOT NULL constraint serializes; (c) WARN→REJECT promotion before ContractSchema ready → env-flag gated on G_{E.1} recorded state.
+
+---
+
+## Stage B.6 — SemanticRelationTypes on CausalEdge
+
+**Closes:** ECITP C6 (topology preservation — requirement/risk/AC/test dependency relations survive transfer). Source: `.ai/theorems/Epistemic_Continuity_and_Information_Topology_Preservation_for_AI_Agent_Systems.md` §3 C6.
+
+**Rationale (ESC-3 root-cause uniqueness):** ECITP C6 requires that semantic dependency relations survive decomposition. Current `causal_edges.relation TEXT` field is free-form; two candidate schemas were considered:
+1. Separate relation-type table `causal_relation_types(id, code, semantic_class)` — **rejected**: adds join overhead to every CausalGraph traversal; breaks simple `relation='depends_on'` backward compatibility; requires re-tagging all B.2 backfilled rows.
+2. `causal_edges.relation_semantic ENUM` column alongside existing `relation TEXT` — **chosen**: backward compatible (existing TEXT preserved); deterministic mapping script; ENUM constraint at DB level enforces completeness.
+3. Polymorphic relation via JSONB metadata — **rejected**: not queryable with indexed lookups; violates ESC-1 determinism (JSONB ordering is not guaranteed across PG versions).
+
+**Entry conditions:**
+- G_{B.2} = PASS (backfilled edges exist in DB).
+
+**A_{B.6}:**
+- ENUM values — [ASSUMED: `{requirement_of, risk_of, ac_of, test_of, mitigates, derives_from, produces, blocks, verifies}` per FORMAL_PROPERTIES_v2 P14 binding + ECITP C6 semantic classes. Missing values → Finding, not silent fallback].
+- Backfill mapping: `relation TEXT → relation_semantic ENUM` per deterministic script — [UNKNOWN: canonical mapping table must be authored before this stage; Q4 blocks B.6].
+
+**Work:**
+1. Alembic migration: add `causal_edges.relation_semantic ENUM(...) NULL` (NOT NULL defered); index on `(dst_type, dst_id, relation_semantic)`.
+2. `scripts/backfill_relation_semantic.py` — deterministic map from `relation TEXT` values to ENUM; unmappable → `NULL` + Finding.
+3. `app/evidence/causal_graph.py` extension:
+   - `requirements_of(ac) → List[CausalEdge]` — edges WHERE `dst_id = ac.id AND relation_semantic = 'requirement_of'`.
+   - `risks_of(ac) → List[CausalEdge]` — same pattern, `relation_semantic = 'risk_of'`.
+   - `tests_of(ac) → List[CausalEdge]` — same pattern, `relation_semantic = 'test_of'`.
+4. Validator (WARN phase; promotes to REJECT at G.9): `AcceptanceCriterion insert` → emit Finding if `requirements_of(ac)` empty AND `risks_of(ac)` empty.
+
+**Exit test T_{B.6} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: backfill deterministic (ESC-1)
+python scripts/backfill_relation_semantic.py && python scripts/backfill_relation_semantic.py
+# row count identical; no duplicate mappings
+
+# T3: unmappable edges reported as Findings
+pytest tests/test_relation_semantic_backfill.py::test_unmappable_finding -x
+# PASS: TEXT relation with no ENUM mapping → Finding emitted, relation_semantic=NULL
+
+# T4: CausalGraph query methods
+pytest tests/test_causal_graph_semantic.py -x
+# PASS: requirements_of/risks_of/tests_of return expected edges on fixture DAG
+
+# T5: AC validator emits Finding when requirement AND risk both absent (WARN mode)
+pytest tests/test_ac_topology_warn.py -x
+# PASS: AC insert with no 'requirement_of' and no 'risk_of' edge → Finding inserted
+
+# T6: regression
+pytest tests/ -x
+```
+
+**Gate G_{B.6}:** T1–T6 pass → PASS. **ECITP C6 closed (WARN mode)**; REJECT promotion handled at G.9 ProofTrailCompleteness.
+
+**ESC-4 impact:** `causal_edges` schema (+1 column, +1 index); `CausalGraph` (+3 methods — additive); `AcceptanceCriterion` validator (WARN phase). **ESC-5 invariants preserved:** B.1 unique constraint on (src_type, src_id, dst_type, dst_id, relation) unchanged (relation_semantic is additional, not part of uniqueness). **ESC-7 failure modes:** (a) unmappable historical TEXT → Finding not silent NULL default; (b) new relation class introduced → ENUM type check raises at insert; (c) partial backfill coverage → T3 catches.
+
+---
+
+## Stage B.7 — SourceConflictDetector
+
+**Closes:** FC §8 Source Consistency — `Contradicts(x, y) ⇒ ConflictRecorded(x, y)` and `UnresolvedConflict(x, y) ⇒ STOP`. Source: Forge Complete theorem §8.
+
+**Rationale (ESC-3 root-cause uniqueness):** three enforcement designs considered:
+1. Inline conflict check at Knowledge insert — **rejected**: contradictions emerge cross-document, not at single-row insert time; single-row check cannot see the other side.
+2. LLM-based semantic contradiction detection — **rejected**: violates ESC-1 determinism; re-introduces exactly the statistical-prior pathology FC §34 prohibits.
+3. Periodic + on-demand deterministic batch scan with blocking Finding — **chosen**: groups Knowledge by `(entity_ref, field_name)` and flags literal-value mismatches; deterministic (hash-based equality), re-runnable, and cooperates with existing Finding/BLOCKED flow (F.4 pattern).
+
+**Entry conditions:**
+- G_{B.2} = PASS (Knowledge FK relations in CausalEdge).
+- G_{B.6} = PASS (relation_semantic ENUM; conflict-detector classifies relations).
+
+**A_{B.7}:**
+- Conflict-detection scope: exact literal-value mismatch on `(entity_ref, field_name)` pairs — [CONFIRMED: scope = literal equality, not semantic paraphrase per ESC-1 determinism]. Paraphrase-level conflict detection out of scope (would require LLM; violates determinism).
+- UNKNOWN handling: rows with `value IS NULL` or `value = '[UNKNOWN]'` treated as non-contradictory (CONTRACT §B.2 compatible — UNKNOWN ≠ contradiction with known) — [CONFIRMED].
+
+**Work:**
+1. Alembic migration: `source_conflicts(id, source_a_id, source_b_id, entity_ref, field_name, value_a, value_b, detected_at, resolved_at NULL, resolution_decision_id NULL FK → decisions.id)`. Unique on `(source_a_id, source_b_id, entity_ref, field_name)` sorted (canonical) to prevent duplicate symmetric rows.
+2. `scripts/detect_source_conflicts.py` — deterministic scan:
+   - For each `(entity_ref, field_name)` group in `knowledge`, if |distinct non-NULL values| > 1 → emit `source_conflicts` row per pair + `Finding(severity=HIGH, kind='source_conflict')`.
+3. Pre-execution validator: at `Execution.pending → IN_PROGRESS` transition (extends B.5 TimelyDeliveryGate), if any `source_conflicts` row where both `source_a` and `source_b` are in `ancestors(task) ∩ causal_edges` AND `resolved_at IS NULL` → BLOCKED with reason=`unresolved_source_conflict`.
+4. Resolution mechanism: `Decision(type='conflict_resolution', resolves_conflict_id FK)` with EvidenceSet citing which source wins + why. `resolution_decision_id` populated + `resolved_at = now()`.
+5. Periodic CI cron: nightly full-DB scan; new conflicts emit Findings.
+
+**Exit test T_{B.7} (deterministic):**
+```bash
+# T1: migration round-trip
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: synthetic conflict detected (deterministic — hash-equality based)
+pytest tests/test_source_conflict_detector.py::test_literal_mismatch -x
+# PASS: two Knowledge rows with same (entity_ref, field_name) and different literal values
+#       → exactly one source_conflicts row emitted + Finding(kind='source_conflict')
+
+# T3: UNKNOWN-vs-known is NOT a conflict
+pytest tests/test_source_conflict_detector.py::test_unknown_not_conflict -x
+# PASS: Knowledge rows where one is '[UNKNOWN]' and other is 'concrete_value'
+#       → no source_conflicts row emitted
+
+# T4: Execution with unresolved conflict in ancestor closure → BLOCKED
+pytest tests/test_source_conflict_detector.py::test_unresolved_blocks_execution -x
+# PASS: task whose ancestors include both conflicting sources → Execution.status=BLOCKED
+#       with blocked_reason='unresolved_source_conflict'
+
+# T5: resolution via Decision unblocks
+pytest tests/test_source_conflict_detector.py::test_resolution_unblocks -x
+# PASS: Decision(type='conflict_resolution', resolves_conflict_id=X) with EvidenceSet
+#       → source_conflicts[X].resolved_at populated → next Execution transition PASSES
+
+# T6: idempotency — re-running scan produces same rows (no duplicates)
+python scripts/detect_source_conflicts.py && python scripts/detect_source_conflicts.py
+# source_conflicts row count identical after second run (ESC-1 determinism)
+
+# T7: regression
+pytest tests/ -x
+```
+
+**Gate G_{B.7}:** T1–T7 pass → PASS. **FC §8 Source Consistency closed** structurally: conflicts detected deterministically + blocking at execution gate + explicit resolution path.
+
+**ESC-4 impact:** `source_conflicts` table (new); extends B.5 TimelyDeliveryGate with one additional check; Decision.type enum extended (add `'conflict_resolution'`); CI cron job (new). No existing code paths removed. **ESC-5 invariants preserved:** F.4 BLOCKED semantic unchanged (new `blocked_reason` value, same state machine); B.5 gate extends additively. **ESC-7 failure modes:** (a) high-volume duplicate detection on large DB → `LIMIT` + batched scan per entity_ref group; (b) schema-evolution (field rename across sources) masquerades as conflict → resolution via explicit Decision with EvidenceSet citing the rename ADR; (c) detection lag between Knowledge insert and CI cron → same-transaction pre-execution check (step 3) catches intra-task conflicts immediately even before cron runs.
+
+---
+
+## Stage B.8 — ActorAndProcessEntities (FC §9 + AI-SDLC §7)
+
+**Closes:** Forge Complete §9 Business Problem Decomposition (actors + processes) + AI-SDLC §7 Valid(S1) business-analysis completeness. Source: ADR-025 Actor + BusinessProcess entities.
+
+**Rationale (ESC-3 root-cause uniqueness):** see ADR-025 §Alternatives. Two distinct entities (Actor, BusinessProcess) + many-to-many link chosen — matches domain-modeling norms + enables queryable business-analysis dashboards; rejected single combined entity (conflates who-vs-what).
+
+**Entry conditions:**
+- G_{B.1} = PASS (CausalEdge table exists; Finding.actor_refs/process_refs participate in DAG).
+- ADR-025 CLOSED.
+
+**A_{B.8}:**
+- Authority-level enum values — [CONFIRMED: ADR-025 specifies `{observer, participant, decision_maker, approver, system_automation}`].
+- LLM-based Actor/Process extraction quality — [ASSUMED: LLM can extract structured candidates from Knowledge prose with ≥80% precision after Steward review pass; calibration on first 20 documents]. Steward override always available.
+- Legacy-row exemption — [CONFIRMED: pre-B.8 Findings marked `legacy_exempted_business_analysis=true`; validator skips them].
+
+**Work:**
+1. Alembic migrations: `actors` + `business_processes` + `business_process_actors` tables per ADR-025.
+2. `findings.actor_refs JSONB NOT NULL DEFAULT '[]'::jsonb` + `findings.process_refs JSONB NOT NULL DEFAULT '[]'::jsonb` + `findings.legacy_exempted_business_analysis BOOL NOT NULL DEFAULT false` + **`findings.business_justification TEXT NULL`** (closes AI-SDLC #8 — pre-ratification content-DRAFT extension of ADR-025 scope).
+3. Extraction service: `app/analysis/actor_process_extractor.py` — LLM-based extraction with Steward review queue.
+4. Dashboard endpoint: `GET /projects/{slug}/business-analysis/candidates` — extraction candidates pending Steward review.
+5. Validator `BusinessAnalysisCompleteness` added to GateRegistry for `(Finding, *, OPEN)` insert chain. Enforces per ADR-025: requirement Findings must reference ≥1 actor + (≥1 process OR all actors system_automation) + **non-empty `business_justification` text with minimum 20 characters** (closes AI-SDLC #8 — "every requirement has business_justification").
+6. Migration for existing Findings: flag as `legacy_exempted_business_analysis=true`.
+
+**Exit test T_{B.8} (deterministic):**
+```bash
+# T1: migration round-trip (3 new tables + 3 new columns on findings)
+uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+
+# T2: Finding(type='requirement') insert without actor_refs → REJECTED
+pytest tests/test_business_analysis_completeness.py::test_missing_actor_rejected -x
+# PASS: Finding(type='requirement', actor_refs=[], process_refs=[1]) → REJECTED
+# with reason='requirement_missing_actor'
+
+# T3: Finding(type='requirement') insert without process_refs (human actor) → REJECTED
+pytest tests/test_business_analysis_completeness.py::test_missing_process_rejected -x
+# PASS: Finding(type='requirement', actor_refs=[human_actor_id], process_refs=[]) → REJECTED
+
+# T4: system_automation-only exception allowed
+pytest tests/test_business_analysis_completeness.py::test_system_automation_exempt -x
+# PASS: all actors have authority_level='system_automation' → process_refs may be empty
+
+# T5: legacy exemption honored
+pytest tests/test_business_analysis_completeness.py::test_legacy_exempt_passes -x
+# PASS: Finding with legacy_exempted_business_analysis=true skips validator
+
+# T6: LLM extraction + Steward review flow
+pytest tests/test_actor_process_extractor.py -x
+# PASS: extraction from fixture Knowledge → candidates queue → Steward approve → actors+processes rows inserted
+
+# T7: hierarchical process nesting
+pytest tests/test_business_processes.py::test_parent_child_processes -x
+# PASS: BusinessProcess with parent_process_id FK works; cycle detection rejects self-reference
+
+# T8: dashboard endpoint returns pending candidates
+pytest tests/test_dashboard.py::test_business_analysis_candidates_endpoint -x
+
+# T9: regression
+pytest tests/ -x
+
+# T10: business_justification required for Finding(type='requirement') (AI-SDLC #8)
+pytest tests/test_business_analysis_completeness.py::test_missing_business_justification_rejected -x
+# PASS: Finding(type='requirement', actor_refs=[X], process_refs=[Y], business_justification=NULL)
+#       → REJECTED with reason='requirement_missing_business_justification'
+# PASS: business_justification=' ' (only whitespace) → REJECTED
+# PASS: business_justification='ok' (< 20 chars) → REJECTED
+# PASS: business_justification='Enables weekly operational reporting for Actor X'
+#       (≥ 20 chars) → PASS
+
+# T11: Task decomposition scope coverage — property test (closes AIOS A1 second half)
+pytest tests/property/test_task_decomposition_coverage.py -x --hypothesis-seed=0
+# AIOS Axiom 1 applied to Task decomposition: if main Task m decomposes into
+# {subtask_1, ..., subtask_n}, then scope(m) ⊆ union(scope(subtask_i)).
+# PASS: for random Task m with 2-10 subtasks:
+#   assert set(m.scope_tags) ⊆ union(set(st.scope_tags) for st in descendants(m))
+#   assert set(m.requirement_refs) ⊆ union(st.requirement_refs for st in descendants(m))
+# Ensures decomposition does not silently drop scope elements; paired with
+# E.8 ScopeBoundaryDeclaration (which covers converse: subtasks ⊆ main scope)
+# → together enforce set equality. Closes AIOS A1 for Task-level decomposition.
+```
+
+**Gate G_{B.8}:** T1–T11 pass + ADR-025 CLOSED → PASS. **FC §9 Actor/Process gap closed + AI-SDLC §7 Business Analysis + #8 business_justification closed + AIOS A1 Task-decomposition coverage closed (paired with B.4 T2c for projection decomposition and E.8 for converse direction)**.
+
+**ESC-4 impact:** 3 new tables (actors, business_processes, business_process_actors); `findings` schema extension (+3 columns); new extraction service; GateRegistry insert-validation chain extension; dashboard endpoint. **ESC-5 invariants preserved:** Finding insert path backward-compat (legacy flag); B.1 CausalEdge structure unchanged; F.3 assumption-tagging unaffected. **ESC-7 failure modes:** (a) over-extraction by LLM (too many irrelevant actors) → Steward review queue catches before persist; (b) actor drift (person changes role) → `archived_at` soft-delete + re-insert with new role; (c) process granularity unclear → `parent_process_id` enables hierarchy; `frequency_per_day` differentiates detail vs high-level.
+
+---
+
+## Phase B exit gate (G_B)
+
+```
+G_B = PASS iff:
+  G_{B.1} = PASS  (CausalEdge table, acyclicity, insert gate)
+  AND G_{B.2} = PASS  (backfill idempotent, FK coverage, distinct-actor spot-check)
+  AND G_{B.3} = PASS  (CausalGraph service pure + correct)
+  AND G_{B.4} = PASS  (ContextProjector live behind flag, fidelity + determinism confirmed)
+  AND G_{B.5} = PASS  (TimelyDeliveryGate — ECITP C3 closed in WARN, auto-promotes to REJECT at G_{E.1})
+  AND G_{B.6} = PASS  (SemanticRelationTypes — ECITP C6 closed in WARN, promotes at G.9)
+  AND G_{B.7} = PASS  (SourceConflictDetector — FC §8; unresolved conflicts in task ancestor closure → BLOCKED)
+  AND G_{B.8} = PASS  (ActorAndProcessEntities — FC §9 + AI-SDLC §7; requirement Findings traceable to actor + process)
+  AND pytest tests/ -x → all existing + Gate Engine + Memory tests green
+  AND every new Decision|Change|Finding has ≥ 1 CausalEdge OR is flagged as an objective-root (e.g. Decision.is_objective_root = true) — DB invariant query:
+      SELECT count(*) FROM (decisions UNION changes UNION findings) d
+        LEFT JOIN causal_edges e ON e.dst_id = d.id
+        WHERE e.id IS NULL AND COALESCE(d.is_objective_root, false) = false
+      → 0 (root exception documented in B.1 Work item 4 requires is_objective_root column added in B.1 migration)
+```
+
+**Soundness conditions closed at G_B:**
+- **CCEGAP Condition 1** — RequiredInfo(i) ⊆ C_i: ContextProjector delivers formally computed C_i. [T_{B.4} T2, T3]
+- **CCEGAP Condition 3 (full)** — O_i derived from E_<i: CausalEdge enforces ancestry; ContextProjector delivers that ancestry to the agent. [T_{B.1} T4, T_{B.4} T6]
+- **ECITP C3 (WARN → REJECT at G_{E.1})** — timely delivery enforced at Execution state transition; no F_i runs without P_i materialized. [T_{B.5} T2, T3, T5]
+- **ECITP C6 (WARN → REJECT at G.9)** — semantic relation topology (requirement/risk/AC/test) survives transfer via relation_semantic ENUM. [T_{B.6} T4, T5]
+- **ECITP §2.3** — Evidence continuity: every decision-relevant ancestor edge is propagated into projection over 10,000 random DAG+task pairs (zero false-negatives). [T_{B.4} T2b]
+- **FC §8** — Source consistency: literal-value mismatches across Knowledge are deterministically detected, blocking Execution with unresolved conflict in task ancestor closure. [T_{B.7} T2, T4, T5]
+- **FC §9** — Actor/Process decomposition: requirement Findings traceable to ≥1 actor + (≥1 process OR system_automation-only). [T_{B.8} T2, T3, T4, T5]
+- **AI-SDLC §7 + #8** — Business-analysis completeness with non-empty `business_justification` (≥20 chars). [T_{B.8} T2, T10]
+- **AIOS A1** — Lossless decomposition (projection-level + task-level) over 10,000 random pairs / random Objectives. [T_{B.4} T2c + T_{B.8} T11]
+
+**Residual gap (disclosed):** projection fidelity tested on 10 historical executions (spot-check). Novel task types not covered by fidelity test. Full coverage requires Phase E ContractSchema (typed `Task.produces` → typed `RequiredInfo`).
+
+---
+
+## Failure scenarios (ASPS Clause 11)
+
+| # | Scenario | Status | Mechanism / Justification |
+|---|---|---|---|
+| 1 | null_or_empty_input | Handled | B.1 insert gate rejects Decision/Change/Finding without ancestor edge (unless `is_objective_root=true`); B.4 ContextProjector with empty DAG produces empty `ContextProjection` → B.5 TimelyDeliveryGate blocks pending→IN_PROGRESS transition; B.6 AC validator emits Finding when requirement+risk edges both empty. |
+| 2 | timeout_or_dependency_failure | Handled | B.3 CausalGraph is pure Python over DB; BFS bounded by `max_depth` (Q3); slow projection → Execution stays in `pending`, TimelyDeliveryGate (B.5) prevents LLM call. No external network dependency. |
+| 3 | repeated_execution | Handled | B.2 backfill idempotent (T1 explicit — INSERT ... ON CONFLICT DO NOTHING); B.4 ContextProjector deterministic (T3: same task+budget+DAG → identical projection byte-for-byte); B.6 backfill script idempotent on re-run (T2). |
+| 4 | missing_permissions | JustifiedNotApplicable | CausalGraph queries are DB reads scoped by `project_id` via application-layer auth already enforced upstream. CausalEdge table has no user-level permission model; cross-project isolation at query layer. If cross-project CausalEdge exposure becomes concern → new ADR. |
+| 5 | migration_or_old_data_shape | Handled | Every B-stage with schema change has alembic upgrade→downgrade→upgrade round-trip (B.1 T1, B.4 T4-audit, B.5 T1, B.6 T1). B.1 `is_objective_root` column added with `DEFAULT false` to backward-fill existing rows; B.6 `relation_semantic` NULL-allowed with Finding on unmappable TEXT. |
+| 6 | frontend_not_updated | JustifiedNotApplicable | Memory/Context is backend-internal: CausalEdge table, CausalGraph service, ContextProjector, gates. No UI surface in Phase B. If future stage exposes projection-view UI → revisit. |
+| 7 | rollback_or_restore | Handled | B.4 `CAUSAL_PROJECTION=off` env flag disables projector without migration rollback (feature-flag rollback). B.5 `TIMELY_DELIVERY_MODE=WARN` reverts REJECT mode. B.6 feature flag promotion WARN→REJECT reversible by flipping flag. All alembic migrations have `down_revision`. |
+| 8 | monday_morning_user_state | Handled | ContextProjector is stateless per call — no overnight accumulation. `context_projections` table stores audit trail but is read-only; Monday-morning invocation produces identical projection given identical DAG. B.5 `executions.context_projection_id` NOT NULL constraint at IN_PROGRESS transition survives process restart. |
+| 9 | warsaw_missing_data | JustifiedNotApplicable | Memory/Context operates on CausalEdge DAG (Decision/Change/Finding entities); no geographic or regional data in scope. |
+
+---
+
+## Open questions (UNKNOWN — condition 7 applies)
+
+| # | Question | Blocks |
+|---|---|---|
+| Q1 | ADR-004 clock-skew tolerance value — read from ADR-004 before implementing acyclicity trigger | Stage B.1 |
+| Q2 | Do `task.scope_tags` and `task.requirement_refs` fields exist in current schema? Grep `app/models/task.py` before implementing projector filter | Stage B.4 |
+| Q3 | BFS depth limit default — decide before implementing `ancestors()`; currently [UNKNOWN: strawman=10] | Stage B.3 |
+| Q4 | Canonical mapping table `relation TEXT → relation_semantic ENUM` — must be authored as part of ADR-017 (proposed, per ROADMAP §12) before B.6 backfill runs | Stage B.6 |
+| Q5 | Seed list for `ContractSchema.required_context(task)` per task type when E.1 not yet complete — minimum viable set to unblock B.5 WARN mode | Stage B.5 |

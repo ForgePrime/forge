@@ -101,7 +101,9 @@ Work is complete only when:
 ## Closing
 
 **AI amplifies the system it operates in.**
-**We built a system that amplifies engineering discipline.**
+**We built a system that amplifies engineering discipline — and engineering understanding.**
+
+Every loop — Evidence, Plan, Build, Verify — is also a learning loop. The framework develops the engineer, not just the codebase. If the engineer cannot explain *why* a decision was made after the loop closes, the framework failed even if the code shipped.
 
 ---
 
@@ -114,3 +116,4 @@ Work is complete only when:
 ### Changelog
 
 - **v1.0 (2026-04-19)** — Initial published manifesto. Ten principles, three operational rules, five-criterion global Definition of Done. Adopted as the cultural foundation of Contract-Governed AI Delivery.
+- **v1.1 (framework v2.0 reorganization)** — Extended Closing with learning-loop sentence: framework's purpose is engineer development, not only code delivery. Reframes MGF "tradecraft erosion" concern as a CGAID positive outcome (engineer understanding) rather than a separate principle. No new principle added; ten remain canonical.

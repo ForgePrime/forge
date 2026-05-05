@@ -1,0 +1,777 @@
+// Forge — Objective view
+// -----------------------
+// Hero: Stage strip, CGAID alternatives w/ impact deltas, Side-Effect Map,
+// Cascade DoD, Decisions with alternatives+reasoning, Tasks list.
+
+function ObjectiveView({ C, objId, go, openTask, initialTab = 'overview' }) {
+  const { MOCK, Pill, SectionLabel, TierBadge, EpistemicTag, GateChip, StageBanner, SANS, MONO } = window;
+  const [tab, setTab] = React.useState(initialTab);
+  const obj = MOCK.objectives.find((o) => o.id === objId) || MOCK.objectives[0];
+
+  const tabs = [
+    { id: 'overview',   label: 'Overview' },
+    { id: 'cgaid',      label: 'Alternatives', count: MOCK.alternatives.length },
+    { id: 'sidefx',     label: 'Side-effects', count: MOCK.sideEffects.length, hot: MOCK.sideEffects.filter(s=>!s.owner).length > 0 },
+    { id: 'dod',        label: 'Cascade DoD', count: MOCK.cascadeDoD.length },
+    { id: 'decisions',  label: 'Decisions',  count: MOCK.decisions.filter(d=>d.status==='OPEN').length, hot: true },
+    { id: 'ac',         label: 'Acceptance', count: MOCK.acList.length, hot: MOCK.acList.some(a=>a.tag==='INVENTED') },
+    { id: 'kr',         label: 'Key results', count: MOCK.krs.length },
+    { id: 'tasks',      label: 'Tasks',      count: MOCK.tasks.length },
+    { id: 'sources',    label: 'Sources',    count: MOCK.sources.length },
+  ];
+
+  return (
+    <div data-screen-label="Objective · live frame" data-screen-justification="§22 · removable? NO — only frame that locks Stage banner + tabbed deep-dive into a single objective" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <StageBanner C={C} obj={obj} />
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* LEFT TABS */}
+        <div style={{
+          width: 210, flexShrink: 0, borderRight: `1px solid ${C.border}`,
+          padding: '18px 10px', background: C.panel3, overflow: 'auto',
+          display: 'flex', flexDirection: 'column', gap: 1,
+        }}>
+          <div style={{ padding: '0 8px 12px' }}>
+            <div style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim, fontWeight: 600, marginBottom: 3 }}>{obj.id} · {obj.priority}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, lineHeight: 1.35, textWrap: 'pretty' }}>{obj.title}</div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <Pill color={C.accent} bg={C.accentBg}>{obj.status}</Pill>
+              <TierBadge C={C} tier={obj.data_class_tier} />
+              {obj.autonomy_pinned && <Pill color={C.purple} bg={C.purpleBg}>pinned {obj.autonomy_pinned}</Pill>}
+              {obj.steward_lock && <Pill color={C.rose} bg={C.roseBg}>steward-lock</Pill>}
+            </div>
+          </div>
+          {tabs.map((t) => {
+            const a = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                border: 'none', background: a ? C.panel : 'transparent',
+                color: a ? C.text : C.textMuted, cursor: 'pointer', borderRadius: 3,
+                fontFamily: SANS, fontSize: 12.5, fontWeight: a ? 600 : 500,
+                textAlign: 'left', borderLeft: `2px solid ${a ? C.accent : 'transparent'}`,
+              }}>
+                <span style={{ flex: 1 }}>{t.label}</span>
+                {t.count != null && (
+                  <span style={{
+                    fontFamily: MONO, fontSize: 10, fontWeight: 600,
+                    padding: '1px 6px', borderRadius: 8,
+                    background: t.hot && t.count > 0 ? C.rose : C.panel2,
+                    color: t.hot && t.count > 0 ? '#fff' : C.textDim,
+                  }}>{t.count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* CONTENT */}
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          {tab === 'overview'  && <TabOverview C={C} obj={obj} go={go} openTask={openTask} setTab={setTab} />}
+          {tab === 'cgaid'     && <TabCGAID C={C} />}
+          {tab === 'sidefx'    && <TabSideEffects C={C} />}
+          {tab === 'dod'       && <TabDoD C={C} />}
+          {tab === 'decisions' && <TabDecisions C={C} />}
+          {tab === 'ac'        && <TabAC C={C} />}
+          {tab === 'kr'        && <TabKR C={C} />}
+          {tab === 'tasks'     && <TabTasks C={C} openTask={openTask} />}
+          {tab === 'sources'   && <TabSources C={C} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Overview: hero with next action, CGAID chosen alt, decisions count ----
+function TabOverview({ C, obj, go, openTask, setTab }) {
+  const { MOCK, Pill, SectionLabel, EpistemicTag, SANS, MONO } = window;
+  const openDecs = MOCK.decisions.filter((d) => d.status === 'OPEN');
+  const hotDec = openDecs[0];
+  const chosenAlt = MOCK.alternatives.find((a) => a.chosen);
+  const unownedSE = MOCK.sideEffects.filter((s) => !s.owner);
+
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 22, maxWidth: 960 }}>
+      {/* Next-action: blocking decision */}
+      {hotDec && (
+        <div style={{
+          padding: 18, background: C.roseBg, border: `1px solid ${C.rose}44`,
+          borderLeft: `3px solid ${C.rose}`, borderRadius: 3,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Pill color={C.rose} bg="transparent" border={`${C.rose}66`}>needs decision</Pill>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: C.rose, fontWeight: 600 }}>{hotDec.id}</span>
+            <Pill color={C.rose} bg={C.roseBg}>{hotDec.severity}</Pill>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: C.textMuted }}>blocks {hotDec.blocks} task{hotDec.blocks === 1 ? '' : 's'} · {openDecs.length} open total</span>
+          </div>
+          <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 600, color: C.text, letterSpacing: -0.2, lineHeight: 1.35 }}>{hotDec.issue}</h3>
+          <div style={{ margin: '0 0 8px', padding: '8px 10px', background: C.panel, border: `1px dashed ${C.border2}`, borderRadius: 3 }}>
+            <div style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, fontWeight: 700, marginBottom: 3 }}>FORGE RECOMMENDS · confidence: {hotDec.confidence}</div>
+            <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>{hotDec.recommendation}</div>
+            <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.5, marginTop: 6, textWrap: 'pretty' }}>{hotDec.reasoning}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {hotDec.alternatives.map((o, i) => (
+              <button key={i} style={{
+                flex: 1, padding: '10px 14px', background: C.panel, border: `1px solid ${C.border}`,
+                borderRadius: 3, color: C.text, cursor: 'pointer', fontSize: 12.5, fontFamily: SANS,
+                textAlign: 'left', fontWeight: 500,
+              }}>{o}</button>
+            ))}
+            <button onClick={() => setTab('decisions')} style={{
+              padding: '10px 14px', background: 'transparent', border: `1px solid ${C.border}`,
+              borderRadius: 3, color: C.textMuted, cursor: 'pointer', fontSize: 12.5, fontFamily: SANS,
+            }}>see all {openDecs.length} →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Chosen CGAID alt */}
+      {chosenAlt && (
+        <div style={{ padding: 16, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <SectionLabel color={C.textDim} style={{ marginBottom: 0 }}>Plan · CGAID chosen alternative</SectionLabel>
+            <Pill color={C.accent} bg={C.accentBg}>{chosenAlt.id} · chosen</Pill>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setTab('cgaid')} style={{
+              background: 'transparent', border: 'none', color: C.accent, fontSize: 11, cursor: 'pointer',
+              fontFamily: SANS, padding: 0,
+            }}>compare all 3 →</button>
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8, lineHeight: 1.4 }}>{chosenAlt.label}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            {Object.entries(chosenAlt.impact).map(([k, v]) => (
+              <div key={k} style={{ padding: '8px 10px', background: C.panel2, borderRadius: 3, border: `1px solid ${C.border}` }}>
+                <div style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3 }}>{k.replace(/_/g, ' ')}</div>
+                <div style={{ fontSize: 11.5, color: C.text, fontFamily: MONO, lineHeight: 1.35, textWrap: 'pretty' }}>{String(v)}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{
+            marginTop: 10, padding: '8px 10px', background: C.panel2, borderRadius: 3,
+            borderLeft: `2px solid ${C.purple}`, fontSize: 11.5, color: C.textMuted, lineHeight: 1.5, textWrap: 'pretty',
+          }}>
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.purple, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', marginRight: 6 }}>counterfactual</span>
+            {chosenAlt.counterfactual}
+          </div>
+        </div>
+      )}
+
+      {/* Unowned side-effects summary */}
+      {unownedSE.length > 0 && (
+        <div style={{
+          padding: 14, background: C.amberBg, border: `1px solid ${C.amber}44`, borderLeft: `3px solid ${C.amber}`,
+          borderRadius: 3, display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <Pill color={C.amber} bg="transparent" border={`${C.amber}66`}>K1 risk</Pill>
+          <span style={{ fontSize: 12.5, color: C.text }}>
+            {unownedSE.length} side-effect row{unownedSE.length === 1 ? '' : 's'} with <code style={{ fontFamily: MONO, color: C.rose }}>owner = NULL</code> — executor will halt at K1 if not assigned.
+          </span>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setTab('sidefx')} style={{
+            padding: '6px 10px', background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3,
+            color: C.text, cursor: 'pointer', fontSize: 11.5, fontFamily: SANS,
+          }}>assign owners →</button>
+        </div>
+      )}
+
+      {/* Quick stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        <StatCard C={C} n={`${obj.krs_achieved}/${obj.krs_total}`} label="Key results met"  onClick={() => setTab('kr')}   col={C.amber} />
+        <StatCard C={C} n={`${MOCK.acList.filter(a=>a.tag!=='INVENTED').length}/${MOCK.acList.length}`} label="AC with ADR"    onClick={() => setTab('ac')}   col={C.amber} />
+        <StatCard C={C} n={`${obj.tasks_done}/${obj.tasks_total}`} label="Tasks done"       onClick={() => setTab('tasks')} col={C.accent} />
+        <StatCard C={C} n={`${MOCK.cascadeDoD.filter(d=>d.status==='DONE').length}/${MOCK.cascadeDoD.length}`} label="Cascade DoD signed" onClick={() => setTab('dod')} col={C.emerald} />
+      </div>
+
+      {/* Currently running */}
+      <div>
+        <SectionLabel color={C.textDim}>Currently running</SectionLabel>
+        <button onClick={() => openTask('T-exec-02')} style={{
+          width: '100%', padding: 14, background: C.panel, border: `1px solid ${C.border}`,
+          borderLeft: `3px solid ${C.accent}`, borderRadius: 3, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 14, fontFamily: SANS, color: C.text, textAlign: 'left',
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: 4, background: C.accent, animation: 'pulse 1.6s infinite' }} />
+          <span style={{ fontFamily: MONO, fontSize: 12, color: C.textMuted }}>T-exec-02</span>
+          <span style={{ fontSize: 13, flex: 1 }}>Restore prod-eu-2-staging + reconcile replica</span>
+          <Pill color={C.accent} bg={C.accentBg}>execute</Pill>
+          <span style={{ fontSize: 11, color: C.textMuted }}>sonnet-4.5 · 4m 02s</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ C, n, label, onClick, col }) {
+  const { MONO } = window;
+  return (
+    <button onClick={onClick} style={{
+      padding: '12px 14px', background: C.panel, border: `1px solid ${C.border}`,
+      borderRadius: 3, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: C.text,
+    }}>
+      <div style={{ fontFamily: MONO, fontSize: 20, fontWeight: 600, color: col, lineHeight: 1 }}>{n}</div>
+      <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 6 }}>{label}</div>
+    </button>
+  );
+}
+
+// ---- CGAID tab: 3 alternatives side-by-side with impact deltas ----
+function TabCGAID({ C }) {
+  const { MOCK, Pill, SectionLabel, MONO, SANS } = window;
+  const keys = Array.from(new Set(MOCK.alternatives.flatMap((a) => Object.keys(a.impact))));
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div>
+        <SectionLabel color={C.textDim}>CGAID · counterfactual-grounded alternatives</SectionLabel>
+        <p style={{ margin: 0, fontSize: 12.5, color: C.textMuted, lineHeight: 1.55, maxWidth: 780, textWrap: 'pretty' }}>
+          Every plan is compared against at least two viable alternatives. Impact deltas are explicit; the counterfactual states when each alt would have been preferred.
+        </p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+        {MOCK.alternatives.map((a) => (
+          <div key={a.id} style={{
+            padding: 14, background: C.panel, border: `1px solid ${a.chosen ? C.accent : C.border}`,
+            borderLeft: `3px solid ${a.chosen ? C.accent : C.border2}`, borderRadius: 3,
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted, fontWeight: 700 }}>{a.id}</span>
+              {a.chosen && <Pill color={C.accent} bg={C.accentBg}>chosen</Pill>}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, lineHeight: 1.4, textWrap: 'pretty' }}>{a.label}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
+              {keys.map((k) => (
+                <div key={k} style={{ display: 'flex', gap: 6, fontSize: 11, lineHeight: 1.4 }}>
+                  <span style={{ fontFamily: MONO, color: C.textDim, minWidth: 110, textTransform: 'uppercase', letterSpacing: 0.4, fontSize: 9.5, fontWeight: 700, paddingTop: 2 }}>{k.replace(/_/g, ' ')}</span>
+                  <span style={{ color: C.text, flex: 1, fontFamily: MONO, textWrap: 'pretty' }}>{String(a.impact[k] ?? '—')}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{
+              marginTop: 4, padding: '8px 10px', background: C.panel2, borderRadius: 3,
+              borderLeft: `2px solid ${C.purple}`, fontSize: 11, color: C.textMuted, lineHeight: 1.5, textWrap: 'pretty',
+            }}>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: C.purple, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 3 }}>counterfactual</div>
+              {a.counterfactual}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- Side-Effect Map ----
+function TabSideEffects({ C }) {
+  const { MOCK, Pill, SectionLabel, TierBadge, SANS, MONO } = window;
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 960 }}>
+      <div>
+        <SectionLabel color={C.textDim}>Side-effect map · 8 systems</SectionLabel>
+        <p style={{ margin: 0, fontSize: 12.5, color: C.textMuted, lineHeight: 1.5, maxWidth: 780, textWrap: 'pretty' }}>
+          Every downstream system the restore could touch, with an owner, tier, and whether the change has been validated. K1 halts execute if any owner is NULL.
+        </p>
+      </div>
+      <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3 }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: '70px 2fr 2fr 150px 80px 90px',
+          padding: '8px 14px', gap: 12, borderBottom: `1px solid ${C.border}`,
+          fontFamily: MONO, fontSize: 9.5, color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6,
+        }}>
+          <span>ID</span><span>System</span><span>Change</span><span>Owner</span><span>Tier</span><span>Validated</span>
+        </div>
+        {MOCK.sideEffects.map((s, i) => {
+          const unowned = !s.owner;
+          return (
+            <div key={s.id} style={{
+              display: 'grid', gridTemplateColumns: '70px 2fr 2fr 150px 80px 90px',
+              padding: '10px 14px', gap: 12, alignItems: 'center',
+              borderTop: i > 0 ? `1px solid ${C.border}` : 'none',
+              background: unowned ? C.roseBg : 'transparent',
+            }}>
+              <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{s.id}</span>
+              <span style={{ fontSize: 12.5, color: C.text, fontFamily: MONO }}>{s.system}</span>
+              <span style={{ fontSize: 12, color: C.textMuted, textWrap: 'pretty' }}>{s.change}</span>
+              {unowned
+                ? <Pill color={C.rose} bg="transparent" border={`${C.rose}66`}>owner=NULL · K1</Pill>
+                : <span style={{ fontSize: 11.5, color: C.text, fontFamily: MONO }}>{s.owner}</span>}
+              <TierBadge C={C} tier={s.tier} />
+              {s.validated
+                ? <Pill color={C.emerald} bg={C.emeraldBg}>OK</Pill>
+                : <Pill color={C.amber}   bg={C.amberBg}>pending</Pill>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---- Cascade DoD ----
+function TabDoD({ C }) {
+  const { MOCK, Pill, SectionLabel, SANS, MONO } = window;
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 900 }}>
+      <div>
+        <SectionLabel color={C.textDim}>Cascade definition-of-done</SectionLabel>
+        <p style={{ margin: 0, fontSize: 12.5, color: C.textMuted, lineHeight: 1.5, maxWidth: 780, textWrap: 'pretty' }}>
+          Clauses beyond the primary artifact that must be signed before this objective can be marked ACHIEVED. Every clause has a named owner.
+        </p>
+      </div>
+      {MOCK.cascadeDoD.map((d) => {
+        const done = d.status === 'DONE';
+        return (
+          <div key={d.id} style={{
+            display: 'flex', alignItems: 'flex-start', gap: 12, padding: 14,
+            background: C.panel, border: `1px solid ${C.border}`,
+            borderLeft: `3px solid ${done ? C.emerald : C.amber}`, borderRadius: 3,
+          }}>
+            <span style={{
+              width: 18, height: 18, borderRadius: 2, marginTop: 1,
+              background: done ? C.emerald : 'transparent',
+              border: done ? 'none' : `1.5px solid ${C.amber}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              color: '#fff', fontSize: 11,
+            }}>{done && '✓'}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{d.id}</span>
+                <Pill color={done ? C.emerald : C.amber} bg={done ? C.emeraldBg : C.amberBg}>{d.status}</Pill>
+                <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim, marginLeft: 'auto' }}>owner: {d.owner}</span>
+              </div>
+              <div style={{ fontSize: 13, color: C.text, lineHeight: 1.45, textWrap: 'pretty' }}>{d.clause}</div>
+              {d.evidence && <div style={{ marginTop: 4, fontFamily: MONO, fontSize: 10.5, color: C.accent }}>→ {d.evidence}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- Decisions ----
+function TabDecisions({ C }) {
+  const { MOCK, Pill, SectionLabel, SANS, MONO } = window;
+  const open = MOCK.decisions.filter((d) => d.status !== 'RESOLVED');
+  const resolved = MOCK.decisions.filter((d) => d.status === 'RESOLVED');
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 920 }}>
+      <SectionLabel color={C.textDim}>Open decisions · Forge won't guess</SectionLabel>
+      {open.map((d) => (
+        <div key={d.id} style={{
+          padding: 16, background: C.panel, border: `1px solid ${C.border}`,
+          borderLeft: `3px solid ${d.severity === 'critical' ? C.rose : d.severity === 'high' ? C.amber : C.textMuted}`,
+          borderRadius: 3,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Pill color={C.amber} bg={C.amberBg} border={`${C.amber}44`}>{d.type}</Pill>
+            <Pill color={d.severity === 'critical' ? C.rose : d.severity === 'high' ? C.amber : C.textMuted} bg={C.panel2}>{d.severity}</Pill>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted }}>{d.id}</span>
+            {d.status === 'ANALYZING' && <Pill color={C.accent} bg={C.accentBg}>analysing…</Pill>}
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: C.textMuted }}>
+              {d.blocks > 0 ? <span style={{ color: C.rose }}>blocks {d.blocks} · {d.task_ref}</span> : 'not blocking'}
+            </span>
+          </div>
+          <h3 style={{ margin: '0 0 8px', fontSize: 14.5, fontWeight: 600, color: C.text, lineHeight: 1.4 }}>{d.issue}</h3>
+          <div style={{ margin: '0 0 10px', padding: '8px 10px', background: C.panel2, border: `1px dashed ${C.border2}`, borderRadius: 3 }}>
+            <div style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim, fontWeight: 700, marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.6 }}>Forge recommends · confidence: {d.confidence}</div>
+            <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>{d.recommendation}</div>
+            <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.5, marginTop: 6, textWrap: 'pretty' }}>{d.reasoning}</div>
+          </div>
+
+          {/* §C3 / P-C · ImpactClosure · transitive blast radius */}
+          {MOCK.impactClosure && MOCK.impactClosure[d.id] && (() => {
+            const ic = MOCK.impactClosure[d.id];
+            return (
+              <div style={{
+                margin: '0 0 10px', padding: '10px 12px',
+                background: C.panel, border: `1px solid ${C.rose}44`,
+                borderLeft: `3px solid ${C.rose}`, borderRadius: 3,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.rose, fontWeight: 700, letterSpacing: 0.6 }}>BLAST RADIUS · IMPACTCLOSURE</span>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>§C3 · phase C.1</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, fontFamily: MONO, fontSize: 11 }}>
+                  {[
+                    { k: 'AC invalidated',  d: ic.direct_impact.ac,    t: ic.transitive_impact.ac },
+                    { k: 'Tasks blocked',   d: ic.direct_impact.tasks, t: ic.transitive_impact.tasks },
+                    { k: 'KRs at risk',     d: ic.direct_impact.krs,   t: ic.transitive_impact.krs },
+                    { k: 'Sources touched', d: 0,                       t: ic.transitive_impact.sources },
+                  ].map((x, i) => (
+                    <div key={i} style={{
+                      padding: '6px 8px', background: C.panel3, border: `1px solid ${C.border}`, borderRadius: 2,
+                      display: 'flex', flexDirection: 'column', gap: 2,
+                    }}>
+                      <span style={{ color: C.textDim, fontSize: 9.5, letterSpacing: 0.4, fontWeight: 700 }}>{x.k}</span>
+                      <span style={{ color: C.text, fontWeight: 700, fontSize: 14 }}>
+                        {x.d > 0 && <span style={{ color: C.amber }}>{x.d}</span>}
+                        {x.d > 0 && <span style={{ color: C.textDim, margin: '0 4px' }}>→</span>}
+                        <span style={{ color: C.rose }}>{x.t}</span>
+                      </span>
+                      <span style={{ color: C.textDim, fontSize: 9 }}>direct → transitive</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* hop progression */}
+                <div style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}>
+                  {ic.hops.map((h, i) => (
+                    <React.Fragment key={i}>
+                      <div style={{
+                        flex: 1, padding: '5px 8px',
+                        background: C.panel3, border: `1px solid ${C.border}`, borderRadius: 2,
+                        fontFamily: MONO, fontSize: 9.5, lineHeight: 1.4,
+                      }}>
+                        <div style={{ color: C.accent, fontWeight: 700 }}>hop {h.hop} · {h.kind}</div>
+                        <div style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>+{h.items}</div>
+                        <div style={{ color: C.textMuted, textWrap: 'pretty' }}>{h.label}</div>
+                      </div>
+                      {i < ic.hops.length - 1 && <span style={{ color: C.border2, alignSelf: 'center' }}>›</span>}
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {ic.ac_invalidated.map((id) => (
+                    <span key={id} style={{ fontFamily: MONO, fontSize: 9.5, padding: '2px 6px', background: C.roseBg, border: `1px solid ${C.rose}44`, borderRadius: 2, color: C.rose, fontWeight: 700 }}>{id}</span>
+                  ))}
+                  {ic.tasks_blocked.slice(0, 4).map((id) => (
+                    <span key={id} style={{ fontFamily: MONO, fontSize: 9.5, padding: '2px 6px', background: C.amberBg, border: `1px solid ${C.amber}44`, borderRadius: 2, color: C.amber, fontWeight: 700 }}>{id}</span>
+                  ))}
+                  {ic.tasks_blocked.length > 4 && (
+                    <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.textDim, alignSelf: 'center' }}>+{ic.tasks_blocked.length - 4} more</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+          <div style={{ display: 'flex', gap: 6 }}>
+            {d.alternatives.map((o, i) => (
+              <button key={i} style={{
+                padding: '7px 12px', background: C.panel2, border: `1px solid ${C.border}`,
+                borderRadius: 3, color: C.text, cursor: 'pointer', fontSize: 12, fontFamily: SANS,
+              }}>{o}</button>
+            ))}
+            <div style={{ flex: 1 }} />
+            <button style={{
+              padding: '7px 12px', background: 'transparent', border: `1px solid ${C.border}`,
+              borderRadius: 3, color: C.textMuted, cursor: 'pointer', fontSize: 12, fontFamily: SANS,
+            }}>ask Forge to research</button>
+          </div>
+        </div>
+      ))}
+      {resolved.length > 0 && (
+        <>
+          <SectionLabel color={C.textDim} style={{ marginTop: 14 }}>Resolved · {resolved.length}</SectionLabel>
+          {resolved.map((d) => (
+            <div key={d.id} style={{
+              padding: '10px 14px', background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3,
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <Pill color={C.emerald} bg={C.emeraldBg}>resolved</Pill>
+              <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted }}>{d.id}</span>
+              <span style={{ fontSize: 12.5, color: C.text, flex: 1 }}>{d.issue}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim }}>{d.resolved_by} · {d.resolved_at}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---- KR ----
+function TabKR({ C }) {
+  const { MOCK, Pill, SectionLabel, MONO } = window;
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 900 }}>
+      <SectionLabel color={C.textDim}>Key results</SectionLabel>
+      {MOCK.krs.map((k) => {
+        const done = k.status === 'ACHIEVED';
+        return (
+          <div key={k.id} style={{
+            padding: 14, background: C.panel, border: `1px solid ${C.border}`,
+            borderLeft: `3px solid ${done ? C.emerald : k.status === 'IN_PROGRESS' ? C.accent : C.amber}`,
+            borderRadius: 3, display: 'flex', alignItems: 'flex-start', gap: 12,
+          }}>
+            <span style={{
+              width: 16, height: 16, borderRadius: 10, marginTop: 1,
+              background: done ? C.emerald : 'transparent',
+              border: done ? 'none' : `1.5px solid ${C.amber}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>{done && <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="#fff" strokeWidth="1.8"><path d="M1.5 4.5l2 2 4-4.5"/></svg>}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted }}>{k.id}</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{k.text}</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: C.textMuted, fontFamily: MONO }}>
+                target: {k.target}{k.unit && k.kr_type === 'numeric' ? ` ${k.unit}` : ''}
+                {k.current != null && <span> · current: <span style={{ color: done ? C.emerald : C.amber }}>{k.current}{k.unit ? ` ${k.unit}` : ''}</span></span>}
+                {' · '}<span style={{ color: C.textDim }}>{k.measurement}</span>
+              </div>
+            </div>
+            <Pill color={done ? C.emerald : k.status === 'IN_PROGRESS' ? C.accent : C.amber} bg={done ? C.emeraldBg : k.status === 'IN_PROGRESS' ? C.accentBg : C.amberBg}>{k.status}</Pill>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- AC ----
+function TabAC({ C }) {
+  const { MOCK, Pill, SectionLabel, EpistemicTag, MONO } = window;
+  // §C9 / P6 — ADR-coverage gate on plan-lock
+  const total = MOCK.acList.length;
+  const cited = MOCK.acList.filter((a) => a.tag === 'ADR-CITED' || a.tag === 'STEWARD-AUTHORED').length;
+  const derived = MOCK.acList.filter((a) => a.tag === 'DERIVED').length;
+  const invented = MOCK.acList.filter((a) => a.tag === 'INVENTED').length;
+  const coverage = (cited / total);
+  const required = 0.80; // ADR-coverage threshold
+  const gateOk = coverage >= required && invented === 0;
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 980 }}>
+      <div>
+        <SectionLabel color={C.textDim}>Acceptance criteria · bound to sources</SectionLabel>
+        <p style={{ margin: 0, fontSize: 12, color: C.textMuted, lineHeight: 1.5, maxWidth: 780, textWrap: 'pretty' }}>
+          Every row carries an epistemic tag. <b>INVENTED</b> means Forge wrote it without a source and will halt at Verify (K2).
+        </p>
+      </div>
+
+      {/* §C9 / P6 · ADR-coverage gate panel */}
+      <div style={{
+        padding: 14, background: gateOk ? C.emeraldBg : C.roseBg,
+        border: `1px solid ${gateOk ? C.emerald : C.rose}55`,
+        borderLeft: `3px solid ${gateOk ? C.emerald : C.rose}`, borderRadius: 3,
+        display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Pill color={gateOk ? C.emerald : C.rose} bg="transparent" border={`${gateOk ? C.emerald : C.rose}66`}>
+            {gateOk ? 'PLAN-LOCK · OPEN' : 'PLAN-LOCK · BLOCKED'}
+          </Pill>
+          <span style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>
+            ADR-coverage gate · {invented > 0 ? `${invented} INVENTED row${invented > 1 ? 's' : ''} block Stage 3` : `${(coverage * 100).toFixed(0)}% cited · ${(required * 100).toFixed(0)}% required`}
+          </span>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>§C9 · phase F.5</span>
+        </div>
+
+        {/* coverage bar */}
+        <div style={{ display: 'flex', height: 22, borderRadius: 2, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+          <div title={`ADR-CITED · ${cited}`} style={{ flex: cited, background: C.emerald, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: 10, color: '#fff', fontWeight: 700 }}>{cited > 0 ? cited : ''}</div>
+          <div title={`DERIVED · ${derived}`} style={{ flex: derived, background: C.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: 10, color: '#fff', fontWeight: 700 }}>{derived > 0 ? derived : ''}</div>
+          <div title={`INVENTED · ${invented}`} style={{ flex: invented, background: C.rose, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: 10, color: '#fff', fontWeight: 700 }}>{invented > 0 ? invented : ''}</div>
+          {/* threshold marker */}
+          <div style={{ position: 'absolute', pointerEvents: 'none' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 14, fontFamily: MONO, fontSize: 10.5, color: C.textMuted }}>
+          <span><span style={{ color: C.emerald, fontWeight: 700 }}>● {cited}</span> ADR-CITED · STEWARD-AUTHORED</span>
+          <span><span style={{ color: C.accent, fontWeight: 700 }}>● {derived}</span> DERIVED</span>
+          <span><span style={{ color: C.rose, fontWeight: 700 }}>● {invented}</span> INVENTED</span>
+          <div style={{ flex: 1 }} />
+          <span>threshold {(required * 100).toFixed(0)}% · zero INVENTED</span>
+        </div>
+
+        {!gateOk && (
+          <div style={{
+            padding: '8px 10px', background: C.panel, border: `1px solid ${C.rose}44`, borderRadius: 3,
+            fontFamily: MONO, fontSize: 11, color: C.textMuted, lineHeight: 1.5,
+          }}>
+            <span style={{ color: C.rose, fontWeight: 700 }}>Currently:</span> INVENTED tag visible but does not block /plan APPROVE. <span style={{ color: C.text, fontWeight: 700 }}>Phase F.5:</span> plan_gate.py rejects until every AC is ADR-CITED, DERIVED with verified source, or STEWARD-AUTHORED with [ASSUMED: accepted-by=…] override.
+          </div>
+        )}
+      </div>
+      {MOCK.acList.map((a) => {
+        const col = a.result === 'pass'    ? C.emerald
+                  : a.result === 'pending' ? C.amber
+                  : a.result === 'blocked' ? C.rose
+                  : a.result === 'uncited' ? C.rose
+                  : C.textMuted;
+        return (
+          <div key={a.id} style={{
+            padding: '12px 14px', background: C.panel, border: `1px solid ${a.tag === 'INVENTED' ? C.rose : C.border}`,
+            borderLeft: `3px solid ${col}`, borderRadius: 3,
+            display: 'flex', flexDirection: 'column', gap: 6,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted, width: 36, flexShrink: 0 }}>{a.id}</span>
+              <EpistemicTag C={C} tag={a.tag} />
+              <Pill color={C.textMuted} bg={C.panel2}>{a.scenario_type}</Pill>
+              <Pill color={C.textMuted} bg={C.panel2}>{a.verification}</Pill>
+              <div style={{ flex: 1 }} />
+              <Pill color={col} bg={col === C.emerald ? C.emeraldBg : col === C.amber ? C.amberBg : C.roseBg} border={`${col}44`}>{a.result}</Pill>
+            </div>
+            <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, textWrap: 'pretty' }}>{a.text}</div>
+            <div style={{ display: 'flex', gap: 14, fontFamily: MONO, fontSize: 10.5 }}>
+              <span style={{ color: a.source_ref ? C.accent : C.rose }}>
+                {a.source_ref ? `→ ${a.source_ref}` : '→ NO SOURCE · will halt at K2'}
+              </span>
+              {a.test_path && <span style={{ color: C.textDim }}>test: {a.test_path}</span>}
+              {a.command   && <span style={{ color: C.textDim }}>cmd: {a.command}</span>}
+              {a.last_run  && <span style={{ color: C.textDim, marginLeft: 'auto' }}>last run {a.last_run}</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- Tasks ----
+function TabTasks({ C, openTask }) {
+  const { MOCK, Pill, SectionLabel, MONO, SANS } = window;
+  const byType = { analysis: [], planning: [], execute: [], verify: [], documentation: [] };
+  MOCK.tasks.forEach((t) => (byType[t.type] ||= []).push(t));
+  const typeCol = { analysis: C.accent, planning: C.purple, execute: C.emerald, verify: C.indigo, documentation: C.textMuted };
+  const stCol = (s) => s === 'DONE' ? C.emerald : s === 'IN_PROGRESS' ? C.accent : s === 'TODO' ? C.textMuted : C.rose;
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 980 }}>
+      <SectionLabel color={C.textDim}>Tasks by type</SectionLabel>
+      {Object.entries(byType).map(([type, list]) => list.length === 0 ? null : (
+        <div key={type}>
+          <div style={{ fontFamily: MONO, fontSize: 10.5, color: typeCol[type], fontWeight: 700, letterSpacing: 1.2, marginBottom: 6, textTransform: 'uppercase' }}>{type}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {list.map((t) => (
+              <button key={t.id} onClick={() => openTask(t.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px',
+                background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3,
+                cursor: 'pointer', fontFamily: SANS, color: C.text, textAlign: 'left',
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: 4, background: stCol(t.status), flexShrink: 0 }} />
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted, width: 78 }}>{t.id}</span>
+                <span style={{ fontSize: 12.5, flex: 1, textWrap: 'pretty' }}>{t.name}</span>
+                {t.blocked_by && <Pill color={C.rose} bg={C.roseBg} border={`${C.rose}44`}>blocked · {t.blocked_by}</Pill>}
+                {t.gate && <Pill color={C.amber} bg={C.amberBg}>{t.gate}</Pill>}
+                <Pill color={stCol(t.status)} bg={C.panel2}>{t.status}</Pill>
+                <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim, width: 130, textAlign: 'right' }}>{t.agent}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- Sources ----
+function TabSources({ C }) {
+  const { MOCK, Pill, SectionLabel, TierBadge, MONO, SANS } = window;
+  return (
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 980 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <SectionLabel color={C.textDim} style={{ marginBottom: 0 }}>Knowledge sources</SectionLabel>
+        <div style={{ flex: 1 }} />
+        <button style={{
+          padding: '6px 10px', background: C.panel, border: `1px solid ${C.border}`, borderRadius: 3,
+          color: C.text, cursor: 'pointer', fontSize: 11.5, fontFamily: SANS,
+        }}>+ add source</button>
+      </div>
+
+      {/* §C7 / P-D · ImpactDiff · revision continuity bound */}
+      {MOCK.impactDiff && (() => {
+        const entry = Object.entries(MOCK.impactDiff)[0];
+        if (!entry) return null;
+        const [revKey, id] = entry;
+        const continuous = id.verdict === 'CONTINUOUS';
+        const tone = continuous ? C.emerald : C.rose;
+        return (
+          <div style={{
+            padding: 14, background: C.panel, border: `1px solid ${tone}44`,
+            borderLeft: `3px solid ${tone}`, borderRadius: 3,
+            display: 'flex', flexDirection: 'column', gap: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontFamily: MONO, fontSize: 9.5, color: tone, fontWeight: 700, letterSpacing: 0.6 }}>SOURCE REVISION · IMPACTDIFF</span>
+              <Pill color={C.textMuted} bg={C.panel2}>{revKey}</Pill>
+              <Pill color={C.textMuted} bg={C.panel2}>rev {id.from_rev} → {id.to_rev}</Pill>
+              <Pill color={tone} bg={continuous ? C.emeraldBg : C.roseBg} border={`${tone}55`}>{id.verdict}</Pill>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>§C7 · phase D.1</span>
+            </div>
+
+            <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, textWrap: 'pretty' }}>
+              <span style={{ color: C.textDim }}>change · </span>{id.source} — {id.change_summary}
+            </div>
+
+            {/* continuity bar: fraction_changed ≤ bound ⇒ CONTINUOUS */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 10.5 }}>
+                <span style={{ color: C.textDim, fontWeight: 700, letterSpacing: 0.5 }}>fraction_changed</span>
+                <span style={{ color: tone, fontWeight: 700 }}>{(id.fraction_changed * 100).toFixed(0)}%</span>
+                <span style={{ color: C.textMuted }}>≤ bound {(id.bound * 100).toFixed(0)}% ⇒ continuity preserved</span>
+                <div style={{ flex: 1 }} />
+                <span style={{ color: C.textMuted }}>n = {id.revision_set_size} AC affected of {id.preserved_ids.length + id.changed_ids.length + id.invalidated_ids.length}</span>
+              </div>
+              <div style={{ position: 'relative', height: 8, background: C.panel3, border: `1px solid ${C.border}`, borderRadius: 1 }}>
+                <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${id.fraction_changed * 100}%`, background: tone }} />
+                <div style={{ position: 'absolute', top: -2, bottom: -2, left: `${id.bound * 100}%`, width: 1, background: C.text, opacity: 0.6 }} />
+                <div style={{ position: 'absolute', top: -14, left: `calc(${id.bound * 100}% - 12px)`, fontFamily: MONO, fontSize: 9, color: C.textDim }}>bound</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {[
+                { k: 'preserved', ids: id.preserved_ids,   tone: C.emerald, bg: C.emeraldBg, sub: 'identity stable' },
+                { k: 'changed',   ids: id.changed_ids,     tone: C.amber,   bg: C.amberBg,   sub: 're-verify required' },
+                { k: 'invalidated', ids: id.invalidated_ids, tone: C.rose,  bg: C.roseBg,    sub: 'rebuild from source' },
+              ].map((g) => (
+                <div key={g.k} style={{
+                  padding: 8, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 2,
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 9.5, color: g.tone, fontWeight: 700, letterSpacing: 0.5 }}>{g.k.toUpperCase()}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 11, color: g.tone, fontWeight: 700 }}>{g.ids.length}</span>
+                  </div>
+                  <div style={{ fontFamily: MONO, fontSize: 9.5, color: C.textMuted, marginBottom: 2 }}>{g.sub}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                    {g.ids.map((acid) => (
+                      <span key={acid} style={{
+                        fontFamily: MONO, fontSize: 9.5, padding: '1px 5px',
+                        background: g.bg, border: `1px solid ${g.tone}44`, borderRadius: 2,
+                        color: g.tone, fontWeight: 700,
+                      }}>{acid}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 10px', background: C.panel3, border: `1px solid ${C.border}`, borderRadius: 2,
+              fontFamily: MONO, fontSize: 10.5, color: C.textMuted, textWrap: 'pretty',
+            }}>
+              <span style={{ color: tone, fontWeight: 700 }}>Lemma 2:</span>
+              <span style={{ flex: 1 }}>state must persist across revisions — preserved AC keep identity, changed AC rerun, invalidated AC rebuild from source. {id.invalidated_ids.length > 0 && <span style={{ color: C.rose, fontWeight: 700 }}>{id.invalidated_ids.length} need rebuild before next /run.</span>}</span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {MOCK.sources.map((s) => (
+        <div key={s.id} style={{
+          padding: '10px 14px', background: C.panel, border: `1px solid ${C.border}`,
+          borderRadius: 3, display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <span style={{ fontFamily: MONO, fontSize: 11, color: C.textMuted, width: 60 }}>{s.id}</span>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 12.5, color: C.text }}>{s.title}</span>
+            <span style={{ fontSize: 10.5, color: C.textDim, fontFamily: MONO }}>{s.source_ref}</span>
+          </div>
+          <TierBadge C={C} tier={s.tier} />
+          <Pill color={C.textMuted} bg={C.panel2}>{s.category}</Pill>
+          <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.textDim, width: 90, textAlign: 'right' }}>{s.cited_ac} cites</span>
+          <Pill color={s.status === 'ACTIVE' ? C.emerald : C.amber} bg={s.status === 'ACTIVE' ? C.emeraldBg : C.amberBg}>{s.status.toLowerCase().replace('_', ' ')}</Pill>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+Object.assign(window, { ObjectiveView });

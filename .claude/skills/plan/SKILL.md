@@ -152,7 +152,7 @@ Jeśli "co może się zepsuć" jest puste dla WSZYSTKICH plików → red flag. W
 
 ---
 
-## KROK 5 — ITRP impact z evidence (każdy obszar)
+## KROK 5 —  impact z evidence (każdy obszar)
 
 Każdy obszar musi mieć IMPACTED/NOT + grep evidence (nie samo "NOT IMPACTED").
 
@@ -165,7 +165,7 @@ Każdy obszar musi mieć IMPACTED/NOT + grep evidence (nie samo "NOT IMPACTED").
     Status: IMPACTED / NOT IMPACTED
     Evidence: <grep result OR "no references found by: grep -rn '<keyword>' backend/app/modules/buying/">
 
-5.3 Reporting (settlement, ITRP report, daily estimation)
+5.3 Reporting (settlement, project report, daily estimation)
     Status: IMPACTED / NOT IMPACTED
     Evidence: <grep result OR explanation>
 

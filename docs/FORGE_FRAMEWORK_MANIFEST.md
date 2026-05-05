@@ -5,7 +5,7 @@
 This document is CGAID Artifact #9 (Framework Manifest) for Forge itself:
 what Forge *is* as a delivery operating model, what it enforces mechanically,
 what is procedural, and how its coverage maps against the CGAID reference
-manifest (`ITRP/.ai/FRAMEWORK.md`).
+manifest (`.ai/framework/FRAMEWORK.md`).
 
 It is written at the meta level — an engineer or reviewer reading only this
 document should be able to answer "how does this system govern AI-assisted

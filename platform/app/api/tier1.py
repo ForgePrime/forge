@@ -18,6 +18,7 @@ from app.models import (
     AcceptanceCriterion, Decision, Finding, Knowledge, Objective, ObjectiveReopen,
     OrchestrateRun, Project, Task, User, LLMCall,
 )
+from app.validation.state_transition import commit_status_transition
 
 
 router = APIRouter(prefix="/api/v1/tier1", tags=["tier1"])
@@ -478,7 +479,7 @@ def task_reopen(slug: str, external_id: str, body: TaskReopenBody,
     existing = t.fail_reason or ""
     t.fail_reason = (f"[REOPEN by user_id={user.id} at {dt.datetime.now(dt.timezone.utc).isoformat()}]\n"
                      f"{body.gap_notes}\n\n---\n\n{existing}")[:8000]
-    t.status = "TODO"
+    commit_status_transition(t, entity_type="task", target_state="TODO")
     t.started_at = None
     t.completed_at = None
     db.commit()
@@ -510,7 +511,7 @@ def objective_reopen(slug: str, external_id: str, body: ReopenBody,
         gap_notes=body.gap_notes.strip(),
         prior_state=prior_state,
     ))
-    obj.status = "ACTIVE"
+    commit_status_transition(obj, entity_type="objective", target_state="ACTIVE")
     db.commit()
     return {"objective": external_id, "status": "ACTIVE",
             "prior_status": prior_state["status"],
@@ -1393,7 +1394,7 @@ def finding_dismiss(slug: str, external_id: str, body: FindingDismissBody,
     ).first()
     if not f:
         raise HTTPException(404, f"finding {external_id} not found")
-    f.status = "DISMISSED"
+    commit_status_transition(f, entity_type="finding", target_state="DISMISSED")
     f.dismissed_reason = body.dismissed_reason.strip()
     f.dismissed_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
@@ -1703,7 +1704,7 @@ def resume_run(run_id: int, request: Request, background_tasks: BackgroundTasks,
         proj = db.query(Project).filter(Project.id == run.project_id).first()
         if not proj:
             raise HTTPException(500, "project missing for paused run")
-        run.status = "RUNNING"
+        commit_status_transition(run, entity_type="orchestrate_run", target_state="RUNNING")
         run.pause_requested = False
         run.resumed_at = dt.datetime.now(dt.timezone.utc)
         run.progress_message = "Resuming from pause..."

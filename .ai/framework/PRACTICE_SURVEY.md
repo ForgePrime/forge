@@ -8,7 +8,7 @@
 
 This document is the **empirical foundation** of CGAID. The framework was developed through conversation between engineer and AI; without a retrofit pass, it would be extrapolation from opinion rather than distillation from practice. This survey addresses that gap.
 
-**Method:** review of ITRP git history (2026-04-10 through 2026-04-19 on `features/data_pipeline` branch and merged PRs), plus relevant feedback memory entries. 18 incidents and decisions selected as representative of the larger set (~100 commits). Each classified against CGAID's 10 principles.
+**Method:** review of git history, plus relevant feedback memory entries. 18 incidents and decisions selected as representative of the larger set (~100 commits). Each classified against CGAID's 10 principles.
 
 **Classification scheme:**
 
@@ -91,10 +91,6 @@ This document is the **empirical foundation** of CGAID. The framework was develo
 **Evidence:**
 - `6ee9561` Fix settlement report: date filter excluded 96% of settlements
 - `3996b9a` Fix double-counting: revert beginning_balance and PP to RAW amounts
-- `482312f` Fix PP report: show all outstanding with NET amounts
-- `05376c1` Fix ITRP beginning balance: use NET outstanding
-- `2247357` Fix settlement Row Type 1/2: include all purchased document types
-- `4450ff1` Fix settlement Row Type 1: include collected_amount via LEFT JOIN
 
 **What it means:** settlement logic touches client financial reality. Most were caught because user or client verified behavior and it didn't match expectation — this is **Zasada 6 in action** ("Code is not the outcome. Verified behavior is."). Practice already embodies this.
 
@@ -229,7 +225,7 @@ A complete retrofit must report what the framework does *not* explain.
 Pattern C is 6+ commits in 10 days. They cluster around CTEs, filters, JOIN logic, aggregation correctness. This is a specific technical domain (financial reporting SQL) where CGAID's principles apply in general but do not help in particular. A SQL-aware companion document (`.ai/SQL_PATTERNS.md`?) would be useful.
 
 **Negative 2 — Framework is silent on UX/cosmetic work.**
-Pattern F is 10+ commits. Framework has Fast Track tier but says nothing about how to discipline UX decisions (consistency with design system, accessibility, responsive behavior). This is a gap if ITRP becomes a UX-heavy engagement.
+Pattern F is 10+ commits. Framework has Fast Track tier but says nothing about how to discipline UX decisions (consistency with design system, accessibility, responsive behavior). This is a gap if project becomes a UX-heavy engagement.
 
 **Negative 3 — Short observation window.**
 18 incidents over 10 days is a small sample. A 6-month retrospective would likely surface patterns not visible here (seasonal client behavior, quarterly report generation, etc.). This survey is directional, not definitive.
@@ -276,7 +272,47 @@ Framework Stewards should commission a **second survey by a human engineer** fam
 ## Changelog
 
 - **v1.0 (2026-04-19)** — Initial survey. 18 incidents from 10-day window on `features/data_pipeline` branch, classified against 10 principles. 4 framework gaps identified (cascade compression, side-effect map, volume check, Fast Track preconditions). 4 honest negatives reported. Recommendations tiered T1–T3. Limitations section included.
+- **v1.1 (framework v2.0 reorganization)** — Appended §"Non-trivial claim definition: evidentiary history" (relocated from `OPERATING_MODEL.md` Appendix D). The history belongs with the empirical foundation; the runtime-enforceable definition remains in `.ai/CONTRACT.md`.
 
 ---
 
-*End of Practice Survey v1.0. This document is the evidence foundation for CGAID. It should be re-run quarterly and on major framework version changes.*
+## Non-trivial claim definition: evidentiary history
+
+This section stores the historical / evidentiary material that underpins the "non-trivial" definition operationalized in `.ai/CONTRACT.md`. The contract file carries the runtime-enforceable rule; this section carries the *why* — origin, audit trail, governance override — which belongs in evidentiary context rather than in the daily-work contract.
+
+### Origin of the definition
+
+The term "non-trivial claim" is central to the AI Operational Contract: every such claim must be tagged `CONFIRMED` / `ASSUMED` / `UNKNOWN`. Prior to v1.5, the term had no operational definition. The `deep-verify` v2.0 audit of the full framework (2026-04-19) surfaced this as **Finding F1 — largest definitional gap in the framework**: under deadline pressure, engineers and AI classify claims as trivial to avoid tagging overhead, and the tag system degenerates into theater.
+
+The v1.5 response was the seven-criterion definition plus four trivial exceptions, plus the asymmetric-risk rule ("when in doubt — tag") and the one-sentence rule of thumb. That definition is now the enforceable text in `.ai/CONTRACT.md`; this section documents its origin.
+
+### Commits that motivated the definition
+
+The 10-row examples table in `.ai/CONTRACT.md` references concrete incidents. Full evidentiary trail:
+
+| Commit | Pattern |
+|---|---|
+| `6ee9561` | One-line WHERE-filter change excluded 96% of settlement rows — highest single-commit blast radius in the 2026-Q2 window. Motivates criterion 1 (data filtering). |
+| `351ac6a` | Edge-case fallback value silently wrong — passed tests because tests did not cover the subtle case. Motivates criterion 3 (assumption about other code's behavior). |
+| `f6d24dc` | Restore cascade invalidation — cross-module propagation that required 12+ downstream verifications. Motivates criterion 4 (cascade / propagation). |
+| `318f74a`, `71fa577`, `c31b116`, `bf66299` | Cascade / idempotency pattern in restore and buy modules — motivates both criterion 4 and the cascade-compression rule. |
+
+These commits are referenced by short hash in `.ai/CONTRACT.md`; this section holds the link between hash and pattern.
+
+### Cascade-tagging compression: governance override
+
+`.ai/CONTRACT.md` §"Tag compression in cascade contexts" specifies three conditions under which cascade compression is permitted. Governance additions that live here (not in the contract itself, to keep the runtime contract focused):
+
+1. **Framework Steward override.** Framework Steward may reject a compression as insufficient during PR review and require per-step tagging. The three conditions (named invariant, verification condition, explicit scope boundaries) are necessary but not sufficient — Steward judgment can demand tighter granularity when invariant breadth hides material risk.
+
+2. **Audit trail.** Every compression decision in merged code must be justified in the PR description (which condition each of the three criteria satisfies). This is how adoption-audit traces compression use vs. abuse.
+
+3. **Abuse signal.** If >30% of non-trivial cascades in a quarter use compression, Stewards review whether the compression rule is being used to avoid tagging work rather than to represent genuine invariants.
+
+### Relationship to Practice Survey body
+
+The commits cited above are the same incidents catalogued in §1–§3 of this Practice Survey. The cross-reference makes explicit that the "non-trivial" definition is not a theoretical construct — it is a retrofit against actual blast-radius incidents. Future incidents that surface a new failure mode for non-trivial classification update this section *and* the contract definition; the two evolve together.
+
+---
+
+*End of Practice Survey v1.1. This document is the evidence foundation for CGAID. It should be re-run quarterly and on major framework version changes.*

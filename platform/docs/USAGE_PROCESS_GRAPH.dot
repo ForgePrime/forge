@@ -1,0 +1,282 @@
+// USAGE_PROCESS_GRAPH.dot — formal graph representation of Forge usage process
+// Closes USAGE_PROCESS.md §16 method-weakness #1: §11 narrative sketch lacks
+// formally-checkable adjacency. This file is the checkable form.
+//
+// Status: DRAFT — pending distinct-actor review per ADR-003.
+// Verifier: platform/scripts/verify_graph_topology.py
+//
+// Graph G = (V, E) where:
+//   V = S ∪ D ∪ A (states + decisions + actions)
+//   E = transitions with labels encoding events/conditions
+//
+// Edge attributes:
+//   event="E_N"         — which external event drives the transition
+//   condition="..."     — guard condition
+//   action="A_N"        — action invoked
+//   decision="D_N"      — decision node evaluated
+//   kind="normal"       — standard forward transition
+//   kind="failure"      — failure-path transition (BLOCKED / REJECTED)
+//   kind="recovery"     — return from BLOCKED to IN_PROGRESS after resolve
+//   kind="bounded_feedback" — tagged feedback from Phase 10 to Phase 1 memory
+//                             (permitted cycle, bounded per ADR-022)
+//   kind="terminal"     — edge to a terminal state (no further transitions)
+
+digraph USAGE_PROCESS {
+  rankdir=TB;
+  labelloc="t";
+  label="Forge USAGE_PROCESS — state graph v1 (2026-04-24 DRAFT)";
+
+  // ========================================================================
+  // NODE STYLING
+  // ========================================================================
+  node [shape=box, style=filled, fontname="monospace", fontsize=10];
+
+  // State nodes (rectangles)
+  // Decision nodes (diamonds)
+  // Terminal nodes (doubled border)
+  // Start node (circle)
+
+  // ========================================================================
+  // START + TERMINAL
+  // ========================================================================
+  START [shape=circle, fillcolor="#d0e0ff", label="START"];
+  TERM_APPLIED [shape=doubleoctagon, fillcolor="#b0ffb0", label="Change\nAPPLIED\n(success terminal)"];
+  TERM_ABANDONED [shape=doubleoctagon, fillcolor="#d0d0d0", label="Objective\nABANDONED\n(explicit stop)"];
+  TERM_BLOCKED_IRREVERSIBLE [shape=doubleoctagon, fillcolor="#ff8080", label="DIFF_MISMATCH\nIRREVERSIBLE\n(Steward incident)"];
+
+  // ========================================================================
+  // PHASE 1: INTAKE (states + decision)
+  // ========================================================================
+  subgraph cluster_p1 {
+    label="Phase 1: INTAKE";
+    style="rounded";
+    color="#404080";
+
+    S_KNOWLEDGE_CLASSIFIED [fillcolor="#e0e8ff", label="Knowledge\nCLASSIFIED"];
+    S_FINDING_OPEN [fillcolor="#e0e8ff", label="Finding\nOPEN"];
+    S_SOURCE_CONFLICT_OPEN [fillcolor="#ffd0d0", label="SourceConflict\nOPEN"];
+
+    D1 [shape=diamond, fillcolor="#ffe0b0", label="D1:\nClassify tier\n(Pub/Int/Conf/Sec)"];
+    D4 [shape=diamond, fillcolor="#ffe0b0", label="D4:\nSource conflict\ndetected?"];
+  }
+
+  // ========================================================================
+  // PHASE 2: UNDERSTANDING (decision + block path)
+  // ========================================================================
+  subgraph cluster_p2 {
+    label="Phase 2: UNDERSTANDING";
+    style="rounded";
+    color="#404080";
+
+    D2 [shape=diamond, fillcolor="#ffe0b0", label="D2:\nIs claim\nnon-trivial?"];
+    D3 [shape=diamond, fillcolor="#ffe0b0", label="D3:\nAmbiguity\nresolved?"];
+
+    S_FINDING_AMBIGUITY_BLOCKED [fillcolor="#ffd0d0", label="Finding\nambiguity\nBLOCKED"];
+    S_SOURCE_CONFLICT_RESOLVED [fillcolor="#b0ffb0", label="SourceConflict\nRESOLVED"];
+  }
+
+  // ========================================================================
+  // PHASE 3: DECOMPOSITION
+  // ========================================================================
+  subgraph cluster_p3 {
+    label="Phase 3: DECOMPOSITION";
+    style="rounded";
+    color="#404080";
+
+    S_OBJECTIVE_DRAFT [fillcolor="#e0e8ff", label="Objective\nDRAFT"];
+    D5 [shape=diamond, fillcolor="#ffe0b0", label="D5:\nReachability\nPASS?"];
+    S_OBJECTIVE_ACTIVE [fillcolor="#b0e0ff", label="Objective\nACTIVE"];
+    S_OBJECTIVE_BLOCKED [fillcolor="#ffd0d0", label="Objective\nBLOCKED"];
+  }
+
+  // ========================================================================
+  // PHASE 4: TASK + CONTRACT
+  // ========================================================================
+  subgraph cluster_p4 {
+    label="Phase 4: TASK+CONTRACT";
+    style="rounded";
+    color="#404080";
+
+    S_TASK_PENDING [fillcolor="#e0e8ff", label="Task\nPENDING"];
+    S_TASK_READY [fillcolor="#b0e0ff", label="Task\nREADY"];
+  }
+
+  // ========================================================================
+  // PHASE 5: EXECUTION PREPARE
+  // ========================================================================
+  subgraph cluster_p5 {
+    label="Phase 5: EXEC PREPARE";
+    style="rounded";
+    color="#404080";
+
+    S_EXEC_PENDING [fillcolor="#e0e8ff", label="Execution\npending"];
+    D6 [shape=diamond, fillcolor="#ffe0b0", label="D6:\nProjection\ncomplete? (B.5)"];
+    D7 [shape=diamond, fillcolor="#ffe0b0", label="D7:\nProjection\nstructured? (F.10)"];
+    S_EXEC_BLOCKED_PRE [fillcolor="#ffd0d0", label="Execution\nBLOCKED\n(pre-exec gate)"];
+  }
+
+  // ========================================================================
+  // PHASE 6: EXECUTION (LLM call)
+  // ========================================================================
+  subgraph cluster_p6 {
+    label="Phase 6: EXECUTION";
+    style="rounded";
+    color="#404080";
+
+    S_EXEC_IN_PROGRESS [fillcolor="#b0e0ff", label="Execution\nIN_PROGRESS"];
+    D8 [shape=diamond, fillcolor="#ffe0b0", label="D8:\nUntagged\nnon-trivial? (F.3)"];
+    S_EXEC_REJECTED_F3 [fillcolor="#ffd0d0", label="Execution\nREJECTED\n(untagged claim)"];
+  }
+
+  // ========================================================================
+  // PHASE 7: COMMIT VERIFICATION
+  // ========================================================================
+  subgraph cluster_p7 {
+    label="Phase 7: COMMIT VERIFY";
+    style="rounded";
+    color="#404080";
+
+    S_EXEC_COMMITTED [fillcolor="#b0e0ff", label="Execution\nCOMMITTED"];
+    D9 [shape=diamond, fillcolor="#ffe0b0", label="D9:\nEpistemic\nprogress? (E.7)"];
+    D10 [shape=diamond, fillcolor="#ffe0b0", label="D10:\nScope boundary\ncomplete? (E.8)"];
+    D11 [shape=diamond, fillcolor="#ffe0b0", label="D11:\nArchitectural?\n≥2 cand? (F.11)"];
+    S_EXEC_REJECTED_VERIFY [fillcolor="#ffd0d0", label="Execution\nREJECTED\n(verify fail)"];
+    S_DECISION_OPEN [fillcolor="#b0e0ff", label="Decision\nOPEN"];
+    D15 [shape=diamond, fillcolor="#ffe0b0", label="D15:\nChallenger\n(F.6)"];
+    S_EXEC_REJECTED_REFUTED [fillcolor="#ffd0d0", label="Execution\nREJECTED\n(refuted x3)"];
+    S_EXEC_ACCEPTED_OVERRIDE [fillcolor="#b0ffb0", label="Execution\nACCEPTED\n(Steward override)"];
+  }
+
+  // ========================================================================
+  // PHASE 8: CHANGE DELIVERY
+  // ========================================================================
+  subgraph cluster_p8 {
+    label="Phase 8: CHANGE DELIVERY";
+    style="rounded";
+    color="#404080";
+
+    S_CHANGE_PROPOSED [fillcolor="#b0e0ff", label="Change\nPROPOSED"];
+    D12 [shape=diamond, fillcolor="#ffe0b0", label="D12:\nReversibility?\n(C.4)"];
+    D13 [shape=diamond, fillcolor="#ffe0b0", label="D13:\nUnaccepted\ndebt? (F.12)"];
+    S_CHANGE_REJECTED_DEBT [fillcolor="#ffd0d0", label="Change\nREJECTED\n(unaccepted debt)"];
+    D16 [shape=diamond, fillcolor="#ffe0b0", label="D16:\nCritical tier?\nSteward sign-off"];
+  }
+
+  // ========================================================================
+  // PHASE 9: RUNTIME VERIFY
+  // ========================================================================
+  subgraph cluster_p9 {
+    label="Phase 9: RUNTIME VERIFY";
+    style="rounded";
+    color="#404080";
+
+    A_APPLY_DELTA [shape=parallelogram, fillcolor="#e0ffe0", label="A: Apply Delta\n(pre/post\ncapture)"];
+    D14 [shape=diamond, fillcolor="#ffe0b0", label="D14:\nDiff == Expected?\n(G.10)"];
+    S_CHANGE_REVERTED [fillcolor="#ffe0e0", label="Change\nREVERTED\n(auto-rollback)"];
+  }
+
+  // ========================================================================
+  // PHASE 10: GOVERNANCE + LEARNING
+  // ========================================================================
+  subgraph cluster_p10 {
+    label="Phase 10: GOVERNANCE + LEARNING";
+    style="rounded";
+    color="#404080";
+
+    A_METRICS_UPDATE [shape=parallelogram, fillcolor="#e0ffe0", label="A: Update\nM1..M7\n(G.3)"];
+    A_RULE_LIFECYCLE [shape=parallelogram, fillcolor="#e0ffe0", label="A: Rule prevention\nlog + retirement\n(G.4)"];
+    D17 [shape=diamond, fillcolor="#ffe0b0", label="D17:\nAutonomy level\nchange? (E.3)"];
+    A_MEMORY_UPDATE [shape=parallelogram, fillcolor="#e0ffe0", label="A: Memory update\n(bounded per\nADR-022)"];
+  }
+
+  // ========================================================================
+  // EDGES — forward path
+  // ========================================================================
+
+  // START → Phase 1
+  START -> S_KNOWLEDGE_CLASSIFIED [label="E2\ndocument uploaded", color="#404040"];
+  S_KNOWLEDGE_CLASSIFIED -> D1 [label="G.1 classify", color="#404040"];
+  D1 -> S_FINDING_OPEN [label="tier assigned", color="#404040"];
+
+  // Source conflict detection (B.7)
+  S_FINDING_OPEN -> D4 [label="B.7 detect", color="#404040"];
+  D4 -> S_SOURCE_CONFLICT_OPEN [label="YES: conflict", color="#ff8000", kind="failure"];
+  S_SOURCE_CONFLICT_OPEN -> S_SOURCE_CONFLICT_RESOLVED [label="Decision\ntype=conflict_resolution", color="#008000", kind="recovery"];
+  S_SOURCE_CONFLICT_RESOLVED -> D2 [label="continue", color="#404040"];
+  D4 -> D2 [label="NO: proceed", color="#404040"];
+
+  // Phase 2: non-trivial + ambiguity
+  D2 -> D3 [label="YES\ncheck resolution", color="#404040"];
+  D2 -> S_OBJECTIVE_DRAFT [label="NO\n(trivial)", color="#404040"];
+  D3 -> S_FINDING_AMBIGUITY_BLOCKED [label="NO: block\n(F.4)", color="#ff8000", kind="failure"];
+  S_FINDING_AMBIGUITY_BLOCKED -> D3 [label="E4 user clarifies\nresolve-uncertainty", color="#008000", kind="recovery"];
+  D3 -> S_OBJECTIVE_DRAFT [label="YES\n(resolved)", color="#404040"];
+
+  // Phase 3: reachability
+  S_OBJECTIVE_DRAFT -> D5 [label="reachability check", color="#404040"];
+  D5 -> S_OBJECTIVE_BLOCKED [label="NO (E.4)", color="#ff8000", kind="failure"];
+  D5 -> S_OBJECTIVE_ACTIVE [label="YES", color="#008000"];
+  S_OBJECTIVE_BLOCKED -> TERM_ABANDONED [label="abandon\n(no reachable plan)", color="#808080", kind="terminal"];
+  S_OBJECTIVE_BLOCKED -> D5 [label="refine KR\n(retry)", color="#008000", kind="recovery"];
+
+  // Phase 4: task decomposition
+  S_OBJECTIVE_ACTIVE -> S_TASK_PENDING [label="decompose", color="#404040"];
+  S_TASK_PENDING -> S_TASK_READY [label="deps satisfied", color="#404040"];
+
+  // Phase 5: exec prepare
+  S_TASK_READY -> S_EXEC_PENDING [label="create Execution", color="#404040"];
+  S_EXEC_PENDING -> D6 [label="B.5 gate", color="#404040"];
+  D6 -> S_EXEC_BLOCKED_PRE [label="NO\n(missing projection)", color="#ff8000", kind="failure"];
+  D6 -> D7 [label="YES", color="#008000"];
+  D7 -> S_EXEC_BLOCKED_PRE [label="NO\n(NL-only)", color="#ff8000", kind="failure"];
+  D7 -> S_EXEC_IN_PROGRESS [label="YES (transition)", color="#008000"];
+  S_EXEC_BLOCKED_PRE -> D6 [label="fix + retry", color="#008000", kind="recovery"];
+
+  // Phase 6: execution
+  S_EXEC_IN_PROGRESS -> D8 [label="LLM call complete", color="#404040"];
+  D8 -> S_EXEC_REJECTED_F3 [label="YES (untagged)", color="#ff8000", kind="failure"];
+  D8 -> S_EXEC_COMMITTED [label="NO (clean)", color="#008000"];
+  S_EXEC_REJECTED_F3 -> S_EXEC_IN_PROGRESS [label="retry with tags\n(up to ADR-013 N=3)", color="#008000", kind="recovery"];
+
+  // Phase 7: commit verify
+  S_EXEC_COMMITTED -> D9 [label="E.7 check", color="#404040"];
+  D9 -> S_EXEC_REJECTED_VERIFY [label="NO (null stage)", color="#ff8000", kind="failure"];
+  D9 -> D10 [label="YES (≥1 delta)", color="#008000"];
+  D10 -> S_EXEC_REJECTED_VERIFY [label="NO (unjustified)", color="#ff8000", kind="failure"];
+  D10 -> D11 [label="YES", color="#008000"];
+  D11 -> S_EXEC_REJECTED_VERIFY [label="architectural\n<2 candidates", color="#ff8000", kind="failure"];
+  D11 -> S_DECISION_OPEN [label="OK", color="#008000"];
+  S_EXEC_REJECTED_VERIFY -> S_EXEC_IN_PROGRESS [label="retry (ADR-013 N=3)", color="#008000", kind="recovery"];
+
+  S_DECISION_OPEN -> D15 [label="F.6 challenger", color="#404040"];
+  D15 -> S_EXEC_REJECTED_REFUTED [label="REFUTED x3\n(ADR-013)", color="#ff8000", kind="failure"];
+  D15 -> S_EXEC_ACCEPTED_OVERRIDE [label="Steward override", color="#008000", kind="recovery"];
+  D15 -> S_CHANGE_PROPOSED [label="ACCEPTED", color="#008000"];
+  S_EXEC_REJECTED_REFUTED -> TERM_ABANDONED [label="no override\nterminal reject", color="#808080", kind="terminal"];
+  S_EXEC_ACCEPTED_OVERRIDE -> S_CHANGE_PROPOSED [label="override\naccepted", color="#008000"];
+
+  // Phase 8: change delivery
+  S_CHANGE_PROPOSED -> D12 [label="classify reversibility", color="#404040"];
+  D12 -> D13 [label="classified", color="#404040"];
+  D13 -> S_CHANGE_REJECTED_DEBT [label="YES\n(unaccepted)", color="#ff8000", kind="failure"];
+  D13 -> D16 [label="NO", color="#008000"];
+  S_CHANGE_REJECTED_DEBT -> S_CHANGE_PROPOSED [label="accept via\nSteward/F.12", color="#008000", kind="recovery"];
+  D16 -> A_APPLY_DELTA [label="low tier\nOR signed", color="#008000"];
+
+  // Phase 9: runtime verify
+  A_APPLY_DELTA -> D14 [label="diff computed", color="#404040"];
+  D14 -> TERM_APPLIED [label="YES\nDiff == Expected", color="#008000", kind="normal"];
+  D14 -> S_CHANGE_REVERTED [label="NO + REVERSIBLE\n(C.4 rollback)", color="#ff8000", kind="failure"];
+  D14 -> TERM_BLOCKED_IRREVERSIBLE [label="NO + IRREVERSIBLE\n(ADR-021)", color="#ff0000", kind="terminal"];
+  S_CHANGE_REVERTED -> S_EXEC_IN_PROGRESS [label="retry\n(ADR-013 N=3)", color="#008000", kind="recovery"];
+
+  // Phase 10: governance + learning
+  TERM_APPLIED -> A_METRICS_UPDATE [label="G.3 scheduled", color="#0080ff"];
+  A_METRICS_UPDATE -> A_RULE_LIFECYCLE [label="G.4 prevention log", color="#0080ff"];
+  A_RULE_LIFECYCLE -> D17 [label="E.3 window W", color="#0080ff"];
+  D17 -> A_MEMORY_UPDATE [label="promote/demote/retain", color="#0080ff"];
+
+  // BOUNDED FEEDBACK EDGE — critical annotation for verifier
+  A_MEMORY_UPDATE -> START [label="new Knowledge /\nRule updates\n(bounded per ADR-022)",
+                            color="#ff80ff", style="dashed", kind="bounded_feedback"];
+}

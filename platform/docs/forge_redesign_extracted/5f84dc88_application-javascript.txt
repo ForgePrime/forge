@@ -1,0 +1,154 @@
+// Forge — Primitives
+// ------------------
+// Shared design atoms used by every view. Import MOCK from mock-data.jsx.
+
+function getTheme(dark) {
+  return dark ? {
+    bg: '#0e1116', panel: '#161b22', panel2: '#1c2128', panel3: '#11161d',
+    border: '#262d36', border2: '#30363d',
+    text: '#e6edf3', textMuted: '#8b949e', textDim: '#6e7681',
+    accent: '#4d8bf0', accentBg: 'rgba(77,139,240,.12)',
+    rose: '#f85149', roseBg: 'rgba(248,81,73,.10)',
+    amber: '#d29922', amberBg: 'rgba(210,153,34,.12)',
+    emerald: '#3fb950', emeraldBg: 'rgba(63,185,80,.10)',
+    purple: '#a371f7', purpleBg: 'rgba(163,113,247,.10)',
+    indigo: '#6b7fff', indigoBg: 'rgba(107,127,255,.10)',
+  } : {
+    bg: '#fafaf8', panel: '#ffffff', panel2: '#f7f7f4', panel3: '#efede8',
+    border: '#e7e5e0', border2: '#d6d3cc',
+    text: '#1a1814', textMuted: '#615f59', textDim: '#8a8780',
+    accent: '#2e5ab8', accentBg: '#eef2fb',
+    rose: '#b4322d', roseBg: '#fdf2f0',
+    amber: '#9a6a00', amberBg: '#fbf4e4',
+    emerald: '#17693a', emeraldBg: '#ecf5ef',
+    purple: '#6a3fa8', purpleBg: '#f3eff9',
+    indigo: '#3f4cc0', indigoBg: '#ecedfa',
+  };
+}
+
+const SANS = '"Inter Tight", -apple-system, system-ui, sans-serif';
+const MONO = '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
+
+function Pill({ children, color, bg, border, mono = true, style }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 6px', fontSize: 10, fontWeight: 600,
+      letterSpacing: 0.4, textTransform: 'uppercase',
+      color, background: bg, border: border ? `1px solid ${border}` : 'none',
+      borderRadius: 2, fontFamily: mono ? MONO : SANS, ...style,
+    }}>{children}</span>
+  );
+}
+
+function SectionLabel({ children, color, style }) {
+  return (
+    <div style={{
+      fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.2,
+      textTransform: 'uppercase', color, marginBottom: 8, ...style,
+    }}>{children}</div>
+  );
+}
+
+// Data-classification tier badge — appears everywhere the object has a tier
+function TierBadge({ C, tier }) {
+  const t = (tier || '').startsWith('T1') ? { col: C.rose,   bg: C.roseBg,    lab: 'T1 REGULATED' }
+          : (tier || '').startsWith('T2') ? { col: C.amber,  bg: C.amberBg,   lab: 'T2 INTERNAL' }
+          : (tier || '').startsWith('T3') ? { col: C.emerald,bg: C.emeraldBg, lab: 'T3 OPEN' }
+          : { col: C.textMuted, bg: C.panel2, lab: tier || 'UNCLASS' };
+  return <Pill color={t.col} bg={t.bg} border={`${t.col}44`}>{t.lab}</Pill>;
+}
+
+// Epistemic tag for AC rows — INVENTED | DERIVED | ADR-CITED | STEWARD-AUTHORED
+function EpistemicTag({ C, tag }) {
+  const map = {
+    'ADR-CITED':        { col: C.emerald,    bg: C.emeraldBg,  glyph: '§' },
+    'DERIVED':          { col: C.accent,     bg: C.accentBg,   glyph: '↳' },
+    'STEWARD-AUTHORED': { col: C.purple,     bg: C.purpleBg,   glyph: '✎' },
+    'INVENTED':         { col: C.rose,       bg: C.roseBg,     glyph: '!' },
+  };
+  const m = map[tag] || { col: C.textMuted, bg: C.panel2, glyph: '?' };
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 6px', fontSize: 10, fontWeight: 700,
+      color: m.col, background: m.bg, border: `1px solid ${m.col}44`,
+      borderRadius: 2, fontFamily: MONO, letterSpacing: 0.4,
+    }}>
+      <span style={{ opacity: 0.7 }}>{m.glyph}</span>{tag}
+    </span>
+  );
+}
+
+// Gate verdict chip — PASS / PARTIAL / WEAK / FAIL
+function GateChip({ C, verdict, size = 'sm' }) {
+  const m = verdict === 'PASS'    ? { col: C.emerald, bg: C.emeraldBg }
+          : verdict === 'PARTIAL' ? { col: C.amber,   bg: C.amberBg }
+          : verdict === 'WEAK'    ? { col: C.amber,   bg: C.amberBg }
+          : verdict === 'FAIL'    ? { col: C.rose,    bg: C.roseBg }
+          : { col: C.textMuted, bg: C.panel2 };
+  const pad = size === 'lg' ? '3px 10px' : '2px 7px';
+  const fs  = size === 'lg' ? 11 : 9.5;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: pad, fontSize: fs, fontWeight: 700,
+      color: m.col, background: m.bg, border: `1px solid ${m.col}66`,
+      borderRadius: 2, fontFamily: MONO, letterSpacing: 0.5,
+    }}>{verdict}</span>
+  );
+}
+
+// Stage-0 banner — shown whenever we're on a Stage 0 objective OR a deep view
+// of an OBJ whose current stage hasn't crossed 3 (plan not yet locked).
+function StageBanner({ C, obj }) {
+  const stage = obj.stage ?? 0;
+  if (stage >= 4) return null;
+  const stages = [
+    { idx: 0, label: 'Framing' },
+    { idx: 1, label: 'Source-pull' },
+    { idx: 2, label: 'Alternatives' },
+    { idx: 3, label: 'Plan lock' },
+  ];
+  return (
+    <div style={{
+      padding: '8px 14px', background: C.panel3,
+      borderBottom: `1px solid ${C.border}`,
+      display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 11,
+    }}>
+      <span style={{ color: C.textDim, fontWeight: 700, letterSpacing: 1 }}>STAGES</span>
+      {stages.map((s, i) => {
+        const done = s.idx < stage;
+        const active = s.idx === stage;
+        const col = done ? C.emerald : active ? C.accent : C.textDim;
+        return (
+          <React.Fragment key={s.idx}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: col }}>
+              <span style={{
+                width: 14, height: 14, borderRadius: 2, border: `1px solid ${col}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 9, fontWeight: 700, background: done ? col : 'transparent',
+                color: done ? C.panel : col,
+              }}>{s.idx}</span>
+              <span style={{ fontWeight: active ? 700 : 500 }}>{s.label}</span>
+              {active && <span style={{ color: C.accent, fontSize: 9 }}>· ACTIVE</span>}
+            </span>
+            {i < stages.length - 1 && <span style={{ color: C.border2 }}>→</span>}
+          </React.Fragment>
+        );
+      })}
+      <div style={{ flex: 1 }} />
+      <span style={{ color: C.textMuted }}>Steward: {window.MOCK.project.steward}</span>
+    </div>
+  );
+}
+
+// Global keyframes
+if (typeof document !== 'undefined' && !document.getElementById('forge-keyframes')) {
+  const s = document.createElement('style');
+  s.id = 'forge-keyframes';
+  s.textContent = '@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.3 } }';
+  document.head.appendChild(s);
+}
+
+Object.assign(window, { getTheme, SANS, MONO, Pill, SectionLabel, TierBadge, EpistemicTag, GateChip, StageBanner });

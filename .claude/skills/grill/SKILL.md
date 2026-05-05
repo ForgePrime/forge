@@ -33,9 +33,9 @@ $ARGUMENTS
 7. **Explore edge cases.** For each decision: "What happens when this is null? Empty? Duplicate? What if it runs twice? What if Warsaw doesn't deliver?"
 8. **Stop when the tree is resolved.** When no branch has an open question → summarize all decisions and present for final confirmation.
 
-## ITRP-Specific Branches to Probe
+## project-Specific Branches to Probe
 
-If the subject touches ITRP business logic, always probe these:
+If the subject touches project business logic, always probe these:
 
 - **Data flow:** Where does data come from? Warsaw → BQ → Backend → Frontend — which tables? Which queries?
 - **Override interaction:** Does this interact with manual overrides? COALESCE pattern affected?

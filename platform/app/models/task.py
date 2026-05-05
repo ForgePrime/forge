@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin
+from app.models.epistemic import epistemic_tag_pg_enum, EpistemicTag
 
 task_dependencies = Table(
     "task_dependencies",
@@ -106,5 +107,8 @@ class AcceptanceCriterion(Base):
     last_executed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # B4 — reasoning trace: which LLM call produced this AC (NULL = user-added).
     source_llm_call_id: Mapped[int | None] = mapped_column(ForeignKey("llm_calls.id"))
+    # Phase 1 redesign (ADR-028 D2 revised): epistemic basis of this AC.
+    # NULL = untagged legacy row.
+    epistemic_tag: Mapped[EpistemicTag | None] = mapped_column(epistemic_tag_pg_enum)
 
     task: Mapped["Task"] = relationship(back_populates="acceptance_criteria")

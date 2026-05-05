@@ -136,7 +136,7 @@ As the cost of building agents, prompts, and local automations collapses, organi
 
 AI optimizes locally. It writes a working fragment without full system awareness — and in doing so, it violates architectural rules, domain models, and agreed contracts. Apiiro reports a 153% increase in architectural design flaws in AI-generated code. Sonar identifies architecture drift as a named concern of enterprise developers.
 
-**What CGAID does:** Separation of business intent from execution (codebase), with a formal handoff artifact. Every significant decision is captured as an Architecture Decision Record before code is written.
+**What CGAID does:** Separation of business intent (Solutioning Cockpit) from execution (codebase), with a formal handoff artifact. Every significant decision is captured as an Architecture Decision Record before code is written.
 
 ### 2.6 Tooling Without Workflow Redesign
 

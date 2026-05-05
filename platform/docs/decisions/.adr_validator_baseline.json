@@ -1,0 +1,304 @@
+{
+  "ADR-003-human-reviewer-normative-transition.md": [
+    {
+      "message": "'## Alternatives considered' must have >=2 bullets (FORMAL P21); found 0",
+      "rule": "R6",
+      "severity": "FAIL"
+    },
+    {
+      "message": "Status=RATIFIED requires at least one [CONFIRMED] tag OR an [ASSUMED: accepted-by=...] tag (CONTRACT \u00a7A.6, \u00a7B.2)",
+      "rule": "R7",
+      "severity": "FAIL"
+    }
+  ],
+  "ADR-004-calibration-constants.md": [
+    {
+      "message": "5 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-005-invariant-check-fn-format.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "2 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-006-model-version-pinning.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "2 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-007-steward-rotation.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-008-retroactive-stage-0-strategy.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "'## Alternatives considered' must have >=2 bullets (FORMAL P21); found 0",
+      "rule": "R6",
+      "severity": "FAIL"
+    },
+    {
+      "message": "2 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-009-snapshot-validation-5-components.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "2 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-010-non-trivial-classifier-threshold.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-011-blocked-state-down-migration.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-012-distinct-actor-edge-cases.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-013-challenger-refuted-handling.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-014-c2-sufficiency-gate-placement.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-015-requirement-entity.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-016-test-entity.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-017-relation-text-to-enum-mapping.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-018-dlp-mechanism.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-019-candidate-scoring-weights.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-020-technical-debt-categories.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-021-expected-diff-schema.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "2 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-022-memory-version-pinning.md": [
+    {
+      "message": "'## Alternatives considered' must have >=2 bullets (FORMAL P21); found 0",
+      "rule": "R6",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-023-critical-path-enforcement.md": [
+    {
+      "message": "2 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-024-error-propagation-mechanism.md": [
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-025-actor-and-business-process-entities.md": [
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-026-architecture-components-unified-view.md": [
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-027-contractschema-typed-spec-format.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ],
+  "ADR-028-frontend-stack-and-redesign-shape.md": [
+    {
+      "message": "missing required section: '## Rationale'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "missing required section: '## Alternatives considered'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "missing required section: '## Consequences'",
+      "rule": "R5",
+      "severity": "FAIL"
+    },
+    {
+      "message": "1 [UNKNOWN] tag(s) present \u2014 verify each has explicit resolution path",
+      "rule": "W2",
+      "severity": "WARN"
+    }
+  ]
+}

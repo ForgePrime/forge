@@ -109,7 +109,7 @@ REVERSIBLE via config change. `CEREMONY_TO_CGAID_TIER` is a dict in Python confi
 
 - **CONFIRMED** `_determine_ceremony` signature and return values from `execute.py:53-60` (read in ADR preparation 2026-04-22).
 - **CONFIRMED** seeded `output_contracts` set from `seed_data.py:21,29,57,85`.
-- **CONFIRMED** OM §7.1 tier definitions + §7.2 preconditions from `ITRP/.ai/framework/OPERATING_MODEL.md` first-200-line read 2026-04-22.
+- **CONFIRMED** OM §7.1 tier definitions + §7.2 preconditions from `.ai/framework/OPERATING_MODEL.md` first-200-line read 2026-04-22.
 - **CONFIRMED** no `MINIMAL` in platform via grep with zero matches.
 - **ASSUMED** none. Premise correction eliminated the single assumption that was in the calibration prompt.
 

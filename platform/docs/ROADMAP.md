@@ -25,18 +25,18 @@ Test strategy per phase: combination of (a) existing pytest suite regression, (b
 
 ## 1. Phase overview
 
-| Phase | Goal | Stages | Duration | Closes properties | Depends on |
+| Phase | Goal | Stages | Duration | Closes properties / theorem conditions | Depends on |
 |---|---|---|---|---|---|
 | **Pre-flight** | ADR-003 ratification, calibration ADRs, smoke tests | 3 | 1 sprint | — | — |
-| **A** | Deterministic gate fundament: VerdictEngine + GateRegistry + EvidenceSet + idempotency | 5 | 2–3 sprints | P1, P6, P7, P8, P16 | Pre-flight |
-| **B** | Causal memory + context projection | 4 | 3 sprints | P14, P15, partial P4 | A |
+| **A** | Deterministic gate fundament: VerdictEngine + GateRegistry + EvidenceSet + idempotency | 5 | 2–3 sprints | P1, P6, P7, P8, P16; CCEGAP 5, 6 | Pre-flight |
+| **B** | Causal memory + context projection + timely delivery + topology preservation + source consistency + actor/process entities | 8 | 3–4 sprints | P14, P15, partial P4; CCEGAP 1, 3; **ECITP C3, C6**; **FC §8, §9**; **AI-SDLC §7** | A |
 | **C** | Impact Closure + Reversibility | 4 | 2–3 sprints | P3, P5, P2 | A |
-| **D** | Failure-oriented testing + risk-weighted coverage | 5 | 2–3 sprints | P10, P18 (replay), P25 | A, B |
-| **E** | Self-adjoint contract + diagonalization + invariants + continuous autonomy | 6 | 3–4 sprints | P4, P9, P11, P12, P13 | A, B, C, D |
-| **F** | Decision discipline (disclosure, uncertainty blocks, root cause, transitive) | 6 | 3 sprints | P17, P18, P19, P20, P21, P22, P23, P24 | A, B |
-| **G** | CGAID compliance capstone: Stage 0, metrics, Rule Lifecycle, Steward, 11 artifacts | 8 | 3 sprints | — (closes CGAID alignment) | E, F |
+| **D** | Failure-oriented testing + risk-weighted coverage + critical path scheduling | 6 | 3 sprints | P10, P18, P25; CCEGAP 5 strengthened; **AIOS A8**; **AI-SDLC #10** | A, B |
+| **E** | Self-adjoint contract + diagonalization + invariants + continuous autonomy + additive progression + scope boundary + architecture components | 9 | 4 sprints | P4, P9, P11, P12, P13; CCEGAP 2; **ECITP C8**; **FC §15**; **AI-SDLC §9** | A, B, C, D |
+| **F** | Decision discipline (disclosure, uncertainty blocks, root cause, transitive) + structured transfer + candidate evaluation + debt tracking | 12 | 4 sprints | P17-P24; CCEGAP 4, 7; **ECITP C11**; **FC §16-§19, §37** | A, B |
+| **G** | CGAID compliance capstone: Stage 0, metrics, Rule Lifecycle, Steward, 11 artifacts + proof trail + baseline/post + error propagation | 11 | 4 sprints | — (closes CGAID alignment); **ECITP C7, C12**; **FC §25+§26**; **AIOS A18**; **AI-SDLC §19** | E, F |
 
-**Calendar estimate:** 17–22 sprints (~4–5 months at one-sprint-per-week) — realistic calendar: 6–9 months with overhead. **This is NOT a commitment** — it's a capacity estimate subject to R-OP-01 (composite 12 MEDIUM).
+**Calendar estimate:** 26–32 sprints (~6–7 months at one-sprint-per-week) — realistic calendar: 9–13 months with overhead. **This is NOT a commitment** — it's a capacity estimate subject to R-OP-01 (composite 12 MEDIUM). Revised four times: 17-22 → 20-26 (5 ECITP stages) → 23-29 (5 FC-critical-gap stages) → 25-31 (3 Tier-1 cross-theorem gap stages) → **26-32** (1 Tier-2 AI-SDLC stage E.9 + inline extensions to B.8 and G.9).
 
 ---
 
@@ -213,16 +213,59 @@ Pre-flight ─── A ─── B ─────────────┘
 **Stage tests:**
 - [ ] `ContextProjector.project(task, budget)` respects budget for 10 canonical fixtures.
 - [ ] For 10 historical executions, projection contains every decision the reasoning referenced (spot-check).
+- [ ] **Evidence continuity property test (ECITP §2.3):** hypothesis-based — for 10,000 random DAG+task pairs, every decision-relevant ancestor edge appears in `ContextProjection`; zero false-negatives allowed.
 - [ ] Persisted in `context_projections` table for audit.
 
 **Exit:** `CAUSAL_PROJECTION=on` behind flag; `prompt_parser` uses projector.
 
+### Stage B.5 — TimelyDeliveryGate (ECITP C3)
+
+**Entry:** B.4. Full REJECT mode requires G_{E.1}.
+
+**Stage tests:**
+- [ ] `Execution.context_projection_id IS NULL` at pending→IN_PROGRESS transition → blocked (REJECT mode).
+- [ ] Projection missing any `ContractSchema.required_context(task)` field → blocked.
+- [ ] Env flag `TIMELY_DELIVERY_MODE=WARN` emits Finding; `=REJECT` blocks transition.
+- [ ] `grep -nE "session_context|raw_prompt_fallback" app/prompt_parser.py` exits 1 (no fallback path).
+
+**Exit:** TimelyDeliveryGate live; WARN-to-REJECT promotion auto-triggered at G_{E.1}.
+
+### Stage B.6 — SemanticRelationTypes on CausalEdge (ECITP C6)
+
+**Entry:** B.2.
+
+**Stage tests:**
+- [ ] Alembic migration round-trip (adds `causal_edges.relation_semantic ENUM`).
+- [ ] `scripts/backfill_relation_semantic.py` deterministic (idempotent on re-run).
+- [ ] Unmappable historical TEXT relation → Finding emitted, NULL retained (no silent default).
+- [ ] `CausalGraph.requirements_of(ac) / risks_of(ac) / tests_of(ac)` return expected edges on fixture DAG.
+- [ ] WARN-mode AC validator: AC without requirement AND risk edge → Finding emitted.
+
+**Exit:** ENUM live; CausalGraph exposes relation-typed queries; REJECT-promotion handled at G.9.
+
+### Stage B.7 — SourceConflictDetector (FC §8)
+
+**Entry:** B.2 + B.6.
+
+**Stage tests:**
+- [ ] Alembic migration (`source_conflicts` table with unique constraint on sorted source pair).
+- [ ] Synthetic literal-value mismatch on `(entity_ref, field_name)` across Knowledge → `source_conflicts` row + Finding(kind='source_conflict').
+- [ ] UNKNOWN vs concrete value is NOT flagged as conflict (CONTRACT §B.2 compatibility).
+- [ ] Execution with unresolved conflict in task ancestor closure → BLOCKED with blocked_reason='unresolved_source_conflict'.
+- [ ] Resolution via `Decision(type='conflict_resolution', resolves_conflict_id)` → `resolved_at` populated, next Execution transition PASSES.
+- [ ] Idempotency: re-run `scripts/detect_source_conflicts.py` produces identical source_conflicts row count.
+
+**Closes:** FC §8 (Source Consistency).
+
 ### Phase B exit gate
 
-- [ ] Every new `Decision | Change | Finding` insert has ≥ 1 edge (DB invariant test).
+- [ ] Every new `Decision | Change | Finding` insert has ≥ 1 edge OR `is_objective_root = true` (DB invariant test).
 - [ ] No cycle detected in 10,000 random inserts (property test).
 - [ ] Projection fidelity test green on 10 historical.
 - [ ] Budget test green.
+- [ ] TimelyDeliveryGate blocks IN_PROGRESS without materialized projection (B.5).
+- [ ] `relation_semantic` ENUM populated for all backfilled edges; unmappable rows have Findings (B.6).
+- [ ] Unresolved source conflicts in any task ancestor closure → Execution BLOCKED (B.7).
 
 ---
 
@@ -392,6 +435,31 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] Each mode has `tests/{mode}/contract/`.
 - [ ] Stubbing `execution/` module → `validation/` tests still green.
 
+### Stage E.7 — EpistemicProgressGate (ECITP C8 + §2.7 explicit invalidation)
+
+**Entry:** E.1 + E.2 + F.3.
+
+**Stage tests:**
+- [ ] Alembic migration (`executions.epistemic_snapshot_before`, `executions.epistemic_delta`, `executions.invalidated_evidence_refs`).
+- [ ] Execution with zero deltas from {new_evidence, reduced_ambiguity, new_failure_mode, narrowed_scope, tightened_schema, new_ac_with_source} → REJECTED with reason=`epistemically_null_stage`.
+- [ ] Execution with only Δ1 (new EvidenceSet) → PASS (single delta sufficient per ECITP C8).
+- [ ] Paraphrase-only Decision (no new Evidence, same uncertainty, same schema) → REJECTED.
+- [ ] Baseline snapshot captured at pending→IN_PROGRESS transition (integrates with B.5).
+- [ ] **Explicit invalidation test (ECITP §2.7):** silent drop of prior `E_old` → REJECTED with reason=`silent_invalidation_violation_§2.7`; drop with valid `{evidence_set_id, reason_code}` entry in `invalidated_evidence_refs` → PASS. Valid reason_codes: `{superseded_by_newer, retracted_at_source, rejected_by_independent_check, made_obsolete_by_decision}`.
+
+### Stage E.8 — ScopeBoundaryDeclaration (FC §15)
+
+**Entry:** C.3 + E.7.
+
+**Stage tests:**
+- [ ] Alembic migration (`executions.in_scope_refs`, `out_of_scope_refs`, `unjustified_in_closure` JSONB columns).
+- [ ] Change where `ImpactClosure = {f, g, h}` and `in_scope_refs ∪ out_of_scope_refs ⊉ ImpactClosure` → REJECTED with reason listing unjustified paths.
+- [ ] Change with complete closure coverage → PASS.
+- [ ] Out-of-scope entry with invalid reason code → DB CHECK constraint violation.
+- [ ] `Execution.unjustified_in_closure` populated on REJECT for diagnostic.
+
+**Closes:** FC §15 (Change Set Completeness).
+
 ### Phase E exit gate
 
 - [ ] Invariants live + violation test green.
@@ -399,6 +467,7 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] Autonomy demotes on injected regression.
 - [ ] Reachability invariant: every ACTIVE Objective has non-null evidence.
 - [ ] Diagonalization: stub drill green.
+- [ ] EpistemicProgressCheck rejects null stages (E.7).
 
 ---
 
@@ -423,12 +492,14 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] Validator rejects non-trivial claims without tag.
 - [ ] Promote existing 3 WARNINGs to FAIL.
 
-### Stage F.4 — Uncertainty blocks execution (P20)
+### Stage F.4 — Uncertainty blocks execution (P20) + Ambiguity continuity (ECITP §2.4)
 
 - [ ] `BLOCKED` added to `Execution.status` enum (migration up/down).
 - [ ] `Execution.uncertainty_state` JSONB.
 - [ ] `POST /executions/{id}/resolve-uncertainty` endpoint.
 - [ ] Synthetic test: non-empty `uncertain` → BLOCKED; cannot ACCEPTED until resolved.
+- [ ] `resolved_uncertainty(ambiguity_id, execution_id, resolved_by, accepted_role, resolved_at)` durable resolution-record table (migration up/down).
+- [ ] **Ambiguity continuity property test (ECITP §2.4):** hypothesis-based — for 10,000 random execution chains (length 2..5), every unresolved UNKNOWN at step n persists in uncertainty_state of step n+1 unless matching `resolved_uncertainty` row exists with `execution_id ≥ n`.
 
 ### Stage F.5 — Root cause uniqueness (P21) + Disclosure protocol (P22)
 
@@ -483,6 +554,47 @@ Pre-flight ─── A ─── B ─────────────┘
 
 **Closes:** R-GOV-01, CONTRACT §B.8, failure modes §3 (root cause uniqueness), §1 (deterministic evaluation), §8 (proof of correctness) in autonomous loop context.
 
+### Stage F.10 — StructuredTransferGate (ECITP C11)
+
+**Entry:** F.4 + B.5 + B.6.
+
+**Stage tests:**
+- [ ] `ContextProjection` pydantic model has 6 typed structural fields: `requirements: List[RequirementRef]`, `evidence_refs: List[EvidenceRef]`, `ambiguity_state: AmbiguityState`, `test_obligations: List[TestObligation]`, `dependency_relations: List[DependencyRelation]`, `hard_constraints: List[InvariantRef]`.
+- [ ] NL-only projection (e.g. `requirements = "some text"`) → BLOCKED with `blocked_reason = "structured_transfer_incomplete"`.
+- [ ] Missing required category when task schema demands it → BLOCKED.
+- [ ] `grep -rnE "session_context|fallback.*projection|nl_only_prompt" app/` exits 1 (no fallback path).
+- [ ] `grep -rnE "StructuredTransferIncomplete.*warn|log\.warning.*structured_transfer" app/` exits 1 (raise only, no warn).
+
+**Closes:** ECITP C11 (downstream inheritance) + Lemma 3 (summary-only transfer destroys second-order constraints).
+
+### Stage F.11 — CandidateSolutionEvaluation (FC §16+§17+§18+§19)
+
+**Entry:** E.1 + ADR-019 CLOSED (scoring weights).
+
+**Stage tests:**
+- [ ] Alembic migrations (`solution_candidates`, `solution_scores`) round-trip.
+- [ ] architectural Decision with 1 candidate → REJECTED with reason=`fewer_than_2_candidates`.
+- [ ] architectural Decision with ≥2 candidates but missing any of 14 score dimensions → REJECTED.
+- [ ] `Decision.selected_candidate_id ≠ argmax_c Score(c)` → REJECTED (deterministic argmax).
+- [ ] Component in `necessary_components_list` without `justification_evidence_ref` citing concrete requirement/invariant/scalability bound → REJECTED (Anti-Overengineering §18).
+- [ ] `Decision.type='trivial_change'` bypass allowed under LOC + impact_closure_size thresholds; above threshold → REJECTED.
+
+**Closes:** FC §16 (Candidate Solution Set), §17 (Hard Feasibility Constraints), §18 (Anti-Overengineering), §19 (Optimal Solution Selection).
+
+### Stage F.12 — TechnicalDebtTracking (FC §37)
+
+**Entry:** F.4 + ADR-020 CLOSED (debt categories + allowed `accepted_by` roles).
+
+**Stage tests:**
+- [ ] Alembic migration (`technical_debt` table with category enum).
+- [ ] Change.diff containing `TODO`, `FIXME`, `HACK`, `XXX`, `NotImplementedError`, `pass # TODO` without matching `technical_debt` row with `accepted_by` → REJECTED.
+- [ ] Change with debt marker + matching `technical_debt(accepted_by=<user>, accepted_role ∈ allowlist)` → PASS.
+- [ ] `accepted_role` outside ADR-020 allowlist → REJECTED with reason=`unauthorized_debt_acceptance_role`.
+- [ ] Resolution path: Change removing debt marker + setting `resolved_by_change_id` → `technical_debt.resolved_at` populated.
+- [ ] `scripts/detect_debt_markers.py` idempotent on re-run.
+
+**Closes:** FC §37 (No Technical Debt Rule).
+
 ### Phase F exit gate
 
 - [ ] Schema: insert `kind=assumption` → rejected.
@@ -495,6 +607,7 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] Skip-cost enforcement: empty slot → REJECTED (F.8).
 - [ ] Distinct-actor spawn mechanism active; self-ratification → REJECTED (F.9).
 - [ ] ADR-012 drafted and filed for review.
+- [ ] StructuredTransferGate: NL-only projection → BLOCKED; grep-gates on fallback paths green (F.10).
 
 ---
 
@@ -579,6 +692,37 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] `app/validation/snapshot_validator.py` with 5 components.
 - [ ] Applied to Stage 1 volume check, Stage 3 output shape, Stage 4 business-outcome.
 
+### Stage G.9 — ProofTrailCompleteness + ECITP C6/C11 promotion (ECITP C12 + C7)
+
+**Entry:** G.8 + B.6 + F.10 + E.7. Requires ADR-014 (Requirement entity) and ADR-015 (Test entity) CLOSED.
+
+**Stage tests:**
+- [ ] `scripts/proof_trail_audit.py` traverses `Change → Execution → AC → Test → Requirement → Task → Objective → Finding → Knowledge` for every `Change`; missing link → Finding(severity=HIGH, kind='proof_trail_gap').
+- [ ] Synthetic gap test: Change with no linked Execution → script exits 1 + Finding emitted.
+- [ ] Complete chain test: fixture with full 10-link chain → script exits 0.
+- [ ] CLI: `forge audit proof-trail --change-id=<uuid>` works per-Change.
+- [ ] `feature_flags.CAUSAL_RELATION_SEMANTIC_REJECT=true` — promotes B.6 AC validator from WARN to REJECT.
+- [ ] `feature_flags.STRUCTURED_TRANSFER_REJECT=true` — promotes F.10 gate to REJECT (raise not warn).
+- [ ] Bounded-revision test (ECITP C7): 10 minor-edit PR fixtures → `len(ImpactClosure) ≤ threshold` from ADR-004.
+- [ ] Nightly cron job configured in `.github/workflows/` or equivalent.
+
+**Closes:** ECITP C12 (end-to-end proof trail structurally auditable), ECITP C7 (continuity of meaning — bounded downstream revision).
+
+### Stage G.10 — BaselinePostVerification (FC §25+§26)
+
+**Entry:** C.3 + C.4 + G.8 + ADR-021 CLOSED (ExpectedDiff schema per Change.type).
+
+**Stage tests:**
+- [ ] Alembic migration (`runtime_observations` table; `Change.expected_diff JSONB NOT NULL`).
+- [ ] Change inserted without `expected_diff` declared → REJECTED at insert.
+- [ ] Baseline capture failure on any `ImpactClosure` element → REJECTED with `baseline_capture_failed: <ref>`.
+- [ ] Every state-mutating Change must have `runtime_observations` rows for every `ImpactClosure` element in both `phase='baseline'` and `phase='post'`; missing observation → REJECTED.
+- [ ] `Diff(baseline, post) = ExpectedDiff` → PASS.
+- [ ] `Diff ≠ ExpectedDiff` on REVERSIBLE Change → REJECTED + auto-rollback (C.4 integration); state restored to Baseline sha256.
+- [ ] `Diff ≠ ExpectedDiff` on IRREVERSIBLE Change → REJECTED + CRITICAL Incident + NO auto-rollback (Steward sign-off required for recovery).
+
+**Closes:** FC §25 (Baseline/Post/Diff comparison), §26 (per-element runtime impact verification).
+
 ### Phase G exit gate
 
 - [ ] Every Confidential+ ingest has Classification row + (DLP record OR signed acceptance).
@@ -588,6 +732,9 @@ Pre-flight ─── A ─── B ─────────────┘
 - [ ] FRAMEWORK_MAPPING.md 11 artifacts 1:1 resolved (EXISTS or ACKNOWLEDGED_GAP).
 - [ ] Adaptive Rigor mapping encoded.
 - [ ] ≥ 3 gates use snapshot validation.
+- [ ] `proof_trail_audit.py` exits 0 on full DB; every Change has complete 10-link chain (G.9).
+- [ ] ECITP C6/C11 REJECT-promotion flags active; WARN→REJECT transition verified (G.9).
+- [ ] Every state-mutating Change has Baseline + Post `runtime_observations` for every ImpactClosure element; Diff = ExpectedDiff enforced (G.10).
 
 ---
 
@@ -627,8 +774,21 @@ Each stage exit test is **automated** (pytest or shell script) except where mark
 | ADR-012 Non-trivial classifier edge cases | Phase F.9 (SR-3) | platform — see `AUTONOMOUS_AGENT_FAILURE_MODES.md §1.3` |
 | ADR-013 Challenger REFUTED: mandatory re-queue OR human override? | Phase F.6 | platform — from `EPISTEMIC_CONTINUITY_ASSESSMENT.md §8 Q2` |
 | ADR-014 C2 sufficiency: pre-LLM gate required or post-hoc validator sufficient? | Phase A exit | platform — from `EPISTEMIC_CONTINUITY_ASSESSMENT.md §8 Q4` |
+| ADR-015 Requirement entity — promote `Finding.type='requirement'` to separate table, or accept Finding-as-Requirement in proof-trail audit? | Phase G.9 | platform — from ECITP C12 10-link proof trail |
+| ADR-016 Test entity — promote `AcceptanceCriterion.scenario_type` to separate `Test` table, or treat AC+scenario_type as chain's test link? | Phase G.9 | platform — from ECITP C12 10-link proof trail |
+| ADR-017 Canonical `relation TEXT → relation_semantic ENUM` mapping for B.6 backfill | Phase B.6 | platform — from ECITP C6 topology preservation |
+| ADR-018 DLP mechanism for Confidential+ tier — technology choice, OR formal ACKNOWLEDGED_GAP per FRAMEWORK_MAPPING §12 with Steward sign-off | Phase G.1 | platform + security — from FRAMEWORK_MAPPING R-FW-02 |
+| ADR-019 Candidate scoring weights for 14 dimensions + trivial-change bypass thresholds + tie-breaker rule | Phase F.11 | platform + architecture lead — from FC §19 Optimal Solution Selection |
+| ADR-020 Technical-debt category enum + `accepted_by` role allowlist + marker-detector extension path | Phase F.12 | platform — from FC §37 No Technical Debt Rule |
+| ADR-021 ExpectedDiff schema per Change.type (migration / code / config) + IRREVERSIBLE incident recovery procedure | Phase G.10 | platform — from FC §25+§26 Baseline/Post verification |
+| ADR-022 Memory-version pinning per Execution (bounds Phase 10→1 feedback) | Stage B.5 extension | platform — from USAGE_PROCESS §16 method-weakness #3 |
+| ADR-023 Critical Path enforcement via CPM + CriticalPathGate | Phase D.6 (new) | platform — from AIOS A8 + AI-SDLC #10 |
+| ADR-024 Error propagation via Finding inheritance + Execution invalidation | Phase G.11 (new) | platform — from AIOS A18 + AI-SDLC §19+#20 + FC §14 |
+| ADR-025 Actor + BusinessProcess entities + BusinessAnalysisCompleteness validator | Phase B.8 | platform — from FC §9 + AI-SDLC §7 + AI-SDLC #8 (business_justification extension) |
+| ADR-026 Architecture components unified view (7-kind enum + relationships + dashboard) | Phase E.9 (new) | platform — from AI-SDLC §9 + #9 |
 
 ADRs 4–7 are P1 per deep-risk; must be created + reviewed before their respective phase starts.
+ADRs 15–17 block G.9 and B.6; ADR-018 blocks G.1; ADR-019 blocks F.11; ADR-020 blocks F.12; ADR-021 blocks G.10.
 
 ---
 
@@ -671,18 +831,36 @@ This is a living document. Update per stage completion:
   - [ ] Stage 0.2 Calibration ADRs (004, 005, 006)
   - [ ] Stage 0.3 IMPLEMENTATION_TRACKER smoke tests
 - [ ] Phase A (5 stages)
-- [ ] Phase B (4 stages)
+- [ ] Phase B (8 stages)
+  - [ ] Stage B.1–B.4 (CausalEdge, backfill, CausalGraph, ContextProjector)
+  - [ ] Stage B.5 TimelyDeliveryGate (ECITP C3)
+  - [ ] Stage B.6 SemanticRelationTypes (ECITP C6)
+  - [ ] Stage B.7 SourceConflictDetector (FC §8)
+  - [ ] Stage B.8 ActorAndProcessEntities (FC §9 + AI-SDLC §7)
 - [ ] Phase C (4 stages)
-- [ ] Phase D (5 stages)
-- [ ] Phase E (6 stages)
-- [ ] Phase F (9 stages)
+- [ ] Phase D (6 stages)
+  - [ ] Stage D.1–D.5 (harness, property, metamorphic, adversarial, FailureMode α-gate)
+  - [ ] Stage D.6 CriticalPathScheduler (AIOS A8 + AI-SDLC #10)
+- [ ] Phase E (9 stages)
+  - [ ] Stage E.1–E.6 (contract schema, invariants, autonomy, reachability, modes, contract tests)
+  - [ ] Stage E.7 EpistemicProgressGate (ECITP C8 + §2.7)
+  - [ ] Stage E.8 ScopeBoundaryDeclaration (FC §15)
+  - [ ] Stage E.9 ArchitectureComponents (AI-SDLC §9)
+- [ ] Phase F (12 stages)
   - [ ] Stage F.1–F.6 (decision discipline)
   - [ ] Stage F.7 AgentAuthorityCheck gate (SR-1)
   - [ ] Stage F.8 Skip-cost enforcement (SR-2)
   - [ ] Stage F.9 Distinct-actor spawn in autonomous loop (SR-3)
-- [ ] Phase G (8 stages)
+  - [ ] Stage F.10 StructuredTransferGate (ECITP C11)
+  - [ ] Stage F.11 CandidateSolutionEvaluation (FC §16+§17+§18+§19)
+  - [ ] Stage F.12 TechnicalDebtTracking (FC §37)
+- [ ] Phase G (11 stages)
+  - [ ] Stage G.1–G.8 (CGAID compliance)
+  - [ ] Stage G.9 ProofTrailCompleteness + ECITP REJECT-promotion (ECITP C7, C12)
+  - [ ] Stage G.10 BaselinePostVerification (FC §25+§26)
+  - [ ] Stage G.11 ErrorPropagationMechanism (AIOS A18 + AI-SDLC §19+#20)
 
-Total: 3 + 5 + 4 + 4 + 5 + 6 + 9 + 8 = **44 stages**.
+Total: 3 + 5 + 8 + 4 + 6 + 9 + 12 + 11 = **58 stages**.
 
 Each completed stage produces either a commit (stage tests green) or a blocking Finding if tests fail. No "partial" stages — incomplete = DRAFT.
 

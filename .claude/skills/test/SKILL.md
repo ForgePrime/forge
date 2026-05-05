@@ -45,7 +45,7 @@ Zadanie nie jest zakończone dopóki:
 
 Jeśli którykolwiek warunek nie jest spełniony → zadanie nie jest zakończone.
 
-## ITRP Test Conventions
+## Test Conventions
 
 - **Backend tests:** `docker compose exec backend pytest` (Firestore emulator, NO mocks)
 - **Test files:** `tests/test_{module}.py`
@@ -252,7 +252,7 @@ If `plan-only` mode → STOP HERE. Don't proceed.
 
 ---
 
-## PHASE 5 — Write tests (with ITRP conventions)
+## PHASE 5 — Write tests (with project conventions)
 
 Każdy test:
 - Meaningful name (`test_<verb>_<condition>_<expected>`)
@@ -393,7 +393,7 @@ SKIP BLOCK 6:
 [ ] Czy każdy test ma konkretny assert (nie tylko truthy)?
     Specific: <count> / <count>
 
-[ ] Czy NIE używam mocks (ITRP convention)?
+[ ] Czy NIE używam mocks (project convention)?
     Mocks: <count — should be 0>
 
 [ ] Czy testowałem SYSTEM (behaviors) czy IMPLEMENTATION DETAILS?
@@ -480,7 +480,7 @@ Coverage:
 - Architecture quality: <X of 4 from 2.4>
 - Critical paths uncovered: <list>
 
-ITRP Convention compliance:
+Convention compliance:
 - No mocks: YES/NO
 - conftest fixtures used: YES/NO
 - Specific asserts: YES/NO
@@ -536,7 +536,7 @@ Risk:
 
 ---
 
-## Test patterns dla ITRP
+## Test patterns
 
 ### Backend behavior test:
 ```python

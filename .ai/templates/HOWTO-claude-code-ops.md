@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Claude Code — Execution-Layer Patterns
 
-> Operational patterns for `.claude/` and agent workflow in ITRP.
+> Operational patterns for `.claude/` and agent workflow in project.
 > Source: `.ai/compass_artifact.md` (survey of 2025–2026 practice, spot-checked against Vercel/Anthropic/Cognition primary sources).
 > Scope: Claude Code tool-level patterns. Out of scope: CGAID framework policy (`.ai/framework/`).
 
@@ -25,7 +25,7 @@ disable-model-invocation: true
 2. For each: identify the CLI equivalent. Remove MCP if CLI exists and is callable from Bash tool.
 3. Keep only MCPs with no viable CLI (e.g., browser automation, proprietary internal systems).
 
-**ITRP-specific.** For GCP work default to `gcloud`, `gsutil`, `bq`, `gh` — all already available via Bash. MCP layer is justified only where CLI does not exist.
+**project-specific.** For GCP work default to `gcloud`, `gsutil`, `bq`, `gh` — all already available via Bash. MCP layer is justified only where CLI does not exist.
 
 **Anti-pattern.** Adding an MCP "because it's available" without auditing token cost. One idle MCP at 10k tokens × every session = permanent context tax.
 
@@ -39,7 +39,7 @@ disable-model-invocation: true
 
 **Pattern.**
 
-- Target ≤60 lines for `.claude/CLAUDE.md`. Current ITRP file = 43 lines, within budget.
+- Target ≤60 lines for `.claude/CLAUDE.md`. Current project file = 43 lines, within budget.
 - Structure: session-start protocol → mandatory files → contextual files → framework files (read-on-explicit-request).
 - **Pointers only, no prose.** Full content lives in `.ai/*.md`. CLAUDE.md is an index, not a book.
 
@@ -76,7 +76,7 @@ Violation = abandon task and request human review.
 
 **Pair with a hook.** Every `<HARD-GATE>` with enforcement intent should have a matching `PreToolUse` hook (see §4) that `grep`s for the required marker in the prerequisite artifact. Prose + hook = two-layer enforcement. Prose alone = 70–90% compliance, not a gate.
 
-**Where to apply in ITRP skills.**
+**Where to apply in framework skills.**
 
 - `guard` — already standards-oriented; add HARD-GATE for "no Edit/Write on `.py`/`.ts` until standards-check.sh has been run in this session."
 - `develop` — gate on presence of accepted plan artifact before first Write.
@@ -90,7 +90,7 @@ Violation = abandon task and request human review.
 
 **Why.** Field reports: prompt-based rules = 70–90% compliance. Hooks with exit `2` = 100%. The gap between "usually" and "always" is where production incidents happen. CLAUDE.md saying "always run the linter" is *advice*; a PostToolUse hook running it is *guarantee*.
 
-**Current ITRP state (2026-04-22 snapshot).**
+**Current framework state (2026-04-22 snapshot).**
 
 - `.claude/hooks/standards-check.sh` **exists** (4KB) — checks router→DB access, `except Exception: pass`, undefined `logger`, `Any` in type hints, pipeline↔backend cross-imports.
 - `.claude/settings.json` **does not exist** → hook file is probably not registered → enforcement theatre risk.
@@ -156,4 +156,4 @@ Violation = abandon task and request human review.
 
 ## Relationship to CGAID
 
-These are **execution-layer** patterns (Claude Code tool usage). They do **not** belong in `.ai/framework/` — CGAID is tool-agnostic governance. Patterns that prove themselves here may later inform OPERATING_MODEL §4.4 (enforceability) or §7 (rigor tiers), but only after empirical validation in ITRP practice.
+These are **execution-layer** patterns (Claude Code tool usage). They do **not** belong in `.ai/framework/` — CGAID is tool-agnostic governance. Patterns that prove themselves here may later inform OPERATING_MODEL §4.4 (enforceability) or §7 (rigor tiers), but only after empirical validation in framework practice.

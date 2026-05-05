@@ -10,16 +10,16 @@
 
 **Forge is the platform-level reference implementation of Contract-Governed AI Delivery (CGAID).** Not a fork. Not a parallel framework. Not a competing specification.
 
-CGAID (`ITRP/.ai/framework/`, v2.0, 2026-04-19) is the parent governance spec, authored and stewarded at the ITRP engineering level. Forge implements CGAID's requirements at the tooling/platform layer — the framework's Layer 2 (Tooling) and parts of Layers 3–4 (Delivery + Control).
+CGAID (`.ai/framework/`, v2.0, 2026-04-19) is the parent governance spec, authored and stewarded at the engineering level. Forge implements CGAID's requirements at the tooling/platform layer — the framework's Layer 2 (Tooling) and parts of Layers 3–4 (Delivery + Control).
 
 ### Hierarchy
 
 ```
-CGAID Framework (ITRP/.ai/framework/)
+CGAID Framework (.ai/framework/)
   ├── MANIFEST.md          — cultural foundation (10 principles)
   ├── OPERATING_MODEL.md   — operational detail (4 layers, 5 stages, 11 artifacts, 7 metrics)
   ├── DATA_CLASSIFICATION  — Stage 0 instrument (4 tiers)
-  ├── PRACTICE_SURVEY      — 18 ITRP incidents, empirical foundation
+  ├── PRACTICE_SURVEY      — 18 historical incidents, empirical foundation
   └── WHITEPAPER           — public case, 6 pathologies
         ↓ authorizes
   CONTRACT.md (§A 7 silences, §B format)     ← "implements §4.4"
@@ -228,9 +228,9 @@ Forge's `GateRegistry.classification` field (added in Phase G to existing Phase 
 
 ## 11. PRACTICE_SURVEY 18 incidents → Forge regression fixtures
 
-`PRACTICE_SURVEY.md` lists 18 ITRP incidents classified against the 10 principles. Every incident that reveals a coverage gap is a candidate for Forge `FailureMode` + adversarial test (per OM §4.3 v1.5 runtime-incident rule + Forge Phase D adversarial suite).
+`PRACTICE_SURVEY.md` lists 18 historical incidents classified against the 10 principles. Every incident that reveals a coverage gap is a candidate for Forge `FailureMode` + adversarial test (per OM §4.3 v1.5 runtime-incident rule + Forge Phase D adversarial suite).
 
-Phase D `build_adversarial_fixtures.py` seed data should read `PRACTICE_SURVEY.md` incidents as well as Forge's own `Finding` history. Cross-project learning: ITRP's cascade-invalidation incident `f6d24dc` becomes a Forge regression test even though it occurred in a different codebase — the *pattern* (cascade decision without named invariant) transfers.
+Phase D `build_adversarial_fixtures.py` seed data should read `PRACTICE_SURVEY.md` incidents as well as Forge's own `Finding` history. Cross-project learning: the cascade-invalidation incident `f6d24dc` becomes a Forge regression test even though it occurred in a different codebase — the *pattern* (cascade decision without named invariant) transfers.
 
 ---
 

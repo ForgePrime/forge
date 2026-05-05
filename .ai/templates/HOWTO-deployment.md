@@ -14,7 +14,7 @@ user-invocable: true
 
 Per `.ai/standards.md` §4.2 (BQ tables), §8 (consistency and reversibility).
 
-**ZASADA: Schema BEFORE code. Nigdy odwrotnie.**
+**RULE: Schema BEFORE code. Never the other way around.**
 
 ## Changes
 
@@ -22,7 +22,7 @@ $ARGUMENTS
 
 ---
 
-## Krok 0: Pre-conditions
+## Step 0: Pre-conditions
 
 Before starting ANY deployment:
 
@@ -37,7 +37,7 @@ Before starting ANY deployment:
 
 ---
 
-## Krok 1: Inventaryzacja zmian
+## Step 1: Inventory changes
 
 ```!
 git diff --stat main...HEAD 2>/dev/null || git diff --stat
@@ -55,7 +55,7 @@ Classify changes:
 
 ---
 
-## Krok 2: Deployment phases
+## Step 2: Deployment phases
 
 ### Phase 1: INFRASTRUCTURE (no code deploy yet)
 
@@ -119,7 +119,7 @@ Pipeline is a SEPARATE container — highest cross-project import risk.
 
 ---
 
-## Krok 3: Rollback plan
+## Step 3: Rollback plan
 
 **Per change type:**
 
@@ -132,7 +132,7 @@ Pipeline is a SEPARATE container — highest cross-project import risk.
 | Frontend code | `git revert {commit}` + rebuild | |
 | Firestore index | Delete index (safe, may slow queries temporarily) | |
 
-**HARD RULE: NIGDY `DELETE FROM` BQ — soft-delete only (`UPDATE SET is_active = FALSE`).**
+**HARD RULE: NEVER `DELETE FROM` BQ — soft-delete only (`UPDATE SET is_active = FALSE`).**
 
 ### Partial rollback scenarios
 
@@ -144,7 +144,7 @@ Pipeline is a SEPARATE container — highest cross-project import risk.
 
 ---
 
-## Krok 4: Go/No-Go criteria
+## Step 4: Go/No-Go criteria
 
 | Check | Required | Status |
 |-------|----------|--------|
@@ -158,11 +158,11 @@ Pipeline is a SEPARATE container — highest cross-project import risk.
 | Cross-project imports clean (if pipeline) | YES | □ |
 | Rollback plan defined per phase | YES | □ |
 
-**Jeśli JAKIEKOLWIEK = NO → do NOT deploy. Napraw najpierw.**
+**If ANY = NO → do NOT deploy. Fix first.**
 
 ---
 
-## Krok 5: Post-deployment notification
+## Step 5: Post-deployment notification
 
 ```
 Deploy completed: {changes summary}

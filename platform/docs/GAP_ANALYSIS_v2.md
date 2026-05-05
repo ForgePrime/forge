@@ -351,7 +351,7 @@ Deep-verify 2026-04-22 pass surfaced five coverage-category findings, one determ
 
 ### 8.3 CGAID framework layer — entirely absent in v2
 
-Reading `ITRP/.ai/framework/OPERATING_MODEL.md` §2, §3, §4.3, §5, §9.4 surfaced **six compliance gaps** the v2 spec did not name:
+Reading `../../.ai/framework/OPERATING_MODEL.md` §2, §3, §4.3, §5, §9.4 surfaced **six compliance gaps** the v2 spec did not name:
 
 | CGAID element | Forge status | Severity |
 |---|---|---|

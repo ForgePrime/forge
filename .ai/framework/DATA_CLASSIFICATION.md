@@ -8,7 +8,7 @@ Version 1.0 · Owner: Framework Stewards · Status: Operational
 
 ## Purpose
 
-This Rubric is the operational instrument of **Stage 0 — Data Classification Gate** in the CGAID framework. Every piece of client material — documents, meeting notes, specifications, data samples, emails, prompts — must be classified under this Rubric before it enters the evaluation, the codebase, or any AI-accessible memory.
+This Rubric is the operational instrument of **Stage 0 — Data Classification Gate** in the CGAID framework. Every piece of client material — documents, meeting notes, specifications, data samples, emails, prompts — must be classified under this Rubric before it enters the Solutioning Cockpit, the codebase, or any AI-accessible memory.
 
 Stage 0 has one purpose: prevent irreversible exposure of client IP or personal data to AI vendors. This Rubric is the mechanism.
 
@@ -53,6 +53,7 @@ Stage 0 has one purpose: prevent irreversible exposure of client IP or personal 
   - Client business rules, pricing logic, commercial terms
   - Integration specifications, API keys in descriptive form (not raw), system topology
   - Meeting notes containing contact names, emails, decisions
+  - **project-specific:** settlement logic, legal entity mappings, Warsaw office data feed specs, asset-type configurations
   - Non-public financial data aggregated at entity or account level
 - **When in doubt between Internal and Confidential:** choose Confidential. Downgrading is possible after review; upgrading after exposure is not.
 
@@ -69,6 +70,7 @@ Stage 0 has one purpose: prevent irreversible exposure of client IP or personal 
   - Content under national security classification
   - Content under legal privilege (attorney-client, attorney work product)
   - Trade secrets explicitly marked by client as such
+  - **project-specific:** raw bank transaction data, individual settlement records with payer/payee PII, employee personal records
 - **If you are unsure whether something is Secret:** treat it as Secret and escalate to a Framework Steward for re-classification. The asymmetry of risk justifies the caution.
 
 ---
@@ -137,13 +139,13 @@ Each classification decision is logged. Minimum fields:
 | Field | Purpose | Example |
 |---|---|---|
 | **Log ID** | Unique identifier | `CLS-2026-04-0142` |
-| **Item description** | What was classified (not the content itself) | "Meeting notes 2026-04-17 — detection review" |
+| **Item description** | What was classified (not the content itself) | "Meeting notes 2026-04-17 — Client Treasury, settlement detection review" |
 | **Classifier** | Person making the decision (Steward, engineer, or delegated) | `lukasz.krysik` |
 | **Classification date** | When the decision was made | `2026-04-19` |
 | **Assigned tier** | Public / Internal / Confidential / Secret | `Confidential` |
 | **Routing destination** | Where the item is allowed to go | `Cockpit; Claude Enterprise (zero-retention)` |
-| **Legal basis** (for PII) | Consent / Contract / Legitimate Interest / Legal Obligation | `Contract with client — DPA §4.2` |
-| **Client consent reference** (Confidential+) | Contract clause or email ID | `Contract §7.3; email from client 2026-04-12` |
+| **Legal basis** (for PII) | Consent / Contract / Legitimate Interest / Legal Obligation | `Contract with <Client> — DPA §4.2` |
+| **Client consent reference** (Confidential+) | Contract clause or email ID | `Contract §7.3; email from client business owner 2026-04-12` |
 | **Provenance marker** | Tag propagated with downstream artifacts | `[CONF-0142]` |
 | **Review due date** | When re-classification is triggered | `2026-10-19` (6 months) or `on project close` |
 | **Notes** | Ambiguity, dispute, escalation trail | "Initially Internal — upgraded after review surfaced stakeholder emails in body" |
@@ -196,6 +198,7 @@ Escalate to a Framework Steward. Document the ambiguity. The Steward's decision 
 
 - **Operational Contract (`.ai/CONTRACT.md`):** the Rubric operates *before* the Contract. An item that fails Stage 0 never reaches the stage where the Contract applies.
 - **Memory System:** every memory write is a classification event. Memory content inherits the tier of its source material plus any new sensitivity introduced by the writing context.
+- **Solutioning Cockpit:** Cockpit content is classified on entry. The Cockpit tool must be configured to reject Secret-tier material and warn on Confidential-tier material without recorded consent.
 - **§5.6 Data Handling Requirements:** retention, PII scanning, and erasure apply per tier — Confidential items have shorter retention defaults than Internal, Secret items are not in AI-accessible storage at all.
 - **Appendix C — Regulatory Alignment:** the Rubric's legal basis field is the operational link to GDPR Art. 6 and EU AI Act Art. 10 data governance obligations.
 

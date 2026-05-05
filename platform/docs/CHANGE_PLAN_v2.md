@@ -438,7 +438,7 @@ Everything else from v1 retained.
 
 ### 13.1 Goal
 
-Align Forge v2 with its parent framework CGAID (`ITRP/.ai/framework/`). v2 implicitly implemented MANIFEST principles through consolidation with CONTRACT.md + two theorems, but **eight CGAID-specific gaps** are unaddressed (see `GAP_ANALYSIS_v2 §8.3`). Phase G is the capstone — after it, Forge is a declared CGAID reference implementation with traceable binding for every MANIFEST principle, every operating-model artifact, every metric.
+Align Forge v2 with its parent framework CGAID (`../../.ai/framework/`). v2 implicitly implemented MANIFEST principles through consolidation with CONTRACT.md + two theorems, but **eight CGAID-specific gaps** are unaddressed (see `GAP_ANALYSIS_v2 §8.3`). Phase G is the capstone — after it, Forge is a declared CGAID reference implementation with traceable binding for every MANIFEST principle, every operating-model artifact, every metric.
 
 ### 13.2 Dependencies
 
